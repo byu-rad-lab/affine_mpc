@@ -7,6 +7,10 @@ MPCBase::MPCBase(const int n, const int m, const int T, const int p,
     use_input_cost_{use_input_cost},
     use_slew_rate_{use_slew_rate},
     saturate_states_{saturate_states},
+    model_set_{false},
+    input_limits_set_{false},
+    slew_rate_set_{false},
+    state_limits_set_{false},
     Ad_{n,n},
     Bd_{n,m},
     wd_{n},
@@ -44,6 +48,7 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   Ad_ = Ad;
   Bd_ = Bd;
   wd_ = wd;
+  model_set_ = true;
 }
 
 void MPCBase::setModelContinous2Discrete(const Ref<const MatrixXd>& Ac,
@@ -75,6 +80,7 @@ void MPCBase::setModelContinous2Discrete(const Ref<const MatrixXd>& Ac,
 
   Bd_.noalias() = G * Bc;
   wd_.noalias() = G * wc;
+  model_set_ = true;
 }
 
 void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
@@ -95,7 +101,7 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
   assert(use_input_cost_);
   assert(R_diag.size() == m_);
-  for (int i{0}; i < T_; ++i)
+  for (int i{0}; i < p_; ++i)
     R_big_.diagonal().segment(m_*i,m_) = R_diag;
 }
 
@@ -131,8 +137,10 @@ void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
                              const Ref<const VectorXd>& u_max)
 {
   assert(u_min.size() == m_ && u_max.size() == m_);
+  assert((u_max-u_min).all() >= 0.0);
   u_min_ = u_min;
   u_max_ = u_max;
+  input_limits_set_ = true;
 }
 
 void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
@@ -140,8 +148,10 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
 {
   assert(saturate_states_);
   assert(x_min.size() == n_ && x_max.size() == n_);
+  assert((x_max-x_min).all() >= 0);
   x_min_ = x_min;
   x_max_ = x_max;
+  state_limits_set_ = true;
 }
 
 void MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
@@ -149,4 +159,5 @@ void MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
   assert(use_slew_rate_);
   assert(u_slew.size() == m_);
   u_slew_ = u_slew;
+  slew_rate_set_ = true;
 }

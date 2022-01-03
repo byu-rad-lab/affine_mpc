@@ -41,6 +41,7 @@ public:
 protected:
   const int n_, m_, T_, p_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
+  bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
   MatrixXd Ad_;
   MatrixXd Bd_;
   VectorXd wd_;

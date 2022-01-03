@@ -38,6 +38,7 @@ const c_float* OSQPSolver::getSolutionPtr()
 bool OSQPSolver::solve(Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);
+  assert(workspace_initialized_);
 
   osqp_solve(work_);
   Map<VectorXF> map_solution{work_->solution->x, n_, 1};
@@ -47,6 +48,7 @@ bool OSQPSolver::solve(Ref<VectorXF> solution)
 
 bool OSQPSolver::solve()
 {
+  assert(workspace_initialized_);
   osqp_solve(work_);
   return work_->info->status_val == OSQP_SOLVED;
 }
