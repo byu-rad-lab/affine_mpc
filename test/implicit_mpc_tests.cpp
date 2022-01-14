@@ -21,7 +21,7 @@ public:
     B << 0,0.2;
     w.setZero();
     double ts{0.1};
-    setModelContinous2Discrete(A, B, w, ts);
+    setModelContinuous2Discrete(A, B, w, ts);
     // Matrix2d Ad;
     // Vector2d Bd, wd;
     // Ad << 0.99701147,0.09940219, -0.05964131,0.98707125;

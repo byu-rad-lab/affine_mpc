@@ -37,7 +37,7 @@ TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
   w.setZero();
 
   double ts{0.1};
-  base.setModelContinous2Discrete(A,B,w,ts);
+  base.setModelContinuous2Discrete(A,B,w,ts);
 
   MatrixXd Ad_expected{n,n}, Bd_expected{n,m}, wd_expected{n,1};
   Ad_expected << 0.99701147,0.09940219, -0.05964131,0.98707125;
@@ -70,7 +70,7 @@ TEST(MPCBaseTester, givenContinuousSystemLinearizedAtEquilibrium_DiscretizesCorr
   w.setZero();
 
   double dt{0.1};
-  base.setModelContinous2Discrete(A,B,w,dt);
+  base.setModelContinuous2Discrete(A,B,w,dt);
 
   MatrixXd Ad_expected{n,n}, Bd_expected{n,m}, wd_expected{n,1};
   Ad_expected << 1, 0, 0, 0,     -0.0488869, 0, 0.0995017, 0,   0,

@@ -51,10 +51,10 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   model_set_ = true;
 }
 
-void MPCBase::setModelContinous2Discrete(const Ref<const MatrixXd>& Ac,
-                                         const Ref<const MatrixXd>& Bc,
-                                         const Ref<const VectorXd>& wc,
-                                         double dt, double tol)
+void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
+                                          const Ref<const MatrixXd>& Bc,
+                                          const Ref<const VectorXd>& wc,
+                                          double dt, double tol)
 {
   assert(Ac.rows() == n_ && Ac.cols() == n_);
   assert(Bc.rows() == n_ && Bc.cols() == m_);

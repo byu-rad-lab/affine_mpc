@@ -20,10 +20,10 @@ public:
   void setModelDiscrete(const Ref<const MatrixXd>& Ad,
                         const Ref<const MatrixXd>& Bd,
                         const Ref<const VectorXd>& wd);
-  void setModelContinous2Discrete(const Ref<const MatrixXd>& Ap,
-                                  const Ref<const MatrixXd>& Bp,
-                                  const Ref<const VectorXd>& wp,
-                                  double dt, double tol=1e-6);
+  void setModelContinuous2Discrete(const Ref<const MatrixXd>& Ap,
+                                   const Ref<const MatrixXd>& Bp,
+                                   const Ref<const VectorXd>& wp,
+                                   double dt, double tol=1e-6);
 
   void setWeights(const Ref<const VectorXd>& Q_diag, const Ref<const VectorXd>& R_diag);
   void setStateWeights(const Ref<const VectorXd>& Q_diag);
