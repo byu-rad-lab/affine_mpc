@@ -9,11 +9,11 @@ This library depends on [Eigen](https://gitlab.com/libeigen/eigen) (version >= 3
 ## MPC Problem
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
 
-$$
+```math
 \begin{equation}
 J = \sum_{k=1}^{T+1} ||x_k - x_{k,des}||_Q + \underbrace{\sum_{k=0}^{T} ||u_k - u_{k,des}||_R}_{\textcolor{red}{\text{input cost}}}
 \end{equation}
-$$
+```
 
 $$
 \begin{align}
