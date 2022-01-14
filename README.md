@@ -15,14 +15,14 @@ J = \sum_{k=1}^{T+1} ||x_k - x_{k,des}||_Q + \underbrace{\sum_{k=0}^{T} ||u_k - 
 \end{equation}
 ```
 
-$$
+```math
 \begin{align}
 s.t. &\quad x_{k+1} = A x_k + B u_k \\
 &\quad u_{min} \leq u_k \leq u_{max} \\
 &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
 &\quad \underbrace{|u_{k+1} - u_k| \leq u_{slew}}_{\textcolor{red}{\text{slew rate}}}
 \end{align}
-$$
+```
 
 ## API
 The C++ and Python APIs are almost identical, but I will try to highlight the differences here.
@@ -56,7 +56,7 @@ mpc = ImplicitMPC(num_states, num_inputs, horizon, num_knot_points,
 
 **Python**
 
-```py
+```python
 mpc = ImplicitMPC(num_states=2, num_inputs=1,
                   horizon_length=10, num_knot_points=3,
                   use_input_cost=True, saturate_states=True)
@@ -120,7 +120,7 @@ These two functions take in your current state and the input you are calcuating 
 **Function Declarations Python**
 Python provides the same interface as C++ for consistency (also if you don't want to allocate memory for the inputs every time), but you are also able to only pass in the current state while the inputs and bool specifying whether the optimization solved correctly are both always returned.
 
-```py
+```python
 calcNextInput( x0[, u] ) -> (u, solved)
 calcInputTrajectory( x0[, u_traj] ) -> (u_traj, solved)
 ```
