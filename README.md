@@ -36,7 +36,7 @@ s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
 \end{align}
 ```
 
-where, $`T`$ is the horizon length, $`p`$ is the number of knot points used to parameterize the input trajectory over the horizon, $`n`$ is the number of states, $`m`$ is the number of inputs, $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, $`w \in \mathbb{R}^n`$, $`x \in \mathbb{R}^n`$, $`u \in \mathbb{R}^m`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal matrices.
+where, $`J`$ is the total cost, $`T`$ is the horizon length, $`p`$ is the number of knot points used to parameterize the input trajectory over the horizon, $`n`$ is the number of states, $`m`$ is the number of inputs, $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, $`w \in \mathbb{R}^n`$, $`x \in \mathbb{R}^n`$, $`u \in \mathbb{R}^m`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal matrices.
 
 <!--
 Possible additions:
