@@ -37,6 +37,14 @@ MPCBase::MPCBase(const int n, const int m, const int T, const int p,
 
 MPCBase::~MPCBase() {}
 
+void MPCBase::propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
+                             Ref<VectorXd> x_next)
+{
+  assert(model_set_);
+  assert(x0.size() == n_ && u.size() == m_ && x_next.size() == n_);
+  x_next = Ad_*x0 + Bd_*u + wd_;
+}
+
 void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
                                const Ref<const MatrixXd>& Bd,
                                const Ref<const VectorXd>& wd)

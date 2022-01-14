@@ -16,6 +16,8 @@ public:
   virtual bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u) = 0;
   virtual bool calcInputTrajectory(const Ref<const VectorXd>& x0,
                                    Ref<VectorXd> u_traj) = 0;
+  void propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
+                      Ref<VectorXd> x_next);
 
   void setModelDiscrete(const Ref<const MatrixXd>& Ad,
                         const Ref<const MatrixXd>& Bd,
@@ -37,6 +39,11 @@ public:
   void setInputLimits(const Ref<const VectorXd>& u_min, const Ref<const VectorXd>& u_max);
   void setStateLimits(const Ref<const VectorXd>& x_min, const Ref<const VectorXd>& x_max);
   void setSlewRate(const Ref<const VectorXd>& u_slew);
+
+  inline int getNumStates() { return n_; };
+  inline int getNumInputs() { return m_; };
+  inline int getHorizonLength() { return T_; };
+  inline int getNumKnotPoints() { return p_; };
 
 protected:
   const int n_, m_, T_, p_;
