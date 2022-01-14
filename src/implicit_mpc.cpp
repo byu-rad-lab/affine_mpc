@@ -101,13 +101,6 @@ void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
     solver_.updateBounds(l_, u_);
 }
 
-bool ImplicitMPC::writeTrajectoryData(const double time0, const double dt,
-                                      const Ref<const VectorXd>& x0, std::ofstream& fout,
-                                      int write_every)
-{
-  return false; // TODO: implement
-}
-
 bool ImplicitMPC::solve(const Ref<const VectorXd>& x0)
 {
   convertToQP(x0);
