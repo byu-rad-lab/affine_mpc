@@ -6,44 +6,67 @@
 ## Dependencies
 This library depends on [Eigen](https://gitlab.com/libeigen/eigen) (version >= 3.3.7) and [OSQP](https://github.com/osqp/osqp) (version 0.6.2). Eigen can be installed with `sudo apt install -y libeigen3-dev` and Ubuntu 20.04 will provide version 3.3.7, or it can be installed from source using the link above. OSQP should be installed from source using the link above.
 
+## Building the Library
+This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). For example:
+
+```shell
+mkdir build && cd build
+cmake -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON ..
+make
+```
+
+**NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode (`-DCMAKE_BUILD_TYPE=Debug`) while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can
+build in `RELEASE` mode to gain some extra speed.
+
 ## MPC Problem
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
 
 ```math
 \begin{equation}
-J = \sum_{k=1}^{T+1} ||x_k - x_{k,des}||_Q + \underbrace{\sum_{k=0}^{T} ||u_k - u_{k,des}||_R}_{\textcolor{red}{\text{input cost}}}
+J = \sum_{k=1}^{T+1} ||x_k - x_{k,des}||_Q + \underbrace{\sum_{k=0}^{p} ||u_k - u_{k,des}||_R}_{\textcolor{red}{\text{input cost}}}
 \end{equation}
 ```
 
 ```math
 \begin{align}
-s.t. &\quad x_{k+1} = A x_k + B u_k \\
+s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
 &\quad u_{min} \leq u_k \leq u_{max} \\
 &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
 &\quad \underbrace{|u_{k+1} - u_k| \leq u_{slew}}_{\textcolor{red}{\text{slew rate}}}
 \end{align}
 ```
 
-## API
-The C++ and Python APIs are almost identical, but I will try to highlight the differences here.
+where, $`T`$ is the horizon length, $`p`$ is the number of knot points used to parameterize the input trajectory over the horizon, $`n`$ is the number of states, $`m`$ is the number of inputs, $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, $`w \in \mathbb{R}^n`$, $`x \in \mathbb{R}^n`$, $`u \in \mathbb{R}^m`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal matrices.
 
-**NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can
-build in `RELEASE` mode to gain some extra speed.
+<!--
+Possible additions:
+  - Terminal state weights (Q_final)
+  - Terminal input weights (R_final)
+  - Slew rate cost instead of constraint
+  - State saturation cost?
+  - Arbitrary constraint matrix addition
+-->
+
+## API
+The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (fixed-size or dynamic matrices) while Python uses Numpy arrays: these types are not specified in the function declarations below to avoid being verbose.
 
 ### MPC Constructor
-When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the horizon length and number of knot points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem.
+When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the horizon length and number of knot points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
 
 #### Function Declaration
 
 ```cpp
-ImplicitMPC(const int num_states, const int num_inputs,
-            const int horizon_length, const int num_knot_points,
-            const bool use_input_cost = false,
-            const bool use_slew_rate = false,
-            const bool saturate_states = false)
+MPCBase(const int num_states, const int num_inputs,
+        const int horizon_length, const int num_knot_points,
+        const bool use_input_cost = false,
+        const bool use_slew_rate = false,
+        const bool saturate_states = false)
 ```
 
 #### Usage
+Here is an example of how to create and `ImplicitMPC` object:
+
+<!-- TODO: link to Phil's paper on ImplicitMPC formulation -->
 
 **C++**
 
@@ -79,6 +102,8 @@ This means that if you linearize about equilibrium and have zeros that show up i
 
 ### Initialize OSQP Solver
 This library uses the OSQP solver for the optimization. After specifying the parameters from the previous section, the solver can be initialized. If you do not pass in `settings` then OSQP's default settings will be used.
+
+**NOTE:** To learn more about the OSQP solver and its settings, visit the [OSQP website](https://osqp.org/docs/solver/index.html).
 
 **Function Declaration**
 
