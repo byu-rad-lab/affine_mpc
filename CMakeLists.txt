@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(osqp_mpc)
+project(affine_mpc)
+
+set(BUILD_TESTS ON)
+set(BUILD_PYTHON ON)
+
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --with-pic")
 
 find_package(osqp REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(GTest)
 
 add_library(${PROJECT_NAME} STATIC
   src/mpc_base.cpp
@@ -16,8 +20,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   osqp::osqpstatic
   ${CMAKE_DL_LIBS} # for osqp to work
   )
+target_compile_options(${PROJECT_NAME} PRIVATE -fPIC)
 
-if (${GTEST_FOUND})
+if (BUILD_TESTS)
+  find_package(GTest REQUIRED)
   add_executable(${PROJECT_NAME}_UnitTests
     test/mpc_base_tests.cpp
     test/osqp_solver_tests.cpp
@@ -29,4 +35,14 @@ if (${GTEST_FOUND})
     pthread
     ${PROJECT_NAME}
     )
+endif()
+
+if (BUILD_PYTHON)
+  find_package(pybind11 REQUIRED)
+  pybind11_add_module(${PROJECT_NAME}_py
+    python/affine_mpc_py_module.cpp
+    python/py_implicit_mpc.cpp
+    python/py_osqp_settings.cpp
+    )
+  target_link_libraries(${PROJECT_NAME}_py PUBLIC ${PROJECT_NAME})
 endif()
