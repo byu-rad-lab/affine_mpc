@@ -1,7 +1,7 @@
 #include "affine_mpc_py_module.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/eigen.h>
-#include "osqp_mpc/implicit_mpc.hpp"
+#include "affine_mpc/implicit_mpc.hpp"
 
 namespace py = pybind11;
 

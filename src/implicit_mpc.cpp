@@ -1,4 +1,4 @@
-#include "osqp_mpc/implicit_mpc.hpp"
+#include "affine_mpc/implicit_mpc.hpp"
 
 ImplicitMPC::ImplicitMPC(const int n, const int m, const int T, const int p,
                          const bool use_input_cost, const bool use_slew_rate,

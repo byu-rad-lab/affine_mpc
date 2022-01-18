@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "osqp_mpc/implicit_mpc.hpp"
+#include "affine_mpc/implicit_mpc.hpp"
 #include "utils.hpp"
 
 

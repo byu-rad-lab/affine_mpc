@@ -3,8 +3,8 @@
 
 #include <Eigen/Core>
 #include <fstream>
-#include "osqp_mpc/osqp_solver.hpp"
-#include "osqp_mpc/mpc_base.hpp"
+#include "affine_mpc/osqp_solver.hpp"
+#include "affine_mpc/mpc_base.hpp"
 
 using namespace Eigen;
 

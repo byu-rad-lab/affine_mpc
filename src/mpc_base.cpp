@@ -1,4 +1,4 @@
-#include "osqp_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc_base.hpp"
 
 MPCBase::MPCBase(const int n, const int m, const int T, const int p,
                  const bool use_input_cost, const bool use_slew_rate,

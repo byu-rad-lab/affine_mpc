@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "osqp_mpc/osqp_solver.hpp"
+#include "affine_mpc/osqp_solver.hpp"
 #include "utils.hpp"
 
 class OSQPSolverProtectedTester : public OSQPSolver

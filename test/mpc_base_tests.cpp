@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "osqp_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc_base.hpp"
 #include "utils.hpp"
 
 class MPCBaseTester : public MPCBase

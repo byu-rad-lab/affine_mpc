@@ -1,4 +1,4 @@
-#include "osqp_mpc/osqp_solver.hpp"
+#include "affine_mpc/osqp_solver.hpp"
 
 OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
     settings_{(OSQPSettings*)c_malloc(sizeof(OSQPSettings))},
