@@ -105,6 +105,12 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
     Q_big_.diagonal().segment(n_*i,n_) = Q_diag;
 }
 
+void MPCBase::setStateWeightsTerminal(const Ref<const VectorXd>& Qf_diag)
+{
+  assert(Qf_diag.size() == n_);
+  Q_big_.diagonal().segment(n_*(T_-1),n_) = Qf_diag;
+}
+
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
   assert(use_input_cost_);

@@ -29,6 +29,7 @@ public:
 
   void setWeights(const Ref<const VectorXd>& Q_diag, const Ref<const VectorXd>& R_diag);
   void setStateWeights(const Ref<const VectorXd>& Q_diag);
+  void setStateWeightsTerminal(const Ref<const VectorXd>& Qf_diag);
   void setInputWeights(const Ref<const VectorXd>& R_diag);
 
   void setDesiredState(const Ref<const VectorXd>& x_step);
