@@ -41,10 +41,10 @@ public:
   void setStateLimits(const Ref<const VectorXd>& x_min, const Ref<const VectorXd>& x_max);
   void setSlewRate(const Ref<const VectorXd>& u_slew);
 
-  inline int getNumStates() { return n_; };
-  inline int getNumInputs() { return m_; };
-  inline int getHorizonLength() { return T_; };
-  inline int getNumKnotPoints() { return p_; };
+  inline int getNumStates() const { return n_; };
+  inline int getNumInputs() const { return m_; };
+  inline int getHorizonLength() const { return T_; };
+  inline int getNumKnotPoints() const { return p_; };
 
 protected:
   const int n_, m_, T_, p_;
