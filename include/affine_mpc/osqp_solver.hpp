@@ -15,7 +15,7 @@ public:
 
   OSQPSolver(const int num_variables, const int num_constraints);
   virtual ~OSQPSolver();
-  const c_float* getSolutionPtr();
+  const c_float* getSolutionPtr() const;
   bool solve(Ref<VectorXF> solution);
   bool solve();
   bool initialize(const Ref<const MatrixXF>& P, const Ref<const MatrixXF>& A,

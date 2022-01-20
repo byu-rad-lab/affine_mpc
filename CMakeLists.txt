@@ -11,6 +11,7 @@ add_library(${PROJECT_NAME} STATIC
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
+  src/mpc_logger.cpp
   )
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC

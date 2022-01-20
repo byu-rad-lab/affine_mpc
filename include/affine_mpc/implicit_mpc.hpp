@@ -18,6 +18,7 @@ public:
 
   bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u) override;
   bool calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj) override;
+  void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const override;
   void initSolver(const OSQPSettings* solver_settings = nullptr);
 
   void setInputLimits(const Ref<const VectorXd>& u_min, const Ref<const VectorXd>& u_max);

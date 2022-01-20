@@ -16,8 +16,9 @@ public:
   virtual bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u) = 0;
   virtual bool calcInputTrajectory(const Ref<const VectorXd>& x0,
                                    Ref<VectorXd> u_traj) = 0;
+  virtual void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const = 0;
   void propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
-                      Ref<VectorXd> x_next);
+                      Ref<VectorXd> x_next) const;
 
   void setModelDiscrete(const Ref<const MatrixXd>& Ad,
                         const Ref<const MatrixXd>& Bd,

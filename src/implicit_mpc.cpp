@@ -44,6 +44,13 @@ bool ImplicitMPC::calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorX
   return solved;
 }
 
+void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+{
+  assert(x_traj.size() == n_*T_);
+  Map<const VectorXd> u_traj{solver_.getSolutionPtr(), m_*p_, 1};
+  x_traj = S_*u_traj + v_;
+}
+
 void ImplicitMPC::initSolver(const OSQPSettings* solver_settings)
 {
   assert(model_set_ && input_limits_set_);

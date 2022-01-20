@@ -17,6 +17,7 @@ public:
   {
     return false;
   }
+  void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const override {}
   auto getAd() { return Ad_; }
   auto getBd() { return Bd_; }
   auto getWd() { return wd_; }

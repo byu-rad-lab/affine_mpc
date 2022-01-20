@@ -38,7 +38,7 @@ MPCBase::MPCBase(const int n, const int m, const int T, const int p,
 MPCBase::~MPCBase() {}
 
 void MPCBase::propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
-                             Ref<VectorXd> x_next)
+                             Ref<VectorXd> x_next) const
 {
   assert(model_set_);
   assert(x0.size() == n_ && u.size() == m_ && x_next.size() == n_);

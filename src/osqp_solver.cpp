@@ -27,7 +27,7 @@ OSQPSolver::~OSQPSolver()
   if (settings_) c_free(settings_);
 }
 
-const c_float* OSQPSolver::getSolutionPtr()
+const c_float* OSQPSolver::getSolutionPtr() const
 {
   if (workspace_initialized_)
     return work_->solution->x;
