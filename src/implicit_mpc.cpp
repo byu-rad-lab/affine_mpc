@@ -28,6 +28,7 @@ ImplicitMPC::~ImplicitMPC() {}
 
 bool ImplicitMPC::calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u)
 {
+  assert(u.size() == m_);
   bool solved{solve(x0)};
   if (solved)
     u = Map<const VectorXd>{solver_.getSolutionPtr(), m_, 1};
@@ -36,6 +37,7 @@ bool ImplicitMPC::calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u)
 
 bool ImplicitMPC::calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj)
 {
+  assert(u_traj.size() == m_*p_);
   bool solved{solve(x0)};
   if (solved)
     u_traj = Map<const VectorXd>{solver_.getSolutionPtr(), m_*p_, 1};
