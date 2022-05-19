@@ -25,10 +25,10 @@ private:
   const MPCBase* const mpc_;
   VectorXd x_traj_;
   const bool write_x_, write_r_, write_u_;
-  std::fstream time_fout_;
-  std::fstream states_fout_;
-  std::fstream refs_fout_;
-  std::fstream inputs_fout_;
+  std::ofstream time_fout_;
+  std::ofstream states_fout_;
+  std::ofstream refs_fout_;
+  std::ofstream inputs_fout_;
 };
 
 #endif // MPC_LOGGER_HPP
