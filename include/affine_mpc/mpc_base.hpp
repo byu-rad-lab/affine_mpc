@@ -42,6 +42,7 @@ public:
   void setStateLimits(const Ref<const VectorXd>& x_min, const Ref<const VectorXd>& x_max);
   void setSlewRate(const Ref<const VectorXd>& u_slew);
 
+  inline const VectorXd& getDesiredStateTrajectory() const { return x_goal_; }
   inline int getNumStates() const { return n_; };
   inline int getNumInputs() const { return m_; };
   inline int getHorizonLength() const { return T_; };

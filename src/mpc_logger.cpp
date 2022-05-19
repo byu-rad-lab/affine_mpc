@@ -79,7 +79,8 @@ void MPCLogger::writeData(double t0, double ts, const Ref<const VectorXd>& x0,
   }
 
   if (write_r_)
-    refs_fout_ << x_traj_des.transpose() << std::endl;
+    refs_fout_ << mpc_->getDesiredStateTrajectory().transpose() << std::endl;
+    // refs_fout_ << x_traj_des.transpose() << std::endl;
 }
 
 
