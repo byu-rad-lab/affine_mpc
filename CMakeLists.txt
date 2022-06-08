@@ -19,7 +19,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   osqp::osqpstatic
   ${CMAKE_DL_LIBS} # for osqp to work
   )
-target_compile_options(${PROJECT_NAME} PRIVATE -fPIC) # build error without this when building affine_mpc_py
+target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17) # build error without this when building affine_mpc_py
 
 if (BUILD_TESTS)
   find_package(GTest REQUIRED)

@@ -1,108 +1,127 @@
 #include "affine_mpc/mpc_logger.hpp"
+#include <filesystem>
+#include <iostream>
+
+namespace fs = std::filesystem;
+
+std::string eig2Str(const Ref<const VectorXd>& vec)
+{
+  std::stringstream ss;
+  ss << vec.transpose();
+  std::string pretty_vec{ss.str()};
+
+  while (pretty_vec.front() == std::string(" ").front())
+    pretty_vec.replace(0,1,"");
+
+  std::size_t pos{pretty_vec.find(" ")};
+  while (pos != std::string::npos)
+  {
+    pretty_vec.replace(pos, 1, ", ");
+    pos = pretty_vec.find(" ", pos+2);
+  }
+
+  return "[" + pretty_vec + "]";
+}
 
 
 MPCLogger::MPCLogger(const MPCBase* const mpc,
-                     const std::string& time_file,
-                     const std::string& states_file,
-                     const std::string& ref_states_file,
-                     const std::string& inputs_file) :
+                     const std::string& save_location) :
     mpc_{mpc},
-    x_traj_{mpc->getNumStates()*mpc->getHorizonLength()},
-    write_x_{bool(states_file.length())},
-    write_r_{bool(ref_states_file.length())},
-    write_u_{bool(inputs_file.length())}
+    save_dir_{save_location},
+    x_traj_{mpc->n_*mpc->T_},
+    u_traj_{mpc_->m_*mpc_->T_},
+    wrote_params_{false}
 {
-  time_fout_.open(time_file);
-  if (write_x_)
-    states_fout_.open(states_file);
-  if (write_r_)
-    refs_fout_.open(ref_states_file);
-  if (write_u_)
-    inputs_fout_.open(inputs_file);
+  handleStringSubstitutions();
+
+  if (!fs::exists(save_dir_))
+    fs::create_directories(save_dir_);
+
+  time_fout_.open(save_dir_ + "time.txt");
+  states_fout_.open(save_dir_ + "states.txt");
+  refs_fout_.open(save_dir_ + "ref_states.txt");
+  inputs_fout_.open(save_dir_ + "inputs.txt");
+
+  assert(time_fout_.is_open());
+  assert(states_fout_.is_open());
+  assert(refs_fout_.is_open());
+  assert(inputs_fout_.is_open());
 }
 
 MPCLogger::~MPCLogger()
 {
   time_fout_.close();
-  if (write_x_)
-    states_fout_.close();
-  if (write_r_)
-    refs_fout_.close();
-  if (write_u_)
-    inputs_fout_.close();
+  states_fout_.close();
+  refs_fout_.close();
+  inputs_fout_.close();
+  if (!wrote_params_)
+    writeParamFile();
 }
 
-void MPCLogger::writeData(double t0, double ts, const Ref<const VectorXd>& x0,
-                          const Ref<const VectorXd>& u_traj,
-                          const Ref<const VectorXd>& x_traj_des, int write_every)
+void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
+                                 int write_every)
 {
-  static int n{mpc_->getNumStates()}, m{mpc_->getNumInputs()};
-  static int T{mpc_->getHorizonLength()}, p{mpc_->getNumKnotPoints()};
+  const static int n{mpc_->n_}, m{mpc_->m_};
+  const static int T{mpc_->T_}, p{mpc_->p_};
 
-  VectorXd uk{m};
-  double Tp{(T-1)/double(p-1)};
-  int p1, p2;
-  double c, time{t0};
+  double time{t0};
   int count{0};
 
-  for (int k{0}; k < T-1; ++k)
-  {
-    p1 = int(k/Tp);
-    p2 = p1 + 1;
-    c = k/Tp - p1;
-    uk = (1-c)*u_traj.segment(p1*m,m) + c*u_traj.segment(p2*m,m);
-    time += ts;
+  time_fout_ << time << " ";
+  states_fout_ << x0.transpose() << " ";
 
+  mpc_->getPredictedStateTrajectory(x_traj_);
+  mpc_->unparameterizeSolution(mpc_->solution_map_, u_traj_);
+
+  int Tm1{T-1};
+  for (int k{0}; k < Tm1; ++k)
+  {
+    time += ts;
     if (++count == write_every)
     {
       count = 0;
       time_fout_ << time << " ";
       time_fout_.flush();
-      if (write_u_)
-      {
-        inputs_fout_ << uk.transpose() << " ";
-        inputs_fout_.flush();
-      }
+      states_fout_ << x_traj_.segment(k*n,n).transpose() << " ";
+      states_fout_.flush();
+      refs_fout_ << mpc_->x_goal_.segment(k*n,n).transpose() << " ";
+      refs_fout_.flush();
+      inputs_fout_ << u_traj_.segment(k*m,m).transpose() << " ";
+      inputs_fout_.flush();
     }
   }
 
   time += ts;
-  uk = u_traj.tail(m);
   time_fout_ << time << std::endl;
-  if (write_u_)
-    inputs_fout_ << uk.transpose() << std::endl;
-
-  if (write_x_)
-  {
-    mpc_->getPredictedStateTrajectory(x_traj_);
-    states_fout_ << x_traj_.transpose() << std::endl;
-  }
-
-  if (write_r_)
-    refs_fout_ << mpc_->getDesiredStateTrajectory().transpose() << std::endl;
-    // refs_fout_ << x_traj_des.transpose() << std::endl;
+  states_fout_ << x_traj_.tail(n).transpose() << std::endl;
+  refs_fout_ << mpc_->x_goal_.tail(n).transpose() << std::endl;
+  inputs_fout_ << u_traj_.tail(m).transpose() << std::endl;
 }
 
-
-// void MPCLogger::writeData(double t0, double ts, const Ref<const VectorXd>& x0,
-//                           const Ref<const VectorXd>& u_traj,
-//                           const Ref<const VectorXd>& x_traj_des, int write_every)
+// void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
+//                                  int write_every)
 // {
-//   static int n{mpc_->getNumStates()}, m{mpc_->getNumInputs()};
-//   static int T{mpc_->getHorizonLength()}, p{mpc_->getNumKnotPoints()};
-//   VectorXd xk{n}, uk{m};
-//   xk = x0;
+//   static int n{mpc_->n_}, m{mpc_->m_};
+//   static int T{mpc_->T_}, p{mpc_->p_};
+
+//   VectorXd uk{m};
+//   VectorXd xk{n};
 //   double Tp{(T-1)/double(p-1)};
 //   int p1, p2;
 //   double c, time{t0};
 //   int count{0};
+
+//   time_fout_ << time << " ";
+//   xk = x0;
+//   states_fout_ << xk.transpose() << " ";
 
 //   for (int k{0}; k < T-1; ++k)
 //   {
 //     p1 = int(k/Tp);
 //     p2 = p1 + 1;
 //     c = k/Tp - p1;
-//     uk = (1-c)*u_traj.segment(p1*m,m) + c*u_traj.segment(p2*m,m);
+//     uk = (1-c)*mpc_->solution_map_.segment(p1*m,m)
+//          + c*mpc_->solution_map_.segment(p2*m,m);
 //     mpc_->propagateModel(xk, uk, xk);
 //     time += ts;
 
@@ -111,27 +130,82 @@ void MPCLogger::writeData(double t0, double ts, const Ref<const VectorXd>& x0,
 //       count = 0;
 //       time_fout_ << time << " ";
 //       time_fout_.flush();
-//       if (write_x_)
-//       {
-//         states_fout_ << xk.transpose() << " ";
-//         states_fout_.flush();
-//       }
-//       if (write_u_)
-//       {
-//         inputs_fout_ << uk.transpose() << " ";
-//         inputs_fout_.flush();
-//       }
+//       states_fout_ << xk.transpose() << " ";
+//       states_fout_.flush();
+//       refs_fout_ << mpc_->x_goal_.segment(k*n,n).transpose() << std::endl;
+//       inputs_fout_ << uk.transpose() << " ";
+//       inputs_fout_.flush();
 //     }
 //   }
 
 //   time += ts;
-//   uk = u_traj.tail(m);
+//   uk = mpc_->solution_map_.tail(m);
 //   mpc_->propagateModel(xk, uk, xk);
+
 //   time_fout_ << time << std::endl;
-//   if (write_x_)
-//     states_fout_ << xk.transpose() << std::endl;
-//   if (write_r_)
-//     refs_fout_ << x_traj_des.transpose() << std::endl;
-//   if (write_u_)
-//     inputs_fout_ << uk.transpose() << std::endl;
+//   states_fout_ << xk.transpose() << std::endl;
+//   refs_fout_ << mpc_->x_goal_.tail(n).transpose() << std::endl;
+//   inputs_fout_ << uk.transpose() << std::endl;
 // }
+
+void MPCLogger::writeParamFile(const std::string& filename)
+{
+  std::ofstream param_fout;
+  param_fout.open(save_dir_ + filename);
+  assert(param_fout.is_open());
+  param_fout << std::boolalpha;
+  param_fout << "n: " << mpc_->n_ << std::endl;
+  param_fout << "m: " << mpc_->m_ << std::endl;
+  param_fout << "T: " << mpc_->T_ << std::endl;
+  param_fout << "p: " << mpc_->p_ << std::endl;
+  param_fout << "use_input_cost: " << mpc_->use_input_cost_ << std::endl;
+  param_fout << "use_slew_rate: " << mpc_->use_slew_rate_ << std::endl;
+  param_fout << "saturate_states: " << mpc_->saturate_states_ << std::endl;
+  param_fout << "u_min: " << eig2Str(mpc_->u_min_) << std::endl;
+  param_fout << "u_max: " << eig2Str(mpc_->u_max_) << std::endl;
+  param_fout << "Q: " << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->n_)) << std::endl;
+  param_fout << "Qf: " << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->n_)) << std::endl;
+
+  param_fout << "R: ";
+  if (mpc_->use_input_cost_)
+    param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->m_)) << std::endl;
+  else
+    param_fout << "None" << std::endl;
+
+  param_fout << "u_slew: ";
+  if (mpc_->use_slew_rate_)
+    param_fout << eig2Str(mpc_->u_slew_) << std::endl;
+  else
+    param_fout << "None" << std::endl;
+
+  param_fout << "x_min: ";
+  if (mpc_->saturate_states_)
+    param_fout << eig2Str(mpc_->x_min_) << std::endl;
+  else
+    param_fout << "None" << std::endl;
+
+  param_fout << "x_max: ";
+  if (mpc_->saturate_states_)
+    param_fout << eig2Str(mpc_->x_max_) << std::endl;
+  else
+    param_fout << "None" << std::endl;
+
+  param_fout.close();
+  wrote_params_ = true;
+}
+
+void MPCLogger::handleStringSubstitutions()
+{
+  std::string slash{"/"};
+  if (save_dir_.back() != slash.back())
+    save_dir_ += slash;
+
+  if (save_dir_.front() == std::string("~").front()
+      || save_dir_.substr(0,5) == std::string("$HOME")
+      || save_dir_.substr(0,7) == std::string("${HOME}"))
+  {
+    std::string env_home{std::getenv("HOME")};
+    int pos = save_dir_.find_first_of("/");
+    save_dir_.replace(0, pos, env_home);
+  }
+}

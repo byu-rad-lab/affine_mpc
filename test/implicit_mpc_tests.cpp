@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "affine_mpc/implicit_mpc.hpp"
+#include "affine_mpc/mpc_logger.hpp"
 #include "utils.hpp"
 
 
@@ -135,6 +136,7 @@ TEST(ImplicitMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   const int n{2},m{1},T{10},p{10};
   const bool use_input_cost{true}, use_slew_rate{true};
   ImplicitMPCProtectedTester msd_mpc{n,m,T,p,use_input_cost,use_slew_rate};
+  MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
   msd_mpc.setModel();
 
   Matrix<double,n,1> Q{1,0.11};
@@ -155,9 +157,14 @@ TEST(ImplicitMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   msd_mpc.initSolver(&settings);
   x0.setZero();
 
+  // MPCLogger logger2{&msd_mpc, "$HOME/tmp/mpc_data"};
+  // MPCLogger logger3{&msd_mpc, "${HOME}/tmp/mpc_data"};
+  // logger.writeParamFile();
+
   Matrix<double,m,1> u_star, u_star_expected;
   bool solved;
   solved = msd_mpc.calcNextInput(x0, u_star);
+  logger.logPreviousSolve(0, 0.1, x0, 2);
 
   u_star_expected << 3.0;
 
@@ -165,6 +172,7 @@ TEST(ImplicitMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
 
   Matrix<double,m*p,1> u_traj;
   solved = msd_mpc.calcInputTrajectory(x0, u_traj);
+  logger.logPreviousSolve(0, 0.1, x0, 2);
   int slew_errors{0};
   for (int i{0}; i < p-1; ++i)
   {

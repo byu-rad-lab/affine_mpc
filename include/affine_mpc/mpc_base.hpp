@@ -8,6 +8,7 @@ using namespace Eigen;
 
 class MPCBase
 {
+  friend class MPCLogger;
 public:
   MPCBase(const int num_states, const int num_inputs, const int horizon_length,
           const int num_knot_points, const bool use_input_cost=false,
@@ -44,7 +45,7 @@ public:
   void setStateLimits(const Ref<const VectorXd>& x_min, const Ref<const VectorXd>& x_max);
   void setSlewRate(const Ref<const VectorXd>& u_slew);
 
-  inline const VectorXd& getDesiredStateTrajectory() const { return x_goal_; }
+  // inline const VectorXd& getDesiredStateTrajectory() const { return x_goal_; }
   inline int getNumStates() const { return n_; };
   inline int getNumInputs() const { return m_; };
   inline int getHorizonLength() const { return T_; };

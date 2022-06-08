@@ -12,19 +12,20 @@ class MPCLogger
 {
 public:
   MPCLogger(const MPCBase* const mpc,
-            const std::string& time_file="/tmp/mpc_time.txt",
-            const std::string& states_file="/tmp/mpc_states.txt",
-            const std::string& ref_states_file="/tmp/mpc_ref_states.txt",
-            const std::string& inputs_file="/tmp/mpc_inputs.txt");
+            const std::string& save_location="/tmp/mpc_data");
   virtual ~MPCLogger();
-  void writeData(double t0, double ts, const Ref<const VectorXd>& x0,
-                 const Ref<const VectorXd>& u_traj, const Ref<const VectorXd>& x_traj_des,
-                 int write_every=1);
+  void logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
+                        int write_every=1);
+  void writeParamFile(const std::string& filename="params.yaml");
+
+protected:
+  void handleStringSubstitutions();
 
 private:
   const MPCBase* const mpc_;
-  VectorXd x_traj_;
-  const bool write_x_, write_r_, write_u_;
+  std::string save_dir_;
+  bool wrote_params_;
+  VectorXd x_traj_, u_traj_;
   std::ofstream time_fout_;
   std::ofstream states_fout_;
   std::ofstream refs_fout_;
