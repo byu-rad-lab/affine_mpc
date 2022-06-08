@@ -11,13 +11,16 @@ MPCBase::MPCBase(const int n, const int m, const int T, const int p,
     input_limits_set_{false},
     slew_rate_set_{false},
     state_limits_set_{false},
+    initialized_{false},
+    solver_{nullptr},
     Ad_{n,n},
     Bd_{n,m},
     wd_{n},
     Q_big_{n*T},
     x_goal_{n*T},
     u_min_{m},
-    u_max_{m}
+    u_max_{m},
+    solution_map_{nullptr,0}
 {
   assert(n > 0 && m > 0 && T > 0 && p > 0);
   Q_big_.setIdentity();
@@ -35,7 +38,83 @@ MPCBase::MPCBase(const int n, const int m, const int T, const int p,
   }
 }
 
-MPCBase::~MPCBase() {}
+MPCBase::~MPCBase()
+{
+  if (solver_)
+    delete solver_;
+}
+
+bool MPCBase::calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u)
+{
+  assert(u.size() == m_);
+  bool solved{solve(x0)};
+  if (solved)
+    u = solution_map_.head(m_);
+  return solved;
+}
+
+bool MPCBase::calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj)
+{
+  assert(u_traj.size() == m_*p_);
+  bool solved{solve(x0)};
+  if (solved)
+    u_traj = solution_map_;
+  return solved;
+}
+
+void MPCBase::unparameterizeSolution(const Ref<const VectorXd>& sol, Ref<VectorXd> u_traj) const
+{
+  assert(u_traj.size() == m_*T_);
+
+  VectorXd uk{m_};
+  double Tp{(T_-1)/double(p_-1)};
+  int p1, p2;
+  double c;
+
+  for (int k{0}; k < T_-1; ++k)
+  {
+    p1 = int(k/Tp);
+    p2 = p1 + 1;
+    c = k/Tp - p1;
+    uk = (1-c)*solution_map_.segment(p1*m_,m_) + c*solution_map_.segment(p2*m_,m_);
+    u_traj.segment(k*m_,m_) = uk;
+  }
+  u_traj.tail(m_) = solution_map_.tail(m_);
+}
+
+void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+{
+  assert(x_traj.size() == n_*T_);
+
+  // CAN'T DO WITHOUT X0
+
+  // VectorXd uk{m_};
+  // double Tp{(T_-1)/double(p_-1)};
+  // int p1, p2;
+  // double c;
+
+  // for (int k{0}; k < T_-1; ++k)
+  // {
+  //   p1 = int(k/Tp);
+  //   p2 = p1 + 1;
+  //   c = k/Tp - p1;
+  //   uk = (1-c)*solution_map_.segment(p1*m_,m_) + c*solution_map_.segment(p2*m_,m_);
+  // }
+  // uk = mpc_->solution_map_.tail(m);
+}
+
+bool MPCBase::initSolver(const OSQPSettings* solver_settings)
+{
+  assert(model_set_ && input_limits_set_);
+  if (use_slew_rate_)
+    assert(slew_rate_set_);
+  if (saturate_states_)
+    assert(state_limits_set_);
+
+  initialized_ = solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
+  new (&solution_map_) Map<const VectorXd>(solver_->getSolutionPtr(), m_*p_);
+  return initialized_;
+}
 
 void MPCBase::propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
                              Ref<VectorXd> x_next) const
@@ -174,4 +253,10 @@ void MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
   assert(u_slew.size() == m_);
   u_slew_ = u_slew;
   slew_rate_set_ = true;
+}
+
+bool MPCBase::solve(const Ref<const VectorXd>& x0)
+{
+  convertToQP(x0);
+  return solver_->solve();
 }

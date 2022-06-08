@@ -6,64 +6,34 @@ ImplicitMPC::ImplicitMPC(const int n, const int m, const int T, const int p,
     MPCBase(n,m,T,p,use_input_cost,use_slew_rate,saturate_states),
     x_sat_idx_{m*p + m*(p-1)*use_slew_rate},
     num_constraints_{x_sat_idx_ + n*T*saturate_states},
-    initialized_{false},
-    solver_{m*p, num_constraints_},
-    P_{m*p, m*p},
-    A_{num_constraints_, m*p},
     S_{n*T, m*p},
-    v_{n*T},
-    q_{m*p},
-    l_{num_constraints_},
-    u_{num_constraints_}
+    v_{n*T}
 {
+  int mp{m*p};
+  solver_ = new OSQPSolver{m*p, num_constraints_};
+  P_.resize(mp, mp);
+  A_.resize(num_constraints_, mp);
+  q_.resize(mp);
+  l_.resize(num_constraints_);
+  u_.resize(num_constraints_);
+
   A_.setIdentity(); // input saturation conststraint
   if (use_slew_rate)
   {
     A_.block(m_*p_, 0, m_*p_-m_, m_*p_).diagonal().setConstant(-1);
     A_.block(m_*p_, m_, m_*p_-m_, m_*p_-m_).diagonal().setOnes();
   }
-}
 
-ImplicitMPC::~ImplicitMPC() {}
-
-bool ImplicitMPC::calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u)
-{
-  assert(u.size() == m_);
-  bool solved{solve(x0)};
-  if (solved)
-    u = Map<const VectorXd>{solver_.getSolutionPtr(), m_, 1};
-  return solved;
-}
-
-bool ImplicitMPC::calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj)
-{
-  assert(u_traj.size() == m_*p_);
-  bool solved{solve(x0)};
-  if (solved)
-    u_traj = Map<const VectorXd>{solver_.getSolutionPtr(), m_*p_, 1};
-  return solved;
+  // make sure there are no zeros in initial cost/constraint matrices
+  VectorXd x_full{n_};
+  x_full.setOnes();
+  convertToQP(x_full);
 }
 
 void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   assert(x_traj.size() == n_*T_);
-  Map<const VectorXd> u_traj{solver_.getSolutionPtr(), m_*p_, 1};
-  x_traj = S_*u_traj + v_;
-}
-
-void ImplicitMPC::initSolver(const OSQPSettings* solver_settings)
-{
-  assert(model_set_ && input_limits_set_);
-  if (use_slew_rate_)
-    assert(slew_rate_set_);
-  if (saturate_states_)
-    assert(state_limits_set_);
-
-  VectorXd x_full{n_};
-  x_full.setOnes();
-  convertToQP(x_full);
-
-  initialized_ = solver_.initialize(P_, A_, q_, l_, u_, solver_settings);
+  x_traj = S_*solution_map_ + v_;
 }
 
 void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
@@ -77,7 +47,7 @@ void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
     u_.segment(m_*k, m_) = u_max_;
   }
   if (initialized_)
-    solver_.updateBounds(l_, u_);
+    solver_->updateBounds(l_, u_);
 }
 
 void ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
@@ -92,7 +62,7 @@ void ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
     u_.segment(x_sat_idx_+n_*k, n_) = x_max_;
   }
   if (initialized_)
-    solver_.updateBounds(l_, u_);
+    solver_->updateBounds(l_, u_);
 }
 
 void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
@@ -107,25 +77,20 @@ void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
     u_.segment(mp+m_*i, m_) = u_slew_;
   }
   if (initialized_)
-    solver_.updateBounds(l_, u_);
-}
-
-bool ImplicitMPC::solve(const Ref<const VectorXd>& x0)
-{
-  convertToQP(x0);
-  solver_.updateCostMatrix(P_);
-  solver_.updateCostVector(q_);
-  if (saturate_states_)
-    solver_.updateConstraintMatrix(A_);
-  return solver_.solve();
+    solver_->updateBounds(l_, u_);
 }
 
 void ImplicitMPC::convertToQP(const Ref<const VectorXd>& x0)
 {
   calcSAndV(x0);
   calcPandQ();
+  solver_->updateCostMatrix(P_);
+  solver_->updateCostVector(q_);
   if (saturate_states_)
+  {
     A_.block(x_sat_idx_, 0, n_*T_, m_*p_) = S_;
+    solver_->updateConstraintMatrix(A_);
+  }
 }
 
 void ImplicitMPC::calcSAndV(const Ref<const VectorXd>& x0)

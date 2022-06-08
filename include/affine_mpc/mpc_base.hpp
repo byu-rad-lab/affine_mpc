@@ -2,6 +2,7 @@
 #define MPC_BASE_HPP
 
 #include <Eigen/Core>
+#include "affine_mpc/osqp_solver.hpp"
 
 using namespace Eigen;
 
@@ -13,13 +14,14 @@ public:
           const bool use_slew_rate=false, const bool saturate_states=false);
   virtual ~MPCBase();
 
-  virtual bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u) = 0;
-  virtual bool calcInputTrajectory(const Ref<const VectorXd>& x0,
-                                   Ref<VectorXd> u_traj) = 0;
-  virtual void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const = 0;
+  bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u);
+  bool calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj);
+  void unparameterizeSolution(const Ref<const VectorXd>& sol, Ref<VectorXd> u_traj) const;
+  virtual void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const;
+  bool initSolver(const OSQPSettings* solver_settings = nullptr);
+
   void propagateModel(const Ref<const VectorXd>& x0, const Ref<const VectorXd>& u,
                       Ref<VectorXd> x_next) const;
-
   void setModelDiscrete(const Ref<const MatrixXd>& Ad,
                         const Ref<const MatrixXd>& Bd,
                         const Ref<const VectorXd>& wd);
@@ -49,9 +51,19 @@ public:
   inline int getNumKnotPoints() const { return p_; };
 
 protected:
+  bool solve(const Ref<const VectorXd>& x0);
+  virtual void convertToQP(const Ref<const VectorXd>& x0) = 0;
+
   const int n_, m_, T_, p_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
+  bool initialized_;
+  OSQPSolver* solver_;
+  MatrixXd P_; // osqp cost matrix
+  MatrixXd A_; // osqp constraint matrix
+  VectorXd q_; // osqp cost vector
+  VectorXd l_; // osqp constraint lower bound
+  VectorXd u_; // osqp constraint upper bound
   MatrixXd Ad_;
   MatrixXd Bd_;
   VectorXd wd_;
@@ -64,6 +76,7 @@ protected:
   VectorXd x_min_;
   VectorXd x_max_;
   VectorXd u_slew_;
+  Map<const VectorXd> solution_map_;
 };
 
 #endif // MPC_BASE_HPP

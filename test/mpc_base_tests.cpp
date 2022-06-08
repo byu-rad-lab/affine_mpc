@@ -8,15 +8,7 @@ public:
   MPCBaseTester(const int n, const int m, const int T, const int p, const bool Ju=false) :
       MPCBase(n, m, T, p, Ju)
   {}
-  virtual ~MPCBaseTester() {}
-  bool calcNextInput(const Ref<const VectorXd>& x0, Ref<VectorXd> u) override
-  {
-    return false;
-  }
-  bool calcInputTrajectory(const Ref<const VectorXd>& x0, Ref<VectorXd> u_traj) override
-  {
-    return false;
-  }
+  virtual ~MPCBaseTester() = default;
   void getPredictedStateTrajectory(Ref<VectorXd> x_traj) const override {}
   auto getAd() { return Ad_; }
   auto getBd() { return Bd_; }
@@ -25,6 +17,8 @@ public:
   auto getRbig() { return R_big_; }
   auto getStateTrajectory() { return x_goal_; }
   auto getInputTrajectory() { return u_goal_; }
+protected:
+  void convertToQP(const Ref<const VectorXd>& x0) override {}
 };
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
