@@ -157,14 +157,10 @@ TEST(ImplicitMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   msd_mpc.initSolver(&settings);
   x0.setZero();
 
-  // MPCLogger logger2{&msd_mpc, "$HOME/tmp/mpc_data"};
-  // MPCLogger logger3{&msd_mpc, "${HOME}/tmp/mpc_data"};
-  // logger.writeParamFile();
-
   Matrix<double,m,1> u_star, u_star_expected;
   bool solved;
   solved = msd_mpc.calcNextInput(x0, u_star);
-  logger.logPreviousSolve(0, 0.1, x0, 2);
+  logger.logPreviousSolve(0, 0.1, x0);
 
   u_star_expected << 3.0;
 
@@ -172,7 +168,7 @@ TEST(ImplicitMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
 
   Matrix<double,m*p,1> u_traj;
   solved = msd_mpc.calcInputTrajectory(x0, u_traj);
-  logger.logPreviousSolve(0, 0.1, x0, 2);
+  logger.logPreviousSolve(0, 0.1, x0);
   int slew_errors{0};
   for (int i{0}; i < p-1; ++i)
   {

@@ -2,7 +2,6 @@
 #define MPC_LOGGER_HPP
 
 #include <fstream>
-// #include <string>
 #include <Eigen/Core>
 #include "affine_mpc/mpc_base.hpp"
 

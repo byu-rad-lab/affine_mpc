@@ -1,6 +1,5 @@
 #include "affine_mpc/mpc_logger.hpp"
 #include <filesystem>
-#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -97,56 +96,6 @@ void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>
   refs_fout_ << mpc_->x_goal_.tail(n).transpose() << std::endl;
   inputs_fout_ << u_traj_.tail(m).transpose() << std::endl;
 }
-
-// void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
-//                                  int write_every)
-// {
-//   static int n{mpc_->n_}, m{mpc_->m_};
-//   static int T{mpc_->T_}, p{mpc_->p_};
-
-//   VectorXd uk{m};
-//   VectorXd xk{n};
-//   double Tp{(T-1)/double(p-1)};
-//   int p1, p2;
-//   double c, time{t0};
-//   int count{0};
-
-//   time_fout_ << time << " ";
-//   xk = x0;
-//   states_fout_ << xk.transpose() << " ";
-
-//   for (int k{0}; k < T-1; ++k)
-//   {
-//     p1 = int(k/Tp);
-//     p2 = p1 + 1;
-//     c = k/Tp - p1;
-//     uk = (1-c)*mpc_->solution_map_.segment(p1*m,m)
-//          + c*mpc_->solution_map_.segment(p2*m,m);
-//     mpc_->propagateModel(xk, uk, xk);
-//     time += ts;
-
-//     if (++count == write_every)
-//     {
-//       count = 0;
-//       time_fout_ << time << " ";
-//       time_fout_.flush();
-//       states_fout_ << xk.transpose() << " ";
-//       states_fout_.flush();
-//       refs_fout_ << mpc_->x_goal_.segment(k*n,n).transpose() << std::endl;
-//       inputs_fout_ << uk.transpose() << " ";
-//       inputs_fout_.flush();
-//     }
-//   }
-
-//   time += ts;
-//   uk = mpc_->solution_map_.tail(m);
-//   mpc_->propagateModel(xk, uk, xk);
-
-//   time_fout_ << time << std::endl;
-//   states_fout_ << xk.transpose() << std::endl;
-//   refs_fout_ << mpc_->x_goal_.tail(n).transpose() << std::endl;
-//   inputs_fout_ << uk.transpose() << std::endl;
-// }
 
 void MPCLogger::writeParamFile(const std::string& filename)
 {
