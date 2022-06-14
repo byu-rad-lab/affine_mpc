@@ -8,5 +8,7 @@ PYBIND11_MODULE(affine_mpc_py, m)
   m.doc() = "Affine MPC module";
 
   moduleAddOsqpSettings(m);
+  moduleAddMPCBase(m);
   moduleAddImplicitMPC(m);
+  moduleAddMpcLogger(m);
 }

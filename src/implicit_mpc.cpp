@@ -24,10 +24,12 @@ ImplicitMPC::ImplicitMPC(const int n, const int m, const int T, const int p,
     A_.block(m_*p_, m_, m_*p_-m_, m_*p_-m_).diagonal().setOnes();
   }
 
+  S_.topRows(n).setZero();
+
   // make sure there are no zeros in initial cost/constraint matrices
-  VectorXd x_full{n_};
-  x_full.setOnes();
-  convertToQP(x_full);
+  // VectorXd x_full{n_};
+  // x_full.setOnes();
+  // convertToQP(x_full);
 }
 
 void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const

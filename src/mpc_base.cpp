@@ -111,6 +111,10 @@ bool MPCBase::initSolver(const OSQPSettings* solver_settings)
   if (saturate_states_)
     assert(state_limits_set_);
 
+  VectorXd x_full{n_};
+  x_full.setOnes();
+  convertToQP(x_full);
+
   initialized_ = solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
   new (&solution_map_) Map<const VectorXd>(solver_->getSolutionPtr(), m_*p_);
   return initialized_;

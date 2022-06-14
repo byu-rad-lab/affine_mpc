@@ -40,7 +40,9 @@ if (BUILD_PYTHON)
   find_package(pybind11 REQUIRED)
   pybind11_add_module(${PROJECT_NAME}_py
     python/affine_mpc_py_module.cpp
+    python/py_mpc_base.cpp
     python/py_implicit_mpc.cpp
+    python/py_mpc_logger.cpp
     python/py_osqp_settings.cpp
     )
   target_link_libraries(${PROJECT_NAME}_py PUBLIC ${PROJECT_NAME})

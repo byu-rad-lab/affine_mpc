@@ -3,7 +3,7 @@
 
 void moduleAddOsqpSettings(py::module& m)
 {
-  py::class_<OSQPSettings> s(m, "Settings");
+  py::class_<OSQPSettings> s(m, "OSQPSettings", "OSQP solver settings");
   s.def(py::init<>([]()
     {
       OSQPSettings self;
