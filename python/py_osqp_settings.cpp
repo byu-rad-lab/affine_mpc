@@ -8,7 +8,10 @@ void moduleAddOsqpSettings(py::module& m)
     {
       OSQPSettings self;
       osqp_set_default_settings(&self);
+      self.alpha = 1.0;
       self.verbose=false;
+      self.eps_dual_inf = 1e-6;
+      self.eps_prim_inf = 1e-6;
       return self;
     }), "Constructor sets all default values");
   s.def_readwrite("adaptive_rho", &OSQPSettings::adaptive_rho);

@@ -13,7 +13,10 @@ OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
 {
   assert(num_variables > 0 && num_constraints > 0);
   osqp_set_default_settings(settings_);
+  settings_->alpha = 1.0;
   settings_->verbose = false;
+  settings_->eps_dual_inf = 1e-6;
+  settings_->eps_prim_inf = 1e-6;
 }
 
 OSQPSolver::~OSQPSolver()
