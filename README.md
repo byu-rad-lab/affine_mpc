@@ -6,7 +6,7 @@
 ## Dependencies
 This library depends on [Eigen](https://gitlab.com/libeigen/eigen) (version >= 3.3.7) and [OSQP](https://github.com/osqp/osqp) (version 0.6.2). Eigen can be installed with `sudo apt install -y libeigen3-dev` and Ubuntu 20.04 will provide version 3.3.7, or it can be installed from source using the link above. OSQP should be installed from source using the link above.
 
-If you are going to build with Python bindings, then [Pybind11](https://pybind11.readthedocs.io/en/stable/installing.html) is also a dependency. It can be installed with `sudo apt install pybind11` or from source following their documentation.
+If you are going to build with Python bindings, then [Pybind11](https://pybind11.readthedocs.io/en/stable/installing.html) is also a dependency. It can be installed with `sudo apt install pybind11-dev` or from source following their documentation.
 
 ## Building the Library
 This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). For example:
