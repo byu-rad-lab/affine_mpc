@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(affine_mpc)
 
-set(BUILD_TESTS ON)
-set(BUILD_PYTHON ON)
+option(BUILD_TESTS "Set to ON if you want to build the unit tests")
+option(BUILD_PYTHON "Set to ON if you want to build the Python bindings")
+
+message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
+message(STATUS "BUILD_PYTHON: ${BUILD_PYTHON}")
 
 find_package(osqp REQUIRED)
 find_package(Eigen3 REQUIRED)
