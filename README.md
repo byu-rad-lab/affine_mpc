@@ -42,6 +42,8 @@ where, $`J`$ is the total cost, $`T`$ is the horizon length, $`p`$ is the number
 
 **NOTE:** The norm in the cost function is a weighted 2-norm where $`||x||_M = x^\top M x`$.
 
+The MPC optimization problem must be converted to a QP optimization problem in order to use the OSQP solver. This [paper](https://arxiv.org/pdf/2001.04931.pdf) shows how the conversion is done. Note that Implicit MPC is what the paper calls Small Matrix Formulation.
+
 <!--
 Possible additions:
   - Terminal state weights (Q_final)
@@ -90,7 +92,7 @@ mpc = ImplicitMPC(num_states=2, num_inputs=1,
 ```
 
 ### MPC Setup
-After creating an MPC object with the format of the MPC problem you wish to use, you will need to specify all of the applicable parameters before initializing the solver (set the model, input saturation limits, slew rate, and state saturation limits). The state weights (Q) will default to identity while the input weights (R) will default to zero.
+_AFTER_ creating an MPC object with the format of the MPC problem you wish to use, **you must specify all of the applicable parameters (set the model, input saturation limits, slew rate, and state saturation limits) _BEFORE_ initializing the solver.** The state weights (Q) will default to identity while the input weights (R) will default to zero.
 
 **Relevant Functions**
 
@@ -102,7 +104,9 @@ void setSlewRate(u_slew); // if slew rate enabled
 void setStateLimits(x_min, x_max); // if state saturation enabled
 ```
 
-This means that if you linearize about equilibrium and have zeros that show up in your model that are not zero if you affinize about some other point, then you need to provide
+The OSQP solver is a sparse solver and it will only keep track of elements that are non-zero at the time of initialization. This means that the model used with the solver is initialized must be non-zero wherever it is possible to have non-zero values (if you are going to be changing the model at each time step - do not worry about this if you only ever use 1 model). For example, if a Jacobian of my A matrix is a rotation matrix then I need to make sure all 9 of those elements of A are non-zero rather than passing in an identity matrix if the rotation matrix will be updated after the solver is initialized.
+
+**If you pass in a 0 somewhere that will not be a 0 later on in the code, the solver will not track the value and the model will not be what you expect it to be.** You might get lucky, but there is no safety check or guarantee that your code will work as expected if you are not careful when you initialize the solver.
 
 ### Initialize OSQP Solver
 This library uses the OSQP solver for the optimization. After specifying the parameters from the previous section, the solver can be initialized. If you do not pass in `settings` then OSQP's default settings will be used.
@@ -118,6 +122,9 @@ void initSolver(OSQPSettings* settings = nullptr);
 **IMPORTANT NOTE:** The solver utilizes sparsity, meaning that the model used when the solver is initialized needs to have the least amount of sparsity possible for your system. The solver stores the structure and values of all non-zero elements when initialized and the structure can not change. This means that if it is possible for some elements of your model to be non-zero, then they need to be non-zero when the solver is initialized.
 
 ### Solve MPC
+
+**You must have setup MPC and initialized the solver before you can solve!**
+
 Once the solver is initialized, you need to specify weights and reference trajectories you wish to use:
 
 **Relevant Functions**
@@ -185,9 +192,9 @@ Data can only be logged after calling a solve function on the MPC class the logg
 
 ```python
 while t <= t_final:
-  uk = mpc.calcNextInput(xk)
-  xk = system.propagateDynamics(xk, uk) # or publish the command somehow
+  uk,solved = mpc.calcNextInput(xk)
   logger.logPreviousSolve(t, dt, xk)
+  xk = system.propagateDynamics(xk, uk) # or publish the command somehow
   t += dt
 ```
 
@@ -204,3 +211,112 @@ writeParamFile(const std::string& filename="params.yaml");
 This function is used to write all of the parameters of the MPC problem setup to a file within the `save_location` directory. This way when you go looking back through multiple folders of data you can remember what params you used to generate plots (hopefully!). This function can be called as many times as you want, but you must specify a different file name if you want to keep multiple param files (using the same name will override the existing file). Perhaps this can be useful if you are tuning gains and want to know what they were at different points in time.
 
 Also, the `MPCLogger` destructor is set to write a param file with the default name if you never call the function yourself. **NOTE: Python does not seem to call destructors in the correct order, so to avoid a runtime error after your script is finished you MUST have called this function manually at some point or else call `del logger` at the end of the script.** C++ does not have any issues with this.
+
+## Examples
+Here are examples of a mass-spring-damper system in both C++ and Python.
+
+### C++
+
+```cpp
+#include "affine_mpc/implicit_mpc.hpp"
+#include "affine_mpc/mpc_logger.hpp"
+
+int main()
+{
+  const int n{2},m{1},T{10},p{10};
+  const bool use_input_cost{true}, use_slew_rate{true};
+  ImplicitMPC msd_mpc{n,m,T,p,use_input_cost,use_slew_rate};
+
+  MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
+
+  Matrix2d A;
+  Vector2d B, w;
+  A << 0,1, -0.6,-0.1;
+  B << 0, 0.2;
+  w.setZero();
+  double ts{0.1};
+  msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
+
+  Matrix<double,m,1> u_min{0}, u_max{3}, slew{1};
+  msd_mpc.setInputLimits(u_min, u_max);
+  msd_mpc.setSlewRate(slew);
+
+  Matrix<double,n,1> Q{1,0.11};
+  Matrix<double,m,1> R{.0001};
+  msd_mpc.setWeights(Q,R);
+
+  Vector2d x_goal{1,0};
+  Matrix<double,m,1> u_goal{.0001};
+  msd_mpc.setDesiredState(x_goal);
+  msd_mpc.setDesiredInput(u_goal);
+
+  msd_mpc.initSolver();
+
+  Vector2d xk;
+  xk.setZero();
+
+  Matrix<double,m,1> uk;
+  bool solved;
+  double tf{5};
+  while (double t{0}; t < tf; t += ts)
+  {
+    solved = msd_mpc.calcNextInput(xk, uk);
+    if (!solved)
+      cout << "Did not solve :(" << endl;
+    logger.logPreviousSolve(0, 0.1, xk);
+    msd_mpc.propagateModel(xk, uk, xk);
+  }
+
+  return 0;
+}
+```
+
+### Python
+
+```python
+import numpy as np
+from affine_mpc_py import ImplicitMPC, MPCLogger
+
+msd_mpc = ImplicitMPC(num_states=2, num_inputs=1,
+                      horizon_length=10, num_knot_points=3,
+                      use_input_cost=True, use_slew_rate=True)
+
+logger = MPCLogger(msd_mpc, "~/tmp/mpc_data")
+
+A = np.array([[0,1], [-0.6,-0.1]])
+B = np.array([0,0.2])
+w = np.zeros(2)
+ts = 0.1
+msd_mpc.setModelContinuous2Discrete(A, B, w, ts)
+
+u_min = np.zeros(1)
+u_max = np.ones(1) * 3
+msd_mpc.setInputLimits(u_min, u_max)
+
+slew = np.ones(1)
+msd_mpc.setSlewRate(slew)
+
+Q = np.array([1,0.11])
+R = np.array([.0001])
+msd_mpc.setWeights(Q,R)
+
+x_goal = np.array([1.0,0])
+u_goal = np.array([.0001])
+msd_mpc.setDesiredState(x_goal)
+msd_mpc.setDesiredInput(u_goal)
+
+msd_mpc.initSolver()
+
+xk = np.zeros(2)
+t = 0.0
+tf = 5.0
+while t < tf:
+  uk,solved = msd_mpc.calcNextInput(xk)
+  if not solved:
+    print('Did not solve :(')
+  logger.logPreviousSolve(t, ts, xk)
+  xk = msd_mpc.propagateModel(xk, uk)
+  t += ts
+
+logger.writeParamFile()
+```
