@@ -40,6 +40,7 @@ if (BUILD_TESTS)
 endif()
 
 if (BUILD_PYTHON)
+  set(PYBIND11_PYTHON_VERSION 3 CACHE STRING "")
   find_package(pybind11 REQUIRED)
   pybind11_add_module(${PROJECT_NAME}_py
     python/affine_mpc_py_module.cpp
