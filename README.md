@@ -4,12 +4,30 @@
 `affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use an affine model. `affine_mpc_py` is a Pybind wrapper around the `affine_mpc` library in order to provide a Python interface.
 
 ## Dependencies
-This library depends on [Eigen](https://gitlab.com/libeigen/eigen) (version >= 3.3.7) and [OSQP](https://github.com/osqp/osqp) (version 0.6.2). Eigen can be installed with `sudo apt install -y libeigen3-dev` and Ubuntu 20.04 will provide version 3.3.7, or it can be installed from source using the link above. OSQP should be installed from source using the link above.
+The options to install with `apt` assume use of Ubuntu 20.04.
 
-If you are going to build with Python bindings, then [Pybind11](https://pybind11.readthedocs.io/en/stable/installing.html) is also a dependency. It can be installed with `sudo apt install pybind11-dev` or from source following their documentation.
+#### Required:
+- [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) (developed with version 3.3.7 - newer versions probably also work)
+  - This is probably already installed on your system if you have ROS
+  - Can install with `sudo apt install libeigen3-dev`
+  - Can install from from [source](https://gitlab.com/libeigen/eigen)
+- [OSQP](https://osqp.org/docs/get_started/) (developed with version 0.6.2)
+  - This project will locally clone and build OSQP for you if you do nothing
+  - Can install to system from [source](https://github.com/osqp/osqp)
+
+#### Optional:
+- [GTest](https://google.github.io/googletest/) (required if you build the unit tests)
+  - This is probably already installed on your system if you have ROS
+  - Can install to system with `sudo apt install libgtest-dev`
+  - Can install to system from [source](https://github.com/google/googletest)
+- [Pybind11](https://pybind11.readthedocs.io/en/stable/index.html) (required if you build python bindings)
+  - Known to work with versions 2.4.3 and 2.9.2
+  - This project will locally clone and build Pybind11 version 2.9.2 for you if you do nothing
+  - Can install to system with `sudo apt install pybind11-dev`, which will give you version 2.4.3 and you must specify the cmake variable `PYBIND11_VER=2.4.3` if you want to use this version
+  - Can install to system from [source](https://github.com/pybind/pybind11)
 
 ## Building the Library
-This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). For example:
+This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). Additionally, you can set `-DPYBIND11_VER=2.4.3` to use the apt installed version of Pybind11. For example:
 
 ```shell
 mkdir build && cd build
@@ -55,6 +73,8 @@ Possible additions:
 
 ## API
 The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (fixed-size or dynamic matrices) while Python uses Numpy arrays: these types are not specified in the function declarations below to avoid being verbose.
+
+**Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the header files or using iPython on the Python library. Also, you can generate a stub file for the Python library with `stubgen -m affine_mpy_py -o stubs` (run at the location of the python library) if you want to use a stub file to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
 
 ### MPC Constructor
 When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the horizon length and number of knot points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
