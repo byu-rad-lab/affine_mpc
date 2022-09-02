@@ -14,7 +14,7 @@ public:
             const std::string& save_location="/tmp/mpc_data");
   virtual ~MPCLogger();
   void logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
-                        int write_every=1);
+                        double solve_time=-1, int write_every=1);
   void writeParamFile(const std::string& filename="params.yaml");
 
 protected:
@@ -26,6 +26,7 @@ private:
   bool wrote_params_;
   VectorXd x_traj_, u_traj_;
   std::ofstream time_fout_;
+  std::ofstream solve_time_fout_;
   std::ofstream states_fout_;
   std::ofstream refs_fout_;
   std::ofstream inputs_fout_;

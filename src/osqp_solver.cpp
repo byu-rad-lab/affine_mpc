@@ -38,6 +38,11 @@ const c_float* OSQPSolver::getSolutionPtr() const
     return nullptr;
 }
 
+c_float OSQPSolver::getSolveTime() const
+{
+  return work_->info->solve_time;
+}
+
 bool OSQPSolver::solve(Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);

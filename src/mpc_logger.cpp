@@ -37,11 +37,13 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     fs::create_directories(save_dir_);
 
   time_fout_.open(save_dir_ + "time.txt");
+  solve_time_fout_.open(save_dir_ + "solve_times.txt");
   states_fout_.open(save_dir_ + "states.txt");
   refs_fout_.open(save_dir_ + "ref_states.txt");
   inputs_fout_.open(save_dir_ + "inputs.txt");
 
   assert(time_fout_.is_open());
+  assert(solve_time_fout_.is_open());
   assert(states_fout_.is_open());
   assert(refs_fout_.is_open());
   assert(inputs_fout_.is_open());
@@ -50,6 +52,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
 MPCLogger::~MPCLogger()
 {
   time_fout_.close();
+  solve_time_fout_.close();
   states_fout_.close();
   refs_fout_.close();
   inputs_fout_.close();
@@ -58,7 +61,7 @@ MPCLogger::~MPCLogger()
 }
 
 void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
-                                 int write_every)
+                                 double solve_time, int write_every)
 {
   const static int n{mpc_->n_}, m{mpc_->m_};
   const static int T{mpc_->T_}, p{mpc_->p_};
@@ -92,6 +95,7 @@ void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>
 
   time += ts;
   time_fout_ << time << std::endl;
+  solve_time_fout_ << solve_time << " " << mpc_->solver_->getSolveTime() << std::endl;
   states_fout_ << x_traj_.tail(n).transpose() << std::endl;
   refs_fout_ << mpc_->x_goal_.tail(n).transpose() << std::endl;
   inputs_fout_ << u_traj_.tail(m).transpose() << std::endl;
