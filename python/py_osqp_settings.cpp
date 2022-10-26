@@ -1,5 +1,5 @@
 #include "affine_mpc_py_module.hpp"
-#include <osqp/osqp.h>
+#include <osqp.h>
 
 void moduleAddOsqpSettings(py::module& m)
 {
