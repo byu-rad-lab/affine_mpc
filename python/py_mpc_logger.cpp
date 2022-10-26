@@ -12,7 +12,7 @@ void moduleAddMpcLogger(py::module& m)
            py::arg("mpc"), py::arg("save_location")="/tmp/mpc_data");
   log.def("logPreviousSolve", &MPCLogger::logPreviousSolve,
     "Log data from previous MPC solve",
-    py::arg("t0"), py::arg("ts"), py::arg("x0"), py::arg("write_every")=1);
+    py::arg("t0"), py::arg("ts"), py::arg("x0"), py::arg("solve_time")=-1, py::arg("write_every")=1);
 
   log.def("writeParamFile", &MPCLogger::writeParamFile,
     "Write current MPC params to a YAML file", py::arg("filename")="params.yaml");
