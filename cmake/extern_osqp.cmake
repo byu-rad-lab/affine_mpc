@@ -1,4 +1,4 @@
-find_package(osqp)
+find_package(osqp QUIET)
 
 if (NOT ${osqp_FOUND})
   message(STATUS "System install of OSQP not found - getting OSQP")
