@@ -1,8 +1,11 @@
 #include "affine_mpc_py_module.hpp"
+
 #include <pybind11/pybind11.h>
 #include <pybind11/eigen.h>
+
 #include "affine_mpc/mpc_logger.hpp"
 
+namespace affine_mpc {
 namespace py = pybind11;
 
 void moduleAddMpcLogger(py::module& m)
@@ -17,3 +20,5 @@ void moduleAddMpcLogger(py::module& m)
   log.def("writeParamFile", &MPCLogger::writeParamFile,
     "Write current MPC params to a YAML file", py::arg("filename")="params.yaml");
 }
+
+} // namespace affine_mpc

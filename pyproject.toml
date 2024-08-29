@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "affine_mpc_py"
+version = "0.0.1"
+dependencies = [
+    "numpy",
+    "matplotlib",
+]
+authors = [
+    {name="Mathew Haskell", email="mathew.haskell@byu.edu"}
+]
+maintainers = [
+    {name="Mathew Haskell" },
+]
+description="Python bindings for the affine_mpc library"
+readme="README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["affine mpc", "mpc", "model predictive control"]
+
+
+# This lets pip know what folders should be included / ignored
+# when the package is installed.
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.setuptools.package-data]
+affine_mpc_py = ["*.so"]

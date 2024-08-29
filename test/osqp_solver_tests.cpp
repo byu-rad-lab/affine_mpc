@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
+#include <Eigen/Core>
+
 #include "affine_mpc/osqp_solver.hpp"
 #include "utils.hpp"
 
-class OSQPSolverProtectedTester : public OSQPSolver
+class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver
 {
 public:
   OSQPSolverProtectedTester(const int n, const int m) :
@@ -10,7 +12,7 @@ public:
   {}
   ~OSQPSolverProtectedTester() {}
 
-  void testInitializeP(const Ref<const MatrixXF>& P)
+  void testInitializeP(const Eigen::Ref<const MatrixXF>& P)
   {
     MatrixXF A(m_, n_);
     A.setZero();
@@ -21,7 +23,7 @@ public:
     initialize(P,A,q,l,u);
   }
 
-  void testInitializeA(const Ref<MatrixXd> A)
+  void testInitializeA(const Eigen::Ref<Eigen::MatrixXd> A)
   {
     MatrixXF P{n_,n_};
     P.setZero();
@@ -45,17 +47,17 @@ TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
   const int n{6}, m{4}, P_nnz_max{6};
   OSQPSolverProtectedTester base(n,m);
 
-  Matrix<c_float,n,n> P;
+  Eigen::Matrix<c_float,n,n> P;
   P.setZero();
   P.diagonal().setOnes();
 
   base.testInitializeP(P);
 
-  Matrix<c_float,6,1> px_true;
+  Eigen::Matrix<c_float,6,1> px_true;
   px_true.setOnes();
-  Matrix<c_int,6,1> pi_true;
+  Eigen::Matrix<c_int,6,1> pi_true;
   pi_true << 0, 1, 2, 3, 4, 5;
-  Matrix<c_int,7,1> pp_true;
+  Eigen::Matrix<c_int,7,1> pp_true;
   pp_true << 0, 1, 2, 3, 4, 5, 6;
 
   ASSERT_TRUE(expectEigenNear(px_true, base.getPx(), 1e-6));

@@ -1,9 +1,11 @@
 #include "affine_mpc/mpc_logger.hpp"
+
 #include <filesystem>
 
+namespace affine_mpc {
 namespace fs = std::filesystem;
 
-std::string eig2Str(const Ref<const VectorXd>& vec)
+std::string eig2Str(const Eigen::Ref<const Eigen::VectorXd>& vec)
 {
   std::stringstream ss;
   ss << vec.transpose();
@@ -27,8 +29,8 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
                      const std::string& save_location) :
     mpc_{mpc},
     save_dir_{save_location},
-    x_traj_{mpc->n_*mpc->T_},
-    u_traj_{mpc_->m_*mpc_->T_},
+    x_traj_{mpc->num_states_*mpc->len_horizon_},
+    u_traj_{mpc_->num_inputs_*mpc_->len_horizon_},
     wrote_params_{false}
 {
   handleStringSubstitutions();
@@ -60,39 +62,35 @@ MPCLogger::~MPCLogger()
     writeParamFile();
 }
 
-void MPCLogger::logPreviousSolve(double t0, double ts, const Ref<const VectorXd>& x0,
+// Writes a single line of data for each time step in the horizon
+void MPCLogger::logPreviousSolve(double t0, double ts,
+                                 const Eigen::Ref<const Eigen::VectorXd>& x0,
                                  double solve_time, int write_every)
 {
-  const static int n{mpc_->n_}, m{mpc_->m_};
-  const static int T{mpc_->T_}, p{mpc_->p_};
+  const static int n{mpc_->num_states_}, m{mpc_->num_inputs_};
+  const static int T{mpc_->len_horizon_}, p{mpc_->num_ctrl_pts_};
 
   double time{t0};
-  int count{0};
 
   time_fout_ << time << " ";
   states_fout_ << x0.transpose() << " ";
 
   mpc_->getPredictedStateTrajectory(x_traj_);
-  mpc_->unparameterizeSolution(mpc_->solution_map_, u_traj_);
+  mpc_->getInputTrajectory(u_traj_);
 
   int Tm1{T-1};
   for (int k{0}; k < Tm1; ++k)
   {
     time += ts;
-    if (++count == write_every)
+    if (k % write_every == 0)
     {
-      count = 0;
       time_fout_ << time << " ";
-      time_fout_.flush();
       states_fout_ << x_traj_.segment(k*n,n).transpose() << " ";
-      states_fout_.flush();
       refs_fout_ << mpc_->x_goal_.segment(k*n,n).transpose() << " ";
-      refs_fout_.flush();
       inputs_fout_ << u_traj_.segment(k*m,m).transpose() << " ";
-      inputs_fout_.flush();
     }
   }
-
+  // always write data from last time step
   time += ts;
   time_fout_ << time << std::endl;
   solve_time_fout_ << solve_time << " " << mpc_->solver_->getSolveTime() << std::endl;
@@ -106,22 +104,22 @@ void MPCLogger::writeParamFile(const std::string& filename)
   std::ofstream param_fout;
   param_fout.open(save_dir_ + filename);
   assert(param_fout.is_open());
-  param_fout << std::boolalpha;
-  param_fout << "n: " << mpc_->n_ << std::endl;
-  param_fout << "m: " << mpc_->m_ << std::endl;
-  param_fout << "T: " << mpc_->T_ << std::endl;
-  param_fout << "p: " << mpc_->p_ << std::endl;
-  param_fout << "use_input_cost: " << mpc_->use_input_cost_ << std::endl;
-  param_fout << "use_slew_rate: " << mpc_->use_slew_rate_ << std::endl;
-  param_fout << "saturate_states: " << mpc_->saturate_states_ << std::endl;
-  param_fout << "u_min: " << eig2Str(mpc_->u_min_) << std::endl;
-  param_fout << "u_max: " << eig2Str(mpc_->u_max_) << std::endl;
-  param_fout << "Q: " << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->n_)) << std::endl;
-  param_fout << "Qf: " << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->n_)) << std::endl;
+  param_fout << std::boolalpha
+    << "n: " << mpc_->num_states_ << std::endl
+    << "m: " << mpc_->num_inputs_ << std::endl
+    << "T: " << mpc_->len_horizon_ << std::endl
+    << "p: " << mpc_->num_ctrl_pts_ << std::endl
+    << "use_input_cost: " << mpc_->use_input_cost_ << std::endl
+    << "use_slew_rate: " << mpc_->use_slew_rate_ << std::endl
+    << "saturate_states: " << mpc_->saturate_states_ << std::endl
+    << "u_min: " << eig2Str(mpc_->u_min_) << std::endl
+    << "u_max: " << eig2Str(mpc_->u_max_) << std::endl
+    << "Q: " << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->num_states_)) << std::endl
+    << "Qf: " << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->num_states_)) << std::endl;
 
   param_fout << "R: ";
   if (mpc_->use_input_cost_)
-    param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->m_)) << std::endl;
+    param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->num_inputs_)) << std::endl;
   else
     param_fout << "None" << std::endl;
 
@@ -162,3 +160,5 @@ void MPCLogger::handleStringSubstitutions()
     save_dir_.replace(0, pos, env_home);
   }
 }
+
+} // namespace affine_mpc

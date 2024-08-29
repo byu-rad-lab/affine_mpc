@@ -1,5 +1,8 @@
 #include "affine_mpc_py_module.hpp"
+
 #include <osqp.h>
+
+namespace affine_mpc {
 
 void moduleAddOsqpSettings(py::module& m)
 {
@@ -36,4 +39,6 @@ void moduleAddOsqpSettings(py::module& m)
   s.def_readwrite("time_limit", &OSQPSettings::time_limit);
   s.def_readwrite("verbose", &OSQPSettings::verbose);
   s.def_readwrite("warm_start", &OSQPSettings::warm_start);
+}
+
 }

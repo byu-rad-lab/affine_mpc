@@ -1,7 +1,7 @@
 find_package(osqp QUIET)
 
 if (NOT ${osqp_FOUND})
-  message(STATUS "System install of OSQP not found - getting OSQP")
+  message(STATUS "System install of OSQP not found - using FetchContent")
   FetchContent_Declare(osqp_extern
     GIT_REPOSITORY https://github.com/osqp/osqp
     GIT_TAG v0.6.2

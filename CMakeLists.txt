@@ -4,7 +4,7 @@ project(affine_mpc)
 # custom options
 option(BUILD_TESTS "Set to ON if you want to build the unit tests")
 option(BUILD_PYTHON "Set to ON if you want to build the Python bindings")
-set(PYBIND11_VER "2.9.2" CACHE STRING "Set desired version of Pybind11")
+set(PYBIND11_VERSION "2.9.2" CACHE STRING "Set desired version of Pybind11")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # print custom options
@@ -42,6 +42,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17) # build error w
 if (BUILD_TESTS)
   enable_testing()
   find_package(GTest REQUIRED)
+  message(STATUS "GTest version: ${GTest_VERSION}")
   add_executable(${PROJECT_NAME}_UnitTests
     test/mpc_base_tests.cpp
     test/osqp_solver_tests.cpp
@@ -59,12 +60,15 @@ endif()
 
 if (BUILD_PYTHON)
   include(cmake/extern_pybind11.cmake)
-  pybind11_add_module(${PROJECT_NAME}_py
+  pybind11_add_module(_bindings MODULE
     python/affine_mpc_py_module.cpp
     python/py_mpc_base.cpp
     python/py_implicit_mpc.cpp
     python/py_mpc_logger.cpp
     python/py_osqp_settings.cpp
   )
-  target_link_libraries(${PROJECT_NAME}_py PUBLIC ${PROJECT_NAME})
+  target_link_libraries(_bindings PUBLIC ${PROJECT_NAME})
+  set_target_properties(_bindings PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/python/affine_mpc_py
+  )
 endif()

@@ -1,5 +1,9 @@
 #include "affine_mpc/osqp_solver.hpp"
 
+#include <Eigen/Core>
+
+namespace affine_mpc {
+
 OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
     settings_{(OSQPSettings*)c_malloc(sizeof(OSQPSettings))},
     data_{(OSQPData*)c_malloc(sizeof(OSQPData))},
@@ -43,13 +47,13 @@ c_float OSQPSolver::getSolveTime() const
   return work_->info->solve_time;
 }
 
-bool OSQPSolver::solve(Ref<VectorXF> solution)
+bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);
   assert(workspace_initialized_);
 
   osqp_solve(work_);
-  Map<VectorXF> map_solution{work_->solution->x, n_, 1};
+  Eigen::Map<VectorXF> map_solution{work_->solution->x, n_, 1};
   solution = map_solution;
   return work_->info->status_val == OSQP_SOLVED;
 }
@@ -61,8 +65,8 @@ bool OSQPSolver::solve()
   return work_->info->status_val == OSQP_SOLVED;
 }
 
-bool OSQPSolver::initialize(const Ref<const MatrixXF>& P, const Ref<const MatrixXF>& A,
-                            Ref<VectorXF> q, Ref<VectorXF> l, Ref<VectorXF> u,
+bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P, const Eigen::Ref<const MatrixXF>& A,
+                            Eigen::Ref<VectorXF> q, Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u,
                             const OSQPSettings* settings)
 {
   assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
@@ -84,7 +88,7 @@ bool OSQPSolver::initialize(const Ref<const MatrixXF>& P, const Ref<const Matrix
   return workspace_initialized_;
 }
 
-bool OSQPSolver::updateCostMatrix(const Ref<const MatrixXF>& P)
+bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 {
   assert(P.rows() == n_ && P.cols() == n_);
   if (!workspace_initialized_) return false;
@@ -104,7 +108,7 @@ bool OSQPSolver::updateCostMatrix(const Ref<const MatrixXF>& P)
   return exit_status == 0;
 }
 
-bool OSQPSolver::updateConstraintMatrix(const Ref<const MatrixXF>& A)
+bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 {
   assert(A.rows() == m_ && A.cols() == n_);
   assert(A.count() <= A_nnz_ && "A cannot change structure once initialized");
@@ -125,7 +129,7 @@ bool OSQPSolver::updateConstraintMatrix(const Ref<const MatrixXF>& A)
   return exit_status == 0;
 }
 
-bool OSQPSolver::updateCostVector(Ref<VectorXF> q)
+bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
 {
   assert(q.size() == n_);
   if (!workspace_initialized_) return false;
@@ -134,7 +138,7 @@ bool OSQPSolver::updateCostVector(Ref<VectorXF> q)
   return exit_status == 0;
 }
 
-bool OSQPSolver::updateBounds(Ref<VectorXF> l, Ref<VectorXF> u)
+bool OSQPSolver::updateBounds(Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u)
 {
   assert(l.size() == m_ && u.size() == m_);
   if (!workspace_initialized_) return false;
@@ -143,7 +147,7 @@ bool OSQPSolver::updateBounds(Ref<VectorXF> l, Ref<VectorXF> u)
   return exit_status == 0;
 }
 
-int OSQPSolver::countUpperTriangle(const Ref<const MatrixXF>& mat)
+int OSQPSolver::countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat)
 {
   int count{0};
   for (int col{0}; col < n_; ++col)
@@ -158,7 +162,7 @@ int OSQPSolver::countUpperTriangle(const Ref<const MatrixXF>& mat)
   return count;
 }
 
-void OSQPSolver::initializeCostMatrix(const Ref<const MatrixXF>& P)
+void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 {
   assert(!P_is_set_);
   assert(P.rows() == n_ && P.cols() == n_);
@@ -187,7 +191,7 @@ void OSQPSolver::initializeCostMatrix(const Ref<const MatrixXF>& P)
   P_is_set_ = true;
 }
 
-void OSQPSolver::initializeConstraintMatrix(const Ref<const MatrixXF>& A)
+void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 {
   assert(!A_is_set_);
   assert(A.rows() == m_ && A.cols() == n_);
@@ -240,3 +244,5 @@ void OSQPSolver::setCustomSettings(const OSQPSettings* settings)
   settings_->adaptive_rho_fraction = settings->adaptive_rho_fraction;
   settings_->time_limit = settings->time_limit;
 }
+
+} // namespace affine_mpc

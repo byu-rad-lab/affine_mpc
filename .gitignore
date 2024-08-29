@@ -2,3 +2,6 @@ build/
 debug/
 *.user
 .vscode/
+*.egg-info/
+__pycache__/
+*.so
