@@ -42,6 +42,17 @@ make
 **NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode (`-DCMAKE_BUILD_TYPE=Debug`) while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can
 build in `RELEASE` mode to gain some extra speed.
 
+#### Python Bindings
+If you specified `-DBUILD_PYTHON=ON`, then the python bindings were built and placed into the `python/affine_mpc_py` package, which can be installed locally with pip:
+
+```shell
+pip install .
+```
+Then in a python file you can import the package:
+```python
+import affine_mpc_py as ampc
+```
+
 ## MPC Problem
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
 
