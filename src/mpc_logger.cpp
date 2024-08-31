@@ -2,8 +2,9 @@
 
 #include <filesystem>
 
-namespace affine_mpc {
 namespace fs = std::filesystem;
+namespace affine_mpc {
+
 
 std::string eig2Str(const Eigen::Ref<const Eigen::VectorXd>& vec)
 {
