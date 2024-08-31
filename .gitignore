@@ -1,7 +1,13 @@
 build/
-debug/
+Debug/
+Release/
+MinSizRel/
+RelWithDebInfo/
+Deployment/
+Development/
 *.user
 .vscode/
 *.egg-info/
 __pycache__/
 *.so
+.pytest_cache/
