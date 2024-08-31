@@ -24,11 +24,13 @@ compiler (version 11).
   - This is probably already installed on your system if you have ROS
   - Can install to system with `sudo apt install libgtest-dev`
   - Can install to system from [source](https://github.com/google/googletest)
-- [Pybind11](https://pybind11.readthedocs.io/en/stable/index.html) (required if you build python bindings)
+- [Pybind11](https://pybind11.readthedocs.io/en/stable/index.html) (required if you build Python bindings)
   - Known to work with versions 2.4.3 and 2.9.2
   - This project will locally clone and build Pybind11 version 2.9.2 for you if you do nothing
   - Can install to system with `sudo apt install pybind11-dev`, which will give you version 2.4.3 and you must specify the cmake variable `PYBIND11_VER=2.4.3` if you want to use this version
   - Can install to system from [source](https://github.com/pybind/pybind11)
+- [NumPy](https://numpy.org/) (required if you want to use Python bindings)
+  - Can install with 'pip install numpy'
 
 ## Building the Library
 This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). Additionally, you can set `-DPYBIND11_VER=2.4.3` to use the apt installed version of Pybind11 (on Ubuntu 20.04). For example:
@@ -399,4 +401,24 @@ while t < tf:
   t += ts
 
 logger.writeParamFile()
+```
+
+## Testing
+
+To test only the C++ library (run inside of build directory):
+
+```shell
+./affine_mpc_UnitTests
+```
+
+To test only the Python bindings (run inside of main repository - requires `pytest`):
+
+```shell
+pytest
+```
+
+To test both the C++ library and its Python bindings (run inside of build directory):
+
+```shell
+ctest
 ```

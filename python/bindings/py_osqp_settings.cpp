@@ -28,7 +28,23 @@ void moduleAddOsqpSettings(py::module& m)
   s.def_readwrite("eps_dual_inf", &OSQPSettings::eps_dual_inf);
   s.def_readwrite("eps_prim_inf", &OSQPSettings::eps_prim_inf);
   s.def_readwrite("eps_rel", &OSQPSettings::eps_rel);
-  s.def_readwrite("linsys_solver", &OSQPSettings::linsys_solver);
+  // Works but user can't pass in an int for the solver type enum
+  // s.def_readwrite("linsys_solver", &OSQPSettings::linsys_solver);
+  // Allows user to pass in an int for the solver type enum
+  s.def_property("linsys_solver",
+    [](const OSQPSettings& self)
+    {
+      return static_cast<linsys_solver_type>(self.linsys_solver);
+    },
+    [](OSQPSettings& self, int type_linsys_solver)
+    {
+      if (type_linsys_solver == linsys_solver_type::QDLDL_SOLVER)
+        self.linsys_solver = linsys_solver_type::QDLDL_SOLVER;
+      else if (type_linsys_solver == linsys_solver_type::MKL_PARDISO_SOLVER)
+        self.linsys_solver = linsys_solver_type::MKL_PARDISO_SOLVER;
+      else
+        throw std::invalid_argument("Invalid LinsysSolverType");
+    });
   s.def_readwrite("max_iter", &OSQPSettings::max_iter);
   s.def_readwrite("polish", &OSQPSettings::polish);
   s.def_readwrite("polish_refine_iter", &OSQPSettings::polish_refine_iter);
@@ -39,6 +55,10 @@ void moduleAddOsqpSettings(py::module& m)
   s.def_readwrite("time_limit", &OSQPSettings::time_limit);
   s.def_readwrite("verbose", &OSQPSettings::verbose);
   s.def_readwrite("warm_start", &OSQPSettings::warm_start);
+
+  py::enum_<linsys_solver_type>(s, "LinsysSolverType")
+    .value("QDLDL_SOLVER", linsys_solver_type::QDLDL_SOLVER)
+    .value("MKL_PARDISO_SOLVER", linsys_solver_type::MKL_PARDISO_SOLVER);
 }
 
 }

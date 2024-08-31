@@ -2,7 +2,7 @@ import flags
 import numpy
 from numpy.typing import NDArray
 # from numpy.typing import flags
-from typing import overload
+from typing import ClassVar, overload
 
 
 class ImplicitMPC(MPCBase):
@@ -76,6 +76,21 @@ class MPCLogger:
 
 
 class OSQPSettings:
+    class LinsysSolverType:
+        __members__: ClassVar[dict] = ...  # read-only
+        MKL_PARDISO_SOLVER: ClassVar[OSQPSettings.LinsysSolverType] = ...
+        QDLDL_SOLVER: ClassVar[OSQPSettings.LinsysSolverType] = ...
+        __entries: ClassVar[dict] = ...
+        def __init__(self, value: int) -> None: ...
+        def __eq__(self, other: object) -> bool: ...
+        def __hash__(self) -> int: ...
+        def __index__(self) -> int: ...
+        def __int__(self) -> int: ...
+        def __ne__(self, other: object) -> bool: ...
+        @property
+        def name(self) -> str: ...
+        @property
+        def value(self) -> int: ...
     adaptive_rho: int
     adaptive_rho_fraction: float
     adaptive_rho_interval: int
@@ -87,7 +102,7 @@ class OSQPSettings:
     eps_dual_inf: float
     eps_prim_inf: float
     eps_rel: float
-    linsys_solver: linsys_solver_type
+    linsys_solver: LinsysSolverType
     max_iter: int
     polish: int
     polish_refine_iter: int

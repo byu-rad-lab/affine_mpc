@@ -25,11 +25,17 @@ classifiers = [
 ]
 keywords = ["affine mpc", "mpc", "model predictive control"]
 
+# Install these with `pip install .[dev]`
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
 
 # This lets pip know what folders should be included / ignored
 # when the package is installed.
 [tool.setuptools.packages.find]
 where = ["python"]
 
+# Copy the python bindings to pip install directory, e.g. site/dist-packages
 [tool.setuptools.package-data]
 affine_mpc_py = ["*.so"]
