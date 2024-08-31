@@ -24,7 +24,7 @@ MPCBase::MPCBase(const int num_states, const int num_inputs,
     input_limits_set_{false},
     slew_rate_set_{false},
     state_limits_set_{false},
-    initialized_{false},
+    solver_initialized_{false},
     solver_{nullptr},
     Ad_{num_states,num_states},
     Bd_{num_states,num_inputs},
@@ -65,7 +65,7 @@ MPCBase::~MPCBase()
 bool MPCBase::initializeSolver(const OSQPSettings* solver_settings)
 {
   assert(model_set_ && input_limits_set_);
-  if (initialized_)
+  if (solver_initialized_)
     return true;
 
   if (use_slew_rate_)
@@ -79,7 +79,7 @@ bool MPCBase::initializeSolver(const OSQPSettings* solver_settings)
   x_full.setOnes(); // may need something other than ones
   convertToQP(x_full);
 
-  initialized_ = solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
+  solver_initialized_ = solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
   // According to Eigen's documentation, use "placement new" syntax to update
   // solution_map_ with the new pointer to the solution vector. This does not
   // allocate new memory that needs to be deleted, it just updates the pointer.
@@ -89,7 +89,7 @@ bool MPCBase::initializeSolver(const OSQPSettings* solver_settings)
   // Eigen Map allows the solution to be accessed without copying memory.
   new (&solution_map_) Map<const VectorXd>(solver_->getSolutionPtr(),
                                            num_inputs_*num_ctrl_pts_);
-  return initialized_;
+  return solver_initialized_;
 }
 
 bool MPCBase::solve(const Ref<const VectorXd>& x0)

@@ -69,7 +69,7 @@ protected:
   const int num_states_, num_inputs_, len_horizon_, num_ctrl_pts_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
-  bool initialized_;
+  bool solver_initialized_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
   OSQPSolver* solver_;

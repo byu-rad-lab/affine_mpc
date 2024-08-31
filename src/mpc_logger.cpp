@@ -67,6 +67,7 @@ void MPCLogger::logPreviousSolve(double t0, double ts,
                                  const Eigen::Ref<const Eigen::VectorXd>& x0,
                                  double solve_time, int write_every)
 {
+  assert(mpc_->solver_initialized_);
   const static int n{mpc_->num_states_}, m{mpc_->num_inputs_};
   const static int T{mpc_->len_horizon_}, p{mpc_->num_ctrl_pts_};
 

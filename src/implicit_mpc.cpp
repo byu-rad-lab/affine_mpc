@@ -86,7 +86,7 @@ void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
     l_.segment(num_inputs_*k, num_inputs_) = u_min_;
     u_.segment(num_inputs_*k, num_inputs_) = u_max_;
   }
-  if (initialized_)
+  if (solver_initialized_)
     solver_->updateBounds(l_, u_);
 }
 
@@ -101,7 +101,7 @@ void ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
     l_.segment(x_sat_idx_+num_states_*k, num_states_) = x_min_;
     u_.segment(x_sat_idx_+num_states_*k, num_states_) = x_max_;
   }
-  if (initialized_)
+  if (solver_initialized_)
     solver_->updateBounds(l_, u_);
 }
 
@@ -116,7 +116,7 @@ void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
     l_.segment(mp+num_inputs_*i, num_inputs_) = -u_slew_;
     u_.segment(mp+num_inputs_*i, num_inputs_) = u_slew_;
   }
-  if (initialized_)
+  if (solver_initialized_)
     solver_->updateBounds(l_, u_);
 }
 
