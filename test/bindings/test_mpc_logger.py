@@ -25,3 +25,7 @@ def test_mpc_logger_interface():
     except:
         assert False
 
+
+if __name__ == "__main__":
+    test_mpc_logger_interface()
+    print("All tests passed!")

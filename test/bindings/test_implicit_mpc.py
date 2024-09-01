@@ -61,3 +61,7 @@ def test_mpc_base_interface():
 
     except:
         assert False
+
+if __name__ == "__main__":
+    test_mpc_base_interface()
+    print("All tests passed!")

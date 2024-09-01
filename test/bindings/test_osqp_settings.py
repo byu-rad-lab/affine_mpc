@@ -35,3 +35,8 @@ def test_osqp_settings_interface():
         settings.time_limit = 0 # disabled
     except:
         assert False
+
+
+if __name__ == "__main__":
+    test_osqp_settings_interface()
+    print("All tests passed!")
