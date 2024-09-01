@@ -1,7 +1,7 @@
 # affine_mpc
 
 ## Overview
-`affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use an affine model. `affine_mpc_py` is a Pybind wrapper around the `affine_mpc` library in order to provide a Python interface.
+`affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use a discrete-time affine time-invariant model. `affine_mpc_py` is a Pybind wrapper around the `affine_mpc` library in order to provide a Python interface.
 
 ## Dependencies
 Note that this project was developed using both Ubuntu 20.04 and 22.04 with the GCC
@@ -12,7 +12,7 @@ compiler (version 11).
   - Known to work with versions 3.3.7 and 3.4.0 - newer versions will likely also work
   - This is probably already installed on your system if you have ROS
   - Can install with `sudo apt install libeigen3-dev`
-  - Can install from from [source](https://gitlab.com/libeigen/eigen)
+  - Can install from [source](https://gitlab.com/libeigen/eigen)
 - [OSQP](https://osqp.org/docs/get_started/)
   - Known to work with version 0.6.2
   - This project will locally clone and build OSQP for you if you do nothing
@@ -93,47 +93,37 @@ Possible additions:
 -->
 
 ## API
-The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (fixed-size or dynamic matrices) while Python uses Numpy arrays: these types are not specified in the function declarations below to avoid being verbose.
+The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (both fixed size and dynamic size matrices work) while Python uses Numpy arrays.
 
-**Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the header files or using iPython on the Python library. Also, you can generate a stub file for the Python library with `stubgen -m affine_mpy_py -o stubs` (run at the location of the python library) if you want to use a stub file to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
+**Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the C++ header files or using iPython for some documentation of the Python bindings. A stub file for the Python bindings is included in `affine_mpc_py` to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
 
 ### Step 1: MPC Constructor
 When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the horizon length and number of control points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no usable solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
 
-#### Constructor Function Declaration
+#### C++
 
 ```cpp
 MPCBase(const int num_states, const int num_inputs,
-        const int horizon_length, const int num_knot_points,
+        const int len_horizon, const int num_control_points,
         const bool use_input_cost = false,
         const bool use_slew_rate = false,
         const bool saturate_states = false)
 ```
 
-#### Usage
-Here is an example of how to create and `ImplicitMPC` object:
-
-**C++**
-
-```cpp
-int num_states{2}, num_inputs{1}, horizon{10}, num_control_points{3};
-bool use_input_cost{true}, use_slew_rate{false}, saturate_states{true};
-ImplicitMPC mpc{num_states, num_inputs, horizon, num_control_points,
-                use_input_cost, use_slew_rate, saturate_states};
-```
-
 **Python**
 
 ```python
-mpc = ImplicitMPC(num_states=2, num_inputs=1,
-                  len_horizon=10, num_control_points=3,
-                  use_input_cost=True, saturate_states=True)
+def __init__(self, num_states: int, num_inputs: int, len_horizon: int,
+             num_control_points: int, use_input_cost: bool=False,
+             use_slew_rate: bool=False, saturate_states: bool=False)
 ```
 
 ### Step 2: MPC Pre-Initialization Setup
 _AFTER_ creating an MPC object with the format of the MPC problem you wish to use, **you must specify all of the applicable parameters (set the model, input saturation limits, slew rate, and state saturation limits) _BEFORE_ initializing the solver.** The state weights (Q) will default to identity while the input weights (R) will default to zero.
 
-**Relevant Functions**
+**Relevant Member Functions**
+
+#### C++
 
 ```cpp
 void setModelDiscrete(const MatrixXd& Ad, const MatrixXd& Bd, const VectorXd& wd);
@@ -144,22 +134,38 @@ void setSlewRate(const VectorXd& u_slew); // if slew rate enabled
 void setStateLimits(const VectorXd& x_min, const VectorXd& x_max); // if state saturation enabled
 ```
 
+#### Python
+
+```python
+def setModelDiscrete(Ad: NDArray, Bd: NDArray, wd: NDArray) -> None:
+def setModelContinuous2Discrete(Ac: NDArray, Bc: NDArray, wc: NDArray, dt: float) -> None:
+def setInputLimits(u_min: NDArray, u_max: NDArray) -> None:
+def setSlewRate(u_slew: NDArray) -> None: # if slew rate enabled
+def setStateLimits(x_min: NDArray, x_max: NDArray) -> None: # if state saturation enabled
+```
+
 The OSQP solver is a sparse solver and it will only keep track of elements that are non-zero at the time of initialization. This means that the model used with the solver is initialized must be non-zero wherever it is possible to have non-zero values (if you are going to be changing the model at each time step - do not worry about this if you only ever use 1 model). For example, if a Jacobian of my A matrix is a rotation matrix then I need to make sure all 9 of those elements of A are non-zero rather than passing in an identity matrix if the rotation matrix will be updated after the solver is initialized.
 
 **If you pass in a 0 somewhere that will not be a 0 later on in the code, the solver will not track the value and the model will not be what you expect it to be.** You might get lucky, but there is no safety check or guarantee that your code will work as expected if you are not careful when you initialize the solver.
 
 ### Step 3: Initialize OSQP Solver
-This library uses the OSQP solver for the optimization. After specifying the parameters from the previous section, the solver can be initialized. If you do not pass in `settings` then the default settings can be found in the `OSQPSolver` constructor, which modifies a couple of OSQP's default settings.
+This library uses the OSQP solver for the optimization. After specifying the parameters from the previous section, the solver can be initialized. If you do not pass in `solver_settings` then the default settings can be found in the `OSQPSolver` constructor, which modifies a couple of OSQP's default settings.
 
 **NOTE:** To learn more about the OSQP solver and its settings, visit the [OSQP website](https://osqp.org/docs/solver/index.html).
 
-**Function Declaration**
+#### C++
 
 ```cpp
-bool initializeSolver(OSQPSettings* settings = nullptr); // returns true if successful
+bool initializeSolver(OSQPSettings* solver_settings = nullptr); // returns true if successful
 ```
 
-**IMPORTANT NOTE:** The solver utilizes sparsity, meaning that the model used when the solver is initialized needs to have the least amount of sparsity possible for your system. The solver stores the structure and values of all non-zero elements when initialized and the structure can not change. This means that if it is possible for some elements of your model to be non-zero, then they need to be non-zero when the solver is initialized.
+#### Python
+
+```python
+def initializeSolver(solver_settings: OSQPSettings=None) -> bool: # returns true if successful
+```
+
+**REMINDER:** The solver utilizes sparsity, meaning that the model used when the solver is initialized needs to have the least amount of sparsity possible for your system. The solver stores the structure and values of all non-zero elements when initialized and the structure can not change. This means that if it is possible for some elements of your model to be non-zero, then they need to be non-zero when the solver is initialized.
 
 ### Step 4: Solve MPC
 
@@ -168,7 +174,9 @@ bool initializeSolver(OSQPSettings* settings = nullptr); // returns true if succ
 Once the solver is initialized, you need to specify weights and reference trajectories you wish to use:
 
 #### Relevant Functions
-**Note:** all of the following function arguents are 1D vectors.
+**Note:** all of the following function arguents are 1D vectors/arrays.
+
+#### C++
 
 ```cpp
 void setWeights(const VectorXd& Q_diag, const VectorXd& R_diag);
@@ -184,28 +192,51 @@ void setReferenceInput(const VectorXd& u_step);
 void setReferenceParameterizedInputTrajectory(const VectorXd& u_traj_ctrl_pts);
 ```
 
+#### Python
+
+```python
+def setWeights(Q_diag: NDArray, R_diag: NDArray) -> None:
+def setStateWeights(Q_diag: NDArray) -> None: # will overwrite Qf assuming Qf=Q
+def setStateWeightsTerminal(Qf_diag: NDArray) -> None: # call after setting state weights
+def setInputWeights(R_diag: NDArray) -> None:
+
+def setReferenceState(x_step: NDArray) -> None:
+def setReferenceStateTrajectory(x_traj: NDArray) -> None:
+
+# if input cost enabled
+def setReferenceInput(u_step: NDArray) -> None:
+def setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts: NDArray) -> None:
+```
+
 #### Update parameters from pre-initialization setup
 You can call any of the pre-initialization setup to update them before solving. If you want to successively linearize or affinize then you will need to update the model before each solve.
 
 ```cpp
-void setModelDiscrete(const MatrixXd& Ad, const MatrixXd& Bd, const VectorXd& wd);
-void setModelContinuous2Discrete(const MatrixXd& Ac, const MatrixXd& Bc,
-                                 const VectorXd& wc, double dt);
-void setInputLimits(const VectorXd& u_min, const VectorXd& u_max);
-void setSlewRate(const VectorXd& u_slew); // if slew rate enabled
-void setStateLimits(const VectorXd& x_min, const VectorXd& x_max); // if state saturation enabled
+setModelDiscrete(Ad, Bd, wd)
+setModelContinuous2Discrete(Ac, Bc, wc, dt)
+setInputLimits(u_min, u_max)
+setSlewRate(u_slew) // if slew rate enabled
+setStateLimits(x_min, x_max) // if state saturation enabled
 ```
 
 Now you are ready to solve!
+
+#### C++
 
 ```cpp
 bool solve(const VectorXd& x0); // returns true if successful
 ```
 
+#### Python
+
+```python
+def solve(x0: NDArray) -> bool: # returns true if successful
+```
+
 #### Get desired information from solve
 You can get the next input to apply (the first input from the prediction horizon), the parameterized input trajectory, or the entire input trajectory over the prediction horizon. You can also get the predicted state trajectory (where MPC thinks the system will go).
 
-**Function Declarations C+**
+#### C++
 
 ```cpp
 void getNextInput(VectorXd& u0);
@@ -214,14 +245,14 @@ void getParameterizedInputTrajectory(VectorXd& u_traj_ctrl_pts);
 void getPredictedStateTrajectory(VectorXd& x_traj);
 ```
 
-**Function Declarations Python**
+#### Python
 These functions allow you to call them like C++ where the return value is the function argument (avoids memory allocation and copying). They can also be called with no arguments, which will allocate memory and return the vector.
 
 ```python
-getNextInput([u0]) -> u0
-getInputTrajectory([u_traj]) -> u_traj
-getParameterizedInputTrajectory([u_traj_ctrl_pts]) -> u_traj_ctrl_pts
-getPredictedStateTrajectory([x_traj]) -> x_traj
+def getNextInput([u0]) -> u0:
+def getInputTrajectory([u_traj]) -> u_traj:
+def getParameterizedInputTrajectory([u_traj_ctrl_pts]) -> u_traj_ctrl_pts:
+def getPredictedStateTrajectory([x_traj]) -> x_traj:
 ```
 
 After solving, you can update any of the parameters before solving again (if you want to change your model, the weights, reference trajectories, etc.). Then you write a loop that will continuously pass in the current state and solve for inputs.
@@ -231,25 +262,34 @@ An `MPCLogger` class is provided to log data for time, predicted state trajector
 
 #### Constructor
 
+#### C++
 ```cpp
 MPCLogger(const MPCBase* const mpc, const std::string& save_location);
+// usage
+MPCLogger logger{&mpc, "~/data/mpc"};
+```
+
+#### Python
+```python
+def __init__(self, mpc: MPCBase, save_location: str) -> None:
+# usage
+logger = MPCLogger(mpc, "$HOME/data/mpc")
 ```
 
 To create a logger object you must pass in a pointer to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script):
 
-```cpp
-MPCLogger logger{&mpc, "~/data/mpc"};
-```
-
-```python
-logger = MPCLogger(mpc, '$HOME/data/mpc')
-```
-
 #### Log Data
 
+#### C++
 ```cpp
 void logPreviousSolve(double t, double dt, const VectorXd& x0,
                       double solve_time=-1, int write_every=1);
+```
+
+#### Python
+```python
+def logPreviousSolve(t: float, dt: float, x0: NDArray,
+                     solve_time: float=-1, write_every: int=1);
 ```
 
 Data should only be logged after calling the solve function on the MPC class the logger is tracking. To perform MPC you will likely have a loop of code that solves for an input to apply at each step. The loop can also update the desired state/input trajectory, change the weights, or update other pieces of the MPC problem, but the bare bones will look something like this:
@@ -277,8 +317,14 @@ The `write_every` variable is used to specify how frequently you wish to record 
 
 #### Write Param File
 
+#### C++
 ```cpp
 void writeParamFile(const std::string& filename="params.yaml");
+```
+
+#### Python
+```python
+def writeParamFile(filename: str="params.yaml") -> None:
 ```
 
 This function is used to write all of the parameters of the MPC problem setup to a file within the `save_location` directory. This way when you go looking back through multiple folders of data you can remember what params you used to generate plots (hopefully!). This function can be called as many times as you want, but you must specify a different file name if you want to keep multiple param files (using the same name will override the existing file). Perhaps this can be useful if you are tuning gains and want to know what they were at different points in time.
@@ -337,11 +383,11 @@ int main()
   Eigen::Matrix<double,m,1> uk;
   bool solved;
   double tf{5};
-  while (double t{0}; t < tf; t += ts)
+  for (double t{0}; t < tf; t += ts)
   {
     solved = msd_mpc.solve(xk);
     if (!solved)
-      std::cout << "Did not solve :(" << endl;
+      std::cout << "Did not solve :(" << std::endl;
     msd_mpc.getNextInput(uk);
     logger.logPreviousSolve(t, ts, xk);
     msd_mpc.propagateModel(xk, uk, xk);
@@ -358,49 +404,53 @@ import numpy as np
 import affine_mpc_py as ampc
 
 
-msd_mpc = ampc.ImplicitMPC(num_states=2, num_inputs=1,
-                           horizon_length=10, num_knot_points=3,
-                           use_input_cost=True, use_slew_rate=True)
+def main():
+    msd_mpc = ampc.ImplicitMPC(num_states=2, num_inputs=1,
+                               len_horizon=10, num_control_points=3,
+                               use_input_cost=True, use_slew_rate=True)
 
-logger = ampc.MPCLogger(msd_mpc, "~/tmp/mpc_data")
+    logger = ampc.MPCLogger(msd_mpc, "~/tmp/mpc_data")
 
-A = np.array([[0,1], [-0.6,-0.1]])
-B = np.array([0,0.2])
-w = np.zeros(2)
-ts = 0.1
-msd_mpc.setModelContinuous2Discrete(A, B, w, ts)
+    A = np.array([[0,1], [-0.6,-0.1]])
+    B = np.array([0,0.2])
+    w = np.zeros(2)
+    ts = 0.1
+    msd_mpc.setModelContinuous2Discrete(A, B, w, ts)
 
-u_min = np.zeros(1)
-u_max = np.ones(1) * 3
-msd_mpc.setInputLimits(u_min, u_max)
+    u_min = np.zeros(1)
+    u_max = np.ones(1) * 3
+    msd_mpc.setInputLimits(u_min, u_max)
 
-slew = np.ones(1)
-msd_mpc.setSlewRate(slew)
+    slew = np.ones(1)
+    msd_mpc.setSlewRate(slew)
 
-Q_diag = np.array([1,0.11])
-R_diag = np.array([.0001])
-msd_mpc.setWeights(Q_diag, R_diag)
+    Q_diag = np.array([1,0.11])
+    R_diag = np.array([.0001])
+    msd_mpc.setWeights(Q_diag, R_diag)
 
-x_goal = np.array([1.0,0])
-u_goal = np.array([.0001])
-msd_mpc.setReferenceState(x_goal)
-msd_mpc.setReferenceInput(u_goal)
+    x_goal = np.array([1.0,0])
+    u_goal = np.array([.0001])
+    msd_mpc.setReferenceState(x_goal)
+    msd_mpc.setReferenceInput(u_goal)
 
-msd_mpc.initializeSolver()
+    msd_mpc.initializeSolver()
 
-xk = np.zeros(2)
-t = 0.0
-tf = 5.0
-while t < tf:
-  solved = msd_mpc.solve(xk)
-  if not solved:
-    print('Did not solve :(')
-  uk = msd_mpc.calcNextInput()
-  logger.logPreviousSolve(t, ts, xk)
-  xk = msd_mpc.propagateModel(xk, uk)
-  t += ts
+    xk = np.zeros(2)
+    t = 0.0
+    tf = 5.0
+    while t < tf:
+        solved = msd_mpc.solve(xk)
+        if not solved:
+            print('Did not solve :(')
+        uk = msd_mpc.getNextInput()
+        logger.logPreviousSolve(t, ts, xk)
+        xk = msd_mpc.propagateModel(xk, uk)
+        t += ts
 
-logger.writeParamFile()
+    logger.writeParamFile()
+
+if __name__ == '__main__':
+    main()
 ```
 
 ## Testing
