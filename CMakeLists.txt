@@ -3,13 +3,15 @@ project(affine_mpc)
 
 # custom options
 option(BUILD_TESTS "Set to ON if you want to build the unit tests")
-option(BUILD_PYTHON "Set to ON if you want to build the Python bindings")
+option(BUILD_BINDINGS "Set to ON if you want to build the Python bindings")
+option(BUILD_EXAMPLE "Set to ON if you want to build the C++ example")
 set(PYBIND11_VERSION "2.9.2" CACHE STRING "Set desired version of Pybind11")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # print custom options
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "BUILD_PYTHON: ${BUILD_PYTHON}")
+message(STATUS "BUILD_BINDINGS: ${BUILD_BINDINGS}")
+message(STATUS "BUILD_EXAMPLE: ${BUILD_EXAMPLE}")
 
 # cmake-gui (ccmake) setup
 set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING "Build configurations" FORCE)
@@ -18,6 +20,7 @@ if (NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
       "Possible types are: ${CMAKE_CONFIGURATION_TYPES}")
 endif ()
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES})
+message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
 find_package(Eigen3 3.3.7 REQUIRED)
@@ -39,6 +42,12 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17) # build error without this when building affine_mpc_py
 
+# C++ Example
+if (BUILD_EXAMPLE)
+  add_executable(example_sim examples/sim.cpp)
+  target_link_libraries(example_sim PRIVATE ${PROJECT_NAME})
+endif (BUILD_EXAMPLE)
+
 # C++ library tests
 if (BUILD_TESTS)
   enable_testing()
@@ -59,7 +68,7 @@ if (BUILD_TESTS)
 endif (BUILD_TESTS)
 
 # Python bindings for C++ library
-if (BUILD_PYTHON)
+if (BUILD_BINDINGS)
   include(cmake/extern_pybind11.cmake)
   pybind11_add_module(_bindings MODULE
     python/bindings/affine_mpc_py_module.cpp
@@ -83,4 +92,4 @@ if (BUILD_PYTHON)
     # Add test for use with `ctest`
     add_test(NAME test_bindings COMMAND pytest WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   endif (BUILD_TESTS)
-endif (BUILD_PYTHON)
+endif (BUILD_BINDINGS)

@@ -3,6 +3,9 @@
 ## Overview
 `affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use a discrete-time affine time-invariant model. `affine_mpc_py` is a Pybind wrapper around the `affine_mpc` library in order to provide a Python interface.
 
+## License
+This work is licensed with the BSD 3-clause license, see `LICENSE` file for details.
+
 ## Dependencies
 Note that this project was developed using both Ubuntu 20.04 and 22.04 with the GCC
 compiler (version 11).
@@ -33,19 +36,23 @@ compiler (version 11).
   - Can install with 'pip install numpy'
 
 ## Building the Library
-This library is designed to be built using CMake. There are 2 flags available to specify whether you would like to build the unit tests (`BUILD_TESTS`) and the `affine_mpc_py` library (`BUILD_PYTHON`). Additionally, you can set `-DPYBIND11_VER=2.4.3` to use the apt installed version of Pybind11 (on Ubuntu 20.04). For example:
+This library is designed to be built using CMake. There are 3 flags available:
+- `BUILD_BINDINGS` (specify whether to build Python bindings for the `affine_mpc_py` package)
+- `BUILD_EXAMPLE` (specify whether to build C++ example)
+- `BUILD_TESTS` (specify whether to build)
+
+Additionally, you can set `-DPYBIND11_VER=2.4.3` to use the apt installed version of Pybind11 (on Ubuntu 20.04). For example:
 
 ```shell
 mkdir build && cd build
-cmake -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON ..
+cmake -DBUILD_TESTS=OFF -DBUILD_BINDINGS=ON ..
 make
 ```
 
-**NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode (`-DCMAKE_BUILD_TYPE=Debug`) while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can
-build in `RELEASE` mode to gain some extra speed.
+**NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode (`-DCMAKE_BUILD_TYPE=Debug`) while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can build in `RELEASE` mode to gain some extra speed.
 
 #### Python Bindings
-If you specified `-DBUILD_PYTHON=ON`, then the python bindings were built and placed into the `python/affine_mpc_py` package, which can be installed locally with pip:
+If you specified `-DBUILD_BINDINGS=ON`, then the python bindings were built and placed into the `python/affine_mpc_py` package, which can be installed locally with pip (run in top-level directory of repository):
 
 ```shell
 pip install .
@@ -91,6 +98,9 @@ Possible additions:
   - State saturation cost?
   - Arbitrary constraint matrix addition
 -->
+
+## Examples
+A C++ example (`example_sim` target built with `-DBUILD_EXAMPLE=ON`) and a Python example are both available in the `examples` folder. There is also a `plot_sim.py` script, which can be used to visualize the results from either the C++ or Python example; both examples are the same just in different languages.
 
 ## API
 The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (both fixed size and dynamic size matrices work) while Python uses Numpy arrays.
@@ -331,144 +341,30 @@ This function is used to write all of the parameters of the MPC problem setup to
 
 Also, the `MPCLogger` destructor is set to write a param file with the default name if you never call the function yourself. **NOTE: Python does not seem to call destructors in the correct order, so to avoid a runtime error after your script is finished you MUST have called this function manually at some point or else call `del logger` at the end of the script.** C++ does not have any issues with this.
 
-## Examples
-Here are examples of a mass-spring-damper system in both C++ and Python.
-
-### C++
-
-```cpp
-#include <Eigen/Core>
-#include <iostream>
-
-#include "affine_mpc/implicit_mpc.hpp"
-#include "affine_mpc/mpc_logger.hpp"
-
-namespace ampc = affine_mpc;
-
-
-int main()
-{
-  const int n{2},m{1},T{10},p{10};
-  const bool use_input_cost{true}, use_slew_rate{true};
-  ampc::ImplicitMPC msd_mpc{n,m,T,p,use_input_cost,use_slew_rate};
-
-  ampc::MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
-
-  Eigen::Matrix2d A;
-  Eigen::Vector2d B, w;
-  A << 0,1, -0.6,-0.1;
-  B << 0, 0.2;
-  w.setZero();
-  double ts{0.1};
-  msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
-
-  Eigen::Matrix<double,m,1> u_min{0}, u_max{3}, slew{1};
-  msd_mpc.setInputLimits(u_min, u_max);
-  msd_mpc.setSlewRate(slew);
-
-  Eigen::Matrix<double,n,1> Q_diag{1,0.11};
-  Eigen::Matrix<double,m,1> R_diag{.0001};
-  msd_mpc.setWeights(Q_diag, R_diag);
-
-  Eigen::Vector2d x_goal{1,0};
-  Eigen::Matrix<double,m,1> u_goal{.0001};
-  msd_mpc.setReferenceState(x_goal);
-  msd_mpc.setReferenceInput(u_goal);
-
-  msd_mpc.initializeSolver();
-
-  Eigen::Vector2d xk;
-  xk.setZero();
-
-  Eigen::Matrix<double,m,1> uk;
-  bool solved;
-  double tf{5};
-  for (double t{0}; t < tf; t += ts)
-  {
-    solved = msd_mpc.solve(xk);
-    if (!solved)
-      std::cout << "Did not solve :(" << std::endl;
-    msd_mpc.getNextInput(uk);
-    logger.logPreviousSolve(t, ts, xk);
-    msd_mpc.propagateModel(xk, uk, xk);
-  }
-
-  return 0;
-}
-```
-
-### Python
-
-```python
-import numpy as np
-import affine_mpc_py as ampc
-
-
-def main():
-    msd_mpc = ampc.ImplicitMPC(num_states=2, num_inputs=1,
-                               len_horizon=10, num_control_points=3,
-                               use_input_cost=True, use_slew_rate=True)
-
-    logger = ampc.MPCLogger(msd_mpc, "~/tmp/mpc_data")
-
-    A = np.array([[0,1], [-0.6,-0.1]])
-    B = np.array([0,0.2])
-    w = np.zeros(2)
-    ts = 0.1
-    msd_mpc.setModelContinuous2Discrete(A, B, w, ts)
-
-    u_min = np.zeros(1)
-    u_max = np.ones(1) * 3
-    msd_mpc.setInputLimits(u_min, u_max)
-
-    slew = np.ones(1)
-    msd_mpc.setSlewRate(slew)
-
-    Q_diag = np.array([1,0.11])
-    R_diag = np.array([.0001])
-    msd_mpc.setWeights(Q_diag, R_diag)
-
-    x_goal = np.array([1.0,0])
-    u_goal = np.array([.0001])
-    msd_mpc.setReferenceState(x_goal)
-    msd_mpc.setReferenceInput(u_goal)
-
-    msd_mpc.initializeSolver()
-
-    xk = np.zeros(2)
-    t = 0.0
-    tf = 5.0
-    while t < tf:
-        solved = msd_mpc.solve(xk)
-        if not solved:
-            print('Did not solve :(')
-        uk = msd_mpc.getNextInput()
-        logger.logPreviousSolve(t, ts, xk)
-        xk = msd_mpc.propagateModel(xk, uk)
-        t += ts
-
-    logger.writeParamFile()
-
-if __name__ == '__main__':
-    main()
-```
-
 ## Testing
+**Note:** The following commands are all written to be run inside of the top-level directory of the repository (assuming code is built in `build`).
 
-To test only the C++ library (run inside of build directory):
-
+#### Test C++ library only
 ```shell
-./affine_mpc_UnitTests
+./build/affine_mpc_UnitTests
 ```
 
-To test only the Python bindings (run inside of main repository - requires `pytest`):
+#### Test Python bindings only
+With `pytest`:
 
 ```shell
 pytest
 ```
 
-To test both the C++ library and its Python bindings (run inside of build directory):
+Without `pytest`:
+
+```
+python3 test/bindings/<testfile>.py
+```
+
+#### Test both the C++ library and its Python bindings
 
 ```shell
-ctest
+ctest --test-dir build
 ```
+(if `BUILD_BINDINGS=OFF` then this will only run C++ tests):
