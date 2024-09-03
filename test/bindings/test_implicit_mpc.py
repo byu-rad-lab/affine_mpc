@@ -3,7 +3,7 @@ import numpy as np
 import affine_mpc_py as ampc
 
 
-def test_mpc_base_interface():
+def test_implicit_mpc_interface():
     try:
         n,m,T,p = 2,1,10,5
         mpc = ampc.ImplicitMPC(num_states=n, num_inputs=m,
@@ -28,7 +28,7 @@ def test_mpc_base_interface():
         mpc.setReferenceState(x_step=np.ones(n))
         mpc.setReferenceInput(u_step=np.ones(m))
         mpc.setReferenceStateTrajectory(x_traj=np.ones(T*n))
-        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(p))
+        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(m*p))
 
         mpc.initializeSolver(solver_settings=None)
 
@@ -63,5 +63,5 @@ def test_mpc_base_interface():
         assert False
 
 if __name__ == "__main__":
-    test_mpc_base_interface()
+    test_implicit_mpc_interface()
     print("All tests passed!")

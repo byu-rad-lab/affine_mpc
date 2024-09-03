@@ -90,8 +90,8 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P, const Eigen::Re
 
 bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 {
-  assert(P.rows() == n_ && P.cols() == n_);
   if (!workspace_initialized_) return false;
+  assert(P.rows() == n_ && P.cols() == n_);
 
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col)
@@ -110,9 +110,9 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 
 bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 {
+  if (!workspace_initialized_) return false;
   assert(A.rows() == m_ && A.cols() == n_);
   assert(A.count() <= A_nnz_ && "A cannot change structure once initialized");
-  if (!workspace_initialized_) return false;
 
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col)
