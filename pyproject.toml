@@ -4,24 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "affine_mpc_py"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
     "numpy",
     "matplotlib",
 ]
 authors = [
-    {name="Mathew Haskell", email="mathew.haskell@byu.edu"}
-]
-maintainers = [
-    {name="Mathew Haskell" },
+    {name="Mathew Haskell", email="mhaskell9@gmail.com"}
 ]
 description="Python bindings for the affine_mpc library"
 readme="README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
+    "Private :: Do Not Upload",
 ]
 keywords = ["affine mpc", "mpc", "model predictive control"]
 
