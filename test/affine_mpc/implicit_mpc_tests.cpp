@@ -57,6 +57,7 @@ TEST(ImplicitMPCProtectedTester, givenModel_FormsSandVcorrectly)
 {
   const int n{2},m{1},T{5},p{3};
   ImplicitMPCProtectedTester msd_mpc{n,m,T,p};
+  msd_mpc.setModel();
 
   Eigen::Vector2d x0{0, 0.1};
   msd_mpc.findSAndV(x0);
@@ -89,6 +90,7 @@ TEST(ImplicitMPCProtectedTester, givenModel_FormsPandQcorrectly)
   const int n{2},m{1},T{5},p{3};
   const bool use_input_cost{true};
   ImplicitMPCProtectedTester msd_mpc{n,m,T,p,use_input_cost};
+  msd_mpc.setModel();
 
   Eigen::Matrix<double,n,1> Q{1,1};
   Eigen::Matrix<double,m,1> R{1}, u_goal{1};

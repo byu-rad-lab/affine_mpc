@@ -3,7 +3,6 @@
 #include <pybind11/pybind11.h>
 
 namespace affine_mpc {
-namespace py = pybind11;
 
 PYBIND11_MODULE(_bindings, m)
 {
@@ -12,6 +11,7 @@ PYBIND11_MODULE(_bindings, m)
   moduleAddOsqpSettings(m);
   moduleAddMPCBase(m);
   moduleAddImplicitMPC(m);
+  moduleAddBSplineMPC(m);
   moduleAddMpcLogger(m);
 }
 

@@ -14,12 +14,14 @@ message(STATUS "BUILD_BINDINGS: ${BUILD_BINDINGS}")
 message(STATUS "BUILD_EXAMPLE: ${BUILD_EXAMPLE}")
 
 # cmake-gui (ccmake) setup
-set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING "Build configurations" FORCE)
-if (NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
+set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING
+    "Build configurations" FORCE)
+if(NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
   set(CMAKE_BUILD_TYPE None CACHE STRING
       "Possible types are: ${CMAKE_CONFIGURATION_TYPES}")
-endif ()
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES})
+endif()
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
+  STRINGS ${CMAKE_CONFIGURATION_TYPES})
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
@@ -33,6 +35,7 @@ add_library(${PROJECT_NAME} STATIC
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
+  src/bspline_mpc.cpp
   src/mpc_logger.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC include)
@@ -40,16 +43,17 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   Eigen3::Eigen
   osqp::osqp
 )
-target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17) # build error without this when building affine_mpc_py
+# build error without these compile options when building affine_mpc_py
+target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17)
 
 # C++ Example
-if (BUILD_EXAMPLE)
+if(BUILD_EXAMPLE)
   add_executable(example_sim examples/sim.cpp)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME})
-endif (BUILD_EXAMPLE)
+endif()
 
 # C++ library tests
-if (BUILD_TESTS)
+if(BUILD_TESTS)
   enable_testing()
   find_package(GTest REQUIRED)
   message(STATUS "GTest version: ${GTest_VERSION}")
@@ -57,6 +61,7 @@ if (BUILD_TESTS)
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/implicit_mpc_tests.cpp
+    test/affine_mpc/bspline_mpc_tests.cpp
   )
   target_link_libraries(${PROJECT_NAME}_UnitTests
     gtest
@@ -65,15 +70,28 @@ if (BUILD_TESTS)
     ${PROJECT_NAME}
   )
   add_test(NAME ${PROJECT_NAME}_UnitTests COMMAND ${PROJECT_NAME}_UnitTests)
-endif (BUILD_TESTS)
+  file(GLOB TEST_SOURCES "test/affine_mpc/*.cpp")
+  foreach(TEST_SRC ${TEST_SOURCES})
+    get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
+    add_executable(${TEST_NAME} ${TEST_SRC})
+    target_link_libraries(${TEST_NAME}
+      gtest
+      gtest_main
+      pthread
+      ${PROJECT_NAME}
+    )
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+  endforeach()
+endif()
 
 # Python bindings for C++ library
-if (BUILD_BINDINGS)
+if(BUILD_BINDINGS)
   include(cmake/extern_pybind11.cmake)
   pybind11_add_module(_bindings MODULE
     python/bindings/affine_mpc_py_module.cpp
     python/bindings/py_mpc_base.cpp
     python/bindings/py_implicit_mpc.cpp
+    python/bindings/py_bspline_mpc.cpp
     python/bindings/py_mpc_logger.cpp
     python/bindings/py_osqp_settings.cpp
   )
@@ -81,15 +99,27 @@ if (BUILD_BINDINGS)
   set_target_properties(_bindings PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/python/affine_mpc_py
   )
+  add_custom_command(TARGET _bindings POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Running post-build script for _bindings..."
+    COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/python/custom_stubgen.py ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/stubs/affine_mpc_py/_bindings.pyi ${CMAKE_CURRENT_SOURCE_DIR}/python/affine_mpc_py/.
+    # COMMAND mv ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py/_bindings.pyi ${CMAKE_CURRENT_SOURCE_DIR}/python/affine_mpc_py/_bindings.pyi
+    # COMMAND rm ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py/__init__.pyi
+    # COMMAND rmdir ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py
+    # COMMAND rmdir ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs
+    COMMAND ${CMAKE_COMMAND} -E echo "Post-build script complete."
+  )
 
   # Only build python tests if we are building the python bindings
-  if (BUILD_TESTS)
+  if(BUILD_TESTS)
     # Add target for use with `cmake --build . --target test_bindings`
     add_custom_target(test_bindings
       COMMAND pytest
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
     # Add test for use with `ctest`
-    add_test(NAME test_bindings COMMAND pytest WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  endif (BUILD_TESTS)
-endif (BUILD_BINDINGS)
+    add_test(NAME test_bindings
+      COMMAND pytest
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  endif()
+endif()

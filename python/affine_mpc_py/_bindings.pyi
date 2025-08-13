@@ -1,328 +1,425 @@
-import flags
-import numpy
-from numpy.typing import NDArray
-# from numpy.typing import flags
-from typing import ClassVar, overload
+"""
+Affine MPC module
+"""
 
+import numpy as np
+from numpy.typing import NDArray
+import typing
+
+__all__ = ["BSplineMPC", "ImplicitMPC", "MPCBase", "MPCLogger", "OSQPSettings"]
+
+class BSplineMPC(MPCBase):
+    """
+    BSpline MPC class
+    """
+
+    def __init__(
+        self,
+        num_states: int,
+        num_inputs: int,
+        len_horizon: int,
+        num_control_points: int,
+        spline_degree: int,
+        knots: NDArray[np.float64] = ...,
+        use_input_cost: bool = False,
+        use_slew_rate: bool = False,
+        saturate_states: bool = False,
+    ) -> None:
+        """
+        Constructor.
+
+        Args:
+            num_states (int): Number of states in the system.
+            num_inputs (int): Number of inputs in the system.
+            len_horizon (int): Length of the prediction horizon.
+            num_control_points (int): Number of control points used to parameterize
+                the input trajectory.
+            spline_degree (int): Degree of the polynomial segments of the input
+                trajectory spline.
+            knots (NDArray[np.float64]): Spline's knot point vector. Size must be equal
+                to num_control_points - spline_degree + 1. Must be non-decreasing.
+                If empty, uniform knots will be used.
+            use_input_cost (bool): Whether to use the input cost. (uk.T @ R @ uk)
+            use_slew_rate (bool): Whether to use a slew rate constraint.
+                (|ctrl_next - ctrl_prev| <= slew)
+            saturate_states (bool): Whether to saturate states. (x_min <= x_k <= x_max)
+        """
+
+    @typing.overload
+    def getInputTrajectory(self, u_traj: NDArray[np.float64]) -> NDArray[np.float64]:
+        """
+        Get optimal trajectory of inputs from previous solve evaluated at each step in the prediction horizon.
+
+        Args:
+            u_traj (NDArray[numpy.float64]): Array in which to store the trajectory (same memory as output).
+        Return:
+            u_traj (NDArray[numpy.float64]): Optimized input trajectory (same memory as function argument)
+        """
+
+    @typing.overload
+    def getInputTrajectory(self) -> NDArray[np.float64]:
+        """
+        Get optimal trajectory of inputs from previous solve evaluated at each step in the prediction horizon.
+
+        Return:
+            u_traj (NDArray[numpy.float64]): Optimized input trajectory (same memory as function argument)
+        """
+
+    @typing.overload
+    def getPredictedStateTrajectory(
+        self, x_traj: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        """
+        Get predicted state trajectory from previous solve
+        """
+
+    @typing.overload
+    def getPredictedStateTrajectory(self) -> NDArray[np.float64]:
+        """
+        Get predicted state trajectory from previous solve
+        """
+
+    def setInputLimits(
+        self, u_min: NDArray[np.float64], u_max: NDArray[np.float64]
+    ) -> None:
+        """
+        Set input saturation limits
+        """
+
+    def setSlewRate(self, u_slew: NDArray[np.float64]) -> None:
+        """
+        Set slew rate constraint limits
+        """
+
+    def setStateLimits(
+        self, x_min: NDArray[np.float64], x_max: NDArray[np.float64]
+    ) -> None:
+        """
+        Set state saturation limits
+        """
 
 class ImplicitMPC(MPCBase):
-    def __init__(self, num_states: int, num_inputs: int, len_horizon: int,
-                 num_control_points: int, use_input_cost: bool=False,
-                 use_slew_rate: bool=False, saturate_states: bool=False) -> None:
-        """
-        :param num_states: Number of states in the system.
-        :param num_inputs: Number of inputs in the system.
-        :param len_horizon: Length of the prediction horizon.
-        :param num_control_points: Number of control points used to parameterize the input trajectory.
-        :param use_input_cost: Whether to penalize the input in the cost function with u.T @ R @ u.
-        :param use_slew_rate: Whether to penalize the slew rate in the cost function.
-        :param saturate_states: Whether to saturate the states.
-        """
-    @overload
-    def getInputTrajectory(self, u_traj: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
-        """
-        Get the optimized input trajectory: [u_0, ..., u_{T-1}].
+    """
+    Implicit MPC class
+    """
 
-        :param (m*T,) u_traj: Variable to store the optimized input trajectory.
-        :return u_traj: (m*T,) The optimized input trajectory.
+    def __init__(
+        self,
+        num_states: int,
+        num_inputs: int,
+        len_horizon: int,
+        num_control_points: int,
+        use_input_cost: bool = False,
+        use_slew_rate: bool = False,
+        saturate_states: bool = False,
+    ) -> None:
         """
-    @overload
-    def getInputTrajectory(self) -> NDArray[numpy.float64]:
-        """
-        Get the optimized input trajectory: [u_0, ..., u_{T-1}].
-
-        :return u_traj: (m*T,) The optimized input trajectory.
-        """
-    @overload
-    def getPredictedStateTrajectory(self, x_traj: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
-        """
-        Get the predicted state trajectory: [x_1, ..., x_T].
-
-        :param (n*T,) x_traj: Variable to store the predicted state trajectory.
-        :return x_traj: (n*T,) The predicted state trajectory.
-        """
-    @overload
-    def getPredictedStateTrajectory(self) -> NDArray[numpy.float64]:
-        """
-        Get the predicted state trajectory: [x_1, ..., x_T].
-
-        :return x_traj: (n*T,) The predicted state trajectory.
-        """
-    def setInputLimits(self, u_min: NDArray[numpy.float64], u_max: NDArray[numpy.float64]) -> None:
-        """
-        Set the input limits: u_min <= u <= u_max.
-
-        :param (m,) u_min: The minimum input values.
-        :param (m,) u_max: The maximum input values.
-        """
-    def setSlewRate(self, u_slew: NDArray[numpy.float64]) -> None:
-        """
-        Set the slew rate: |u_k - u_{k-1}| <= u_slew. Can only call this function if use_slew_rate=True when constructed.
-
-        :param (m,) u_slew: The slew rate.
-        """
-    def setStateLimits(self, x_min: NDArray[numpy.float64], x_max: NDArray[numpy.float64]) -> None:
-        """
-        Set the state limits: x_min <= x <= x_max. Can only call this function if saturate_states=True when constructed.
-
-        :param (n,) x_min: The minimum state values.
-        :param (n,) x_max: The maximum state values.
+        Constructor
         """
 
+    @typing.overload
+    def getInputTrajectory(self, u_traj: NDArray[np.float64]) -> NDArray[np.float64]:
+        """
+        Get optimal trajectory of inputs from previous solve
+        """
+
+    @typing.overload
+    def getInputTrajectory(self) -> NDArray[np.float64]:
+        """
+        Get optimal trajectory of inputs from previous solve
+        """
+
+    @typing.overload
+    def getPredictedStateTrajectory(
+        self, x_traj: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        """
+        Get predicted state trajectory from previous solve
+        """
+
+    @typing.overload
+    def getPredictedStateTrajectory(self) -> NDArray[np.float64]:
+        """
+        Get predicted state trajectory from previous solve
+        """
+
+    def setInputLimits(
+        self, u_min: NDArray[np.float64], u_max: NDArray[np.float64]
+    ) -> None:
+        """
+        Set input saturation limits
+        """
+
+    def setSlewRate(self, u_slew: NDArray[np.float64]) -> None:
+        """
+        Set slew rate constraint limits
+        """
+
+    def setStateLimits(
+        self, x_min: NDArray[np.float64], x_max: NDArray[np.float64]
+    ) -> None:
+        """
+        Set state saturation limits
+        """
 
 class MPCBase:
-    def __init__(self, num_states: int, num_inputs: int, len_horizon: int, num_control_points: int, use_input_cost: bool=False, use_slew_rate: bool=False, saturate_states: bool=False) -> None:
-        """
-        :param num_states: Number of states in the system.
-        :param num_inputs: Number of inputs in the system.
-        :param len_horizon: Length of the prediction horizon.
-        :param num_control_points: Number of control points used to parameterize the input trajectory.
-        :param use_input_cost: Whether to penalize the input in the cost function with u.T @ R @ u.
-        :param use_slew_rate: Whether to penalize the slew rate in the cost function.
-        :param saturate_states: Whether to saturate the states.
-        """
-    @overload
-    def getInputTrajectory(self, u_traj: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
-        """
-        Get the optimized input trajectory: [u_0, ..., u_{T-1}].
+    """
+    Not usable in Python!
+    """
 
-        :param (m*T,) u_traj: Variable to store the optimized input trajectory.
-        :return u_traj: (m*T,) The optimized input trajectory.
+    def __init__(
+        self,
+        num_states: int,
+        num_inputs: int,
+        len_horizon: int,
+        num_control_points: int,
+        degree: int,
+        knots: NDArray[np.float64] = ...,
+        use_input_cost: bool = False,
+        use_slew_rate: bool = False,
+        saturate_states: bool = False,
+    ) -> None:
         """
-    @overload
-    def getInputTrajectory(self) -> NDArray[numpy.float64]:
+        Constructor
         """
-        Get the optimized input trajectory: [u_0, ..., u_{T-1}].
 
-        :return u_traj: (m*T,) The optimized input trajectory.
+    @typing.overload
+    def getInputTrajectory(self, u_traj: NDArray[np.float64]) -> NDArray[np.float64]:
         """
-    @overload
-    def getNextInput(self, u0: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+        Get optimal trajectory of inputs from previous solve
         """
-        Get the next input to apply to the system, which is the first input from the optimized input trajectory.
 
-        :param (m,) u0: Variable to store the optimal next input.
-        :return u0: (m,) The optimal next input.
+    @typing.overload
+    def getInputTrajectory(self) -> NDArray[np.float64]:
         """
-    @overload
-    def getNextInput(self) -> NDArray[numpy.float64]:
+        Get optimal trajectory of inputs from previous solve
         """
-        Get the next input to apply to the system, which is the first input from the optimized input trajectory.
 
-        :return u0: (m,) The optimal next input.
+    @typing.overload
+    def getNextInput(self, u0: NDArray[np.float64]) -> NDArray[np.float64]:
         """
-    @overload
-    def getParameterizedInputTrajectory(self, u_traj_ctrl_pts: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+        Get next input to apply, i.e. first input in horizon from previous solve
         """
-        Get the control points of the optimal parameterized input trajectory: [v_0, ..., v_{p-1}].
 
-        :param (m*p,) u_traj_ctrl_pts: Variable to store the optimal parameterized input trajectory.
-        :return u_traj_ctrl_pts: (m*p,) The optimal parameterized input trajectory.
+    @typing.overload
+    def getNextInput(self) -> NDArray[np.float64]:
         """
-    @overload
-    def getParameterizedInputTrajectory(self) -> NDArray[numpy.float64]:
+        Get next input to apply, i.e. first input in horizon from previous solve
         """
-        Get the control points of the optimal parameterized input trajectory: [v_0, ..., v_{p-1}].
 
-        :return u_traj_ctrl_pts: (m*p,) The optimal parameterized input trajectory.
+    @typing.overload
+    def getParameterizedInputTrajectory(
+        self, u_traj_ctrl_pts: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
         """
-    @overload
-    def getPredictedStateTrajectory(self, x_traj: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+        Get optimal parameterized trajectory of inputs from previous solve
         """
-        Get the predicted state trajectory: [x_1, ..., x_T].
 
-        :param (n*T,) x_traj: Variable to store the predicted state trajectory.
-        :return x_traj: (n*T,) The predicted state trajectory.
+    @typing.overload
+    def getParameterizedInputTrajectory(self) -> NDArray[np.float64]:
         """
-    @overload
-    def getPredictedStateTrajectory(self) -> NDArray[numpy.float64]:
+        Get optimal parameterized trajectory of inputs from previous solve
         """
-        Get the predicted state trajectory: [x_1, ..., x_T].
 
-        :return x_traj: (n*T,) The predicted state trajectory.
+    @typing.overload
+    def getPredictedStateTrajectory(
+        self, x_traj: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
         """
-    def initializeSolver(self, solver_settings: OSQPSettings=None) -> bool:
+        Get predicted state trajectory from previous solve
         """
-        Initialize the MPC solver with the given (or default) OSQP settings.
 
-        :param OSQPSettings solver_settings: The solver settings.
-        :return: Whether the solver was initialized successfully.
+    @typing.overload
+    def getPredictedStateTrajectory(self) -> NDArray[np.float64]:
         """
-    @overload
-    def propagateModel(self, x: NDArray[numpy.float64], u: NDArray[numpy.float64], x_next: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+        Get predicted state trajectory from previous solve
         """
-        Propagate the MPC model forward one time step.
 
-        :param (n,) x: The current state.
-        :param (m,) u: The input to apply over the time step.
-        :param (n,) x_next: Variable to store the next state.
-        :return x_next: (n,) The next state.
+    def initializeSolver(self, solver_settings: OSQPSettings | None = None) -> bool:
         """
-    @overload
-    def propagateModel(self, x: NDArray[numpy.float64], u: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+        Initialize OSQP solver after configuring MPC setup
         """
-        Propagate the MPC model forward one time step.
 
-        :param (n,) x: The current state.
-        :param (m,) u: The input to apply over the time step.
-        :return x_next: (n,) The next state.
+    @typing.overload
+    def propagateModel(
+        self,
+        x: NDArray[np.float64],
+        u: NDArray[np.float64],
+        x_next: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
         """
-    def setInputLimits(self, u_min: NDArray[numpy.float64], u_max: NDArray[numpy.float64]) -> None:
+        Simulate internal model propagation step
         """
-        Set the input limits: u_min <= u <= u_max.
 
-        :param (m,) u_min: The minimum input values.
-        :param (m,) u_max: The maximum input values.
+    @typing.overload
+    def propagateModel(
+        self, x: NDArray[np.float64], u: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
         """
-    def setInputWeights(self, R_diag: NDArray[numpy.float64]) -> None:
+        Simulate internal model propagation step
         """
-        Set the input weights R, a diagonal matrix.
 
-        :param (m,) R_diag: The input weights.
+    def setInputLimits(
+        self, u_min: NDArray[np.float64], u_max: NDArray[np.float64]
+    ) -> None:
         """
-    def setModelContinuous2Discrete(self, Ac: NDArray[numpy.float64], Bc: NDArray[numpy.float64], wc: NDArray[numpy.float64], dt: float, tol: float = ...) -> None:
+        Set input saturation limits
         """
-        Set the MPC model by discretizing the provided continuous-time model.
 
-        :param (n,n) Ac: The continuous-time state matrix.
-        :param (n,m) Bc: The continuous-time input matrix.
-        :param (n,) wc: The continuous-time disturbance.
-        :param float dt: The time step.
-        :param float tol: The tolerance for discretization.
+    def setInputWeights(self, R_diag: NDArray[np.float64]) -> None:
         """
-    def setModelDiscrete(self, Ad: NDArray[numpy.float64], Bd: NDArray[numpy.float64], wd: NDArray[numpy.float64]) -> None:
+        Set state and input weights
         """
-        Set the MPC model directly with the provided discrete-time model.
 
-        :param (n,n) Ad: The discrete-time state matrix.
-        :param (n,m) Bd: The discrete-time input matrix.
-        :param (n,) wd: The discrete-time disturbance.
+    def setModelContinuous2Discrete(
+        self,
+        Ac: NDArray[np.float64],
+        Bc: NDArray[np.float64],
+        wc: NDArray[np.float64],
+        dt: float,
+        tol: float = 1e-06,
+    ) -> None:
         """
-    def setReferenceInput(self, u_step: NDArray[numpy.float64]) -> None:
+        Set internal model from discretized continuous model
         """
-        Set the reference parameterized input trajectory to a step command. Can only call this function if use_input_cost=True when constructed.
 
-        :param (m,) u_step: The reference input step command.
+    def setModelDiscrete(
+        self, Ad: NDArray[np.float64], Bd: NDArray[np.float64], wd: NDArray[np.float64]
+    ) -> None:
         """
-    def setReferenceParameterizedInputTrajectory(self, u_traj_ctrl_pts: NDArray[numpy.float64]) -> None:
+        Set internal model directly from discrete model
         """
-        Set the reference parameterized input trajectory. Can only call this function if use_input_cost=True when constructed.
 
-        :param (m*p,) u_traj_ctrl_pts: The reference parameterized input trajectory.
+    def setReferenceInput(self, u_step: NDArray[np.float64]) -> None:
         """
-    def setReferenceState(self, x_step: NDArray[numpy.float64]) -> None:
+        Set desired input trajectory as a step command
         """
-        Set the reference state trajectory to a step command.
 
-        :param (n,) x_step: The reference state step command.
+    def setReferenceParameterizedInputTrajectory(
+        self, u_traj_ctrl_pts: NDArray[np.float64]
+    ) -> None:
         """
-    def setReferenceStateTrajectory(self, x_traj: NDArray[numpy.float64]) -> None:
+        Set desired input trajectory
         """
-        Set the reference state trajectory: [xref_1, ..., xref_T].
 
-        :param (n*T,) x_traj: The reference state trajectory.
+    def setReferenceState(self, x_step: NDArray[np.float64]) -> None:
         """
-    def setSlewRate(self, u_slew: NDArray[numpy.float64]) -> None:
+        Set desired state trajectory as a step command
         """
-        Set the slew rate: |u_k - u_{k-1}| <= u_slew. Can only call this function if use_slew_rate=True when constructed.
 
-        :param (m,) u_slew: The slew rate.
+    def setReferenceStateTrajectory(self, x_traj: NDArray[np.float64]) -> None:
         """
-    def setStateLimits(self, x_min: NDArray[numpy.float64], x_max: NDArray[numpy.float64]) -> None:
+        Set desired state trajectory
         """
-        Set the state limits: x_min <= x <= x_max. Can only call this function if saturate_states=True when constructed.
 
-        :param (n,) x_min: The minimum state values.
-        :param (n,) x_max: The maximum state values.
+    def setSlewRate(self, u_slew: NDArray[np.float64]) -> None:
         """
-    def setStateWeights(self, Q_diag: NDArray[numpy.float64]) -> None:
+        Set slew rate constraint limits
         """
-        Set the state weights Q, a diagonal matrix.
 
-        :param (n,) Q_diag: The state weights.
+    def setStateLimits(
+        self, x_min: NDArray[np.float64], x_max: NDArray[np.float64]
+    ) -> None:
         """
-    def setStateWeightsTerminal(self, Qf_diag: NDArray[numpy.float64]) -> None:
+        Set state saturation limits
         """
-        Set the terminal state weights Qf, a diagonal matrix.
 
-        :param (n,) Qf_diag: The terminal state weights.
+    def setStateWeights(self, Q_diag: NDArray[np.float64]) -> None:
         """
-    def setWeights(self, Q_diag: NDArray[numpy.float64], R_diag: NDArray[numpy.float64]) -> None:
+        Set state weights
         """
-        Set the state and input weights Q and R, both diagonal matrices.
 
-        :param (n,) Q_diag: The state weights.
-        :param (m,) R_diag: The input weights.
+    def setStateWeightsTerminal(self, Qf_diag: NDArray[np.float64]) -> None:
         """
-    def solve(self, x0: NDArray[numpy.float64]) -> bool:
+        Set state weights
         """
-        Solve the MPC problem with the given initial state. Can only call after initializeSolver.
 
-        :param (n,) x0: The initial state.
-        :return: Whether the problem was solved successfully.
+    def setWeights(
+        self, Q_diag: NDArray[np.float64], R_diag: NDArray[np.float64]
+    ) -> None:
         """
+        Set state and input weights
+        """
+
+    def solve(self, x0: NDArray[np.float64]) -> bool:
+        """
+        Solve optimization problem
+        """
+
     @property
-    def len_horizon(self) -> int:
-        """
-        :return: The length of the prediction horizon.
-        """
+    def len_horizon(self) -> int: ...
     @property
-    def num_ctrl_pts(self) -> int:
-        """
-        :return: The number of control points used to parameterize the input trajectory.
-        """
+    def num_ctrl_pts(self) -> int: ...
     @property
-    def num_inputs(self) -> int:
-        """
-        :return: The number of inputs in the system.
-        """
+    def num_inputs(self) -> int: ...
     @property
-    def num_states(self) -> int:
-        """
-        :return: The number of states in the system.
-        """
-
+    def num_states(self) -> int: ...
 
 class MPCLogger:
-    def __init__(self, mpc: MPCBase, save_location: str='/tmp/mpc_data') -> None:
-        """
-        :param MPCBase mpc: The MPC object to log data from.
-        :param str save_location: The directory to save the data.
-        """
-    def logPreviousSolve(self, t0: float, ts: float, x0: NDArray[numpy.float64], solve_time: float=-1, write_every: int=1) -> None:
-        """
-        Log the data from the previous MPC solve. Must be called after solve on the MPC object.
+    """
+    MPC logger class
+    """
 
-        :param float t0: The start time of the previous solve.
-        :param float ts: The time step of the MPC prediction horizon from the previous solve.
-        :param (n,) x0: The initial state of the previous solve.
-        :param float solve_time: The time it took to solve the previous MPC problem.
-        :param int write_every: How often to write the data to file. 1 means every time step, 2 means every other time step, etc.
+    def __init__(self, mpc: MPCBase, save_location: str = "/tmp/mpc_data") -> None:
         """
-    def writeParamFile(self, filename: str = ...) -> None:
-        """
-        Write the parameter file to the save location to know what params were used to generate the data.
-
-        :param str filename: The name of the parameter file.
+        Constructor
         """
 
+    def logPreviousSolve(
+        self,
+        t0: float,
+        ts: float,
+        x0: NDArray[np.float64],
+        solve_time: float = -1,
+        write_every: int = 1,
+    ) -> None:
+        """
+        Log data from previous MPC solve
+        """
+
+    def writeParamFile(self, filename: str = "params.yaml") -> None:
+        """
+        Write current MPC params to a YAML file
+        """
 
 class OSQPSettings:
+    """
+    OSQP solver settings
+    """
+
     class LinsysSolverType:
-        __members__: ClassVar[dict] = ...  # read-only
-        MKL_PARDISO_SOLVER: ClassVar[OSQPSettings.LinsysSolverType] = ...
-        QDLDL_SOLVER: ClassVar[OSQPSettings.LinsysSolverType] = ...
-        __entries: ClassVar[dict] = ...
-        def __init__(self, value: int) -> None: ...
-        def __eq__(self, other: object) -> bool: ...
+        """
+        Members:
+
+          QDLDL_SOLVER
+
+          MKL_PARDISO_SOLVER
+        """
+
+        MKL_PARDISO_SOLVER: typing.ClassVar[
+            OSQPSettings.LinsysSolverType
+        ]  # value = <LinsysSolverType.MKL_PARDISO_SOLVER: 1>
+        QDLDL_SOLVER: typing.ClassVar[
+            OSQPSettings.LinsysSolverType
+        ]  # value = <LinsysSolverType.QDLDL_SOLVER: 0>
+        __members__: typing.ClassVar[
+            dict[str, OSQPSettings.LinsysSolverType]
+        ]  # value = {'QDLDL_SOLVER': <LinsysSolverType.QDLDL_SOLVER: 0>, 'MKL_PARDISO_SOLVER': <LinsysSolverType.MKL_PARDISO_SOLVER: 1>}
+        def __eq__(self, other: typing.Any) -> bool: ...
+        def __getstate__(self) -> int: ...
         def __hash__(self) -> int: ...
         def __index__(self) -> int: ...
+        def __init__(self, value: int) -> None: ...
         def __int__(self) -> int: ...
-        def __ne__(self, other: object) -> bool: ...
+        def __ne__(self, other: typing.Any) -> bool: ...
+        def __repr__(self) -> str: ...
+        def __setstate__(self, state: int) -> None: ...
+        def __str__(self) -> str: ...
         @property
         def name(self) -> str: ...
         @property
         def value(self) -> int: ...
+
     adaptive_rho: int
     adaptive_rho_fraction: float
     adaptive_rho_interval: int
@@ -334,7 +431,6 @@ class OSQPSettings:
     eps_dual_inf: float
     eps_prim_inf: float
     eps_rel: float
-    linsys_solver: LinsysSolverType
     max_iter: int
     polish: int
     polish_refine_iter: int
@@ -345,4 +441,12 @@ class OSQPSettings:
     time_limit: float
     verbose: int
     warm_start: int
-    def __init__(self) -> None: ...
+    def __init__(self) -> None:
+        """
+        Constructor sets all default values
+        """
+
+    @property
+    def linsys_solver(self) -> OSQPSettings.LinsysSolverType: ...
+    @linsys_solver.setter
+    def linsys_solver(self, arg1: int) -> None: ...

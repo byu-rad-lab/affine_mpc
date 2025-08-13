@@ -13,12 +13,12 @@ class MPCLogger
 {
 public:
   MPCLogger(const MPCBase* const mpc,
-            const std::string& save_location="/tmp/mpc_data");
+            const std::string& save_location = "/tmp/ampc_data");
   virtual ~MPCLogger();
   void logPreviousSolve(double t0, double ts,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
-                        double solve_time=-1, int write_every=1);
-  void writeParamFile(const std::string& filename="params.yaml");
+                        double solve_time = -1, int write_every = 1);
+  void writeParamFile(const std::string& filename = "params.yaml");
 
 protected:
   void handleStringSubstitutions();
@@ -33,6 +33,7 @@ private:
   std::ofstream states_fout_;
   std::ofstream refs_fout_;
   std::ofstream inputs_fout_;
+  std::ofstream knots_fout_;
 };
 
 } // namespace affine_mpc

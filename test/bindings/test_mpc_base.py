@@ -13,13 +13,22 @@ def function_fails(func, *args, **kwargs):
 
 def test_mpc_base_interface():
     try:
-        n,m,T,p = 2,1,10,5
-        mpc = ampc.MPCBase(num_states=n, num_inputs=m,
-                           len_horizon=T, num_control_points=p,
-                           use_input_cost=True, use_slew_rate=True, saturate_states=True)
+        n, m, T, mu, p = 2, 1, 10, 5, 1
+        mpc = ampc.MPCBase(
+            num_states=n,
+            num_inputs=m,
+            len_horizon=T,
+            num_control_points=mu,
+            degree=p,
+            use_input_cost=True,
+            use_slew_rate=True,
+            saturate_states=True,
+        )
 
         mpc.setModelDiscrete(Ad=np.eye(n), Bd=np.ones(n), wd=np.zeros(n))
-        mpc.setModelContinuous2Discrete(Ac=np.eye(n), Bc=np.ones(n), wc=np.zeros(n), dt=0.1)
+        mpc.setModelContinuous2Discrete(
+            Ac=np.eye(n), Bc=np.ones(n), wc=np.zeros(n), dt=0.1
+        )
         _ = mpc.propagateModel(x=np.zeros(n), u=np.ones(m))
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
@@ -33,8 +42,8 @@ def test_mpc_base_interface():
 
         mpc.setReferenceState(x_step=np.ones(n))
         mpc.setReferenceInput(u_step=np.ones(m))
-        mpc.setReferenceStateTrajectory(x_traj=np.ones(T*n))
-        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(p))
+        mpc.setReferenceStateTrajectory(x_traj=np.ones(T * n))
+        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(mu))
 
         assert function_fails(mpc.initializeSolver, solver_settings=None)
         assert function_fails(mpc.solve, x0=np.zeros(n))

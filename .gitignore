@@ -5,8 +5,15 @@ MinSizRel/
 RelWithDebInfo/
 Deployment/
 Development/
+
+compile_commands.json
+.cache/
+
+# IDE files
 *.user
 .vscode/
+
+# python files
 *.egg-info/
 __pycache__/
 *.so

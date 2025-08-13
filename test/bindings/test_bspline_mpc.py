@@ -3,14 +3,39 @@ import numpy as np
 import affine_mpc_py as ampc
 
 
-def test_implicit_mpc_interface():
+def test_bspline_mpc_interface():
     try:
-        n, m, T, mu = 2, 1, 10, 5
-        mpc = ampc.ImplicitMPC(
+        n, m, T, nc, deg = 2, 1, 10, 5, 2
+        mpc = ampc.BSplineMPC(
             num_states=n,
             num_inputs=m,
             len_horizon=T,
-            num_control_points=mu,
+            num_control_points=nc,
+            spline_degree=deg,
+            use_input_cost=True,
+            use_slew_rate=True,
+            saturate_states=True,
+        )
+
+        # mpc = ampc.BSplineMPC(
+        #     num_states=n,
+        #     num_inputs=m,
+        #     len_horizon=T,
+        #     num_control_points=nc,
+        #     spline_degree=deg,
+        #     knots=np.array([-6.0, -3, 0, 3, 6, 9, 12, 15]),
+        #     use_input_cost=True,
+        #     use_slew_rate=True,
+        #     saturate_states=True,
+        # )
+
+        mpc = ampc.BSplineMPC(
+            num_states=n,
+            num_inputs=m,
+            len_horizon=T,
+            num_control_points=nc,
+            spline_degree=deg,
+            knots=np.array([0.0, 3, 6, 9]),
             use_input_cost=True,
             use_slew_rate=True,
             saturate_states=True,
@@ -34,7 +59,7 @@ def test_implicit_mpc_interface():
         mpc.setReferenceState(x_step=np.ones(n))
         mpc.setReferenceInput(u_step=np.ones(m))
         mpc.setReferenceStateTrajectory(x_traj=np.ones(T * n))
-        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(m * mu))
+        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(m * nc))
 
         mpc.initializeSolver(solver_settings=None)
 
@@ -70,5 +95,5 @@ def test_implicit_mpc_interface():
 
 
 if __name__ == "__main__":
-    test_implicit_mpc_interface()
+    test_bspline_mpc_interface()
     print("All tests passed!")
