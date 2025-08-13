@@ -3,14 +3,11 @@ project(affine_mpc)
 
 # custom options
 option(BUILD_TESTS "Set to ON if you want to build the unit tests")
-option(BUILD_BINDINGS "Set to ON if you want to build the Python bindings")
 option(BUILD_EXAMPLE "Set to ON if you want to build the C++ example")
-set(PYBIND11_VERSION "2.9.2" CACHE STRING "Set desired version of Pybind11")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # print custom options
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "BUILD_BINDINGS: ${BUILD_BINDINGS}")
 message(STATUS "BUILD_EXAMPLE: ${BUILD_EXAMPLE}")
 
 # cmake-gui (ccmake) setup
@@ -25,7 +22,7 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
-find_package(Eigen3 3.3.7 REQUIRED)
+find_package(Eigen3 3.4 REQUIRED)
 message(STATUS "Eigen3 version: ${Eigen3_VERSION}")
 include(FetchContent)
 include(cmake/extern_osqp.cmake)
@@ -84,42 +81,3 @@ if(BUILD_TESTS)
   endforeach()
 endif()
 
-# Python bindings for C++ library
-if(BUILD_BINDINGS)
-  include(cmake/extern_pybind11.cmake)
-  pybind11_add_module(_bindings MODULE
-    python/bindings/affine_mpc_py_module.cpp
-    python/bindings/py_mpc_base.cpp
-    python/bindings/py_implicit_mpc.cpp
-    python/bindings/py_bspline_mpc.cpp
-    python/bindings/py_mpc_logger.cpp
-    python/bindings/py_osqp_settings.cpp
-  )
-  target_link_libraries(_bindings PUBLIC ${PROJECT_NAME})
-  set_target_properties(_bindings PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/python/affine_mpc_py
-  )
-  add_custom_command(TARGET _bindings POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Running post-build script for _bindings..."
-    COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/python/custom_stubgen.py ${CMAKE_CURRENT_BINARY_DIR}
-    COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/stubs/affine_mpc_py/_bindings.pyi ${CMAKE_CURRENT_SOURCE_DIR}/python/affine_mpc_py/.
-    # COMMAND mv ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py/_bindings.pyi ${CMAKE_CURRENT_SOURCE_DIR}/python/affine_mpc_py/_bindings.pyi
-    # COMMAND rm ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py/__init__.pyi
-    # COMMAND rmdir ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs/affine_mpc_py
-    # COMMAND rmdir ${CMAKE_CURRENT_SOURCE_DIR}/python/stubs
-    COMMAND ${CMAKE_COMMAND} -E echo "Post-build script complete."
-  )
-
-  # Only build python tests if we are building the python bindings
-  if(BUILD_TESTS)
-    # Add target for use with `cmake --build . --target test_bindings`
-    add_custom_target(test_bindings
-      COMMAND pytest
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    # Add test for use with `ctest`
-    add_test(NAME test_bindings
-      COMMAND pytest
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  endif()
-endif()
