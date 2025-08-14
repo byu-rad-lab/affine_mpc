@@ -28,7 +28,30 @@ include(FetchContent)
 include(cmake/extern_osqp.cmake)
 
 # C++ library
-add_library(${PROJECT_NAME} STATIC
+
+# ------------------------------
+# static library
+# ------------------------------
+add_library(${PROJECT_NAME}_static STATIC
+  src/mpc_base.cpp
+  src/osqp_solver.cpp
+  src/implicit_mpc.cpp
+  src/bspline_mpc.cpp
+  src/mpc_logger.cpp
+)
+target_include_directories(${PROJECT_NAME}_static PUBLIC include)
+target_link_libraries(${PROJECT_NAME}_static PUBLIC
+  Eigen3::Eigen
+  osqp::osqpstatic
+  ${CMAKE_DL_LIBS}
+)
+# build error without these compile options when building affine_mpc_py
+target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
+
+# ------------------------------
+# shared library
+# ------------------------------
+add_library(${PROJECT_NAME} SHARED
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
