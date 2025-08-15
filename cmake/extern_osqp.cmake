@@ -10,4 +10,5 @@ if (NOT ${osqp_FOUND})
   add_library(osqp::osqp ALIAS osqp)
   add_library(osqp::osqpstatic ALIAS osqpstatic)
   # to use osqp::osqpstatic you must also link ${CMAKE_DL_LIBS}
+  target_link_libraries(osqpstatic PUBLIC ${CMAKE_DL_LIBS})
 endif()

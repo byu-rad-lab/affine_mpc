@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
-project(affine_mpc)
+project(affine_mpc LANGUAGES CXX C)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # custom options
 option(BUILD_TESTS "Set to ON if you want to build the unit tests")
@@ -16,15 +19,15 @@ set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING
 if(NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
   set(CMAKE_BUILD_TYPE None CACHE STRING
       "Possible types are: ${CMAKE_CONFIGURATION_TYPES}")
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
+    STRINGS ${CMAKE_CONFIGURATION_TYPES})
 endif()
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
-  STRINGS ${CMAKE_CONFIGURATION_TYPES})
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
-find_package(Eigen3 3.4 REQUIRED)
-message(STATUS "Eigen3 version: ${Eigen3_VERSION}")
+# find_package(Eigen3 3.4 REQUIRED)
 include(FetchContent)
+include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 
 # C++ library
