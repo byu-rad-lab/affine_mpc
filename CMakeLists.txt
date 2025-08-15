@@ -49,7 +49,9 @@ target_link_libraries(${PROJECT_NAME}_static PUBLIC
   ${CMAKE_DL_LIBS}
 )
 # build error without these compile options when building affine_mpc_py
-target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
+if(NOT MSVC)
+  target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
+endif()
 
 # ------------------------------
 # shared library
