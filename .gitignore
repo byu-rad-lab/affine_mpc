@@ -1,4 +1,5 @@
 build/
+build*/
 Debug/
 Release/
 MinSizRel/
@@ -11,3 +12,4 @@ Development/
 __pycache__/
 *.so
 .pytest_cache/
+.cache/
