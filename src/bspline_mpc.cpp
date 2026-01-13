@@ -8,6 +8,7 @@
 #include "affine_mpc/osqp_solver.hpp"
 
 using namespace Eigen;
+namespace ph = Eigen::placeholders;
 
 namespace affine_mpc {
 
@@ -44,7 +45,7 @@ BSplineMPC::BSplineMPC(const int num_states, const int num_inputs,
     A_.block(mp, 0, mp_m, mp).diagonal().setConstant(-1);
     A_.block(mp, num_inputs_, mp_m, mp_m).diagonal().setOnes();
   }
-  // Avoids setting first row block of S_ to zero every time solve() is called
+  // Avoids setting first row block of S_ to zero every time solve() is cph::alled
   // (a minor speed optimization)
   S_.topRows(num_states).setZero();
 }
@@ -61,7 +62,7 @@ BSplineMPC::BSplineMPC(const int num_states, const int num_inputs,
 //   for (int k{0}; k < len_horizon_; ++k) {
 //     seg = spline_segment_idxs_(k);
 //     u_traj(seqN(k, num_inputs_)) =
-//         ctrls(all, seqN(seg, degree_ + 1)) * spline_weights_.col(k);
+//         ctrls(ph::all, seqN(seg, degree_ + 1)) * spline_weights_.col(k);
 //   }
 // }
 
@@ -97,8 +98,8 @@ void BSplineMPC::setStateLimits(const Ref<const VectorXd>& x_min,
 
   // A_.block(x_sat_idx_, 0, num_states_ * len_horizon_,
   //          num_inputs_ * num_ctrl_pts_) = S_;
-  const auto x_sat_rows = seq(x_sat_idx_, last);
-  A_(x_sat_rows, all) = S_;
+  const auto x_sat_rows = seq(x_sat_idx_, ph::last);
+  A_(x_sat_rows, ph::all) = S_;
   for (int k{0}; k < len_horizon_; ++k) {
     l_.segment(x_sat_idx_ + num_states_ * k, num_states_) = x_min_;
     u_.segment(x_sat_idx_ + num_states_ * k, num_states_) = x_max_;
@@ -155,7 +156,7 @@ void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
     // add cumulative effect of all previous dynamics
     auto rows_cur = seqN(n * k, n);
     auto rows_prev = seqN(n * (k - 1), n);
-    S_(rows_cur, all) = Ad_ * S_(rows_prev, all);
+    S_(rows_cur, ph::all) = Ad_ * S_(rows_prev, ph::all);
     v_(rows_cur) = Ad_ * v_(rows_prev) + wd_;
 
     // add effect of current input parameterized by spline

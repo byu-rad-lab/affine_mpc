@@ -8,9 +8,10 @@
 #include <osqp.h> // for OSQPSettings
 #include <unsupported/Eigen/Splines> // for B-spline support
 
-namespace affine_mpc {
-
 using namespace Eigen;
+namespace ph = Eigen::placeholders;
+
+namespace affine_mpc {
 
 
 MPCBase::MPCBase(const int num_states, const int num_inputs,
@@ -155,7 +156,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
   for (int k{0}; k < len_horizon_; ++k) {
     seg = spline_segment_idxs_(k);
     u_traj(seqN(k, num_inputs_)) =
-        ctrls(all, seqN(seg, degree_ + 1)) * spline_weights_.col(k);
+        ctrls(ph::all, seqN(seg, degree_ + 1)) * spline_weights_.col(k);
   }
 }
 
@@ -340,12 +341,12 @@ void MPCBase::initializeKnots(const Ref<const VectorXd>& knots)
           std::to_string(knots_size) + ".";
       throw std::invalid_argument(err_msg);
     }
-    if ((knots(seq(1, last)) - knots(seq(0, last - 1))).minCoeff() < 0)
+    if ((knots(seq(1, ph::last)) - knots(seq(0, ph::last - 1))).minCoeff() < 0)
       throw std::invalid_argument("knots must be non-decreasing.");
 
-    spline_knots_(seq(degree_, last - degree_)) = knots;
+    spline_knots_(seq(degree_, ph::last - degree_)) = knots;
   } else {
-    spline_knots_(seq(degree_, last - degree_)) =
+    spline_knots_(seq(degree_, ph::last - degree_)) =
         ArrayXd::LinSpaced(num_internal_knots, 0, len_horizon_ - 1);
   }
 }
