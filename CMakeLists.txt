@@ -26,10 +26,8 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
-# find_package(Eigen3 3.4 REQUIRED)
-find_package(Eigen3 5.0 REQUIRED)
-message(STATUS "Eigen3 version: ${Eigen3_VERSION}")
 include(FetchContent)
+include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 
 # C++ library
@@ -55,8 +53,7 @@ endif (BUILD_EXAMPLE)
 # C++ library tests
 if (BUILD_TESTS)
   enable_testing()
-  find_package(GTest REQUIRED)
-  message(STATUS "GTest version: ${GTest_VERSION}")
+  include(cmake/extern_gtest.cmake)
   add_executable(${PROJECT_NAME}_UnitTests
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/osqp_solver_tests.cpp
