@@ -12,9 +12,21 @@ class MPCBase
 {
   friend class MPCLogger; // allow acces to member variables for logging
 public:
+  // MPCBase(const Eigen::Ref<const Eigen::MatrixXd>& A,
+  //         const Eigen::Ref<const Eigen::MatrixXd>& B,
+  //         const Eigen::Ref<const Eigen::VectorXd>& w, const int len_horizon,
+  //         const int num_control_points, const int degree,
+  //         const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
+  //         const Eigen::Ref<const Eigen::VectorXd>& R_diag,
+  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag =
+  //         Eigen::VectorXd(0), const Eigen::Ref<const Eigen::VectorXd>& knots
+  //         = Eigen::VectorXd(0), const bool use_input_cost = false, const bool
+  //         use_slew_rate = false, const bool saturate_states = false);
   MPCBase(const int num_states, const int num_inputs, const int len_horizon,
-          const int num_control_points, const bool use_input_cost=false,
-          const bool use_slew_rate=false, const bool saturate_states=false);
+          const int num_control_points, const int degree,
+          const Eigen::Ref<const Eigen::VectorXd>& knots = Eigen::VectorXd(0),
+          const bool use_input_cost = false, const bool use_slew_rate = false,
+          const bool saturate_states = false);
   virtual ~MPCBase();
 
   // Must be called before solve()
@@ -25,9 +37,11 @@ public:
 
   // Getters for optimized variables
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const;
-  void getParameterizedInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const;
+  void getParameterizedInputTrajectory(
+      Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const;
   virtual void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const;
-  virtual void getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
+  virtual void
+  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
 
   void propagateModel(const Eigen::Ref<const Eigen::VectorXd>& x,
                       const Eigen::Ref<const Eigen::VectorXd>& u,
@@ -38,17 +52,19 @@ public:
   void setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   double dt, double tol=1e-6);
+                                   double dt, double tol = 1e-6);
 
   void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& R_diag);
   void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag);
-  void setStateWeightsTerminal(const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
+  void
+  setStateWeightsTerminal(const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   void setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
   void setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
-  void setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
+  void
+  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
   void setReferenceParameterizedInputTrajectory(
       const Eigen::Ref<const Eigen::VectorXd>& u_traj_ctrl_pts);
 
@@ -63,10 +79,16 @@ public:
   inline int getHorizonLength() const { return len_horizon_; };
   inline int getNumControlPoints() const { return num_ctrl_pts_; };
 
+private:
+  void initializeKnots(const Eigen::Ref<const Eigen::VectorXd>& knots);
+  void calcSplineParams();
+
 protected:
+  // need to be implemented by derived classes
   virtual void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
 
-  const int num_states_, num_inputs_, len_horizon_, num_ctrl_pts_;
+  const int num_states_, num_inputs_;
+  const int len_horizon_, num_ctrl_pts_, degree_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
   bool solver_initialized_;
@@ -79,12 +101,17 @@ protected:
   Eigen::VectorXd l_; // osqp constraint lower bound
   Eigen::VectorXd u_; // osqp constraint upper bound
 
+  // Input parameterization variables
+  Eigen::VectorXd spline_segment_idxs_;
+  Eigen::VectorXd spline_knots_;
+  Eigen::MatrixXd spline_weights_;
+
   // MPC variables
   Eigen::MatrixXd Ad_;
   Eigen::MatrixXd Bd_;
   Eigen::VectorXd wd_;
-  Eigen::DiagonalMatrix<double,Eigen::Dynamic> Q_big_;
-  Eigen::DiagonalMatrix<double,Eigen::Dynamic> R_big_;
+  Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_;
+  Eigen::DiagonalMatrix<double, Eigen::Dynamic> R_big_;
   Eigen::VectorXd x_goal_;
   Eigen::VectorXd u_goal_;
   Eigen::VectorXd u_min_;

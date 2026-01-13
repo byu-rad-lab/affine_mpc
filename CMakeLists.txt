@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.14)
-project(affine_mpc)
+project(affine_mpc LANGUAGES CXX C)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # custom options
 option(BUILD_TESTS "Set to ON if you want to build the unit tests")
-option(BUILD_BINDINGS "Set to ON if you want to build the Python bindings")
 option(BUILD_EXAMPLE "Set to ON if you want to build the C++ example")
-set(PYBIND11_VERSION "2.9.2" CACHE STRING "Set desired version of Pybind11")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # need this to update minimum cmake versions for OSQP
@@ -13,16 +14,17 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 
 # print custom options
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "BUILD_BINDINGS: ${BUILD_BINDINGS}")
 message(STATUS "BUILD_EXAMPLE: ${BUILD_EXAMPLE}")
 
 # cmake-gui (ccmake) setup
-set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING "Build configurations" FORCE)
-if (NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
+set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING
+    "Build configurations" FORCE)
+if(NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
   set(CMAKE_BUILD_TYPE None CACHE STRING
       "Possible types are: ${CMAKE_CONFIGURATION_TYPES}")
-endif ()
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES})
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
+    STRINGS ${CMAKE_CONFIGURATION_TYPES})
+endif()
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
@@ -31,10 +33,36 @@ include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 
 # C++ library
-add_library(${PROJECT_NAME} STATIC
+
+# ------------------------------
+# static library
+# ------------------------------
+add_library(${PROJECT_NAME}_static STATIC
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
+  src/bspline_mpc.cpp
+  src/mpc_logger.cpp
+)
+target_include_directories(${PROJECT_NAME}_static PUBLIC include)
+target_link_libraries(${PROJECT_NAME}_static PUBLIC
+  Eigen3::Eigen
+  osqp::osqpstatic
+  ${CMAKE_DL_LIBS}
+)
+# build error without these compile options when building affine_mpc_py
+if(NOT MSVC)
+  target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
+endif()
+
+# ------------------------------
+# shared library
+# ------------------------------
+add_library(${PROJECT_NAME} SHARED
+  src/mpc_base.cpp
+  src/osqp_solver.cpp
+  src/implicit_mpc.cpp
+  src/bspline_mpc.cpp
   src/mpc_logger.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC include)
@@ -42,22 +70,24 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   Eigen3::Eigen
   osqp::osqp
 )
-target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17) # build error without this when building affine_mpc_py
+# build error without these compile options when building affine_mpc_py
+target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17)
 
 # C++ Example
-if (BUILD_EXAMPLE)
+if(BUILD_EXAMPLE)
   add_executable(example_sim examples/sim.cpp)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME})
-endif (BUILD_EXAMPLE)
+endif()
 
 # C++ library tests
-if (BUILD_TESTS)
+if(BUILD_TESTS)
   enable_testing()
   include(cmake/extern_gtest.cmake)
   add_executable(${PROJECT_NAME}_UnitTests
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/implicit_mpc_tests.cpp
+    test/affine_mpc/bspline_mpc_tests.cpp
   )
   target_link_libraries(${PROJECT_NAME}_UnitTests
     gtest
@@ -66,31 +96,17 @@ if (BUILD_TESTS)
     ${PROJECT_NAME}
   )
   add_test(NAME ${PROJECT_NAME}_UnitTests COMMAND ${PROJECT_NAME}_UnitTests)
-endif (BUILD_TESTS)
-
-# Python bindings for C++ library
-if (BUILD_BINDINGS)
-  include(cmake/extern_pybind11.cmake)
-  pybind11_add_module(_bindings MODULE
-    python/bindings/affine_mpc_py_module.cpp
-    python/bindings/py_mpc_base.cpp
-    python/bindings/py_implicit_mpc.cpp
-    python/bindings/py_mpc_logger.cpp
-    python/bindings/py_osqp_settings.cpp
-  )
-  target_link_libraries(_bindings PUBLIC ${PROJECT_NAME})
-  set_target_properties(_bindings PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/python/affine_mpc_py
-  )
-
-  # Only build python tests if we are building the python bindings
-  if (BUILD_TESTS)
-    # Add target for use with `cmake --build . --target test_bindings`
-    add_custom_target(test_bindings
-      COMMAND pytest
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  file(GLOB TEST_SOURCES "test/affine_mpc/*.cpp")
+  foreach(TEST_SRC ${TEST_SOURCES})
+    get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
+    add_executable(${TEST_NAME} ${TEST_SRC})
+    target_link_libraries(${TEST_NAME}
+      gtest
+      gtest_main
+      pthread
+      ${PROJECT_NAME}
     )
-    # Add test for use with `ctest`
-    add_test(NAME test_bindings COMMAND pytest WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  endif (BUILD_TESTS)
-endif (BUILD_BINDINGS)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+  endforeach()
+endif()
+
