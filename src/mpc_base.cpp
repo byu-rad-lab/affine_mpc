@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <osqp.h> // for OSQPSettings
+#include <cassert>
 
 namespace affine_mpc {
 

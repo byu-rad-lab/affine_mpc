@@ -1,6 +1,7 @@
 #include "affine_mpc/mpc_logger.hpp"
 
 #include <filesystem>
+#include <cassert>
 
 namespace fs = std::filesystem;
 namespace affine_mpc {

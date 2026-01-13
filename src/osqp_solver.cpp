@@ -1,6 +1,7 @@
 #include "affine_mpc/osqp_solver.hpp"
 
 #include <Eigen/Core>
+#include <cassert>
 
 namespace affine_mpc {
 
