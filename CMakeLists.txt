@@ -8,6 +8,9 @@ option(BUILD_EXAMPLE "Set to ON if you want to build the C++ example")
 set(PYBIND11_VERSION "2.9.2" CACHE STRING "Set desired version of Pybind11")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# need this to update minimum cmake versions for OSQP
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+
 # print custom options
 message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
 message(STATUS "BUILD_BINDINGS: ${BUILD_BINDINGS}")
@@ -23,7 +26,8 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # dependencies
-find_package(Eigen3 3.3.7 REQUIRED)
+# find_package(Eigen3 3.4 REQUIRED)
+find_package(Eigen3 5.0 REQUIRED)
 message(STATUS "Eigen3 version: ${Eigen3_VERSION}")
 include(FetchContent)
 include(cmake/extern_osqp.cmake)
