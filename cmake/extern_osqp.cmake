@@ -7,6 +7,7 @@ if(NOT ${osqp_FOUND})
   FetchContent_Declare(osqp_extern
     GIT_REPOSITORY https://github.com/osqp/osqp
     GIT_TAG v${OSQP_FIND_VERSION}
+    EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(osqp_extern)
   add_library(osqp::osqp ALIAS osqp)
