@@ -33,77 +33,80 @@ include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 
 # C++ library
+set(AMPC_SOURCES
+  src/mpc_base.cpp
+  src/osqp_solver.cpp
+  src/implicit_mpc.cpp
+  src/bspline_mpc.cpp
+  src/mpc_logger.cpp
+)
+set(AMPC_DEPS
+  Eigen3::Eigen
+)
 
 # ------------------------------
 # static library
 # ------------------------------
-add_library(${PROJECT_NAME}_static STATIC
-  src/mpc_base.cpp
-  src/osqp_solver.cpp
-  src/implicit_mpc.cpp
-  src/bspline_mpc.cpp
-  src/mpc_logger.cpp
-)
+add_library(${PROJECT_NAME}_static STATIC ${AMPC_SOURCES})
 target_include_directories(${PROJECT_NAME}_static PUBLIC include)
 target_link_libraries(${PROJECT_NAME}_static PUBLIC
-  Eigen3::Eigen
+  ${AMPC_DEPS}
   osqp::osqpstatic
-  ${CMAKE_DL_LIBS}
 )
-# build error without these compile options when building affine_mpc_py
-if(NOT MSVC)
-  target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
-endif()
 
 # ------------------------------
 # shared library
 # ------------------------------
-add_library(${PROJECT_NAME} SHARED
-  src/mpc_base.cpp
-  src/osqp_solver.cpp
-  src/implicit_mpc.cpp
-  src/bspline_mpc.cpp
-  src/mpc_logger.cpp
-)
+add_library(${PROJECT_NAME} SHARED ${AMPC_SOURCES})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC
-  Eigen3::Eigen
+  ${AMPC_DEPS}
   osqp::osqp
 )
+
 # build error without these compile options when building affine_mpc_py
-target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17)
+if(NOT MSVC)
+  target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
+  target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17)
+endif()
 
 # C++ Example
 if(BUILD_EXAMPLE)
-  add_executable(example_sim examples/sim.cpp)
+  set(EX_SOURCES
+    examples/sim.cpp
+  )
+
+  add_executable(example_sim_static ${EX_SOURCES})
+  target_link_libraries(example_sim_static PRIVATE ${PROJECT_NAME}_static)
+
+  add_executable(example_sim ${EX_SOURCES})
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME})
 endif()
 
 # C++ library tests
 if(BUILD_TESTS)
   enable_testing()
-  include(cmake/extern_gtest.cmake)
-  add_executable(${PROJECT_NAME}_UnitTests
-    test/affine_mpc/mpc_base_tests.cpp
-    test/affine_mpc/osqp_solver_tests.cpp
-    test/affine_mpc/implicit_mpc_tests.cpp
-    test/affine_mpc/bspline_mpc_tests.cpp
-  )
-  target_link_libraries(${PROJECT_NAME}_UnitTests
+
+  file(GLOB TEST_SOURCES "test/affine_mpc/*.cpp")
+  set(TEST_DEPS
     gtest
     gtest_main
     pthread
+  )
+
+  include(cmake/extern_gtest.cmake)
+  add_executable(${PROJECT_NAME}_UnitTests ${TEST_SOURCES})
+  target_link_libraries(${PROJECT_NAME}_UnitTests
+    ${TEST_DEPS}
     ${PROJECT_NAME}
   )
   add_test(NAME ${PROJECT_NAME}_UnitTests COMMAND ${PROJECT_NAME}_UnitTests)
-  file(GLOB TEST_SOURCES "test/affine_mpc/*.cpp")
+
   foreach(TEST_SRC ${TEST_SOURCES})
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
     add_executable(${TEST_NAME} ${TEST_SRC})
     target_link_libraries(${TEST_NAME}
-      gtest
-      gtest_main
-      pthread
+      ${TEST_DEPS}
       ${PROJECT_NAME}
     )
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
