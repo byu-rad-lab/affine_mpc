@@ -25,14 +25,14 @@ endif()
 # --------------------------------------------------
 # Compiler and visibility settings
 # --------------------------------------------------
-if(BUILD_SHARED_LIBS)
-  set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
-    "Set the default C++ symbol visibility to hidden"
-  )
-  set(CMAKE_VISIBILITY_INLINES_HIDDEN YES CACHE BOOL
-    "Set the default C++ inline function visibility to hidden"
-  )
-endif()
+# if(BUILD_SHARED_LIBS)
+#   set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
+#     "Set the default C++ symbol visibility to hidden"
+#   )
+#   set(CMAKE_VISIBILITY_INLINES_HIDDEN YES CACHE BOOL
+#     "Set the default C++ inline function visibility to hidden"
+#   )
+# endif()
 
 # --------------------------------------------------
 # Dependencies
@@ -40,7 +40,6 @@ endif()
 include(FetchContent)
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
-message(STATUS "CMAKE_POLICY_VERSION_MINIMUM: ${CMAKE_POLICY_VERSION_MINIMUM}")
 
 # --------------------------------------------------
 # Main library
