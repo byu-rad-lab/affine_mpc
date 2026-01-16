@@ -13,6 +13,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 option(${PROJECT_NAME}_BUILD_TESTS "Build unit tests" OFF)
 option(${PROJECT_NAME}_BUILD_EXAMPLE "Build examples" OFF)
 option(${PROJECT_NAME}_SHARED_LIBS "Build shared libraries" ON)
+option(DISBLE_SHARED_VERSIONS "Disable shared library versions" OFF)
 
 if(IS_TOP_LEVEL_PROJECT)
   set(BUILD_SHARED_LIBS
@@ -57,14 +58,14 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 # Library properties
 set_target_properties(${PROJECT_NAME} PROPERTIES
-  # VERSION ${PROJECT_VERSION}
-  # SOVERSION ${PROJECT_VERSION_MAJOR}
-
-  # CXX_STANDARD 17
-  # CXX_STANDARD_REQUIRED ON
-  # CXX_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON
 )
+if(NOT ${DISBLE_SHARED_VERSIONS})
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+  )
+endif()
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PUBLIC
