@@ -25,14 +25,14 @@ endif()
 # --------------------------------------------------
 # Compiler and visibility settings
 # --------------------------------------------------
-# if(BUILD_SHARED_LIBS)
-#   set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
-#     "Set the default C++ symbol visibility to hidden"
-#   )
-#   set(CMAKE_VISIBILITY_INLINES_HIDDEN YES CACHE BOOL
-#     "Set the default C++ inline function visibility to hidden"
-#   )
-# endif()
+if(BUILD_SHARED_LIBS AND NOT DEFINED ${PROJECT_NAME}_BINDINGS)
+  set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
+    "Set the default C++ symbol visibility to hidden"
+  )
+  set(CMAKE_VISIBILITY_INLINES_HIDDEN YES CACHE BOOL
+    "Set the default C++ inline function visibility to hidden"
+  )
+endif()
 
 # --------------------------------------------------
 # Dependencies
