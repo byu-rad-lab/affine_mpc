@@ -1,6 +1,6 @@
 find_package(GTest 1.11 QUIET)
 
-if(NOT ${GTest_FOUND})
+if(NOT TARGET GTest::gtest)
   message(STATUS "System install of GTest not found - using FetchContent")
 
   set(GTest_FIND_VERSION 1.17.0)

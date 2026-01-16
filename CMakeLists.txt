@@ -1,115 +1,153 @@
-cmake_minimum_required(VERSION 3.14)
-project(affine_mpc LANGUAGES CXX C)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# custom options
-option(BUILD_TESTS "Set to ON if you want to build the unit tests")
-option(BUILD_EXAMPLE "Set to ON if you want to build the C++ example")
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# need this to update minimum cmake versions for OSQP
+cmake_minimum_required(VERSION 3.28)
+project(affine_mpc
+  LANGUAGES CXX
+  VERSION 1.0.0
+)
+# OSQP 0.6.x has minimum version of 3.2, which CMake no longer supports
+# Can remove after migrating to OSQP >1.0
 set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 
-# print custom options
-message(STATUS "BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "BUILD_EXAMPLE: ${BUILD_EXAMPLE}")
+# --------------------------------------------------
+# Options
+# --------------------------------------------------
+option(${PROJECT_NAME}_BUILD_TESTS "Build unit tests" OFF)
+option(${PROJECT_NAME}_BUILD_EXAMPLE "Build examples" OFF)
+option(${PROJECT_NAME}_SHARED_LIBS "Build shared libraries" ON)
 
-# cmake-gui (ccmake) setup
-set(CMAKE_CONFIGURATION_TYPES None Debug Release CACHE STRING
-    "Build configurations" FORCE)
-if(NOT CMAKE_BUILD_TYPE AND NOT MSVC AND NOT XCODE_VERSION)
-  set(CMAKE_BUILD_TYPE None CACHE STRING
-      "Possible types are: ${CMAKE_CONFIGURATION_TYPES}")
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
-    STRINGS ${CMAKE_CONFIGURATION_TYPES})
+if(IS_TOP_LEVEL_PROJECT)
+  set(BUILD_SHARED_LIBS
+    ${${PROJECT_NAME}_SHARED_LIBS}
+    CACHE BOOL "Build shared libraries" FORCE
+  )
 endif()
-message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
-# dependencies
+# --------------------------------------------------
+# Compiler and visibility settings
+# --------------------------------------------------
+if(BUILD_SHARED_LIBS)
+  set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
+    "Set the default C++ symbol visibility to hidden"
+  )
+  set(CMAKE_VISIBILITY_INLINES_HIDDEN YES CACHE BOOL
+    "Set the default C++ inline function visibility to hidden"
+  )
+endif()
+
+# --------------------------------------------------
+# Dependencies
+# --------------------------------------------------
 include(FetchContent)
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
+message(STATUS "CMAKE_POLICY_VERSION_MINIMUM: ${CMAKE_POLICY_VERSION_MINIMUM}")
 
-# C++ library
-set(AMPC_SOURCES
+# --------------------------------------------------
+# Main library
+# --------------------------------------------------
+add_library(${PROJECT_NAME}
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
   src/bspline_mpc.cpp
   src/mpc_logger.cpp
 )
-set(AMPC_DEPS
-  Eigen3::Eigen
+
+# Namespaced alias
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+
+# Library properties
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+  # CXX_STANDARD 17
+  # CXX_STANDARD_REQUIRED ON
+  # CXX_EXTENSIONS OFF
+  # POSITION_INDEPENDENT_CODE ON
 )
 
-# ------------------------------
-# static library
-# ------------------------------
-add_library(${PROJECT_NAME}_static STATIC ${AMPC_SOURCES})
-target_include_directories(${PROJECT_NAME}_static PUBLIC include)
-target_link_libraries(${PROJECT_NAME}_static PUBLIC
-  ${AMPC_DEPS}
-  osqp::osqpstatic
+# Include directories
+target_include_directories(${PROJECT_NAME} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
 )
 
-# ------------------------------
-# shared library
-# ------------------------------
-add_library(${PROJECT_NAME} SHARED ${AMPC_SOURCES})
-target_include_directories(${PROJECT_NAME} PUBLIC include)
+# Link dependencies
 target_link_libraries(${PROJECT_NAME} PUBLIC
-  ${AMPC_DEPS}
+  Eigen3::Eigen
   osqp::osqp
 )
 
-# build error without these compile options when building affine_mpc_py
-if(NOT MSVC)
-  target_compile_options(${PROJECT_NAME}_static PRIVATE -fPIC -std=c++17)
-  target_compile_options(${PROJECT_NAME} PRIVATE -fPIC -std=c++17)
+# C++ standard
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+
+# --------------------------------------------------
+# Examples
+# --------------------------------------------------
+if(${PROJECT_NAME}_BUILD_EXAMPLE)
+  add_executable(example_sim examples/sim.cpp)
+  target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
 endif()
 
-# C++ Example
-if(BUILD_EXAMPLE)
-  set(EX_SOURCES
-    examples/sim.cpp
-  )
-
-  add_executable(example_sim_static ${EX_SOURCES})
-  target_link_libraries(example_sim_static PRIVATE ${PROJECT_NAME}_static)
-
-  add_executable(example_sim ${EX_SOURCES})
-  target_link_libraries(example_sim PRIVATE ${PROJECT_NAME})
-endif()
-
-# C++ library tests
-if(BUILD_TESTS)
+# --------------------------------------------------
+# Tests
+# --------------------------------------------------
+if(${PROJECT_NAME}_BUILD_TESTS)
   enable_testing()
-
-  file(GLOB TEST_SOURCES "test/affine_mpc/*.cpp")
-  set(TEST_DEPS
-    gtest
-    gtest_main
-    pthread
-  )
-
+  include(GoogleTest)
   include(cmake/extern_gtest.cmake)
-  add_executable(${PROJECT_NAME}_UnitTests ${TEST_SOURCES})
-  target_link_libraries(${PROJECT_NAME}_UnitTests
-    ${TEST_DEPS}
-    ${PROJECT_NAME}
-  )
-  add_test(NAME ${PROJECT_NAME}_UnitTests COMMAND ${PROJECT_NAME}_UnitTests)
 
-  foreach(TEST_SRC ${TEST_SOURCES})
+  set(TEST_SOURCES
+    test/affine_mpc/mpc_base_tests.cpp
+    test/affine_mpc/osqp_solver_tests.cpp
+    test/affine_mpc/implicit_mpc_tests.cpp
+    test/affine_mpc/bspline_mpc_tests.cpp
+    # test/affine_mpc/mpc_logger_tests.cpp
+  )
+
+  foreach(TEST_SRC IN LISTS TEST_SOURCES)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
     add_executable(${TEST_NAME} ${TEST_SRC})
-    target_link_libraries(${TEST_NAME}
-      ${TEST_DEPS}
-      ${PROJECT_NAME}
+    target_link_libraries(${TEST_NAME} PRIVATE
+      GTest::gtest_main
+      ${PROJECT_NAME}::${PROJECT_NAME}
     )
-    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    gtest_discover_tests(${TEST_NAME})
   endforeach()
 endif()
 
+# --------------------------------------------------
+# Installation
+# --------------------------------------------------
+# install(TARGETS ${PROJECT_NAME}
+#     EXPORT ${PROJECT_NAME}Targets
+#     ARCHIVE DESTINATION lib
+#     LIBRARY DESTINATION lib
+#     RUNTIME DESTINATION bin
+#     PUBLIC_HEADER DESTINATION include
+# )
+#
+# install(DIRECTORY include/ DESTINATION include)
+#
+# install(EXPORT ${PROJECT_NAME}Targets
+#     FILE ${PROJECT_NAME}Targets.cmake
+#     NAMESPACE ${PROJECT_NAME}::
+#     DESTINATION lib/cmake/${PROJECT_NAME}
+# )
+#
+# include(CMakePackageConfigHelpers)
+# write_basic_package_version_file(
+#     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+#     VERSION ${PROJECT_VERSION}
+#     COMPATIBILITY AnyNewerVersion
+# )
+#
+# configure_file(cmake/${PROJECT_NAME}Config.cmake.in
+#     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+#     @ONLY
+# )
+#
+# install(FILES
+#     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+#     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+#     DESTINATION lib/cmake/${PROJECT_NAME}
+# )
