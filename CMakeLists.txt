@@ -13,7 +13,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 option(${PROJECT_NAME}_BUILD_TESTS "Build unit tests" OFF)
 option(${PROJECT_NAME}_BUILD_EXAMPLE "Build examples" OFF)
 option(${PROJECT_NAME}_SHARED_LIBS "Build shared libraries" ON)
-option(DISABLE_SHARED_VERSIONS "Disable shared library versions" OFF)
+option(${PROJECT_NAME}_BINDINGS "Set on when building python bindings" OFF)
 
 if(IS_TOP_LEVEL_PROJECT)
   set(BUILD_SHARED_LIBS
@@ -25,7 +25,8 @@ endif()
 # --------------------------------------------------
 # Compiler and visibility settings
 # --------------------------------------------------
-if(BUILD_SHARED_LIBS AND NOT DEFINED ${PROJECT_NAME}_BINDINGS)
+# must be visible for python bindings
+if(BUILD_SHARED_LIBS AND NOT ${PROJECT_NAME}_BINDINGS)
   set(CMAKE_CXX_VISIBILITY_PRESET hidden CACHE STRING
     "Set the default C++ symbol visibility to hidden"
   )
@@ -59,7 +60,7 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
-if(NOT ${DISABLE_SHARED_VERSIONS})
+if(NOT ${PROJECT_NAME}_BINDINGS)
   set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
