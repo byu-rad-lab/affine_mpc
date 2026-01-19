@@ -114,46 +114,46 @@ endif()
 # --------------------------------------------------
 # Installation
 # --------------------------------------------------
-install(TARGETS ${PROJECT_NAME}
+if(NOT ${PROJECT_NAME}_BINDINGS)
+  install(TARGETS ${PROJECT_NAME}
     EXPORT ${PROJECT_NAME}Targets
-    # ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-if(NOT ${PROJECT_NAME}_BINDINGS)
-  # install(FILES
-  #     $<TARGET_FILE_DIR:${PROJECT_NAME}>/${CMAKE_SHARED_LIBRARY_PREFIX}${PROJECT_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}
-  #     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  # )
-  install(TARGETS ${PROJECT_NAME}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
-endif()
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-set(ConfigPackageLocation ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+  set(ConfigPackageLocation ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
-install(EXPORT ${PROJECT_NAME}Targets
+  install(EXPORT ${PROJECT_NAME}Targets
     FILE ${PROJECT_NAME}Targets.cmake
     NAMESPACE ${PROJECT_NAME}::
     DESTINATION ${ConfigPackageLocation}
-)
+  )
 
-write_basic_package_version_file(
+  write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
-)
+  )
 
-configure_package_config_file(
+  configure_package_config_file(
     cmake/${PROJECT_NAME}Config.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     INSTALL_DESTINATION ${ConfigPackageLocation}
-)
+  )
 
-install(FILES
+  install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION ${ConfigPackageLocation}
-)
+  )
+else()
+  install(TARGETS ${PROJECT_NAME}
+    # EXPORT ${PROJECT_NAME}Targets
+    # ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+endif()
