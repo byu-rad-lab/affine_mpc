@@ -114,6 +114,9 @@ endif()
 # --------------------------------------------------
 # Installation
 # --------------------------------------------------
+
+# Install only if not building bindings
+# Bindings handle installation themselves to avoid copying headers/libs
 if(NOT ${PROJECT_NAME}_BINDINGS)
   install(TARGETS ${PROJECT_NAME}
     EXPORT ${PROJECT_NAME}Targets
@@ -148,12 +151,5 @@ if(NOT ${PROJECT_NAME}_BINDINGS)
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION ${ConfigPackageLocation}
-  )
-else()
-  install(TARGETS ${PROJECT_NAME}
-    # EXPORT ${PROJECT_NAME}Targets
-    # ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 endif()
