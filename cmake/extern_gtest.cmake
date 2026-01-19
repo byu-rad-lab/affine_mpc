@@ -7,7 +7,6 @@ if(NOT TARGET GTest::gtest)
   FetchContent_Declare(gtest_extern
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG v${GTest_FIND_VERSION}
-    EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(gtest_extern)
 

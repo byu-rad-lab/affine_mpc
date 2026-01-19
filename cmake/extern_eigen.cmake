@@ -7,7 +7,6 @@ if(NOT TARGET Eigen3::Eigen)
   FetchContent_Declare(eigen3_extern
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
     GIT_TAG ${Eigen_FIND_VERSION}
-    EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(eigen3_extern)
 

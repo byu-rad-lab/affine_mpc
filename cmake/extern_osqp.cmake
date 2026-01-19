@@ -7,7 +7,6 @@ if(NOT osqp_FOUND)
     GIT_REPOSITORY https://github.com/osqp/osqp
     GIT_TAG v0.6.3
     # GIT_TAG v1.0.0
-    EXCLUDE_FROM_ALL
   )
 
   # OSQP options — disable things you do not need

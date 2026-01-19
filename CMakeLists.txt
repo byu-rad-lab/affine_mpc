@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.15)
 project(affine_mpc
   LANGUAGES CXX C
   VERSION 1.0.0
