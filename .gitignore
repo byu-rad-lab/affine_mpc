@@ -1,5 +1,7 @@
 build/
 build*/
+install/
+out/
 Debug/
 Release/
 MinSizRel/
