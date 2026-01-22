@@ -18,15 +18,7 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(${PROJECT_NAME}_BUILD_TESTS "Build unit tests" OFF)
 option(${PROJECT_NAME}_BUILD_EXAMPLE "Build examples" OFF)
-option(${PROJECT_NAME}_SHARED_LIBS "Build shared libraries" ON)
 option(${PROJECT_NAME}_BINDINGS "Set on when building python bindings" OFF)
-
-if(IS_TOP_LEVEL_PROJECT)
-  set(BUILD_SHARED_LIBS
-    ${${PROJECT_NAME}_SHARED_LIBS}
-    CACHE BOOL "Build shared libraries" FORCE
-  )
-endif()
 
 # --------------------------------------------------
 # Dependencies
@@ -69,8 +61,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 # Link dependencies
 target_link_libraries(${PROJECT_NAME} PUBLIC
   Eigen3::Eigen
-  $<BUILD_INTERFACE:osqp::osqp>
-  $<INSTALL_INTERFACE:osqp::osqp>
+  osqp::osqp
 )
 
 # C++ standard
