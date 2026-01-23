@@ -5,8 +5,8 @@ if(NOT osqp_FOUND)
 
   FetchContent_Declare(osqp_extern
     GIT_REPOSITORY https://github.com/osqp/osqp
-    GIT_TAG v0.6.3
-    # GIT_TAG v1.0.0
+    # GIT_TAG v0.6.3
+    GIT_TAG v1.0.0
   )
 
   # OSQP options — disable things you do not need

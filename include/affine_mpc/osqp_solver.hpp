@@ -9,14 +9,14 @@ namespace affine_mpc {
 class OSQPSolver
 {
 public:
-  typedef Eigen::Matrix<c_float,Eigen::Dynamic,Eigen::Dynamic> MatrixXF;
-  typedef Eigen::Matrix<c_float,Eigen::Dynamic,1> VectorXF;
-  typedef Eigen::Matrix<c_int,Eigen::Dynamic,1> VectorXI;
+  typedef Eigen::Matrix<OSQPFloat,Eigen::Dynamic,Eigen::Dynamic> MatrixXF;
+  typedef Eigen::Matrix<OSQPFloat,Eigen::Dynamic,1> VectorXF;
+  typedef Eigen::Matrix<OSQPInt,Eigen::Dynamic,1> VectorXI;
 
   OSQPSolver(const int num_variables, const int num_constraints);
   virtual ~OSQPSolver();
-  const c_float* getSolutionPtr() const;
-  c_float getSolveTime() const;
+  const OSQPFloat* getSolutionPtr() const;
+  OSQPFloat getSolveTime() const;
   bool solve(Eigen::Ref<VectorXF> solution);
   bool solve();
   bool initialize(const Eigen::Ref<const MatrixXF>& P,
@@ -34,18 +34,19 @@ private:
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
   void setCustomSettings(const OSQPSettings* settings);
 
-  OSQPWorkspace *work_;
+  ::OSQPSolver *solver_;
   OSQPSettings *settings_;
-  OSQPData *data_;
+  OSQPCscMatrix *P_;
+  OSQPCscMatrix *A_;
   bool workspace_initialized_;
   bool P_is_set_;
   bool A_is_set_;
 
 protected: // Not private for unit tests
-  c_int n_;
-  c_int m_;
-  c_int P_nnz_;
-  c_int A_nnz_;
+  const OSQPInt n_;
+  const OSQPInt m_;
+  OSQPInt P_nnz_;
+  OSQPInt A_nnz_;
   VectorXF P_x_;
   VectorXF A_x_;
   VectorXI P_i_;
