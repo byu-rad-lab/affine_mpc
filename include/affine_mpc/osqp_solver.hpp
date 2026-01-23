@@ -9,9 +9,9 @@ namespace affine_mpc {
 class OSQPSolver
 {
 public:
-  typedef Eigen::Matrix<OSQPFloat,Eigen::Dynamic,Eigen::Dynamic> MatrixXF;
-  typedef Eigen::Matrix<OSQPFloat,Eigen::Dynamic,1> VectorXF;
-  typedef Eigen::Matrix<OSQPInt,Eigen::Dynamic,1> VectorXI;
+  typedef Eigen::Matrix<OSQPFloat, Eigen::Dynamic, Eigen::Dynamic> MatrixXF;
+  typedef Eigen::Matrix<OSQPFloat, Eigen::Dynamic, 1> VectorXF;
+  typedef Eigen::Matrix<OSQPInt, Eigen::Dynamic, 1> VectorXI;
 
   OSQPSolver(const int num_variables, const int num_constraints);
   virtual ~OSQPSolver();
@@ -21,7 +21,9 @@ public:
   bool solve();
   bool initialize(const Eigen::Ref<const MatrixXF>& P,
                   const Eigen::Ref<const MatrixXF>& A,
-                  Eigen::Ref<VectorXF> q, Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u,
+                  Eigen::Ref<VectorXF> q,
+                  Eigen::Ref<VectorXF> l,
+                  Eigen::Ref<VectorXF> u,
                   const OSQPSettings* settings = nullptr);
   bool updateCostMatrix(const Eigen::Ref<const MatrixXF>& P);
   bool updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
@@ -34,10 +36,10 @@ private:
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
   void setCustomSettings(const OSQPSettings* settings);
 
-  ::OSQPSolver *solver_;
-  OSQPSettings *settings_;
-  OSQPCscMatrix *P_;
-  OSQPCscMatrix *A_;
+  ::OSQPSolver* solver_;
+  OSQPSettings* settings_;
+  OSQPCscMatrix* P_;
+  OSQPCscMatrix* A_;
   bool workspace_initialized_;
   bool P_is_set_;
   bool A_is_set_;

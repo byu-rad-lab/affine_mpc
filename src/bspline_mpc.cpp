@@ -13,14 +13,24 @@ namespace ph = Eigen::placeholders;
 namespace affine_mpc {
 
 
-BSplineMPC::BSplineMPC(const int num_states, const int num_inputs,
-                       const int num_steps, const int num_controls,
+BSplineMPC::BSplineMPC(const int num_states,
+                       const int num_inputs,
+                       const int num_steps,
+                       const int num_controls,
                        const int spline_degree,
                        const Ref<const VectorXd>& knots,
-                       const bool use_input_cost, const bool use_slew_rate,
+                       const bool use_input_cost,
+                       const bool use_slew_rate,
                        const bool saturate_states) :
-    MPCBase(num_states, num_inputs, num_steps, num_controls, spline_degree,
-            knots, use_input_cost, use_slew_rate, saturate_states),
+    MPCBase(num_states,
+            num_inputs,
+            num_steps,
+            num_controls,
+            spline_degree,
+            knots,
+            use_input_cost,
+            use_slew_rate,
+            saturate_states),
     // if using a slew rate constraint then state saturation rows of A are
     // shifted down by the number of slew rate constraints
     x_sat_idx_{num_inputs * num_controls +
@@ -45,8 +55,8 @@ BSplineMPC::BSplineMPC(const int num_states, const int num_inputs,
     A_.block(mp, 0, mp_m, mp).diagonal().setConstant(-1);
     A_.block(mp, num_inputs_, mp_m, mp_m).diagonal().setOnes();
   }
-  // Avoids setting first row block of S_ to zero every time solve() is cph::alled
-  // (a minor speed optimization)
+  // Avoids setting first row block of S_ to zero every time solve() is
+  // cph::alled (a minor speed optimization)
   S_.topRows(num_states).setZero();
 }
 

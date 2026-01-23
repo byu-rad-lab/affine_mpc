@@ -1,8 +1,8 @@
 #include "affine_mpc/mpc_logger.hpp"
 
+#include <cassert>
 #include <exception>
 #include <filesystem>
-#include <cassert>
 
 namespace affine_mpc {
 
@@ -28,9 +28,11 @@ std::string eig2Str(const Eigen::Ref<const Eigen::VectorXd>& vec)
 
 MPCLogger::MPCLogger(const MPCBase* const mpc,
                      const std::string& save_location) :
-    mpc_{mpc}, save_dir_{save_location},
+    mpc_{mpc},
+    save_dir_{save_location},
     x_traj_{mpc->num_states_ * mpc->len_horizon_},
-    u_traj_{mpc_->num_inputs_ * mpc_->len_horizon_}, wrote_params_{false}
+    u_traj_{mpc_->num_inputs_ * mpc_->len_horizon_},
+    wrote_params_{false}
 {
   handleStringSubstitutions();
 
@@ -74,9 +76,11 @@ MPCLogger::~MPCLogger()
 }
 
 // Writes a single line of data for each time step in the horizon
-void MPCLogger::logPreviousSolve(double t0, double ts,
+void MPCLogger::logPreviousSolve(double t0,
+                                 double ts,
                                  const Eigen::Ref<const Eigen::VectorXd>& x0,
-                                 double solve_time, int write_every)
+                                 double solve_time,
+                                 int write_every)
 {
   if (!mpc_->solver_initialized_)
     throw std::runtime_error("Solver must be initialized before logging data.");

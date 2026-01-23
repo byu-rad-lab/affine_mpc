@@ -11,8 +11,10 @@ namespace affine_mpc {
 class ImplicitMPC : public MPCBase
 {
 public:
-  ImplicitMPC(const int num_states, const int num_inputs,
-              const int horizon_length, const int num_control_points,
+  ImplicitMPC(const int num_states,
+              const int num_inputs,
+              const int horizon_length,
+              const int num_control_points,
               const bool use_input_cost = false,
               const bool use_slew_rate = false,
               const bool saturate_states = false);

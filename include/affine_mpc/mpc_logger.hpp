@@ -15,9 +15,11 @@ public:
   MPCLogger(const MPCBase* const mpc,
             const std::string& save_location = "/tmp/ampc_data");
   virtual ~MPCLogger();
-  void logPreviousSolve(double t0, double ts,
+  void logPreviousSolve(double t0,
+                        double ts,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
-                        double solve_time = -1, int write_every = 1);
+                        double solve_time = -1,
+                        int write_every = 1);
   void writeParamFile(const std::string& filename = "params.yaml");
 
 protected:

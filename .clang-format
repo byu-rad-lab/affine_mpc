@@ -1,0 +1,54 @@
+# See https://clang.llvm.org/docs/ClangFormat.html
+#
+# Google style guide: https://google.github.io/styleguide/cppguide.html#Variable_Names
+---
+BasedOnStyle: LLVM
+InsertNewlineAtEOF: true
+---
+Language: Cpp
+# Standard: Cpp11
+
+# ColumnLimit: 80
+# AccessModifierOffset: -4
+# IndentWidth: 4
+# UseTab: Never
+
+# Force pointers to the type
+DerivePointerAlignment: false
+PointerAlignment: Left
+# IndentPPDirectives: AfterHash
+
+# AlignTrailingComments: false # default is true
+
+# AlignEscapedNewlines: Left
+# AllowShortFunctionsOnASingleLine: Empty
+# AllowShortLambdasOnASingleLine: Empty
+# AlwaysBreakTemplateDeclarations: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterFunction: true
+  AfterControlStatement: false
+  AfterEnum: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterNamespace: false
+  SplitEmptyRecord: false
+  SplitEmptyFunction: false
+  # AfterInit: true
+
+AllowAllConstructorInitializersOnNextLine: true
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+
+BreakConstructorInitializers: AfterColon # BeforeComma
+
+MaxEmptyLinesToKeep: 2
+SeparateDefinitionBlocks: Leave # Always
+
+# Bin packing fits as many items as possible on one line within column limit
+# With it off, each item gets its own line
+BinPackParameters: false # AlwaysOnePerLine
+# BinPackArguments: false
+# Cpp11BracedListStyle: false
+

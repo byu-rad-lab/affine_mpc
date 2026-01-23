@@ -10,7 +10,10 @@
 class MPCBaseTester : public affine_mpc::MPCBase
 {
 public:
-  MPCBaseTester(const int n, const int m, const int T, const int mu,
+  MPCBaseTester(const int n,
+                const int m,
+                const int T,
+                const int mu,
                 const bool Ju = false) :
       MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju)
   {}

@@ -11,12 +11,22 @@ using Eigen::Ref;
 using Eigen::VectorXd;
 
 
-ImplicitMPC::ImplicitMPC(const int num_states, const int num_inputs,
-                         const int len_horizon, const int num_control_points,
-                         const bool use_input_cost, const bool use_slew_rate,
+ImplicitMPC::ImplicitMPC(const int num_states,
+                         const int num_inputs,
+                         const int len_horizon,
+                         const int num_control_points,
+                         const bool use_input_cost,
+                         const bool use_slew_rate,
                          const bool saturate_states) :
-    MPCBase(num_states, num_inputs, len_horizon, num_control_points, 1,
-            VectorXd(0), use_input_cost, use_slew_rate, saturate_states),
+    MPCBase(num_states,
+            num_inputs,
+            len_horizon,
+            num_control_points,
+            1,
+            VectorXd(0),
+            use_input_cost,
+            use_slew_rate,
+            saturate_states),
     // if using a slew rate constraint then state saturation rows of A are
     // shifted down by the number of slew rate constraints
     x_sat_idx_{num_inputs * num_control_points +

@@ -1,11 +1,11 @@
 #include "affine_mpc/mpc_base.hpp"
 
+#include <cassert>   // for assert
 #include <iostream>  // for std::cerr
 #include <stdexcept> // for exceptions
-#include <cassert>   // for assert
 
 #include <Eigen/Core>
-#include <osqp.h> // for OSQPSettings
+#include <osqp.h>                    // for OSQPSettings
 #include <unsupported/Eigen/Splines> // for B-spline support
 
 using namespace Eigen;
@@ -14,23 +14,40 @@ namespace ph = Eigen::placeholders;
 namespace affine_mpc {
 
 
-MPCBase::MPCBase(const int num_states, const int num_inputs,
-                 const int num_steps, const int num_control_points,
-                 const int degree, const Ref<const VectorXd>& knots,
-                 const bool use_input_cost, const bool use_slew_rate,
+MPCBase::MPCBase(const int num_states,
+                 const int num_inputs,
+                 const int num_steps,
+                 const int num_control_points,
+                 const int degree,
+                 const Ref<const VectorXd>& knots,
+                 const bool use_input_cost,
+                 const bool use_slew_rate,
                  const bool saturate_states) :
-    num_states_{num_states}, num_inputs_{num_inputs}, len_horizon_{num_steps},
-    num_ctrl_pts_{num_control_points}, degree_{degree},
-    use_input_cost_{use_input_cost}, use_slew_rate_{use_slew_rate},
-    saturate_states_{saturate_states}, model_set_{false},
-    input_limits_set_{false}, slew_rate_set_{false}, state_limits_set_{false},
-    solver_initialized_{false}, solver_{nullptr},
+    num_states_{num_states},
+    num_inputs_{num_inputs},
+    len_horizon_{num_steps},
+    num_ctrl_pts_{num_control_points},
+    degree_{degree},
+    use_input_cost_{use_input_cost},
+    use_slew_rate_{use_slew_rate},
+    saturate_states_{saturate_states},
+    model_set_{false},
+    input_limits_set_{false},
+    slew_rate_set_{false},
+    state_limits_set_{false},
+    solver_initialized_{false},
+    solver_{nullptr},
     spline_segment_idxs_{num_steps},
     spline_knots_{num_control_points + degree + 1},
-    spline_weights_{degree + 1, num_steps}, Ad_{num_states, num_states},
-    Bd_{num_states, num_inputs}, wd_{num_states},
-    Q_big_{num_states * num_steps}, x_goal_{num_states * num_steps},
-    u_min_{num_inputs}, u_max_{num_inputs}, solution_map_{nullptr, 0}
+    spline_weights_{degree + 1, num_steps},
+    Ad_{num_states, num_states},
+    Bd_{num_states, num_inputs},
+    wd_{num_states},
+    Q_big_{num_states * num_steps},
+    x_goal_{num_states * num_steps},
+    u_min_{num_inputs},
+    u_max_{num_inputs},
+    solution_map_{nullptr, 0}
 {
   if (num_states <= 0)
     throw std::invalid_argument("num_states must be greater than zero.");
@@ -194,7 +211,8 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
 void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
-                                          double dt, double tol)
+                                          double dt,
+                                          double tol)
 {
   assert(Ac.rows() == num_states_ && Ac.cols() == num_states_);
   assert(Bc.rows() == num_states_ && Bc.cols() == num_inputs_);

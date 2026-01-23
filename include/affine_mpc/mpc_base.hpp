@@ -22,10 +22,14 @@ public:
   //         Eigen::VectorXd(0), const Eigen::Ref<const Eigen::VectorXd>& knots
   //         = Eigen::VectorXd(0), const bool use_input_cost = false, const bool
   //         use_slew_rate = false, const bool saturate_states = false);
-  MPCBase(const int num_states, const int num_inputs, const int len_horizon,
-          const int num_control_points, const int degree,
+  MPCBase(const int num_states,
+          const int num_inputs,
+          const int len_horizon,
+          const int num_control_points,
+          const int degree,
           const Eigen::Ref<const Eigen::VectorXd>& knots = Eigen::VectorXd(0),
-          const bool use_input_cost = false, const bool use_slew_rate = false,
+          const bool use_input_cost = false,
+          const bool use_slew_rate = false,
           const bool saturate_states = false);
   virtual ~MPCBase();
 
@@ -52,7 +56,8 @@ public:
   void setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   double dt, double tol = 1e-6);
+                                   double dt,
+                                   double tol = 1e-6);
 
   void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& R_diag);
