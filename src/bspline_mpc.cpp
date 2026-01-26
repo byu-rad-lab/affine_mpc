@@ -1,6 +1,7 @@
 #include "affine_mpc/bspline_mpc.hpp"
 
-#include <Eigen/Core>
+// #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
+#include "eigen_compat.hpp"  // revmove this once Eigen 3.5 is required
 #include <exception>
 #include <unsupported/Eigen/Splines>
 
@@ -8,7 +9,7 @@
 #include "affine_mpc/osqp_solver.hpp"
 
 using namespace Eigen;
-namespace ph = Eigen::placeholders;
+// namespace ph = Eigen::placeholders;  // revert back to this once Eigen 3.5 is required
 
 namespace affine_mpc {
 

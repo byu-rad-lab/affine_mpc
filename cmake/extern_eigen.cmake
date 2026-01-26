@@ -10,6 +10,11 @@ if(NOT TARGET Eigen3::Eigen)
   )
   FetchContent_MakeAvailable(eigen3_extern)
 
+  # Create the Eigen3::Eigen alias if it doesn't exist
+  if(NOT TARGET Eigen3::Eigen)
+    add_library(Eigen3::Eigen ALIAS eigen)
+  endif()
+
   message(STATUS "Eigen3 version: ${Eigen_FIND_VERSION}")
 else()
   message(STATUS "Eigen3 version: ${Eigen3_VERSION}")

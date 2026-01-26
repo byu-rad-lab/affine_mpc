@@ -4,12 +4,13 @@
 #include <iostream>  // for std::cerr
 #include <stdexcept> // for exceptions
 
-#include <Eigen/Core>
-#include <osqp.h>                    // for OSQPSettings
+// #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
+#include "eigen_compat.hpp"  // revmove this once Eigen 3.5 is required
 #include <unsupported/Eigen/Splines> // for B-spline support
+#include <osqp.h>                    // for OSQPSettings
 
 using namespace Eigen;
-namespace ph = Eigen::placeholders;
+// namespace ph = Eigen::placeholders;  // revert back to this once Eigen 3.5 is required
 
 namespace affine_mpc {
 
