@@ -63,7 +63,7 @@ MPCBase::MPCBase(const int num_states,
   // set defaults
   Q_big_.setIdentity();
   u_min_.setConstant(-std::numeric_limits<double>::infinity());
-  u_min_.setConstant(std::numeric_limits<double>::infinity());
+  u_max_.setConstant(std::numeric_limits<double>::infinity());
 
   // allocate memory needed based on options
   if (use_input_cost) {
