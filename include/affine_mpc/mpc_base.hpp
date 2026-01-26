@@ -10,7 +10,7 @@ namespace affine_mpc {
 
 class MPCBase
 {
-  friend class MPCLogger; // allow acces to member variables for logging
+  friend class MPCLogger; // allow access to member variables for logging
 public:
   // MPCBase(const Eigen::Ref<const Eigen::MatrixXd>& A,
   //         const Eigen::Ref<const Eigen::MatrixXd>& B,
