@@ -22,9 +22,9 @@ public:
 
   // See https://arxiv.org/pdf/2001.04931 section IV.C for details on evaluating
   // the parameterized input trajectory to get the input trajectory
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const override;
+  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const override final;
   void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override;
+      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
 
   void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
@@ -35,7 +35,7 @@ public:
 protected:
   // See https://arxiv.org/pdf/2001.04931 sections IV.B and IV.E for details on
   // S and v and how to convert to a QP problem
-  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override;
+  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
   void calcSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0);
   void calcPandQ();
 

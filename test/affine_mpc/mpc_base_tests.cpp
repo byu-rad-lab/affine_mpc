@@ -19,7 +19,7 @@ public:
   {}
   virtual ~MPCBaseTester() = default;
   void
-  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const override
+  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const override final
   {}
   auto getAd() { return Ad_; }
   auto getBd() { return Bd_; }
@@ -30,7 +30,7 @@ public:
   auto getInputTrajectory() { return u_goal_; }
 
 protected:
-  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override {}
+  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
 };
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)

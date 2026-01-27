@@ -23,9 +23,11 @@ public:
   using MPCBase::MPCBase;
   virtual ~BSplineMPC() = default;
 
-  // void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const override;
+  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const override final {
+    MPCBase::getInputTrajectory(u_traj);
+  }
   void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override;
+      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
 
   void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
@@ -34,7 +36,7 @@ public:
   void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
 protected:
-  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override;
+  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
   void calcSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0);
   void calcPAndQ();
 
