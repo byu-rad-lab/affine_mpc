@@ -14,20 +14,23 @@ class MPCBase
 public:
   // MPCBase(const Eigen::Ref<const Eigen::MatrixXd>& A,
   //         const Eigen::Ref<const Eigen::MatrixXd>& B,
-  //         const Eigen::Ref<const Eigen::VectorXd>& w, const int len_horizon,
-  //         const int num_control_points, const int degree,
+  //         const Eigen::Ref<const Eigen::VectorXd>& w,
+  //         const int horizon_steps,
   //         const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
   //         const Eigen::Ref<const Eigen::VectorXd>& R_diag,
-  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag =
-  //         Eigen::VectorXd(0), const Eigen::Ref<const Eigen::VectorXd>& knots
-  //         = Eigen::VectorXd(0), const bool use_input_cost = false, const bool
-  //         use_slew_rate = false, const bool saturate_states = false);
-  MPCBase(const int num_states,
-          const int num_inputs,
-          const int len_horizon,
+  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag = Eigen::VectorXd(0),
+  //         const int num_control_points,
+  //         const int spline_degree,
+  //         const Eigen::Ref<const Eigen::VectorXd>& spline_knots = Eigen::VectorXd(0),
+  //         const bool use_input_cost = false,
+  //         const bool use_slew_rate = false,
+  //         const bool saturate_states = false);
+  MPCBase(const int state_dim,
+          const int input_dim,
+          const int horizon_steps,
           const int num_control_points,
-          const int degree,
-          const Eigen::Ref<const Eigen::VectorXd>& knots = Eigen::VectorXd(0),
+          const int spline_degree,
+          const Eigen::Ref<const Eigen::VectorXd>& spline_knots = Eigen::VectorXd(0),
           const bool use_input_cost = false,
           const bool use_slew_rate = false,
           const bool saturate_states = false);
@@ -79,21 +82,21 @@ public:
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
   void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
-  inline int getNumStates() const { return num_states_; };
-  inline int getNumInputs() const { return num_inputs_; };
-  inline int getHorizonLength() const { return len_horizon_; };
+  inline int getStateDim() const { return state_dim_; };
+  inline int getInputDim() const { return input_dim_; };
+  inline int getHorizonSteps() const { return horizon_steps_; };
   inline int getNumControlPoints() const { return num_ctrl_pts_; };
 
 private:
-  void initializeKnots(const Eigen::Ref<const Eigen::VectorXd>& knots);
+  void initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
   void calcSplineParams();
 
 protected:
   // need to be implemented by derived classes
   virtual void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
 
-  const int num_states_, num_inputs_;
-  const int len_horizon_, num_ctrl_pts_, degree_;
+  const int state_dim_, input_dim_;
+  const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
   bool solver_initialized_;

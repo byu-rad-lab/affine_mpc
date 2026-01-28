@@ -84,7 +84,7 @@ s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
 \end{align}
 ```
 
-where, $`x \in \mathbb{R}^n`$ is the state, $`\bar{x} \in \mathbb{R}^n`$ is the reference state, $`u \in \mathbb{R}^m`$ is the input, $`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory, $`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point, $`g`$ is the function to evaluate the parameterized input trajectory, $`T`$ is the horizon length, $`p`$ is the number of control points used to parameterize the input trajectory, the discrete-time affine model is defined by $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, and $`w \in \mathbb{R}^n`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal weighting matrices.
+where, $`x \in \mathbb{R}^n`$ is the state, $`\bar{x} \in \mathbb{R}^n`$ is the reference state, $`u \in \mathbb{R}^m`$ is the input, $`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory, $`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point, $`g`$ is the function to evaluate the parameterized input trajectory, $`T`$ is the number of steps in the prediction horizon, $`p`$ is the number of control points used to parameterize the input trajectory, the discrete-time affine model is defined by $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, and $`w \in \mathbb{R}^n`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal weighting matrices.
 
 **NOTE:** The norm in the cost function is a weighted 2-norm where $`||x||^2_M = x^\top M x`$.
 
@@ -108,13 +108,13 @@ The C++ and Python APIs are almost identical, but I will try to highlight the di
 **Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the C++ header files or using iPython for some documentation of the Python bindings. A stub file for the Python bindings is included in `affine_mpc_py` to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
 
 ### Step 1: MPC Constructor
-When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the horizon length and number of control points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no usable solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
+When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the number of steps and control points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no usable solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
 
 #### C++
 
 ```cpp
-MPCBase(const int num_states, const int num_inputs,
-        const int len_horizon, const int num_control_points,
+MPCBase(const int state_dim, const int input_dim,
+        const int horizon_steps, const int num_control_points,
         const bool use_input_cost = false,
         const bool use_slew_rate = false,
         const bool saturate_states = false)
@@ -123,7 +123,7 @@ MPCBase(const int num_states, const int num_inputs,
 **Python**
 
 ```python
-def __init__(self, num_states: int, num_inputs: int, len_horizon: int,
+def __init__(self, state_dim: int, input_dim: int, horizon_steps: int,
              num_control_points: int, use_input_cost: bool=False,
              use_slew_rate: bool=False, saturate_states: bool=False)
 ```
@@ -220,7 +220,6 @@ def setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts: NDArray) -> None:
 
 #### Update parameters from pre-initialization setup
 You can call any of the pre-initialization setup to update them before solving. If you want to successively linearize or affinize then you will need to update the model before each solve.
-
 ```cpp
 setModelDiscrete(Ad, Bd, wd)
 setModelContinuous2Discrete(Ac, Bc, wc, dt)
@@ -319,7 +318,7 @@ while t <= t_final:
   t += dt
 ```
 
-The logger creates 4 txt files of data within the `save_location` directory that contain all of the data. These files can be loaded in Python with `np.loadtxt('states.txt')` and each row of data represents a single time horizon (e.g., if there were 2 states and a horizon length of 3 then a row of data would contain 6 numbers for state 1 at the first time step, state 2 at the first time step, state 1 at the second time step, etc.). This pattern follows for `inputs.txt`, `time.txt`, and `ref_states.txt`.
+The logger creates 4 txt files of data within the `save_location` directory that contain all of the data. These files can be loaded in Python with `np.loadtxt('states.txt')` and each row of data represents a single time horizon (e.g., if there were 2 states and a horizon of 3 steps then a row of data would contain 6 numbers for state 1 at the first time step, state 2 at the first time step, state 1 at the second time step, etc.). This pattern follows for `inputs.txt`, `time.txt`, and `ref_states.txt`.
 
 The `solve_time` function parameter is optional. The logger will record this time as well as the solve time reported from the solver on the same line. This is to allow the user to keep track of the time it takes to setup the MPC problem as well as the time it takes just to solve after it is setup.
 

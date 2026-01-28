@@ -35,7 +35,7 @@ private:
   std::ofstream states_fout_;
   std::ofstream refs_fout_;
   std::ofstream inputs_fout_;
-  std::ofstream knots_fout_;
+  std::ofstream spline_knots_fout_;
 };
 
 } // namespace affine_mpc

@@ -14,19 +14,19 @@ using namespace Eigen;
 namespace affine_mpc {
 
 
-BSplineMPC::BSplineMPC(const int num_states,
-                       const int num_inputs,
-                       const int num_steps,
-                       const int num_controls,
+BSplineMPC::BSplineMPC(const int state_dim,
+                       const int input_dim,
+                       const int horizon_steps,
+                       const int num_control_points,
                        const int spline_degree,
                        const Ref<const VectorXd>& knots,
                        const bool use_input_cost,
                        const bool use_slew_rate,
                        const bool saturate_states) :
-    MPCBase(num_states,
-            num_inputs,
-            num_steps,
-            num_controls,
+    MPCBase(state_dim,
+            input_dim,
+            horizon_steps,
+            num_control_points,
             spline_degree,
             knots,
             use_input_cost,
@@ -34,14 +34,14 @@ BSplineMPC::BSplineMPC(const int num_states,
             saturate_states),
     // if using a slew rate constraint then state saturation rows of A are
     // shifted down by the number of slew rate constraints
-    x_sat_idx_{num_inputs * num_controls +
-               num_inputs * (num_controls - 1) * use_slew_rate},
-    num_constraints_{x_sat_idx_ + num_states * num_steps * saturate_states},
-    S_{num_states * num_steps, num_inputs * num_controls},
-    v_{num_states * num_steps}
+    x_sat_idx_{input_dim * num_control_points +
+               input_dim * (num_control_points - 1) * use_slew_rate},
+    num_constraints_{x_sat_idx_ + state_dim * horizon_steps * saturate_states},
+    S_{state_dim * horizon_steps, input_dim * num_control_points},
+    v_{state_dim * horizon_steps}
 {
-  int num_design_vars{num_inputs * num_controls};
   solver_ = new OSQPSolver{num_design_vars, num_constraints_};
+  int num_design_vars{input_dim * num_control_points};
   P_.resize(num_design_vars, num_design_vars);
   A_.resize(num_constraints_, num_design_vars);
   q_.resize(num_design_vars);
@@ -51,14 +51,14 @@ BSplineMPC::BSplineMPC(const int num_states,
   A_.setIdentity(); // input saturation conststraint
   if (use_slew_rate) {
     // shorten block index variables for readability
-    int mp{num_inputs * num_controls};
-    int mp_m{num_inputs * num_controls - num_inputs};
+    int mp{input_dim * num_control_points};
+    int mp_m{input_dim * num_control_points - input_dim};
     A_.block(mp, 0, mp_m, mp).diagonal().setConstant(-1);
-    A_.block(mp, num_inputs_, mp_m, mp_m).diagonal().setOnes();
+    A_.block(mp, input_dim_, mp_m, mp_m).diagonal().setOnes();
   }
   // Avoids setting first row block of S_ to zero every time solve() is
-  // cph::alled (a minor speed optimization)
-  S_.topRows(num_states).setZero();
+  // called (a minor speed optimization)
+  S_.topRows(state_dim).setZero();
 }
 
 // void BSplineMPC::getInputTrajectory(Ref<VectorXd> u_traj) const
@@ -66,14 +66,14 @@ BSplineMPC::BSplineMPC(const int num_states,
 //   MPCBase::getInputTrajectory(u_traj); // size checks
 //
 //   int seg;
-//   Map<const MatrixXd> ctrls{solution_map_.data(), num_inputs_,
+//   Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
 //   num_ctrl_pts_};
 //   VectorXd weights;
 //
-//   for (int k{0}; k < len_horizon_; ++k) {
+//   for (int k{0}; k < horizon_steps_; ++k) {
 //     seg = spline_segment_idxs_(k);
-//     u_traj(seqN(k, num_inputs_)) =
-//         ctrls(ph::all, seqN(seg, degree_ + 1)) * spline_weights_.col(k);
+//     u_traj(seqN(k, input_dim_)) =
+//         ctrls(ph::all, seqN(seg, spline_degree_ + 1)) * spline_weights_.col(k);
 //   }
 // }
 
@@ -89,8 +89,8 @@ void BSplineMPC::setInputLimits(const Ref<const VectorXd>& u_min,
   MPCBase::setInputLimits(u_min, u_max); // size checks
 
   for (int k{0}; k < num_ctrl_pts_; ++k) {
-    l_.segment(num_inputs_ * k, num_inputs_) = u_min_;
-    u_.segment(num_inputs_ * k, num_inputs_) = u_max_;
+    l_.segment(input_dim_ * k, input_dim_) = u_min_;
+    u_.segment(input_dim_ * k, input_dim_) = u_max_;
   }
   if (solver_initialized_)
     solver_->updateBounds(l_, u_);
@@ -107,13 +107,13 @@ void BSplineMPC::setStateLimits(const Ref<const VectorXd>& x_min,
   x_min_stacked - v_ <= S_*z <= x_max_stacked - v_
   */
 
-  // A_.block(x_sat_idx_, 0, num_states_ * len_horizon_,
-  //          num_inputs_ * num_ctrl_pts_) = S_;
+  // A_.block(x_sat_idx_, 0, state_dim_ * horizon_steps_,
+  //          input_dim_ * num_ctrl_pts_) = S_;
   const auto x_sat_rows = seq(x_sat_idx_, ph::last);
   A_(x_sat_rows, ph::all) = S_;
-  for (int k{0}; k < len_horizon_; ++k) {
-    l_.segment(x_sat_idx_ + num_states_ * k, num_states_) = x_min_;
-    u_.segment(x_sat_idx_ + num_states_ * k, num_states_) = x_max_;
+  for (int k{0}; k < horizon_steps_; ++k) {
+    l_.segment(x_sat_idx_ + state_dim_ * k, state_dim_) = x_min_;
+    u_.segment(x_sat_idx_ + state_dim_ * k, state_dim_) = x_max_;
   }
   l_(x_sat_rows) -= v_;
   u_(x_sat_rows) -= v_;
@@ -125,11 +125,11 @@ void BSplineMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
   MPCBase::setSlewRate(u_slew); // size checks
 
-  int mp{num_inputs_ * num_ctrl_pts_};
+  int mp{input_dim_ * num_ctrl_pts_};
   int max{num_ctrl_pts_ - 1};
   for (int i{0}; i < max; ++i) {
-    l_.segment(mp + num_inputs_ * i, num_inputs_) = -u_slew_;
-    u_.segment(mp + num_inputs_ * i, num_inputs_) = u_slew_;
+    l_.segment(mp + input_dim_ * i, input_dim_) = -u_slew_;
+    u_.segment(mp + input_dim_ * i, input_dim_) = u_slew_;
   }
   if (solver_initialized_)
     solver_->updateBounds(l_, u_);
@@ -149,8 +149,8 @@ void BSplineMPC::convertToQP(const Ref<const VectorXd>& x0)
 
 void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
 {
-  int n{num_states_};
-  int m{num_inputs_};
+  int n{state_dim_};
+  int m{input_dim_};
 
   // add dynamics of initial time step (k=0)
   VectorXd weights = spline_weights_.col(0);
@@ -160,7 +160,7 @@ void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
   v_.head(n) = Ad_ * x0 + wd_;
 
   int seg;
-  for (int k{1}; k < len_horizon_; ++k) {
+  for (int k{1}; k < horizon_steps_; ++k) {
     seg = spline_segment_idxs_(k);
     weights = spline_weights_.col(k);
 

@@ -11,12 +11,12 @@ class BSplineMPC : public MPCBase
 {
 public:
   BSplineMPC(
-      const int num_states,
-      const int num_inputs,
-      const int num_steps,
-      const int num_controls,
+      const int state_dim,
+      const int input_dim,
+      const int horizon_steps,
+      const int num_control_points,
       const int spline_degree,
-      const Eigen::Ref<const Eigen::VectorXd>& knots = Eigen::VectorXd(0),
+      const Eigen::Ref<const Eigen::VectorXd>& spline_knots = Eigen::VectorXd(0),
       const bool use_input_cost = false,
       const bool use_slew_rate = false,
       const bool saturate_states = false);

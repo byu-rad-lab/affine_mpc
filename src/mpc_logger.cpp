@@ -30,8 +30,8 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
                      const std::string& save_location) :
     mpc_{mpc},
     save_dir_{save_location},
-    x_traj_{mpc->num_states_ * mpc->len_horizon_},
-    u_traj_{mpc_->num_inputs_ * mpc_->len_horizon_},
+    x_traj_{mpc->state_dim_ * mpc->horizon_steps_},
+    u_traj_{mpc_->input_dim_ * mpc_->horizon_steps_},
     wrote_params_{false}
 {
   handleStringSubstitutions();
@@ -44,7 +44,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
   states_fout_.open(save_dir_ + "states.txt");
   refs_fout_.open(save_dir_ + "ref_states.txt");
   inputs_fout_.open(save_dir_ + "inputs.txt");
-  knots_fout_.open(save_dir_ + "knots.txt");
+  spline_knots_fout_.open(save_dir_ + "spline_knots.txt");
 
   if (!time_fout_.is_open())
     throw std::runtime_error("Failed to open time file for writing.");
@@ -56,12 +56,12 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     throw std::runtime_error("Failed to open ref_states file for writing.");
   if (!inputs_fout_.is_open())
     throw std::runtime_error("Failed to open inputs file for writing.");
-  if (!knots_fout_.is_open())
-    throw std::runtime_error("Failed to open knots file for writing.");
+  if (!spline_knots_fout_.is_open())
+    throw std::runtime_error("Failed to open spline_knots file for writing.");
 
   // write knots to file
-  knots_fout_ << mpc_->spline_knots_.transpose() << std::endl;
-  knots_fout_.close();
+  spline_knots_fout_ << mpc_->spline_knots_.transpose() << std::endl;
+  spline_knots_fout_.close();
 }
 
 MPCLogger::~MPCLogger()
@@ -84,8 +84,8 @@ void MPCLogger::logPreviousSolve(double t0,
 {
   if (!mpc_->solver_initialized_)
     throw std::runtime_error("Solver must be initialized before logging data.");
-  const static int n{mpc_->num_states_}, m{mpc_->num_inputs_};
-  const static int T{mpc_->len_horizon_}, p{mpc_->num_ctrl_pts_};
+  const static int n{mpc_->state_dim_}, m{mpc_->input_dim_};
+  const static int T{mpc_->horizon_steps_}, p{mpc_->num_ctrl_pts_};
 
   double time{t0};
 
@@ -122,26 +122,26 @@ void MPCLogger::writeParamFile(const std::string& filename)
   if (!param_fout.is_open()) {
     throw std::runtime_error("Failed to open parameter file for writing.");
   }
-  param_fout << std::boolalpha << "n: " << mpc_->num_states_ << std::endl
-             << "m: " << mpc_->num_inputs_ << std::endl
-             << "T: " << mpc_->len_horizon_ << std::endl
+  param_fout << std::boolalpha << "n: " << mpc_->state_dim_ << std::endl
+             << "m: " << mpc_->input_dim_ << std::endl
+             << "T: " << mpc_->horizon_steps_ << std::endl
              << "mu: " << mpc_->num_ctrl_pts_ << std::endl
-             << "p: " << mpc_->degree_ << std::endl
+             << "p: " << mpc_->spline_degree_ << std::endl
              << "use_input_cost: " << mpc_->use_input_cost_ << std::endl
              << "use_slew_rate: " << mpc_->use_slew_rate_ << std::endl
              << "saturate_states: " << mpc_->saturate_states_ << std::endl
              << "u_min: " << eig2Str(mpc_->u_min_) << std::endl
              << "u_max: " << eig2Str(mpc_->u_max_) << std::endl
              << "Q: "
-             << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->num_states_))
+             << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->state_dim_))
              << std::endl
              << "Qf: "
-             << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->num_states_))
+             << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->state_dim_))
              << std::endl;
 
   param_fout << "R: ";
   if (mpc_->use_input_cost_)
-    param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->num_inputs_))
+    param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->input_dim_))
                << std::endl;
   else
     param_fout << "None" << std::endl;

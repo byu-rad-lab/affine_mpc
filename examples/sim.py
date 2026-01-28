@@ -3,8 +3,8 @@ import affine_mpc_py as ampc
 
 
 def main():
-    msd_mpc = ampc.ImplicitMPC(num_states=2, num_inputs=1,
-                               len_horizon=10, num_control_points=3,
+    msd_mpc = ampc.ImplicitMPC(state_dim=2, input_dim=1,
+                               horizon_steps=10, num_control_points=3,
                                use_input_cost=True, use_slew_rate=True)
 
     logger = ampc.MPCLogger(msd_mpc, "/tmp/ampc_example")
