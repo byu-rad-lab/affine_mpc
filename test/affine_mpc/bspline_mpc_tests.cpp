@@ -204,15 +204,16 @@ TEST(BSplineMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   msd_mpc.setInputLimits(u_min, u_max);
   msd_mpc.setReferenceInput(u_goal);
   msd_mpc.setSlewRate(slew);
-  OSQPSettings settings;
-  osqp_set_default_settings(&settings);
+
+  // These are the recommended settings, but explicitly set here for clarity
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   settings.eps_abs = 1e-6;
   settings.eps_rel = 1e-6;
-  msd_mpc.initializeSolver(&settings);
-  x0.setZero();
+  msd_mpc.initializeSolver(settings);
 
+  x0.setZero();
   Eigen::Matrix<double, m, 1> u_star, u_star_expected;
   bool solved;
   solved = msd_mpc.solve(x0);

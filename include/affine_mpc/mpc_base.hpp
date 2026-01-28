@@ -1,6 +1,7 @@
 #ifndef MPC_BASE_HPP
 #define MPC_BASE_HPP
 
+#include <memory>
 #include <Eigen/Core>
 
 #include "affine_mpc/osqp_solver.hpp"
@@ -34,10 +35,10 @@ public:
           const bool use_input_cost = false,
           const bool use_slew_rate = false,
           const bool saturate_states = false);
-  virtual ~MPCBase();
+  virtual ~MPCBase() = default;
 
   // Must be called before solve()
-  bool initializeSolver(const OSQPSettings* solver_settings = nullptr);
+  bool initializeSolver(const OSQPSettings& solver_settings = OSQPSolver::getRecommendedSettings(true));
 
   // Must be called before accesing optimized variables
   bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
@@ -102,7 +103,7 @@ protected:
   bool solver_initialized_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
-  OSQPSolver* solver_;
+  std::unique_ptr<OSQPSolver> solver_;
   Eigen::MatrixXd P_; // osqp cost matrix
   Eigen::MatrixXd A_; // osqp constraint matrix
   Eigen::VectorXd q_; // osqp cost vector

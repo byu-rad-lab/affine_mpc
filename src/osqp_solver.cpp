@@ -3,15 +3,16 @@
 #include "osqp_api_types.h"
 
 #include <Eigen/Core>
+#include <memory>
 #include <cassert>
 
 namespace affine_mpc {
 
 OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
-    solver_{nullptr},
-    settings_{OSQPSettings_new()},
-    P_{nullptr},
-    A_{nullptr},
+    solver_{nullptr, osqp_cleanup},
+    // settings_{OSQPSettings_new(), OSQPSettings_free},
+    P_{nullptr, OSQPCscMatrix_free},
+    A_{nullptr, OSQPCscMatrix_free},
     workspace_initialized_{false},
     P_is_set_{false},
     A_is_set_{false},
@@ -21,23 +22,26 @@ OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
     A_p_{num_variables + 1}
 {
   assert(num_variables > 0 && num_constraints > 0);
-  osqp_set_default_settings(settings_);
-  settings_->alpha = 1.0;
-  settings_->verbose = false;
-  settings_->eps_dual_inf = 1e-6;
-  settings_->eps_prim_inf = 1e-6;
 }
 
-OSQPSolver::~OSQPSolver()
+OSQPSettings OSQPSolver::getDefaultSettings()
 {
-  if (solver_)
-    osqp_cleanup(solver_);
-  if (settings_)
-    OSQPSettings_free(settings_);
-  if (P_)
-    OSQPCscMatrix_free(P_);
-  if (A_)
-    OSQPCscMatrix_free(A_);
+  OSQPSettings settings;
+  osqp_set_default_settings(&settings);
+  return settings;
+}
+
+OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries)
+{
+  OSQPSettings settings;
+  osqp_set_default_settings(&settings);
+  settings.alpha = 1.0;
+  settings.verbose = false;
+  settings.eps_dual_inf = 1e-6;
+  settings.eps_prim_inf = 1e-6;
+  if (polish_near_boundaries)
+    settings.polishing = 1;
+  return settings;
 }
 
 const OSQPFloat* OSQPSolver::getSolutionPtr() const
@@ -55,7 +59,7 @@ bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
   assert(solution.size() == n_);
   assert(workspace_initialized_);
 
-  osqp_solve(solver_);
+  osqp_solve(solver_.get());
   Eigen::Map<VectorXF> map_solution{solver_->solution->x, n_, 1};
   solution = map_solution;
   return solver_->info->status_val == OSQP_SOLVED;
@@ -64,7 +68,7 @@ bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 bool OSQPSolver::solve()
 {
   assert(workspace_initialized_);
-  osqp_solve(solver_);
+  osqp_solve(solver_.get());
   return solver_->info->status_val == OSQP_SOLVED;
 }
 
@@ -73,19 +77,16 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
                             Eigen::Ref<VectorXF> q,
                             Eigen::Ref<VectorXF> l,
                             Eigen::Ref<VectorXF> u,
-                            const OSQPSettings* settings)
+                            const OSQPSettings& settings)
 {
   assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
-  if (!settings_)
-    return false;
-
-  if (settings)
-    setCustomSettings(settings);
   initializeCostMatrix(P);
   initializeConstraintMatrix(A);
 
-  OSQPInt exitflag{osqp_setup(&solver_, P_, q.data(), A_, l.data(), u.data(),
-                              m_, n_, settings_)};
+  ::OSQPSolver* raw_solver = nullptr;
+  OSQPInt exitflag{osqp_setup(&raw_solver, P_.get(), q.data(), A_.get(), 
+                              l.data(), u.data(), m_, n_, &settings)};
+  solver_.reset(raw_solver);
   if (exitflag == 0)
     workspace_initialized_ = true;
   return workspace_initialized_;
@@ -106,7 +107,7 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
       --idx_diff;
     }
   }
-  OSQPInt exit_status{osqp_update_data_mat(solver_, P_x_.data(), OSQP_NULL,
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), P_x_.data(), OSQP_NULL,
                                            P_nnz_, OSQP_NULL, OSQP_NULL, 0)};
   return exit_status == 0;
 }
@@ -127,7 +128,7 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
       --idx_diff;
     }
   }
-  OSQPInt exit_status{osqp_update_data_mat(solver_, OSQP_NULL, OSQP_NULL, 0,
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL, 0,
                                            A_x_.data(), OSQP_NULL, A_nnz_)};
   return exit_status == 0;
 }
@@ -139,7 +140,7 @@ bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
     return false;
 
   OSQPInt exit_status{
-      osqp_update_data_vec(solver_, q.data(), OSQP_NULL, OSQP_NULL)};
+      osqp_update_data_vec(solver_.get(), q.data(), OSQP_NULL, OSQP_NULL)};
   return exit_status == 0;
 }
 
@@ -150,7 +151,7 @@ bool OSQPSolver::updateBounds(Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u)
     return false;
 
   OSQPInt exit_status{
-      osqp_update_data_vec(solver_, OSQP_NULL, l.data(), u.data())};
+      osqp_update_data_vec(solver_.get(), OSQP_NULL, l.data(), u.data())};
   return exit_status == 0;
 }
 
@@ -191,7 +192,7 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
     }
   }
   P_p_(n_) = P_nnz_;
-  P_ = OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data());
+  P_.reset(OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data()));
   P_is_set_ = true;
 }
 
@@ -216,34 +217,8 @@ void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
     }
   }
   A_p_(n_) = A_nnz_;
-  A_ = OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data());
+  A_.reset(OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
   A_is_set_ = true;
-}
-
-void OSQPSolver::setCustomSettings(const OSQPSettings* settings)
-{
-  settings_->rho = settings->rho;
-  settings_->sigma = settings->sigma;
-  settings_->max_iter = settings->max_iter;
-  settings_->eps_abs = settings->eps_abs;
-  settings_->eps_rel = settings->eps_rel;
-  settings_->eps_prim_inf = settings->eps_prim_inf;
-  settings_->eps_dual_inf = settings->eps_dual_inf;
-  settings_->alpha = settings->alpha;
-  settings_->linsys_solver = settings->linsys_solver;
-  settings_->delta = settings->delta;
-  settings_->polishing = settings->polishing;
-  settings_->polish_refine_iter = settings->polish_refine_iter;
-  settings_->verbose = settings->verbose;
-  settings_->scaled_termination = settings->scaled_termination;
-  settings_->check_termination = settings->check_termination;
-  settings_->warm_starting = settings->warm_starting;
-  settings_->scaling = settings->scaling;
-  settings_->adaptive_rho = settings->adaptive_rho;
-  settings_->adaptive_rho_interval = settings->adaptive_rho_interval;
-  settings_->adaptive_rho_tolerance = settings->adaptive_rho_tolerance;
-  settings_->adaptive_rho_fraction = settings->adaptive_rho_fraction;
-  settings_->time_limit = settings->time_limit;
 }
 
 } // namespace affine_mpc

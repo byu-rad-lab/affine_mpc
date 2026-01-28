@@ -88,15 +88,7 @@ MPCBase::MPCBase(const int state_dim,
   calcSplineParams();
 }
 
-MPCBase::~MPCBase()
-{
-  // Derived classes create solver_ but do not need to delete it.
-  // This deletes the solver, derived classes can use default destructor.
-  if (solver_)
-    delete solver_;
-}
-
-bool MPCBase::initializeSolver(const OSQPSettings* solver_settings)
+bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
 {
   if (!model_set_)
     throw std::runtime_error("Model must be set before initializing solver.");

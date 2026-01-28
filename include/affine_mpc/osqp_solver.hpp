@@ -14,7 +14,19 @@ public:
   typedef Eigen::Matrix<OSQPInt, Eigen::Dynamic, 1> VectorXI;
 
   OSQPSolver(const int num_variables, const int num_constraints);
-  virtual ~OSQPSolver();
+  virtual ~OSQPSolver() = default;
+  
+  // Delete copy operations (C API handles make this unsafe)
+  OSQPSolver(const OSQPSolver&) = delete;
+  OSQPSolver& operator=(const OSQPSolver&) = delete;
+  
+  // Default move operations (smart pointers handle this correctly)
+  OSQPSolver(OSQPSolver&&) = default;
+  OSQPSolver& operator=(OSQPSolver&&) = default;
+
+  static OSQPSettings getDefaultSettings();
+  static OSQPSettings getRecommendedSettings(const bool polish_near_boundaries);
+  
   const OSQPFloat* getSolutionPtr() const;
   OSQPFloat getSolveTime() const;
   bool solve(Eigen::Ref<VectorXF> solution);
@@ -24,7 +36,7 @@ public:
                   Eigen::Ref<VectorXF> q,
                   Eigen::Ref<VectorXF> l,
                   Eigen::Ref<VectorXF> u,
-                  const OSQPSettings* settings = nullptr);
+                  const OSQPSettings& settings);
   bool updateCostMatrix(const Eigen::Ref<const MatrixXF>& P);
   bool updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
   bool updateCostVector(Eigen::Ref<VectorXF> q);
@@ -34,12 +46,12 @@ private:
   int countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat);
   void initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P);
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
-  void setCustomSettings(const OSQPSettings* settings);
+  void setCustomSettings(const OSQPSettings& settings);
 
-  ::OSQPSolver* solver_;
-  OSQPSettings* settings_;
-  OSQPCscMatrix* P_;
-  OSQPCscMatrix* A_;
+  // Choosing to modernize even though OSQP documentation uses raw pointers
+  std::unique_ptr<::OSQPSolver, decltype(&osqp_cleanup)> solver_;
+  std::unique_ptr<OSQPCscMatrix, decltype(&OSQPCscMatrix_free)> P_;
+  std::unique_ptr<OSQPCscMatrix, decltype(&OSQPCscMatrix_free)> A_;
   bool workspace_initialized_;
   bool P_is_set_;
   bool A_is_set_;

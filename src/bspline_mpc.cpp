@@ -40,8 +40,8 @@ BSplineMPC::BSplineMPC(const int state_dim,
     S_{state_dim * horizon_steps, input_dim * num_control_points},
     v_{state_dim * horizon_steps}
 {
-  solver_ = new OSQPSolver{num_design_vars, num_constraints_};
   int num_design_vars{input_dim * num_control_points};
+  solver_ = std::make_unique<OSQPSolver>(num_design_vars, num_constraints_);
   P_.resize(num_design_vars, num_design_vars);
   A_.resize(num_constraints_, num_design_vars);
   q_.resize(num_design_vars);

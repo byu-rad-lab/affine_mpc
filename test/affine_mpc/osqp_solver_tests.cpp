@@ -18,7 +18,8 @@ public:
     VectorXF l{m_}, u{m_};
     l.setZero();
     u.setOnes();
-    initialize(P, A, q, l, u);
+    OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+    initialize(P, A, q, l, u, settings);
   }
 
   void testInitializeA(const Eigen::Ref<Eigen::MatrixXd> A)
@@ -29,7 +30,8 @@ public:
     VectorXF l{m_}, u{m_};
     l.setZero();
     u.setOnes();
-    initialize(P, A, q, l, u);
+    OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+    initialize(P, A, q, l, u, settings);
   }
 
   auto getPx() { return P_x_; }
@@ -186,7 +188,8 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
   P << 1, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 4, 0, 0,
       1, 1, 1, 1, 5, 0, 1, 1, 1, 1, 1, 6;
 
-  base.initialize(P, A, q, l, u);
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  base.initialize(P, A, q, l, u, settings);
 
   P << 5, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 2, 0, 0,
       1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0;
@@ -217,12 +220,13 @@ TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
   Eigen::Matrix<OSQPFloat, m, 1> l, u;
   l.setZero();
   u.setOnes();
-
+  
   Eigen::Matrix<OSQPFloat, n, n> P;
   P.setZero();
   P.diagonal().setOnes();
 
-  base.initialize(P, A, q, l, u);
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  base.initialize(P, A, q, l, u, settings);
 
   // This changes the structure but the internal check only counts the number of
   // non-zero elements which is still 2 in this case - so this is OK although
@@ -258,8 +262,9 @@ TEST(OSQPSolverProtectedTester,
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
 
-  base.initialize(P, A, q, l, u);
+  base.initialize(P, A, q, l, u, settings);
 
   A << 1.2, 1.1, 1.5, 0, 0, 0.8;
   P << 0, 1, 9, 2;
@@ -304,14 +309,13 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings;
-  osqp_set_default_settings(&settings);
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   // polishing tests the boundary conditions better but is a little slower
   settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, &settings);
+  base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
   base.solve(calculated_solution);
@@ -335,12 +339,13 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings;
-  osqp_set_default_settings(&settings);
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
+  // polishing tests the boundary conditions better but is a little slower
+  settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, &settings);
+  base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
   base.solve(calculated_solution);
@@ -382,13 +387,12 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings;
-  osqp_set_default_settings(&settings);
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, &settings);
+  base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
   base.solve(calculated_solution);
