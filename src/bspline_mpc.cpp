@@ -80,7 +80,8 @@ BSplineMPC::BSplineMPC(const int state_dim,
 void BSplineMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   MPCBase::getPredictedStateTrajectory(x_traj); // size checks
-  x_traj = S_ * solution_map_ + v_;
+  x_traj.noalias() = S_ * solution_map_;
+  x_traj += v_;
 }
 
 void BSplineMPC::setInputLimits(const Ref<const VectorXd>& u_min,
@@ -155,9 +156,10 @@ void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
   // add dynamics of initial time step (k=0)
   VectorXd weights = spline_weights_.col(0);
   for (int i{0}; i < spline_weights_.rows(); ++i)
-    S_(seqN(0, n), seqN(m * i, m)) = weights(i) * Bd_;
+    S_(seqN(0, n), seqN(m * i, m)).noalias() = weights(i) * Bd_;
   // S_(seqN(0, n), seqN(0, m)) = Bd_; // only works if spline is clamped
-  v_.head(n) = Ad_ * x0 + wd_;
+  v_.head(n).noalias() = Ad_ * x0;
+  v_.head(n) += wd_;
 
   int seg;
   for (int k{1}; k < horizon_steps_; ++k) {
@@ -167,8 +169,9 @@ void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
     // add cumulative effect of all previous dynamics
     auto rows_cur = seqN(n * k, n);
     auto rows_prev = seqN(n * (k - 1), n);
-    S_(rows_cur, ph::all) = Ad_ * S_(rows_prev, ph::all);
-    v_(rows_cur) = Ad_ * v_(rows_prev) + wd_;
+    S_(rows_cur, ph::all).noalias() = Ad_ * S_(rows_prev, ph::all);
+    v_(rows_cur).noalias() = Ad_ * v_(rows_prev);
+    v_(rows_cur) += wd_;
 
     // add effect of current input parameterized by spline
     for (int i{0}; i < spline_weights_.rows(); ++i)
@@ -178,8 +181,8 @@ void BSplineMPC::calcSAndV(const Ref<const VectorXd>& x0)
 
 void BSplineMPC::calcPAndQ()
 {
-  P_ = S_.transpose() * Q_big_ * S_;
-  q_ = S_.transpose() * Q_big_ * (v_ - x_goal_);
+  P_.noalias() = S_.transpose() * Q_big_ * S_;
+  q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
   if (use_input_cost_) {
     P_ += R_big_;
     q_ -= R_big_ * u_goal_;

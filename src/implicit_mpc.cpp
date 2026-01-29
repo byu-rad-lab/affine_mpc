@@ -81,7 +81,8 @@ void ImplicitMPC::getInputTrajectory(Ref<VectorXd> u_traj) const
 void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   MPCBase::getPredictedStateTrajectory(x_traj);
-  x_traj = S_ * solution_map_ + v_;
+  x_traj.noalias() = S_ * solution_map_;
+  x_traj += v_;
 }
 
 void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
@@ -143,7 +144,8 @@ void ImplicitMPC::calcSAndV(const Ref<const VectorXd>& x0)
   double Tp{(horizon_steps_ - 1) / double(num_ctrl_pts_ - 1)};
 
   S_.block(0, 0, state_dim_, input_dim_) = Bd_;
-  v_.segment(0, state_dim_) = Ad_ * x0 + wd_;
+  v_.segment(0, state_dim_).noalias() = Ad_ * x0;
+  v_.segment(0, state_dim_) += wd_;
 
   int i, j;
   double c;
@@ -156,7 +158,7 @@ void ImplicitMPC::calcSAndV(const Ref<const VectorXd>& x0)
 
     // S_.block(state_dim_*k,0,state_dim_,input_dim_*num_ctrl_pts_) = Ad_ *
     // S_.block(state_dim_*(k-1),0,state_dim_,input_dim_*num_ctrl_pts_);
-    S_.block(state_dim_ * k, 0, state_dim_, S_.cols()) =
+    S_.block(state_dim_ * k, 0, state_dim_, S_.cols()).noalias() =
         Ad_ * S_.block(state_dim_ * (k - 1), 0, state_dim_, S_.cols());
     // S_.block(n*k,0,n,m*num_ctrl_pts_) = Ad_ *
     // S_.block(n*(k-1),0,n,m*num_ctrl_pts_);
@@ -166,15 +168,16 @@ void ImplicitMPC::calcSAndV(const Ref<const VectorXd>& x0)
       S_.block(state_dim_ * k, input_dim_ * j, state_dim_, input_dim_) +=
           c * Bd_;
 
-    v_.segment(state_dim_ * k, state_dim_) =
-        Ad_ * v_.segment(state_dim_ * (k - 1), state_dim_) + wd_;
+    v_.segment(state_dim_ * k, state_dim_).noalias() =
+        Ad_ * v_.segment(state_dim_ * (k - 1), state_dim_);
+    v_.segment(state_dim_ * k, state_dim_) += wd_;
   }
 }
 
 void ImplicitMPC::calcPandQ()
 {
-  P_ = S_.transpose() * Q_big_ * S_;
-  q_ = S_.transpose() * Q_big_ * (v_ - x_goal_);
+  P_.noalias() = S_.transpose() * Q_big_ * S_;
+  q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
   if (use_input_cost_) {
     P_ += R_big_;
     q_ -= R_big_ * u_goal_;
