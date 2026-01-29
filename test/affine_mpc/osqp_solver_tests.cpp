@@ -10,7 +10,7 @@ public:
   OSQPSolverProtectedTester(const int n, const int m) : OSQPSolver(n, m) {}
   ~OSQPSolverProtectedTester() {}
 
-  void testInitializeP(const Eigen::Ref<const MatrixXF>& P)
+  bool testInitializeP(const Eigen::Ref<const MatrixXF>& P)
   {
     MatrixXF A(m_, n_);
     A.setZero();
@@ -19,7 +19,7 @@ public:
     l.setZero();
     u.setOnes();
     OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
-    initialize(P, A, q, l, u, settings);
+    return initialize(P, A, q, l, u, settings);
   }
 
   void testInitializeA(const Eigen::Ref<Eigen::MatrixXd> A)
@@ -31,7 +31,8 @@ public:
     l.setZero();
     u.setOnes();
     OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
-    initialize(P, A, q, l, u, settings);
+    bool success = initialize(P, A, q, l, u, settings);
+    ASSERT_TRUE(success);
   }
 
   auto getPx() { return P_x_; }
@@ -51,7 +52,8 @@ TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
   P.setZero();
   P.diagonal().setOnes();
 
-  base.testInitializeP(P);
+  bool success = base.testInitializeP(P);
+  ASSERT_TRUE(success);
 
   Eigen::Matrix<OSQPFloat, 6, 1> px_true;
   px_true.setOnes();
@@ -96,7 +98,8 @@ TEST(OSQPSolverProtectedTester, givenFullP_FormsCscPCorrectly)
   Eigen::Matrix2d P;
   P << 4, 1, 1, 2;
 
-  base.testInitializeP(P);
+  bool success = base.testInitializeP(P);
+  ASSERT_TRUE(success);
 
   Eigen::Matrix<OSQPFloat, 3, 1> px_true{4.0, 1.0, 2.0};
   Eigen::Matrix<OSQPInt, 3, 1> pi_true{0, 0, 1};
@@ -137,7 +140,8 @@ TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
   P << 1, 0, 0, 0, 4, 0, 1, 0, 0, 2, 0, 0, 1, 1, 0, 0, 5, 0, 1, 1, 1, 3, 0, 0,
       1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 6;
 
-  base.testInitializeP(P);
+  bool success = base.testInitializeP(P);
+  ASSERT_TRUE(!success); // non-convex test case should fail
 
   Eigen::Matrix<OSQPFloat, 6, 1> px_true;
   px_true << 1, 2, 3, 4, 5, 6;
@@ -188,13 +192,14 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
   P << 1, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 4, 0, 0,
       1, 1, 1, 1, 5, 0, 1, 1, 1, 1, 1, 6;
 
+  bool success{true};
   OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
-  base.initialize(P, A, q, l, u, settings);
+  success &= base.initialize(P, A, q, l, u, settings);
 
   P << 5, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 2, 0, 0,
       1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0;
 
-  base.updateCostMatrix(P);
+  success &= base.updateCostMatrix(P);
 
   Eigen::Matrix<OSQPFloat, 6, 1> px_true;
   px_true << 5, 4, 3, 2, 1, 0;
@@ -206,6 +211,7 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
   ASSERT_TRUE(expectEigenNear(px_true, base.getPx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pi_true, base.getPi(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pp_true, base.getPp(), 1e-6));
+  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
@@ -220,20 +226,21 @@ TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
   Eigen::Matrix<OSQPFloat, m, 1> l, u;
   l.setZero();
   u.setOnes();
-  
+
   Eigen::Matrix<OSQPFloat, n, n> P;
   P.setZero();
   P.diagonal().setOnes();
 
+  bool success{true};
   OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
-  base.initialize(P, A, q, l, u, settings);
+  success &= base.initialize(P, A, q, l, u, settings);
 
   // This changes the structure but the internal check only counts the number of
   // non-zero elements which is still 2 in this case - so this is OK although
   // normally the structure shouldn't change
   A << 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1;
 
-  base.updateConstraintMatrix(A);
+  success &= base.updateConstraintMatrix(A);
 
   Eigen::Matrix<OSQPFloat, A_nnz_max, 1> ax_true;
   ax_true << 9, 0;
@@ -245,6 +252,7 @@ TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
   ASSERT_TRUE(expectEigenNear(ax_true, base.getAx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(ai_true, base.getAi(), 1e-6));
   ASSERT_TRUE(expectEigenNear(ap_true, base.getAp(), 1e-6));
+  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester,
@@ -264,13 +272,14 @@ TEST(OSQPSolverProtectedTester,
   P << 4, 1, 1, 2;
   OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
 
-  base.initialize(P, A, q, l, u, settings);
+  bool success{true};
+  success &= base.initialize(P, A, q, l, u, settings);
 
   A << 1.2, 1.1, 1.5, 0, 0, 0.8;
   P << 0, 1, 9, 2;
 
-  bool success{base.updateCostMatrix(P)};
-  success *= base.updateConstraintMatrix(A);
+  success &= base.updateCostMatrix(P);
+  success &= base.updateConstraintMatrix(A);
 
   Eigen::Matrix<OSQPFloat, P_nnz_max, 1> px_true;
   px_true << 0, 1, 2;
@@ -286,13 +295,13 @@ TEST(OSQPSolverProtectedTester,
   Eigen::Matrix<OSQPInt, n + 1, 1> ap_true;
   ap_true << 0, 2, 4;
 
-  ASSERT_TRUE(success);
   ASSERT_TRUE(expectEigenNear(px_true, base.getPx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pi_true, base.getPi(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pp_true, base.getPp(), 1e-6));
   ASSERT_TRUE(expectEigenNear(ax_true, base.getAx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(ai_true, base.getAi(), 1e-6));
   ASSERT_TRUE(expectEigenNear(ap_true, base.getAp(), 1e-6));
+  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
@@ -315,14 +324,16 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
   // polishing tests the boundary conditions better but is a little slower
   settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, settings);
+  bool success{true};
+  success &= base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
-  base.solve(calculated_solution);
+  success &= base.solve(calculated_solution);
 
   Eigen::Vector2d actual_solution{0.3, 0.7};
 
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-6));
+  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
@@ -345,17 +356,18 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   // polishing tests the boundary conditions better but is a little slower
   settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, settings);
+  bool success{true};
+  success &= base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
-  base.solve(calculated_solution);
+  success &= base.solve(calculated_solution);
 
   q << 2, 3;
   l << 2, -1, -1;
   u << 2, 2.5, 2.5;
-  base.updateCostVector(q);
-  base.updateBounds(l, u);
-  base.solve(calculated_solution);
+  success &= base.updateCostVector(q);
+  success &= base.updateBounds(l, u);
+  success &= base.solve(calculated_solution);
 
   Eigen::Vector2d actual_solution{0.75, 1.25};
 
@@ -364,13 +376,15 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   q.setOnes();
   l << 1, 0, 0;
   u << 1, 0.7, 0.7;
-  base.updateCostVector(q);
-  base.updateBounds(l, u);
-  base.solve(calculated_solution);
+  success &= base.updateCostVector(q);
+  success &= base.updateBounds(l, u);
+  success &= base.solve(calculated_solution);
 
   actual_solution << 0.3, 0.7;
 
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 2e-5));
+
+  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
@@ -392,16 +406,17 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
   settings.verbose = false;
   settings.polishing = true;
 
-  base.initialize(P, A, q, l, u, settings);
+  bool success{true};
+  success &= base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
-  base.solve(calculated_solution);
+  success &= base.solve(calculated_solution);
 
   P << 5, 1.5, 1.5, 1;
   A << 1.2, 1.1, 1.5, 0, 0, 0.8;
-  base.updateCostMatrix(P);
-  base.updateConstraintMatrix(A);
-  base.solve(calculated_solution);
+  success &= base.updateCostMatrix(P);
+  success &= base.updateConstraintMatrix(A);
+  success &= base.solve(calculated_solution);
 
   Eigen::Vector2d actual_solution{0.03125, 0.875};
 
@@ -409,11 +424,13 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
 
   P << 4, 1, 1, 2;
   A << 1, 1, 1, 0, 0, 1;
-  base.updateCostMatrix(P);
-  base.updateConstraintMatrix(A);
-  base.solve(calculated_solution);
+  success &= base.updateCostMatrix(P);
+  success &= base.updateConstraintMatrix(A);
+  success &= base.solve(calculated_solution);
 
   actual_solution << 0.3, 0.7;
 
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-5));
+
+  ASSERT_TRUE(success);
 }

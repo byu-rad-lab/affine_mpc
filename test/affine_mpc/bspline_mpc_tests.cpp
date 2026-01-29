@@ -201,9 +201,9 @@ TEST(BSplineMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   Eigen::Vector2d x0{1, 1}, x_goal{1, 0};
   msd_mpc.setReferenceState(x_goal);
   Eigen::Matrix<double, m, 1> u_goal{0}, u_min{0}, u_max{3}, slew{1};
-  msd_mpc.setInputLimits(u_min, u_max);
+  ASSERT_TRUE(msd_mpc.setInputLimits(u_min, u_max));
   msd_mpc.setReferenceInput(u_goal);
-  msd_mpc.setSlewRate(slew);
+  ASSERT_TRUE(msd_mpc.setSlewRate(slew));
 
   // These are the recommended settings, but explicitly set here for clarity
   OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
@@ -211,7 +211,7 @@ TEST(BSplineMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   settings.verbose = false;
   settings.eps_abs = 1e-6;
   settings.eps_rel = 1e-6;
-  msd_mpc.initializeSolver(settings);
+  ASSERT_TRUE(msd_mpc.initializeSolver(settings));
 
   x0.setZero();
   Eigen::Matrix<double, m, 1> u_star, u_star_expected;

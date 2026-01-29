@@ -15,38 +15,38 @@ public:
 
   OSQPSolver(const int num_variables, const int num_constraints);
   virtual ~OSQPSolver() = default;
-  
-  // Delete copy operations (C API handles make this unsafe)
+
+  // Delete copy and move operations (C API state should not be transferred)
   OSQPSolver(const OSQPSolver&) = delete;
   OSQPSolver& operator=(const OSQPSolver&) = delete;
-  
-  // Default move operations (smart pointers handle this correctly)
-  OSQPSolver(OSQPSolver&&) = default;
-  OSQPSolver& operator=(OSQPSolver&&) = default;
+  OSQPSolver(OSQPSolver&&) = delete;
+  OSQPSolver& operator=(OSQPSolver&&) = delete;
 
   static OSQPSettings getDefaultSettings() noexcept;
-  static OSQPSettings getRecommendedSettings(const bool polish_near_boundaries) noexcept;
-  
-  const OSQPFloat* getSolutionPtr() const noexcept;
+  static OSQPSettings
+  getRecommendedSettings(const bool polish_near_boundaries) noexcept;
+
+  [[nodiscard]] const OSQPFloat* getSolutionPtr() const noexcept;
   OSQPFloat getSolveTime() const noexcept;
-  bool solve(Eigen::Ref<VectorXF> solution);
-  bool solve();
-  bool initialize(const Eigen::Ref<const MatrixXF>& P,
-                  const Eigen::Ref<const MatrixXF>& A,
-                  Eigen::Ref<VectorXF> q,
-                  Eigen::Ref<VectorXF> l,
-                  Eigen::Ref<VectorXF> u,
-                  const OSQPSettings& settings);
-  bool updateCostMatrix(const Eigen::Ref<const MatrixXF>& P);
-  bool updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
-  bool updateCostVector(Eigen::Ref<VectorXF> q);
-  bool updateBounds(Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u);
+  [[nodiscard]] bool solve(Eigen::Ref<VectorXF> solution);
+  [[nodiscard]] bool solve();
+  [[nodiscard]] bool initialize(const Eigen::Ref<const MatrixXF>& P,
+                                const Eigen::Ref<const MatrixXF>& A,
+                                Eigen::Ref<VectorXF> q,
+                                Eigen::Ref<VectorXF> l,
+                                Eigen::Ref<VectorXF> u,
+                                const OSQPSettings& settings);
+  [[nodiscard]] bool updateCostMatrix(const Eigen::Ref<const MatrixXF>& P);
+  [[nodiscard]] bool
+  updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
+  [[nodiscard]] bool updateCostVector(Eigen::Ref<VectorXF> q);
+  [[nodiscard]] bool updateBounds(Eigen::Ref<VectorXF> l,
+                                  Eigen::Ref<VectorXF> u);
 
 private:
   int countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat);
   void initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P);
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
-  void setCustomSettings(const OSQPSettings& settings);
 
   // Choosing to modernize even though OSQP documentation uses raw pointers
   std::unique_ptr<::OSQPSolver, decltype(&osqp_cleanup)> solver_;

@@ -78,14 +78,15 @@ void ImplicitMPC::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
   u_traj.tail(input_dim_) = solution_map_.tail(input_dim_);
 }
 
-void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
+void ImplicitMPC::getPredictedStateTrajectory(
+    Ref<VectorXd> x_traj) const noexcept
 {
   MPCBase::getPredictedStateTrajectory(x_traj);
   x_traj.noalias() = S_ * solution_map_;
   x_traj += v_;
 }
 
-void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
+bool ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
                                  const Ref<const VectorXd>& u_max)
 {
   MPCBase::setInputLimits(u_min, u_max);
@@ -94,11 +95,12 @@ void ImplicitMPC::setInputLimits(const Ref<const VectorXd>& u_min,
     l_.segment(input_dim_ * k, input_dim_) = u_min_;
     u_.segment(input_dim_ * k, input_dim_) = u_max_;
   }
-  if (solver_initialized_)
-    solver_->updateBounds(l_, u_);
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
 }
 
-void ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
+bool ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
                                  const Ref<const VectorXd>& x_max)
 {
   MPCBase::setStateLimits(x_min, x_max);
@@ -109,11 +111,12 @@ void ImplicitMPC::setStateLimits(const Ref<const VectorXd>& x_min,
     l_.segment(x_sat_idx_ + state_dim_ * k, state_dim_) = x_min_;
     u_.segment(x_sat_idx_ + state_dim_ * k, state_dim_) = x_max_;
   }
-  if (solver_initialized_)
-    solver_->updateBounds(l_, u_);
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
 }
 
-void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
+bool ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
   MPCBase::setSlewRate(u_slew);
 
@@ -123,20 +126,24 @@ void ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
     l_.segment(mp + input_dim_ * i, input_dim_) = -u_slew_;
     u_.segment(mp + input_dim_ * i, input_dim_) = u_slew_;
   }
-  if (solver_initialized_)
-    solver_->updateBounds(l_, u_);
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
 }
 
 void ImplicitMPC::convertToQP(const Ref<const VectorXd>& x0)
 {
   calcSAndV(x0);
   calcPandQ();
-  solver_->updateCostMatrix(P_);
-  solver_->updateCostVector(q_);
+  bool success{true};
+  success &= solver_->updateCostMatrix(P_);
+  success &= solver_->updateCostVector(q_);
   if (saturate_states_) {
     A_.block(x_sat_idx_, 0, S_.rows(), S_.cols()) = S_;
-    solver_->updateConstraintMatrix(A_);
+    success &= solver_->updateConstraintMatrix(A_);
   }
+  // Note: success is used to avoid build warnings. Failures will manifest in
+  // either initializeSolver() or solve(), no need to check on protected method
 }
 
 void ImplicitMPC::calcSAndV(const Ref<const VectorXd>& x0)

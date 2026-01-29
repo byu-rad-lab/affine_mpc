@@ -132,8 +132,7 @@ void MPCLogger::writeParamFile(const std::string& filename)
              << "saturate_states: " << mpc_->saturate_states_ << std::endl
              << "u_min: " << eig2Str(mpc_->u_min_) << std::endl
              << "u_max: " << eig2Str(mpc_->u_max_) << std::endl
-             << "Q: "
-             << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->state_dim_))
+             << "Q: " << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->state_dim_))
              << std::endl
              << "Qf: "
              << eig2Str(mpc_->Q_big_.diagonal().tail(mpc_->state_dim_))

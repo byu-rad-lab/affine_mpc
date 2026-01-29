@@ -24,8 +24,14 @@ int main()
   msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
 
   Eigen::Matrix<double, m, 1> u_min{0}, u_max{3}, slew{1};
-  msd_mpc.setInputLimits(u_min, u_max);
-  msd_mpc.setSlewRate(slew);
+  if (!msd_mpc.setInputLimits(u_min, u_max)) {
+    std::cerr << "Failed to set input limits\n";
+    return 1;
+  }
+  if (!msd_mpc.setSlewRate(slew)) {
+    std::cerr << "Failed to set slew rate\n";
+    return 1;
+  }
 
   Eigen::Matrix<double, n, 1> Q_diag{1, 0.11};
   Eigen::Matrix<double, m, 1> R_diag{.0001};
@@ -36,7 +42,10 @@ int main()
   msd_mpc.setReferenceState(x_goal);
   msd_mpc.setReferenceInput(u_goal);
 
-  msd_mpc.initializeSolver();
+  if (!msd_mpc.initializeSolver()) {
+    std::cerr << "Failed to initialize solver\n";
+    return 1;
+  }
 
   Eigen::Vector2d xk;
   xk.setZero();

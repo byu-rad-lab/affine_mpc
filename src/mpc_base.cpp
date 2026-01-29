@@ -5,12 +5,13 @@
 #include <stdexcept> // for exceptions
 
 // #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
-#include "eigen_compat.hpp"  // revmove this once Eigen 3.5 is required
-#include <unsupported/Eigen/Splines> // for B-spline support
+#include "eigen_compat.hpp"          // revmove this once Eigen 3.5 is required
 #include <osqp.h>                    // for OSQPSettings
+#include <unsupported/Eigen/Splines> // for B-spline support
 
 using namespace Eigen;
-// namespace ph = Eigen::placeholders;  // revert back to this once Eigen 3.5 is required
+// revert back to this once Eigen 3.5 is required
+// namespace ph = Eigen::placeholders;
 
 namespace affine_mpc {
 
@@ -90,11 +91,13 @@ MPCBase::MPCBase(const int state_dim,
 
 bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
 {
+  assert(model_set_ && "Model must be set before initializing solver");
   if (!model_set_)
-    throw std::runtime_error("Model must be set before initializing solver.");
+    return false;
+  assert(input_limits_set_ &&
+         "Input limits must be set before initializing solver");
   if (!input_limits_set_)
-    throw std::runtime_error(
-        "Input limits must be set before initializing solver.");
+    return false;
 
   if (use_slew_rate_ && !slew_rate_set_)
     std::cerr
@@ -117,7 +120,9 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   // Avoid zeros in initial cost/constraint matrices. OSQP is a sparse solver
   // that only tracks elements that are initially non-zero.
   VectorXd x_full{state_dim_}; // TODO: decide if user should provide this
-  x_full.setOnes();             // may need something other than ones
+  x_full.setOnes();            // may need something other than ones
+  // Note: We just need matrices populated for sparsity pattern here.
+  // Actual solve success is checked when solve() is called.
   convertToQP(x_full);
 
   solver_initialized_ =
@@ -179,9 +184,7 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
                              const Ref<const VectorXd>& u,
                              Ref<VectorXd> x_next) const
 {
-  if (!model_set_) {
-    throw std::runtime_error("Model must be set before propagation.");
-  }
+  assert(model_set_ && "Model must be set before propagation");
   assert(u.size() == input_dim_);
   assert(x0.size() == state_dim_ && x_next.size() == state_dim_);
   // do not use noalias here since x_next could be an alias of x0
@@ -347,16 +350,18 @@ void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
   const size_t knots_size = spline_knots.size();
   if (knots_size > 0) {
     if (knots_size != num_internal_knots) {
-      std::string err_msg =
-          "spline_knots size must be equal to num_control_points - spline_degree + 1 (" +
-          std::to_string(num_internal_knots) + "), got " +
-          std::to_string(knots_size) + ".";
+      std::string err_msg = "spline_knots size must be equal to "
+                            "num_control_points - spline_degree + 1 (" +
+                            std::to_string(num_internal_knots) + "), got " +
+                            std::to_string(knots_size) + ".";
       throw std::invalid_argument(err_msg);
     }
-    if ((spline_knots(seq(1, ph::last)) - spline_knots(seq(0, ph::last - 1))).minCoeff() < 0)
+    if ((spline_knots(seq(1, ph::last)) - spline_knots(seq(0, ph::last - 1)))
+            .minCoeff() < 0)
       throw std::invalid_argument("spline_knots must be non-decreasing.");
 
-    spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) = spline_knots;
+    spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) =
+        spline_knots;
   } else {
     spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) =
         ArrayXd::LinSpaced(num_internal_knots, 0, horizon_steps_ - 1);

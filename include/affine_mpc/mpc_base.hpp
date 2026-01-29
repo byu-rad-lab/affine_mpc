@@ -1,8 +1,8 @@
 #ifndef MPC_BASE_HPP
 #define MPC_BASE_HPP
 
-#include <memory>
 #include <Eigen/Core>
+#include <memory>
 
 #include "affine_mpc/osqp_solver.hpp"
 
@@ -19,37 +19,40 @@ public:
   //         const int horizon_steps,
   //         const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
   //         const Eigen::Ref<const Eigen::VectorXd>& R_diag,
-  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag = Eigen::VectorXd(0),
-  //         const int num_control_points,
-  //         const int spline_degree,
-  //         const Eigen::Ref<const Eigen::VectorXd>& spline_knots = Eigen::VectorXd(0),
-  //         const bool use_input_cost = false,
-  //         const bool use_slew_rate = false,
-  //         const bool saturate_states = false);
+  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag =
+  //         Eigen::VectorXd(0), const int num_control_points, const int
+  //         spline_degree, const Eigen::Ref<const Eigen::VectorXd>&
+  //         spline_knots = Eigen::VectorXd(0), const bool use_input_cost =
+  //         false, const bool use_slew_rate = false, const bool saturate_states
+  //         = false);
   MPCBase(const int state_dim,
           const int input_dim,
           const int horizon_steps,
           const int num_control_points,
           const int spline_degree,
-          const Eigen::Ref<const Eigen::VectorXd>& spline_knots = Eigen::VectorXd(0),
+          const Eigen::Ref<const Eigen::VectorXd>& spline_knots =
+              Eigen::VectorXd(0),
           const bool use_input_cost = false,
           const bool use_slew_rate = false,
           const bool saturate_states = false);
   virtual ~MPCBase() = default;
 
   // Must be called before solve()
-  bool initializeSolver(const OSQPSettings& solver_settings = OSQPSolver::getRecommendedSettings(true));
+  [[nodiscard]] bool
+  initializeSolver(const OSQPSettings& solver_settings =
+                       OSQPSolver::getRecommendedSettings(true));
 
   // Must be called before accesing optimized variables
-  bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
+  [[nodiscard]] bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
   // Getters for optimized variables
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
   void getParameterizedInputTrajectory(
       Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const noexcept;
-  virtual void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
   virtual void
-  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
+  getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
+  virtual void getPredictedStateTrajectory(
+      Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
 
   void propagateModel(const Eigen::Ref<const Eigen::VectorXd>& x,
                       const Eigen::Ref<const Eigen::VectorXd>& u,
@@ -89,12 +92,14 @@ public:
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
 private:
-  void initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
+  void
+  initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
   void calcSplineParams();
 
 protected:
   // need to be implemented by derived classes
-  virtual void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  virtual void
+  convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
 
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;

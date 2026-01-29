@@ -22,15 +22,19 @@ public:
 
   // See https://arxiv.org/pdf/2001.04931 section IV.C for details on evaluating
   // the parameterized input trajectory to get the input trajectory
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final;
+  void getInputTrajectory(
+      Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final;
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
-  void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
-                      const Eigen::Ref<const Eigen::VectorXd>& u_max);
-  void setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
-                      const Eigen::Ref<const Eigen::VectorXd>& x_max);
-  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
+  [[nodiscard]] bool
+  setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
+                 const Eigen::Ref<const Eigen::VectorXd>& u_max);
+  [[nodiscard]] bool
+  setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
+                 const Eigen::Ref<const Eigen::VectorXd>& x_max);
+  [[nodiscard]] bool
+  setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
 protected:
   // See https://arxiv.org/pdf/2001.04931 sections IV.B and IV.E for details on

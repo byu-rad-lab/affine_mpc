@@ -84,7 +84,7 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
   initializeConstraintMatrix(A);
 
   ::OSQPSolver* raw_solver = nullptr;
-  OSQPInt exitflag{osqp_setup(&raw_solver, P_.get(), q.data(), A_.get(), 
+  OSQPInt exitflag{osqp_setup(&raw_solver, P_.get(), q.data(), A_.get(),
                               l.data(), u.data(), m_, n_, &settings)};
   solver_.reset(raw_solver);
   if (exitflag == 0)
