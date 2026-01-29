@@ -141,21 +141,21 @@ bool MPCBase::solve(const Ref<const VectorXd>& x0)
   return solver_->solve();
 }
 
-void MPCBase::getNextInput(Ref<VectorXd> u0) const
+void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
   assert(u0.size() == input_dim_);
   u0 = solution_map_.head(input_dim_);
 }
 
 void MPCBase::getParameterizedInputTrajectory(
-    Ref<VectorXd> u_traj_ctrl_pts) const
+    Ref<VectorXd> u_traj_ctrl_pts) const noexcept
 {
   assert(u_traj_ctrl_pts.size() == input_dim_ * num_ctrl_pts_);
   u_traj_ctrl_pts = solution_map_;
   // u_traj_ctrl_pts = solution_map_.head(input_dim_ * num_ctrl_pts_);
 }
 
-void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
+void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
   assert(u_traj.size() == input_dim_ * horizon_steps_);
 
@@ -170,7 +170,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
   }
 }
 
-void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
 {
   assert(x_traj.size() == state_dim_ * horizon_steps_);
 }

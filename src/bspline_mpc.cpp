@@ -77,7 +77,7 @@ BSplineMPC::BSplineMPC(const int state_dim,
 //   }
 // }
 
-void BSplineMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void BSplineMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
 {
   MPCBase::getPredictedStateTrajectory(x_traj); // size checks
   x_traj.noalias() = S_ * solution_map_;

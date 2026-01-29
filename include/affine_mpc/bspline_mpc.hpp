@@ -23,11 +23,11 @@ public:
   using MPCBase::MPCBase;
   virtual ~BSplineMPC() = default;
 
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const override final {
+  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final {
     MPCBase::getInputTrajectory(u_traj);
   }
   void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
+      Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
   void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);

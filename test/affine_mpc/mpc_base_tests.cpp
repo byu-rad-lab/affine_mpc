@@ -19,7 +19,7 @@ public:
   {}
   virtual ~MPCBaseTester() = default;
   void
-  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const override final
+  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final
   {}
   auto getAd() { return Ad_; }
   auto getBd() { return Bd_; }

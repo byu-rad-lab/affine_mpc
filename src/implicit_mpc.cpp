@@ -57,7 +57,7 @@ ImplicitMPC::ImplicitMPC(const int state_dim,
 }
 
 // Implementation from section IV.C of https://arxiv.org/pdf/2001.04931
-void ImplicitMPC::getInputTrajectory(Ref<VectorXd> u_traj) const
+void ImplicitMPC::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
   MPCBase::getInputTrajectory(u_traj);
 
@@ -78,7 +78,7 @@ void ImplicitMPC::getInputTrajectory(Ref<VectorXd> u_traj) const
   u_traj.tail(input_dim_) = solution_map_.tail(input_dim_);
 }
 
-void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void ImplicitMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
 {
   MPCBase::getPredictedStateTrajectory(x_traj);
   x_traj.noalias() = S_ * solution_map_;

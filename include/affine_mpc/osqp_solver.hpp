@@ -24,11 +24,11 @@ public:
   OSQPSolver(OSQPSolver&&) = default;
   OSQPSolver& operator=(OSQPSolver&&) = default;
 
-  static OSQPSettings getDefaultSettings();
-  static OSQPSettings getRecommendedSettings(const bool polish_near_boundaries);
+  static OSQPSettings getDefaultSettings() noexcept;
+  static OSQPSettings getRecommendedSettings(const bool polish_near_boundaries) noexcept;
   
-  const OSQPFloat* getSolutionPtr() const;
-  OSQPFloat getSolveTime() const;
+  const OSQPFloat* getSolutionPtr() const noexcept;
+  OSQPFloat getSolveTime() const noexcept;
   bool solve(Eigen::Ref<VectorXF> solution);
   bool solve();
   bool initialize(const Eigen::Ref<const MatrixXF>& P,

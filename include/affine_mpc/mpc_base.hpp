@@ -44,12 +44,12 @@ public:
   bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
   // Getters for optimized variables
-  void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const;
+  void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
   void getParameterizedInputTrajectory(
-      Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const;
-  virtual void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const;
+      Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const noexcept;
+  virtual void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
   virtual void
-  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
+  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
 
   void propagateModel(const Eigen::Ref<const Eigen::VectorXd>& x,
                       const Eigen::Ref<const Eigen::VectorXd>& u,
@@ -83,10 +83,10 @@ public:
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
   void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
-  constexpr int getStateDim() const { return state_dim_; };
-  constexpr int getInputDim() const { return input_dim_; };
-  constexpr int getHorizonSteps() const { return horizon_steps_; };
-  constexpr int getNumControlPoints() const { return num_ctrl_pts_; };
+  constexpr int getStateDim() const noexcept { return state_dim_; };
+  constexpr int getInputDim() const noexcept { return input_dim_; };
+  constexpr int getHorizonSteps() const noexcept { return horizon_steps_; };
+  constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
 private:
   void initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);

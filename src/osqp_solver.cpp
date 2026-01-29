@@ -24,14 +24,14 @@ OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
   assert(num_variables > 0 && num_constraints > 0);
 }
 
-OSQPSettings OSQPSolver::getDefaultSettings()
+OSQPSettings OSQPSolver::getDefaultSettings() noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);
   return settings;
 }
 
-OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries)
+OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);
@@ -44,7 +44,7 @@ OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundarie
   return settings;
 }
 
-const OSQPFloat* OSQPSolver::getSolutionPtr() const
+const OSQPFloat* OSQPSolver::getSolutionPtr() const noexcept
 {
   if (workspace_initialized_)
     return solver_->solution->x;
@@ -52,7 +52,7 @@ const OSQPFloat* OSQPSolver::getSolutionPtr() const
     return nullptr;
 }
 
-OSQPFloat OSQPSolver::getSolveTime() const { return solver_->info->solve_time; }
+OSQPFloat OSQPSolver::getSolveTime() const noexcept { return solver_->info->solve_time; }
 
 bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
