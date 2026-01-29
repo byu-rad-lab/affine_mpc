@@ -83,10 +83,10 @@ public:
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
   void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
-  inline int getStateDim() const { return state_dim_; };
-  inline int getInputDim() const { return input_dim_; };
-  inline int getHorizonSteps() const { return horizon_steps_; };
-  inline int getNumControlPoints() const { return num_ctrl_pts_; };
+  constexpr int getStateDim() const { return state_dim_; };
+  constexpr int getInputDim() const { return input_dim_; };
+  constexpr int getHorizonSteps() const { return horizon_steps_; };
+  constexpr int getNumControlPoints() const { return num_ctrl_pts_; };
 
 private:
   void initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
