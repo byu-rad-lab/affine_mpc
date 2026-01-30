@@ -124,6 +124,10 @@ protected:
   Eigen::MatrixXd Ad_;
   Eigen::MatrixXd Bd_;
   Eigen::VectorXd wd_;
+
+  // Working matrices for model discretization
+  Eigen::MatrixXd G_, At_, At_pow_;
+
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_;
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> R_big_;
   Eigen::VectorXd x_goal_;

@@ -45,6 +45,9 @@ MPCBase::MPCBase(const int state_dim,
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
+    G_{state_dim, state_dim},
+    At_{state_dim, state_dim},
+    At_pow_{state_dim, state_dim},
     Q_big_{state_dim * horizon_steps},
     x_goal_{state_dim * horizon_steps},
     u_min_{input_dim},
@@ -215,27 +218,24 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);
   assert(wc.size() == state_dim_);
 
-  static MatrixXd G{state_dim_, state_dim_};
-  static MatrixXd At{state_dim_, state_dim_};
-  static MatrixXd At_i{state_dim_, state_dim_};
-
-  At.noalias() = Ac * dt;
-  At_i.setIdentity(state_dim_, state_dim_);
+  // Use pre-allocated working matrices (avoids allocation if called frequently)
+  At_.noalias() = Ac * dt;
+  At_pow_.setIdentity(state_dim_, state_dim_);
   Ad_.setIdentity(state_dim_, state_dim_);
-  G.setIdentity(state_dim_, state_dim_);
+  G_.setIdentity(state_dim_, state_dim_);
 
   int i{1};
   double factorial{1};
-  for (double t_i{dt}; t_i / factorial > tol; t_i *= dt) {
-    At_i *= At;
-    Ad_ += At_i / factorial;
+  for (double t_pow{dt}; t_pow / factorial > tol; t_pow *= dt) {
+    At_pow_ *= At_;
+    Ad_ += At_pow_ / factorial;
     factorial *= ++i;
-    G += At_i / factorial;
+    G_ += At_pow_ / factorial;
   }
-  G *= dt;
+  G_ *= dt;
 
-  Bd_.noalias() = G * Bc;
-  wd_.noalias() = G * wc;
+  Bd_.noalias() = G_ * Bc;
+  wd_.noalias() = G_ * wc;
   model_set_ = true;
 }
 
