@@ -26,7 +26,8 @@ public:
   static OSQPSettings
   getRecommendedSettings(const bool polish_near_boundaries) noexcept;
 
-  [[nodiscard]] const OSQPFloat* getSolutionPtr() const noexcept;
+  [[nodiscard]] const Eigen::Map<const VectorXF>
+  getSolutionMap() const noexcept;
   OSQPFloat getSolveTime() const noexcept;
   [[nodiscard]] bool solve(Eigen::Ref<VectorXF> solution);
   [[nodiscard]] bool solve();

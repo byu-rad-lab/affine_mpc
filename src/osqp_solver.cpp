@@ -44,12 +44,13 @@ OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundarie
   return settings;
 }
 
-const OSQPFloat* OSQPSolver::getSolutionPtr() const noexcept
+const Eigen::Map<const OSQPSolver::VectorXF>
+OSQPSolver::getSolutionMap() const noexcept
 {
   if (initialized_)
-    return solver_->solution->x;
+    return Eigen::Map<const VectorXF>{solver_->solution->x, n_, 1};
   else
-    return nullptr;
+    return Eigen::Map<const VectorXF>{nullptr, 0, 1};
 }
 
 OSQPFloat OSQPSolver::getSolveTime() const noexcept { return solver_->info->solve_time; }

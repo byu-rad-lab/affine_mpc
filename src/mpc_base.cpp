@@ -137,8 +137,7 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   // while the solver_ is in scope. solution_map_ will function like an Eigen
   // VectorXd object that automatically updates when solve() is called. Using
   // Eigen Map allows the solution to be accessed without copying memory.
-  new (&solution_map_) Map<const VectorXd>(solver_->getSolutionPtr(),
-                                           input_dim_ * num_ctrl_pts_);
+  new (&solution_map_) Map<const VectorXd>(solver_->getSolutionMap());
   return solver_initialized_;
 }
 
@@ -160,7 +159,6 @@ void MPCBase::getParameterizedInputTrajectory(
 {
   assert(u_traj_ctrl_pts.size() == input_dim_ * num_ctrl_pts_);
   u_traj_ctrl_pts = solution_map_;
-  // u_traj_ctrl_pts = solution_map_.head(input_dim_ * num_ctrl_pts_);
 }
 
 void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
