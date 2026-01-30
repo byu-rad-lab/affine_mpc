@@ -52,7 +52,7 @@ private:
   std::unique_ptr<::OSQPSolver, decltype(&osqp_cleanup)> solver_;
   std::unique_ptr<OSQPCscMatrix, decltype(&OSQPCscMatrix_free)> P_;
   std::unique_ptr<OSQPCscMatrix, decltype(&OSQPCscMatrix_free)> A_;
-  bool workspace_initialized_;
+  bool initialized_;
   bool P_is_set_;
   bool A_is_set_;
 

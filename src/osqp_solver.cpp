@@ -13,7 +13,7 @@ OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
     // settings_{OSQPSettings_new(), OSQPSettings_free},
     P_{nullptr, OSQPCscMatrix_free},
     A_{nullptr, OSQPCscMatrix_free},
-    workspace_initialized_{false},
+    initialized_{false},
     P_is_set_{false},
     A_is_set_{false},
     n_{num_variables},
@@ -46,7 +46,7 @@ OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundarie
 
 const OSQPFloat* OSQPSolver::getSolutionPtr() const noexcept
 {
-  if (workspace_initialized_)
+  if (initialized_)
     return solver_->solution->x;
   else
     return nullptr;
@@ -57,7 +57,7 @@ OSQPFloat OSQPSolver::getSolveTime() const noexcept { return solver_->info->solv
 bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);
-  assert(workspace_initialized_);
+  assert(initialized_);
 
   osqp_solve(solver_.get());
   Eigen::Map<VectorXF> map_solution{solver_->solution->x, n_, 1};
@@ -67,7 +67,7 @@ bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 
 bool OSQPSolver::solve()
 {
-  assert(workspace_initialized_);
+  assert(initialized_);
   osqp_solve(solver_.get());
   return solver_->info->status_val == OSQP_SOLVED;
 }
@@ -88,13 +88,13 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
                               l.data(), u.data(), m_, n_, &settings)};
   solver_.reset(raw_solver);
   if (exitflag == 0)
-    workspace_initialized_ = true;
-  return workspace_initialized_;
+    initialized_ = true;
+  return initialized_;
 }
 
 bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 {
-  if (!workspace_initialized_)
+  if (!initialized_)
     return false;
   assert(P.rows() == n_ && P.cols() == n_);
 
@@ -114,7 +114,7 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 
 bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 {
-  if (!workspace_initialized_)
+  if (!initialized_)
     return false;
   assert(A.rows() == m_ && A.cols() == n_);
   assert(A.count() <= A_nnz_ && "A cannot change structure once initialized");
@@ -136,7 +136,7 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
 {
   assert(q.size() == n_);
-  if (!workspace_initialized_)
+  if (!initialized_)
     return false;
 
   OSQPInt exit_status{
@@ -147,7 +147,7 @@ bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
 bool OSQPSolver::updateBounds(Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u)
 {
   assert(l.size() == m_ && u.size() == m_);
-  if (!workspace_initialized_)
+  if (!initialized_)
     return false;
 
   OSQPInt exit_status{
