@@ -1,7 +1,6 @@
 #include "affine_mpc/mpc_base.hpp"
 
 #include <cassert>   // for assert
-#include <iostream>  // for std::cerr
 #include <stdexcept> // for exceptions
 
 // #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
@@ -112,21 +111,6 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
          "Input limits must be set before initializing solver");
   if (!input_limits_set_)
     return false;
-
-  if (use_slew_rate_ && !slew_rate_set_)
-    std::cerr
-        << "Warning: Slew rate enabled but not set, "
-        << "using default value of infinity."
-        << "This is a waste of optimization effort and memory."
-        << "If you do not actually want a slew rate, you should disable it."
-        << std::endl;
-  if (saturate_states_ && !state_limits_set_)
-    std::cerr
-        << "Warning: State saturation enabled but not set, "
-        << "using default values of +/- infinity"
-        << "This is a waste of optimization effort and memory."
-        << "If you do not actually want a slew rate, you should disable it."
-        << std::endl;
 
   if (solver_initialized_)
     return true;
