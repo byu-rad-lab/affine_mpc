@@ -41,6 +41,10 @@ public:
   [[nodiscard]] bool
   initializeSolver(const OSQPSettings& solver_settings =
                        OSQPSolver::getRecommendedSettings(true));
+  [[nodiscard]] bool
+  initializeSolver(const Eigen::Ref<const Eigen::VectorXd>& x_full,
+                   const OSQPSettings& solver_settings =
+                       OSQPSolver::getRecommendedSettings(true));
 
   // Must be called before accesing optimized variables
   [[nodiscard]] bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
