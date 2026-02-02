@@ -236,7 +236,8 @@ void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
 {
   if (Q_diag.minCoeff() < 0.0)
-    throw std::invalid_argument("State weights must be non-negative.");
+    throw std::invalid_argument(
+        "[MPCBase::setStateWeights] State weights must be non-negative.");
   assert(Q_diag.size() == state_dim_);
   for (int i{0}; i < horizon_steps_; ++i)
     Q_big_.diagonal().segment(state_dim_ * i, state_dim_) = Q_diag;
@@ -245,7 +246,8 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
 void MPCBase::setStateWeightsTerminal(const Ref<const VectorXd>& Qf_diag)
 {
   if (Qf_diag.minCoeff() < 0.0)
-    throw std::invalid_argument("Terminal state weights must be non-negative.");
+    throw std::invalid_argument("[MPCBase::setStateWeightsTerminal] Terminal "
+                                "state weights must be non-negative.");
   assert(Qf_diag.size() == state_dim_);
   Q_big_.diagonal().segment(state_dim_ * (horizon_steps_ - 1), state_dim_) =
       Qf_diag;
@@ -254,9 +256,11 @@ void MPCBase::setStateWeightsTerminal(const Ref<const VectorXd>& Qf_diag)
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
   if (!use_input_cost_)
-    throw std::runtime_error("Input cost is not enabled.");
+    throw std::runtime_error(
+        "[MPCBase::setInputWeights] Input cost is not enabled.");
   if (R_diag.minCoeff() < 0.0)
-    throw std::invalid_argument("Input weights must be non-negative.");
+    throw std::invalid_argument(
+        "[MPCBase::setInputWeights] Input weights must be non-negative.");
   assert(R_diag.size() == input_dim_);
   for (int i{0}; i < num_ctrl_pts_; ++i)
     R_big_.diagonal().segment(input_dim_ * i, input_dim_) = R_diag;
@@ -272,7 +276,8 @@ void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
   if (!use_input_cost_)
-    throw std::runtime_error("Input cost is not enabled.");
+    throw std::runtime_error(
+        "[MPCBase::setReferenceInput] Input cost is not enabled.");
   assert(u_step.size() == input_dim_);
   for (int i{0}; i < num_ctrl_pts_; ++i)
     u_goal_.segment(input_dim_ * i, input_dim_) = u_step;
@@ -288,7 +293,9 @@ void MPCBase::setReferenceParameterizedInputTrajectory(
     const Ref<const VectorXd>& u_traj_ctrl_pts)
 {
   if (!use_input_cost_)
-    throw std::runtime_error("Input cost is not enabled.");
+    throw std::runtime_error(
+        "[MPCBase::setReferenceParameterizedInputTrajectory] "
+        "Input cost is not enabled.");
   assert(u_traj_ctrl_pts.size() == input_dim_ * num_ctrl_pts_);
   u_goal_ = u_traj_ctrl_pts;
 }
@@ -297,7 +304,8 @@ void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
                              const Ref<const VectorXd>& u_max)
 {
   if ((u_max - u_min).minCoeff() < 0.0)
-    throw std::invalid_argument("u_min cannot be greater than u_max.");
+    throw std::invalid_argument(
+        "[MPCBase::setInputLimits] u_min cannot be greater than u_max.");
   assert(u_min.size() == input_dim_ && u_max.size() == input_dim_);
   u_min_ = u_min;
   u_max_ = u_max;
@@ -308,9 +316,11 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
                              const Ref<const VectorXd>& x_max)
 {
   if (!saturate_states_)
-    throw std::runtime_error("State saturation is not enabled.");
+    throw std::runtime_error(
+        "[MPCBase::setStateLimits] State saturation is not enabled.");
   if ((x_max - x_min).minCoeff() < 0.0)
-    throw std::invalid_argument("x_min cannot be greater than x_max.");
+    throw std::invalid_argument(
+        "[MPCBase::setStateLimits] x_min cannot be greater than x_max.");
   assert(x_min.size() == state_dim_ && x_max.size() == state_dim_);
   x_min_ = x_min;
   x_max_ = x_max;
@@ -320,9 +330,11 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
 void MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
   if (!use_slew_rate_)
-    throw std::runtime_error("Slew rate is not enabled.");
+    throw std::runtime_error(
+        "[MPCBase::setSlewRate] Slew rate is not enabled.");
   if (u_slew.minCoeff() < 0.0)
-    throw std::invalid_argument("Slew rate must be non-negative.");
+    throw std::invalid_argument(
+        "[MPCBase::setSlewRate] Slew rate must be non-negative.");
   assert(u_slew.size() == input_dim_);
   u_slew_ = u_slew;
   slew_rate_set_ = true;
@@ -337,7 +349,8 @@ void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
   const size_t knots_size = spline_knots.size();
   if (knots_size > 0) {
     if (knots_size != num_internal_knots) {
-      std::string err_msg = "spline_knots size must be equal to "
+      std::string err_msg = "[MPCBase::initializeSplineKnots] "
+                            "spline_knots size must be equal to "
                             "num_control_points - spline_degree + 1 (" +
                             std::to_string(num_internal_knots) + "), got " +
                             std::to_string(knots_size) + ".";
@@ -345,7 +358,8 @@ void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
     }
     if ((spline_knots(seq(1, ph::last)) - spline_knots(seq(0, ph::last - 1)))
             .minCoeff() < 0)
-      throw std::invalid_argument("spline_knots must be non-decreasing.");
+      throw std::invalid_argument("[MPCBase::initializeSplineKnots] "
+                                  "spline_knots must be non-decreasing.");
 
     spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) =
         spline_knots;

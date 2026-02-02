@@ -47,18 +47,23 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
   spline_knots_fout_.open(save_dir_ + "spline_knots.txt");
 
   if (!time_fout_.is_open())
-    throw std::runtime_error("Failed to open time file for writing.");
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open time file for writing.");
   if (!solve_time_fout_.is_open())
-    throw std::runtime_error("Failed to open solve_times file for writing.");
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open solve_times file for writing.");
   if (!states_fout_.is_open())
-    throw std::runtime_error("Failed to open states file for writing.");
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open states file for writing.");
   if (!refs_fout_.is_open())
-    throw std::runtime_error("Failed to open ref_states file for writing.");
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open ref_states file for writing.");
   if (!inputs_fout_.is_open())
-    throw std::runtime_error("Failed to open inputs file for writing.");
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open inputs file for writing.");
   if (!spline_knots_fout_.is_open())
-    throw std::runtime_error("Failed to open spline_knots file for writing.");
-
+    throw std::runtime_error("[MPCLogger Constructor] "
+                             "Failed to open spline_knots file for writing.");
   // write knots to file
   spline_knots_fout_ << mpc_->spline_knots_.transpose() << std::endl;
   spline_knots_fout_.close();
@@ -83,7 +88,8 @@ void MPCLogger::logPreviousSolve(double t0,
                                  int write_every)
 {
   if (!mpc_->solver_initialized_)
-    throw std::runtime_error("Solver must be initialized before logging data.");
+    throw std::runtime_error("[MPCLogger::logPreviousSolve] "
+                             "Solver must be initialized before logging data.");
   const static int n{mpc_->state_dim_}, m{mpc_->input_dim_};
   const static int T{mpc_->horizon_steps_}, p{mpc_->num_ctrl_pts_};
 
@@ -120,7 +126,8 @@ void MPCLogger::writeParamFile(const std::string& filename)
   std::ofstream param_fout;
   param_fout.open(save_dir_ + filename);
   if (!param_fout.is_open()) {
-    throw std::runtime_error("Failed to open parameter file for writing.");
+    throw std::runtime_error("[MPCLogger::writeParamFile] "
+                             "Failed to open parameter file for writing.");
   }
   param_fout << std::boolalpha << "n: " << mpc_->state_dim_ << std::endl
              << "m: " << mpc_->input_dim_ << std::endl
