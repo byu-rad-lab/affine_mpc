@@ -44,9 +44,6 @@ MPCBase::MPCBase(const int state_dim,
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
-    G_{state_dim, state_dim},
-    At_{state_dim, state_dim},
-    At_pow_{state_dim, state_dim},
     Q_big_{state_dim * horizon_steps},
     x_goal_{state_dim * horizon_steps},
     u_min_{input_dim},
@@ -205,7 +202,8 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);
   assert(wc.size() == state_dim_);
 
-  // Use pre-allocated working matrices (avoids allocation if called frequently)
+  // allocates memory first time only (since sizes are constant)
+  At_.resize(state_dim_, state_dim_);
   At_.noalias() = Ac * dt;
   At_pow_.setIdentity(state_dim_, state_dim_);
   Ad_.setIdentity(state_dim_, state_dim_);
