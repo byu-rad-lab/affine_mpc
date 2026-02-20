@@ -1,5 +1,5 @@
-#ifndef BSPLINE_MPC_HPP
-#define BSPLINE_MPC_HPP
+#ifndef CONDENSED_MPC_HPP
+#define CONDENSED_MPC_HPP
 
 #include <Eigen/Core>
 
@@ -7,21 +7,21 @@
 
 namespace affine_mpc {
 
-class BSplineMPC : public MPCBase
+class CondensedMPC : public MPCBase
 {
 public:
-  BSplineMPC(const int state_dim,
-             const int input_dim,
-             const int horizon_steps,
-             const int num_control_points,
-             const int spline_degree,
-             const Eigen::Ref<const Eigen::VectorXd>& spline_knots =
-                 Eigen::VectorXd(0),
-             const bool use_input_cost = false,
-             const bool use_slew_rate = false,
-             const bool saturate_states = false);
+  CondensedMPC(const int state_dim,
+               const int input_dim,
+               const int horizon_steps,
+               const int num_control_points,
+               const int spline_degree,
+               const Eigen::Ref<const Eigen::VectorXd>& spline_knots =
+                   Eigen::VectorXd(0),
+               const bool use_input_cost = false,
+               const bool use_slew_rate = false,
+               const bool saturate_states = false);
   using MPCBase::MPCBase;
-  virtual ~BSplineMPC() = default;
+  virtual ~CondensedMPC() = default;
 
   void getInputTrajectory(
       Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final
@@ -68,4 +68,4 @@ private:
 
 } // namespace affine_mpc
 
-#endif // BSPLINE_MPC_HPP
+#endif // CONDENSED_MPC_HPP

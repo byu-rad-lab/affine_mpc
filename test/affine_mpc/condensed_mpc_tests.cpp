@@ -1,4 +1,4 @@
-#include "affine_mpc/bspline_mpc.hpp"
+#include "affine_mpc/condensed_mpc.hpp"
 
 #include <gtest/gtest.h>
 #include <unsupported/Eigen/Splines>
@@ -10,11 +10,11 @@ using namespace Eigen;
 
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class BSplineMPCProtectedTester : public affine_mpc::BSplineMPC
+class CondensedMPCProtectedTester : public affine_mpc::CondensedMPC
 {
 public:
-  using BSplineMPC::BSplineMPC;
-  virtual ~BSplineMPCProtectedTester() = default;
+  using CondensedMPC::CondensedMPC;
+  virtual ~CondensedMPCProtectedTester() = default;
 
   void setModel()
   {
@@ -55,11 +55,11 @@ public:
   const auto getQ() const { return this->q_; }
 };
 
-TEST(BSplineMPCProtectedTester, givenParams_FormsSplineCorrectly)
+TEST(CondensedMPCProtectedTester, givenParams_FormsSplineCorrectly)
 {
   const int n{2}, m{1};                // not important for this test
   const int T{10}, n_ctrls{5}, deg{2}; // define expected behavior
-  BSplineMPCProtectedTester msd_mpc{n, m, T, n_ctrls, deg};
+  CondensedMPCProtectedTester msd_mpc{n, m, T, n_ctrls, deg};
 
   VectorXd knots{n_ctrls + deg + 1}, knots_expected{n_ctrls + deg + 1};
   knots = msd_mpc.getSplineKnots();
@@ -94,10 +94,10 @@ TEST(BSplineMPCProtectedTester, givenParams_FormsSplineCorrectly)
   }
 }
 
-TEST(BSplineMPCProtectedTester, givenModel_FormsSandVcorrectly)
+TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  BSplineMPCProtectedTester msd_mpc{n, m, T, nc, deg};
+  CondensedMPCProtectedTester msd_mpc{n, m, T, nc, deg};
   msd_mpc.setModel();
 
   Eigen::Vector2d x0{0, 0.1};
@@ -130,11 +130,11 @@ TEST(BSplineMPCProtectedTester, givenModel_FormsSandVcorrectly)
   ASSERT_TRUE(expectEigenNear(msd_mpc.getV(), v_test, 1e-6));
 }
 
-TEST(BSplineMPCProtectedTester, givenModel_FormsPandQcorrectly)
+TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
   const bool use_input_cost{true};
-  BSplineMPCProtectedTester msd_mpc{
+  CondensedMPCProtectedTester msd_mpc{
       n, m, T, nc, deg, VectorXd{0}, use_input_cost};
   msd_mpc.setModel();
 
@@ -184,11 +184,11 @@ TEST(BSplineMPCProtectedTester, givenModel_FormsPandQcorrectly)
   ASSERT_TRUE(expectEigenNear(msd_mpc.getQ(), q_test, 1e-6));
 }
 
-TEST(BSplineMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
+TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
 {
   const int n{2}, m{1}, T{10}, nc{10}, deg{1};
   const bool use_input_cost{true}, use_slew_rate{true};
-  BSplineMPCProtectedTester msd_mpc{
+  CondensedMPCProtectedTester msd_mpc{
       n, m, T, nc, deg, VectorXd{0}, use_input_cost, use_slew_rate};
   affine_mpc::MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
   msd_mpc.setModel();

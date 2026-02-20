@@ -34,7 +34,7 @@ add_library(${PROJECT_NAME}
   src/mpc_base.cpp
   src/osqp_solver.cpp
   src/implicit_mpc.cpp
-  src/bspline_mpc.cpp
+  src/condensed_mpc.cpp
   src/sparse_mpc.cpp
   src/mpc_logger.cpp
 )
@@ -88,7 +88,7 @@ if(${PROJECT_NAME}_BUILD_TESTS)
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/implicit_mpc_tests.cpp
-    test/affine_mpc/bspline_mpc_tests.cpp
+    test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     # test/affine_mpc/mpc_logger_tests.cpp
   )

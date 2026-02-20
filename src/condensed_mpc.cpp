@@ -1,4 +1,4 @@
-#include "affine_mpc/bspline_mpc.hpp"
+#include "affine_mpc/condensed_mpc.hpp"
 
 // #include <Eigen/Core> // revert back to this once Eigen 3.5 is required
 #include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
@@ -16,15 +16,15 @@ using namespace Eigen;
 namespace affine_mpc {
 
 
-BSplineMPC::BSplineMPC(const int state_dim,
-                       const int input_dim,
-                       const int horizon_steps,
-                       const int num_control_points,
-                       const int spline_degree,
-                       const Ref<const VectorXd>& knots,
-                       const bool use_input_cost,
-                       const bool use_slew_rate,
-                       const bool saturate_states) :
+CondensedMPC::CondensedMPC(const int state_dim,
+                           const int input_dim,
+                           const int horizon_steps,
+                           const int num_control_points,
+                           const int spline_degree,
+                           const Ref<const VectorXd>& knots,
+                           const bool use_input_cost,
+                           const bool use_slew_rate,
+                           const bool saturate_states) :
     MPCBase(state_dim,
             input_dim,
             horizon_steps,
@@ -63,7 +63,7 @@ BSplineMPC::BSplineMPC(const int state_dim,
   S_.topRows(state_dim).setZero();
 }
 
-void BSplineMPC::getPredictedStateTrajectory(
+void CondensedMPC::getPredictedStateTrajectory(
     Ref<VectorXd> x_traj) const noexcept
 {
   MPCBase::getPredictedStateTrajectory(x_traj); // size checks
@@ -71,9 +71,9 @@ void BSplineMPC::getPredictedStateTrajectory(
   x_traj += v_;
 }
 
-void BSplineMPC::setModelDiscrete(const Ref<const MatrixXd>& Ad,
-                                  const Ref<const MatrixXd>& Bd,
-                                  const Ref<const VectorXd>& wd)
+void CondensedMPC::setModelDiscrete(const Ref<const MatrixXd>& Ad,
+                                    const Ref<const MatrixXd>& Bd,
+                                    const Ref<const VectorXd>& wd)
 {
   MPCBase::setModelDiscrete(Ad, Bd, wd);
 
@@ -81,11 +81,11 @@ void BSplineMPC::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   updateS();
 }
 
-void BSplineMPC::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
-                                             const Ref<const MatrixXd>& Bc,
-                                             const Ref<const VectorXd>& wc,
-                                             double dt,
-                                             double tol)
+void CondensedMPC::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
+                                               const Ref<const MatrixXd>& Bc,
+                                               const Ref<const VectorXd>& wc,
+                                               double dt,
+                                               double tol)
 {
   MPCBase::setModelContinuous2Discrete(Ac, Bc, wc, dt, tol);
 
@@ -93,8 +93,8 @@ void BSplineMPC::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   updateS();
 }
 
-bool BSplineMPC::setInputLimits(const Ref<const VectorXd>& u_min,
-                                const Ref<const VectorXd>& u_max)
+bool CondensedMPC::setInputLimits(const Ref<const VectorXd>& u_min,
+                                  const Ref<const VectorXd>& u_max)
 {
   MPCBase::setInputLimits(u_min, u_max);
 
@@ -107,8 +107,8 @@ bool BSplineMPC::setInputLimits(const Ref<const VectorXd>& u_min,
   return solver_->updateBounds(l_, u_);
 }
 
-bool BSplineMPC::setStateLimits(const Ref<const VectorXd>& x_min,
-                                const Ref<const VectorXd>& x_max)
+bool CondensedMPC::setStateLimits(const Ref<const VectorXd>& x_min,
+                                  const Ref<const VectorXd>& x_max)
 {
   MPCBase::setStateLimits(x_min, x_max);
 
@@ -125,7 +125,7 @@ bool BSplineMPC::setStateLimits(const Ref<const VectorXd>& x_min,
   return solver_->updateBounds(l_, u_);
 }
 
-bool BSplineMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
+bool CondensedMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
   MPCBase::setSlewRate(u_slew);
 
@@ -138,7 +138,7 @@ bool BSplineMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
   return solver_->updateBounds(l_, u_);
 }
 
-void BSplineMPC::updateQP(const Ref<const VectorXd>& x0)
+void CondensedMPC::updateQP(const Ref<const VectorXd>& x0)
 {
   // Note: success is used to avoid build warnings. Failures will manifest in
   // either initializeSolver() or solve(), no need to check on protected method
@@ -166,7 +166,7 @@ void BSplineMPC::updateQP(const Ref<const VectorXd>& x0)
   success = solver_->updateCostVector(q_);
 }
 
-void BSplineMPC::updateS()
+void CondensedMPC::updateS()
 {
   const int num_weights{spline_degree_ + 1};
 
@@ -186,7 +186,7 @@ void BSplineMPC::updateS()
   }
 }
 
-void BSplineMPC::updateV(const Ref<const VectorXd>& x0)
+void CondensedMPC::updateV(const Ref<const VectorXd>& x0)
 {
   // add dynamics of initial time step (k=0)
   v_.head(state_dim_).noalias() = Ad_ * x0 + wd_;
