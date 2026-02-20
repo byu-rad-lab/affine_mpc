@@ -72,9 +72,12 @@ public:
 
   void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& R_diag);
+  void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
+                  const Eigen::Ref<const Eigen::VectorXd>& Qf_diag,
+                  const Eigen::Ref<const Eigen::VectorXd>& R_diag);
   void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag);
-  void
-  setStateWeightsTerminal(const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
+  void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
+                       const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   void setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
@@ -102,14 +105,22 @@ private:
 
 protected:
   // need to be implemented by derived classes
-  virtual void
-  convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  virtual void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  // virtual bool qpUpdateModel() { return true; }
+  // virtual bool qpUpdateReferences() { return true; }
+  // // virtual bool qpUpdateWeights() { return true; }
+  // virtual bool qpUpdateLimits() { return true; }
+  // virtual bool qpUpdateSlewRate() { return true; }
+
 
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
+  const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
   bool solver_initialized_;
+  // bool model_changed_;
+  bool weights_changed_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
   std::unique_ptr<OSQPSolver> solver_;
@@ -120,7 +131,7 @@ protected:
   Eigen::VectorXd u_; // osqp constraint upper bound
 
   // Input parameterization variables
-  Eigen::VectorXd spline_segment_idxs_;
+  Eigen::VectorXi spline_segment_idxs_;
   Eigen::VectorXd spline_knots_;
   Eigen::MatrixXd spline_weights_;
 

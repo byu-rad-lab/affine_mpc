@@ -36,7 +36,8 @@ public:
 
   void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0)
   {
-    convertToQP(x0);
+    // convertToQP(x0);
+    updateQP(x0);
   }
 
   auto getAd() { return this->Ad_; }

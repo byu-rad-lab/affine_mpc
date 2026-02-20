@@ -39,7 +39,7 @@ public:
 protected:
   // See https://arxiv.org/pdf/2001.04931 sections IV.B and IV.E for details on
   // S and v and how to convert to a QP problem
-  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
+  void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
   void calcSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0);
   void calcPandQ();
 

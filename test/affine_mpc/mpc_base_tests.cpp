@@ -30,8 +30,7 @@ public:
   auto getInputTrajectory() { return u_goal_; }
 
 protected:
-  void convertToQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final
-  {}
+  void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
 };
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)

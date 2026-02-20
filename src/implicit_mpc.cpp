@@ -29,8 +29,8 @@ ImplicitMPC::ImplicitMPC(const int state_dim,
             saturate_states),
     // if using a slew rate constraint then state saturation rows of A are
     // shifted down by the number of slew rate constraints
-    x_sat_idx_{input_dim * num_control_points +
-               input_dim * (num_control_points - 1) * use_slew_rate},
+    x_sat_idx_{input_dim * num_control_points
+               + input_dim * (num_control_points - 1) * use_slew_rate},
     num_constraints_{x_sat_idx_ + state_dim * horizon_steps * saturate_states},
     S_{state_dim * horizon_steps, input_dim * num_control_points},
     v_{state_dim * horizon_steps}
@@ -131,7 +131,7 @@ bool ImplicitMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
   return solver_->updateBounds(l_, u_);
 }
 
-void ImplicitMPC::convertToQP(const Ref<const VectorXd>& x0)
+void ImplicitMPC::updateQP(const Ref<const VectorXd>& x0)
 {
   calcSAndV(x0);
   calcPandQ();
@@ -187,7 +187,7 @@ void ImplicitMPC::calcPandQ()
   q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
   if (use_input_cost_) {
     P_ += R_big_;
-    q_ -= R_big_ * u_goal_;
+    q_.noalias() -= R_big_ * u_goal_;
   }
 }
 

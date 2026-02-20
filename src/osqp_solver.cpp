@@ -3,8 +3,8 @@
 #include "osqp_api_types.h"
 
 #include <Eigen/Core>
-#include <memory>
 #include <cassert>
+#include <memory>
 
 namespace affine_mpc {
 
@@ -31,7 +31,8 @@ OSQPSettings OSQPSolver::getDefaultSettings() noexcept
   return settings;
 }
 
-OSQPSettings OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
+OSQPSettings
+OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);
@@ -53,7 +54,10 @@ OSQPSolver::getSolutionMap() const noexcept
     return Eigen::Map<const VectorXF>{nullptr, 0, 1};
 }
 
-OSQPFloat OSQPSolver::getSolveTime() const noexcept { return solver_->info->solve_time; }
+OSQPFloat OSQPSolver::getSolveTime() const noexcept
+{
+  return solver_->info->solve_time;
+}
 
 bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
@@ -108,8 +112,8 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
       --idx_diff;
     }
   }
-  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), P_x_.data(), OSQP_NULL,
-                                           P_nnz_, OSQP_NULL, OSQP_NULL, 0)};
+  OSQPInt exit_status{osqp_update_data_mat(
+      solver_.get(), P_x_.data(), OSQP_NULL, P_nnz_, OSQP_NULL, OSQP_NULL, 0)};
   return exit_status == 0;
 }
 
@@ -129,8 +133,8 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
       --idx_diff;
     }
   }
-  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL, 0,
-                                           A_x_.data(), OSQP_NULL, A_nnz_)};
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL,
+                                           0, A_x_.data(), OSQP_NULL, A_nnz_)};
   return exit_status == 0;
 }
 
@@ -193,7 +197,8 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
     }
   }
   P_p_(n_) = P_nnz_;
-  P_.reset(OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data()));
+  P_.reset(
+      OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data()));
   P_is_set_ = true;
 }
 
@@ -218,7 +223,8 @@ void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
     }
   }
   A_p_(n_) = A_nnz_;
-  A_.reset(OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
+  A_.reset(
+      OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
   A_is_set_ = true;
 }
 

@@ -29,6 +29,9 @@ MPCBase::MPCBase(const int state_dim,
     horizon_steps_{horizon_steps},
     num_ctrl_pts_{num_control_points},
     spline_degree_{spline_degree},
+    x_traj_dim_{state_dim * horizon_steps},
+    u_traj_dim_{input_dim * horizon_steps},
+    ctrls_dim_{input_dim * num_control_points},
     use_input_cost_{use_input_cost},
     use_slew_rate_{use_slew_rate},
     saturate_states_{saturate_states},
@@ -37,6 +40,7 @@ MPCBase::MPCBase(const int state_dim,
     slew_rate_set_{false},
     state_limits_set_{false},
     solver_initialized_{false},
+    weights_changed_{false},
     solver_{nullptr},
     spline_segment_idxs_{horizon_steps},
     spline_knots_{num_control_points + spline_degree + 1},
@@ -67,17 +71,14 @@ MPCBase::MPCBase(const int state_dim,
 
   // allocate memory needed based on options
   if (use_input_cost) {
-    R_big_.setZero(input_dim * num_control_points);
-    u_goal_.setZero(input_dim * num_control_points);
+    R_big_.setIdentity(ctrls_dim_);
+    u_goal_.setZero(ctrls_dim_);
   }
   if (use_slew_rate) {
-    // u_slew_.setZero(input_dim);
     u_slew_.resize(input_dim);
     u_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
   if (saturate_states) {
-    // x_min_.setZero(state_dim);
-    // x_max_.setZero(state_dim);
     x_min_.resize(state_dim);
     x_max_.resize(state_dim);
     x_min_.setConstant(-std::numeric_limits<double>::infinity());
@@ -104,15 +105,15 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
   assert(model_set_ && "Model must be set before initializing solver");
   if (!model_set_)
     return false;
-  assert(input_limits_set_ &&
-         "Input limits must be set before initializing solver");
+  assert(input_limits_set_
+         && "Input limits must be set before initializing solver");
   if (!input_limits_set_)
     return false;
 
   if (solver_initialized_)
     return true;
 
-  convertToQP(x_full);
+  updateQP(x_full);
 
   solver_initialized_ =
       solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
@@ -130,7 +131,7 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
 bool MPCBase::solve(const Ref<const VectorXd>& x0)
 {
   assert(x0.size() == state_dim_);
-  convertToQP(x0);
+  updateQP(x0);
   return solver_->solve();
 }
 
@@ -143,13 +144,13 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 void MPCBase::getParameterizedInputTrajectory(
     Ref<VectorXd> u_traj_ctrl_pts) const noexcept
 {
-  assert(u_traj_ctrl_pts.size() == input_dim_ * num_ctrl_pts_);
-  u_traj_ctrl_pts = solution_map_;
+  assert(u_traj_ctrl_pts.size() == ctrls_dim_);
+  u_traj_ctrl_pts = solution_map_.head(ctrls_dim_);
 }
 
 void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
-  assert(u_traj.size() == input_dim_ * horizon_steps_);
+  assert(u_traj.size() == u_traj_dim_);
 
   int seg;
   Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_, num_ctrl_pts_};
@@ -164,7 +165,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 
 void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
 {
-  assert(x_traj.size() == state_dim_ * horizon_steps_);
+  assert(x_traj.size() == x_traj_dim_);
 }
 
 void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
@@ -190,6 +191,7 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   Bd_ = Bd;
   wd_ = wd;
   model_set_ = true;
+  // qpUpdateModel();
 }
 
 void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
@@ -222,12 +224,21 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   Bd_.noalias() = G_ * Bc;
   wd_.noalias() = G_ * wc;
   model_set_ = true;
+  // qpUpdateModel();
 }
 
 void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
                          const Ref<const VectorXd>& R_diag)
 {
   setStateWeights(Q_diag);
+  setInputWeights(R_diag);
+}
+
+void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
+                         const Ref<const VectorXd>& Qf_diag,
+                         const Ref<const VectorXd>& R_diag)
+{
+  setStateWeights(Q_diag, Qf_diag);
   setInputWeights(R_diag);
 }
 
@@ -239,16 +250,20 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
   assert(Q_diag.size() == state_dim_);
   for (int i{0}; i < horizon_steps_; ++i)
     Q_big_.diagonal().segment(state_dim_ * i, state_dim_) = Q_diag;
+  weights_changed_ = true;
 }
 
-void MPCBase::setStateWeightsTerminal(const Ref<const VectorXd>& Qf_diag)
+void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
+                              const Ref<const VectorXd>& Qf_diag)
 {
-  if (Qf_diag.minCoeff() < 0.0)
-    throw std::invalid_argument("[MPCBase::setStateWeightsTerminal] Terminal "
-                                "state weights must be non-negative.");
-  assert(Qf_diag.size() == state_dim_);
-  Q_big_.diagonal().segment(state_dim_ * (horizon_steps_ - 1), state_dim_) =
-      Qf_diag;
+  if (Q_diag.minCoeff() < 0.0 || Q_diag.minCoeff() < 0.0)
+    throw std::invalid_argument(
+        "[MPCBase::setStateWeights] State weights must be non-negative.");
+  assert(Q_diag.size() == Qf_diag.size() == state_dim_);
+  for (int i{0}; i < horizon_steps_ - 1; ++i)
+    Q_big_.diagonal().segment(state_dim_ * i, state_dim_) = Q_diag;
+  Q_big_.diagonal()(ph::lastN(state_dim_)) = Qf_diag;
+  weights_changed_ = true;
 }
 
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
@@ -262,6 +277,7 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
   assert(R_diag.size() == input_dim_);
   for (int i{0}; i < num_ctrl_pts_; ++i)
     R_big_.diagonal().segment(input_dim_ * i, input_dim_) = R_diag;
+  weights_changed_ = true;
 }
 
 void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
@@ -283,7 +299,7 @@ void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 
 void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
-  assert(x_traj.size() == state_dim_ * horizon_steps_);
+  assert(x_traj.size() == x_traj_dim_);
   x_goal_ = x_traj;
 }
 
@@ -294,7 +310,7 @@ void MPCBase::setReferenceParameterizedInputTrajectory(
     throw std::runtime_error(
         "[MPCBase::setReferenceParameterizedInputTrajectory] "
         "Input cost is not enabled.");
-  assert(u_traj_ctrl_pts.size() == input_dim_ * num_ctrl_pts_);
+  assert(u_traj_ctrl_pts.size() == ctrls_dim_);
   u_goal_ = u_traj_ctrl_pts;
 }
 
@@ -349,13 +365,14 @@ void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
     if (knots_size != num_internal_knots) {
       std::string err_msg = "[MPCBase::initializeSplineKnots] "
                             "spline_knots size must be equal to "
-                            "num_control_points - spline_degree + 1 (" +
-                            std::to_string(num_internal_knots) + "), got " +
-                            std::to_string(knots_size) + ".";
+                            "num_control_points - spline_degree + 1 ("
+                            + std::to_string(num_internal_knots) + "), got "
+                            + std::to_string(knots_size) + ".";
       throw std::invalid_argument(err_msg);
     }
     if ((spline_knots(seq(1, ph::last)) - spline_knots(seq(0, ph::last - 1)))
-            .minCoeff() < 0)
+            .minCoeff()
+        < 0)
       throw std::invalid_argument("[MPCBase::initializeSplineKnots] "
                                   "spline_knots must be non-decreasing.");
 

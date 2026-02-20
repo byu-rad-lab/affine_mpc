@@ -12,9 +12,6 @@ using namespace Eigen;
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
 class BSplineMPCProtectedTester : public affine_mpc::BSplineMPC
 {
-  constexpr static int N = 2;
-  constexpr static int M = 1;
-
 public:
   using BSplineMPC::BSplineMPC;
   virtual ~BSplineMPCProtectedTester() = default;
@@ -26,7 +23,7 @@ public:
     A << 0, 1, -0.6, -0.1;
     B << 0, 0.2;
     w.setZero();
-    double ts{0.1};
+    const double ts{0.1};
     setModelContinuous2Discrete(A, B, w, ts);
     // Matrix2d Ad;
     // Vector2d Bd, wd;
@@ -36,12 +33,13 @@ public:
     // setModelDiscrete(Ad, Bd, wd);
   }
 
-  void findSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0) { calcSAndV(x0); }
-
-  void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0)
+  void findSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0)
   {
-    convertToQP(x0);
+    updateS();
+    updateV(x0);
   }
+
+  void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0) { updateQP(x0); }
 
   const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
   const auto getSplineKnots() const { return this->spline_knots_; }
@@ -68,7 +66,7 @@ TEST(BSplineMPCProtectedTester, givenParams_FormsSplineCorrectly)
   knots_expected << 0, 0, 0, 3, 6, 9, 9, 9;
   ASSERT_TRUE(expectEigenNear(knots, knots_expected, 1e-15));
 
-  VectorXd segment_idxs{T}, segment_idxs_expected{T};
+  VectorXi segment_idxs{T}, segment_idxs_expected{T};
   segment_idxs = msd_mpc.getSplineSegmentIdxs();
   segment_idxs_expected << 0, 0, 0, 1, 1, 1, 2, 2, 2, 2;
   ASSERT_TRUE(expectEigenNear(segment_idxs, segment_idxs_expected, 1e-15));

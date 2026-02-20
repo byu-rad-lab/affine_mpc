@@ -49,6 +49,7 @@ SeparateDefinitionBlocks: Leave # Always
 # Bin packing fits as many items as possible on one line within column limit
 # With it off, each item gets its own line
 BinPackParameters: false # AlwaysOnePerLine
-# BinPackArguments: false
+# BinPackArguments: true
 # Cpp11BracedListStyle: false
-
+# AlignAfterOpenBracket: DontAlign
+BreakBeforeBinaryOperators: NonAssignment
