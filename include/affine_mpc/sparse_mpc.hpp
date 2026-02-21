@@ -20,7 +20,6 @@ public:
             const bool use_input_cost = false,
             const bool use_slew_rate = false,
             const bool saturate_states = false);
-  using MPCBase::MPCBase;
   virtual ~SparseMPC() = default;
 
   void getInputTrajectory(
