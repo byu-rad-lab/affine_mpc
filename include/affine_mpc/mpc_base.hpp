@@ -12,31 +12,21 @@ namespace affine_mpc {
 class MPCBase
 {
   friend class MPCLogger; // allow access to member variables for logging
-public:
-  // MPCBase(const Eigen::Ref<const Eigen::MatrixXd>& A,
-  //         const Eigen::Ref<const Eigen::MatrixXd>& B,
-  //         const Eigen::Ref<const Eigen::VectorXd>& w,
-  //         const int horizon_steps,
-  //         const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
-  //         const Eigen::Ref<const Eigen::VectorXd>& R_diag,
-  //         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag =
-  //         Eigen::VectorXd(0), const int num_control_points, const int
-  //         spline_degree, const Eigen::Ref<const Eigen::VectorXd>&
-  //         spline_knots = Eigen::VectorXd(0), const bool use_input_cost =
-  //         false, const bool use_slew_rate = false, const bool saturate_states
-  //         = false);
+protected:
   MPCBase(const int state_dim,
           const int input_dim,
           const int horizon_steps,
           const int num_control_points,
           const int spline_degree,
-          const Eigen::Ref<const Eigen::VectorXd>& spline_knots =
-              Eigen::VectorXd(0),
-          const bool use_input_cost = false,
-          const bool use_slew_rate = false,
-          const bool saturate_states = false);
+          const Eigen::Ref<const Eigen::VectorXd>& spline_knots,
+          const bool use_input_cost,
+          const bool use_slew_rate,
+          const bool saturate_states,
+          const int num_design_vars,
+          const int num_custom_constraints);
   virtual ~MPCBase() = default;
 
+public:
   // Must be called before solve()
   [[nodiscard]] bool
   initializeSolver(const OSQPSettings& solver_settings =
@@ -61,10 +51,10 @@ public:
   void propagateModel(const Eigen::Ref<const Eigen::VectorXd>& x,
                       const Eigen::Ref<const Eigen::VectorXd>& u,
                       Eigen::Ref<Eigen::VectorXd> x_next) const;
-  void setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
+  bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
                         const Eigen::Ref<const Eigen::MatrixXd>& Bd,
                         const Eigen::Ref<const Eigen::VectorXd>& wd);
-  void setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
+  bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
                                    double dt,
@@ -80,47 +70,46 @@ public:
                        const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
-  void setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
-  void setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
-  void
+  bool setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
+  bool
   setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
-  void setReferenceParameterizedInputTrajectory(
+  bool setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
+  bool setReferenceParameterizedInputTrajectory(
       const Eigen::Ref<const Eigen::VectorXd>& u_traj_ctrl_pts);
 
-  void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
+  bool setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
-  void setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
+  bool setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
-  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
+  bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
   constexpr int getStateDim() const noexcept { return state_dim_; };
   constexpr int getInputDim() const noexcept { return input_dim_; };
   constexpr int getHorizonSteps() const noexcept { return horizon_steps_; };
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
-private:
-  void
-  initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
-  void calcSplineParams();
-
 protected:
-  // need to be implemented by derived classes
-  virtual void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
-  // virtual bool qpUpdateModel() { return true; }
-  // virtual bool qpUpdateReferences() { return true; }
-  // // virtual bool qpUpdateWeights() { return true; }
-  // virtual bool qpUpdateLimits() { return true; }
-  // virtual bool qpUpdateSlewRate() { return true; }
-
-
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
   const bool use_input_cost_, use_slew_rate_, saturate_states_;
+  const int u_sat_dim_, slew_dim_, x_sat_dim_;
+  const int u_sat_idx_, slew_idx_, x_sat_idx_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
   bool solver_initialized_;
-  // bool model_changed_;
   bool weights_changed_;
+
+  // MPC variables
+  Eigen::MatrixXd Ad_;
+  Eigen::MatrixXd Bd_;
+  Eigen::VectorXd wd_;
+
+  // Working matrices for model discretization
+  Eigen::MatrixXd G_, At_, At_pow_;
+
+  Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_, R_big_;
+  Eigen::VectorXd x_goal_, u_goal_, u_min_, u_max_, x_min_, x_max_, u_slew_;
+  Eigen::Map<const Eigen::VectorXd> solution_map_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
   std::unique_ptr<OSQPSolver> solver_;
@@ -135,24 +124,18 @@ protected:
   Eigen::VectorXd spline_knots_;
   Eigen::MatrixXd spline_weights_;
 
-  // MPC variables
-  Eigen::MatrixXd Ad_;
-  Eigen::MatrixXd Bd_;
-  Eigen::VectorXd wd_;
+private:
+  void
+  initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
+  void calcSplineParams();
 
-  // Working matrices for model discretization
-  Eigen::MatrixXd G_, At_, At_pow_;
-
-  Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_;
-  Eigen::DiagonalMatrix<double, Eigen::Dynamic> R_big_;
-  Eigen::VectorXd x_goal_;
-  Eigen::VectorXd u_goal_;
-  Eigen::VectorXd u_min_;
-  Eigen::VectorXd u_max_;
-  Eigen::VectorXd x_min_;
-  Eigen::VectorXd x_max_;
-  Eigen::VectorXd u_slew_;
-  Eigen::Map<const Eigen::VectorXd> solution_map_;
+  // need to be implemented by derived classes
+  virtual void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  virtual bool qpUpdateModel() = 0;
+  virtual bool qpUpdateReferences() = 0;
+  virtual bool qpUpdateInputLimits() = 0;
+  virtual bool qpUpdateStateLimits() = 0;
+  virtual bool qpUpdateSlewRate() = 0;
 };
 
 } // namespace affine_mpc

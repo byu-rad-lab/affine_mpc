@@ -39,7 +39,10 @@ public:
     updateV(x0);
   }
 
-  void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0) { updateQP(x0); }
+  void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0)
+  {
+    qpUpdateX0(x0);
+  }
 
   const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
   const auto getSplineKnots() const { return this->spline_knots_; }

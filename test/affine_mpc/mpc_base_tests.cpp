@@ -15,22 +15,27 @@ public:
                 const int T,
                 const int mu,
                 const bool Ju = false) :
-      MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju)
+      MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju, false, false, m * mu, 0)
   {}
   virtual ~MPCBaseTester() = default;
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final
   {}
-  auto getAd() { return Ad_; }
-  auto getBd() { return Bd_; }
-  auto getWd() { return wd_; }
-  auto getQbig() { return Q_big_; }
-  auto getRbig() { return R_big_; }
-  auto getStateTrajectory() { return x_goal_; }
-  auto getInputTrajectory() { return u_goal_; }
+  const auto getAd() { return Ad_; }
+  const auto getBd() { return Bd_; }
+  const auto getWd() { return wd_; }
+  const auto getQbig() { return Q_big_; }
+  const auto getRbig() { return R_big_; }
+  const auto getStateTrajectory() { return x_goal_; }
+  const auto getInputTrajectory() { return u_goal_; }
 
 protected:
-  void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
+  void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
+  bool qpUpdateModel() override final { return true; }
+  bool qpUpdateReferences() override final { return true; }
+  bool qpUpdateInputLimits() override final { return true; }
+  bool qpUpdateStateLimits() override final { return true; }
+  bool qpUpdateSlewRate() override final { return true; }
 };
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)

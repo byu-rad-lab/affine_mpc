@@ -1,9 +1,7 @@
 #include "affine_mpc/condensed_mpc.hpp"
 
 // #include <Eigen/Core> // revert back to this once Eigen 3.5 is required
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
-#include <exception>
-#include <sys/stat.h>
+#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 #include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
@@ -33,31 +31,13 @@ CondensedMPC::CondensedMPC(const int state_dim,
             knots,
             use_input_cost,
             use_slew_rate,
-            saturate_states),
-    // if using a slew rate constraint then state saturation rows of A are
-    // shifted down by the number of slew rate constraints
-    x_sat_idx_{input_dim * num_control_points
-               + input_dim * (num_control_points - 1) * use_slew_rate},
-    num_constraints_{x_sat_idx_ + state_dim * horizon_steps * saturate_states},
-    S_{state_dim * horizon_steps, input_dim * num_control_points},
-    v_{state_dim * horizon_steps},
+            saturate_states,
+            input_dim * num_control_points, // num_design_vars
+            0),                             // num_custom_constraints
+    S_{x_traj_dim_, ctrls_dim_},
+    v_{x_traj_dim_},
     model_changed_{false}
 {
-  const int num_design_vars{input_dim * num_control_points};
-  solver_ = std::make_unique<OSQPSolver>(num_design_vars, num_constraints_);
-  P_.resize(num_design_vars, num_design_vars);
-  A_.resize(num_constraints_, num_design_vars);
-  q_.resize(num_design_vars);
-  l_.resize(num_constraints_);
-  u_.resize(num_constraints_);
-
-  A_.setIdentity(); // input saturation conststraint
-  if (use_slew_rate) {
-    // shorten block index variables for readability
-    const auto slew_rows{seqN(ctrls_dim_, ctrls_dim_ - input_dim)};
-    A_(slew_rows, ph::all).diagonal().setConstant(-1.0);
-    A_(slew_rows, seq(input_dim, ph::last)).diagonal().setOnes();
-  }
   // Avoids setting first row block of S_ to zero every time solve() is
   // called (a minor speed optimization)
   S_.topRows(state_dim).setZero();
@@ -71,74 +51,7 @@ void CondensedMPC::getPredictedStateTrajectory(
   x_traj += v_;
 }
 
-void CondensedMPC::setModelDiscrete(const Ref<const MatrixXd>& Ad,
-                                    const Ref<const MatrixXd>& Bd,
-                                    const Ref<const VectorXd>& wd)
-{
-  MPCBase::setModelDiscrete(Ad, Bd, wd);
-
-  model_changed_ = true;
-  updateS();
-}
-
-void CondensedMPC::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
-                                               const Ref<const MatrixXd>& Bc,
-                                               const Ref<const VectorXd>& wc,
-                                               double dt,
-                                               double tol)
-{
-  MPCBase::setModelContinuous2Discrete(Ac, Bc, wc, dt, tol);
-
-  model_changed_ = true;
-  updateS();
-}
-
-bool CondensedMPC::setInputLimits(const Ref<const VectorXd>& u_min,
-                                  const Ref<const VectorXd>& u_max)
-{
-  MPCBase::setInputLimits(u_min, u_max);
-
-  for (int k{0}; k < num_ctrl_pts_; ++k) {
-    l_.segment(input_dim_ * k, input_dim_) = u_min_;
-    u_.segment(input_dim_ * k, input_dim_) = u_max_;
-  }
-  if (!solver_initialized_)
-    return true;
-  return solver_->updateBounds(l_, u_);
-}
-
-bool CondensedMPC::setStateLimits(const Ref<const VectorXd>& x_min,
-                                  const Ref<const VectorXd>& x_max)
-{
-  MPCBase::setStateLimits(x_min, x_max);
-
-  /* math explained
-  x_min_stacked <= x_traj <= x_max_stacked
-  x_min_stacked <= S_*z + v_ <= x_max_stacked
-  x_min_stacked - v_ <= S_*z <= x_max_stacked - v_
-  */
-  l_.tail(x_traj_dim_) = x_min_.replicate(horizon_steps_, 1) - v_;
-  u_.tail(x_traj_dim_) = x_max_.replicate(horizon_steps_, 1) - v_;
-  if (!solver_initialized_)
-    return true;
-
-  return solver_->updateBounds(l_, u_);
-}
-
-bool CondensedMPC::setSlewRate(const Ref<const VectorXd>& u_slew)
-{
-  MPCBase::setSlewRate(u_slew);
-
-  const int slew_dim{ctrls_dim_ - input_dim_};
-  const auto neg_slew = (-u_slew_).eval();
-  l_.segment(ctrls_dim_, slew_dim) = neg_slew.replicate(num_ctrl_pts_ - 1, 1);
-  u_.segment(ctrls_dim_, slew_dim) = u_slew_.replicate(num_ctrl_pts_ - 1, 1);
-  if (!solver_initialized_)
-    return true;
-  return solver_->updateBounds(l_, u_);
-}
-
-void CondensedMPC::updateQP(const Ref<const VectorXd>& x0)
+void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
   // Note: success is used to avoid build warnings. Failures will manifest in
   // either initializeSolver() or solve(), no need to check on protected method
@@ -164,6 +77,43 @@ void CondensedMPC::updateQP(const Ref<const VectorXd>& x0)
   if (use_input_cost_)
     q_.noalias() -= R_big_ * u_goal_;
   success = solver_->updateCostVector(q_);
+}
+
+bool CondensedMPC::qpUpdateModel()
+{
+  model_changed_ = true;
+  updateS();
+  return true;
+}
+
+bool CondensedMPC::qpUpdateReferences()
+{
+  // no need to do anything because they only affect q, which is updated every
+  // solve anyway.
+  return true;
+}
+
+bool CondensedMPC::qpUpdateInputLimits()
+{
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
+}
+
+bool CondensedMPC::qpUpdateStateLimits()
+{
+  u_.tail(x_traj_dim_) -= v_;
+  l_.tail(x_traj_dim_) -= v_;
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
+}
+
+bool CondensedMPC::qpUpdateSlewRate()
+{
+  if (!solver_initialized_)
+    return true;
+  return solver_->updateBounds(l_, u_);
 }
 
 void CondensedMPC::updateS()

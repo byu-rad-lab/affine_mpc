@@ -22,47 +22,26 @@ public:
                const bool saturate_states = false);
   virtual ~CondensedMPC() = default;
 
-  void getInputTrajectory(
-      Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final
-  {
-    MPCBase::getInputTrajectory(u_traj);
-  }
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
-  // [[nodiscard]] bool
-  void setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
-                        const Eigen::Ref<const Eigen::MatrixXd>& Bd,
-                        const Eigen::Ref<const Eigen::VectorXd>& wd);
-  // [[nodiscard]] bool
-  void setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
-                                   const Eigen::Ref<const Eigen::MatrixXd>& Bc,
-                                   const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   double dt,
-                                   double tol = 1e-6);
+protected: // for testing
+  void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
-  [[nodiscard]] bool
-  setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
-                 const Eigen::Ref<const Eigen::VectorXd>& u_max);
-  [[nodiscard]] bool
-  setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
-                 const Eigen::Ref<const Eigen::VectorXd>& x_max);
-  [[nodiscard]] bool
-  setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
-
-protected:
-  void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
   void updateS();
   void updateV(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
-  const int x_sat_idx_;
-  const int num_constraints_;
   Eigen::MatrixXd S_;
   Eigen::VectorXd v_;
 
 private:
+  bool qpUpdateModel() override final;
+  bool qpUpdateReferences() override final;
+  bool qpUpdateInputLimits() override final;
+  bool qpUpdateStateLimits() override final;
+  bool qpUpdateSlewRate() override final;
+
   bool model_changed_;
-  // bool weights_changed_;
 };
 
 } // namespace affine_mpc

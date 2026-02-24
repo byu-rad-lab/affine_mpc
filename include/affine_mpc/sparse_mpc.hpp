@@ -22,47 +22,22 @@ public:
             const bool saturate_states = false);
   virtual ~SparseMPC() = default;
 
-  void getInputTrajectory(
-      Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept override final
-  {
-    MPCBase::getInputTrajectory(u_traj);
-  }
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
-  bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
-                        const Eigen::Ref<const Eigen::MatrixXd>& Bd,
-                        const Eigen::Ref<const Eigen::VectorXd>& wd);
-  bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
-                                   const Eigen::Ref<const Eigen::MatrixXd>& Bc,
-                                   const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   double dt,
-                                   double tol = 1e-6);
-
-  void setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
-  void setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
-  void
-  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
-  void setReferenceParameterizedInputTrajectory(
-      const Eigen::Ref<const Eigen::VectorXd>& u_traj_ctrl_pts);
-
-  void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
-                      const Eigen::Ref<const Eigen::VectorXd>& u_max);
-  void setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
-                      const Eigen::Ref<const Eigen::VectorXd>& x_max);
-  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
-
-protected:
-  void updateQP(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-  void calcBothCostTerms();
-  void calcCostVector();
-  // void initializeConstraintMatrix();
-  bool qpUpdateModel();
-
-  const int x_sat_idx_;
-  const int num_constraints_;
+protected: // for testing
+  void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
 private:
+  bool qpUpdateModel() override final;
+  bool qpUpdateReferences() override final;
+  bool qpUpdateInputLimits() override final;
+  bool qpUpdateStateLimits() override final;
+  bool qpUpdateSlewRate() override final;
+
+  void calcBothCostTerms();
+  void calcCostVector();
+
   bool refs_changed_;
 };
 

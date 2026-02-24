@@ -26,7 +26,7 @@ public:
 
   void updateQPTerms(const Ref<const VectorXd>& x0)
   {
-    affine_mpc::SparseMPC::updateQP(x0);
+    affine_mpc::SparseMPC::qpUpdateX0(x0);
   }
 
   const auto getAd() const { return this->Ad_; }
