@@ -1,7 +1,7 @@
 #include <Eigen/Core>
 #include <iostream>
 
-#include "affine_mpc/implicit_mpc.hpp"
+#include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
 
 namespace ampc = affine_mpc;
@@ -9,9 +9,11 @@ namespace ampc = affine_mpc;
 
 int main()
 {
-  const int n{2}, m{1}, T{10}, p{3};
+  const int n{2}, m{1}, T{10}, p{3}, deg{1};
+  const Eigen::VectorXd knots{0};
   const bool use_input_cost{true}, use_slew_rate{true};
-  ampc::ImplicitMPC msd_mpc{n, m, T, p, use_input_cost, use_slew_rate};
+  ampc::CondensedMPC msd_mpc{
+      n, m, T, p, deg, knots, use_input_cost, use_slew_rate};
 
   ampc::MPCLogger logger{&msd_mpc, "/tmp/ampc_example"};
 
