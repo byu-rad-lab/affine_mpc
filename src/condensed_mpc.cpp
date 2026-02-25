@@ -16,24 +16,14 @@ namespace affine_mpc {
 
 CondensedMPC::CondensedMPC(const int state_dim,
                            const int input_dim,
-                           const int horizon_steps,
-                           const int num_control_points,
-                           const int spline_degree,
-                           const Ref<const VectorXd>& knots,
-                           const bool use_input_cost,
-                           const bool use_slew_rate,
-                           const bool saturate_states) :
+                           const Parameterization& param,
+                           const Options& opts) :
     MPCBase(state_dim,
             input_dim,
-            horizon_steps,
-            num_control_points,
-            spline_degree,
-            knots,
-            use_input_cost,
-            use_slew_rate,
-            saturate_states,
-            input_dim * num_control_points, // num_design_vars
-            0),                             // num_custom_constraints
+            param,
+            opts,
+            input_dim * param.num_control_points, // num_design_vars
+            0),                                   // num_custom_constraints
     S_{x_traj_dim_, ctrls_dim_},
     v_{x_traj_dim_},
     model_changed_{false}
@@ -41,6 +31,18 @@ CondensedMPC::CondensedMPC(const int state_dim,
   // Avoids setting first row block of S_ to zero every time solve() is
   // called (a minor speed optimization)
   S_.topRows(state_dim).setZero();
+}
+
+CondensedMPC::CondensedMPC(const int state_dim,
+                           const int input_dim,
+                           const int horizon_steps,
+                           const Options& opts) :
+    CondensedMPC(state_dim,
+                 input_dim,
+                 Parameterization::moveBlocking(horizon_steps, horizon_steps),
+                 opts)
+{
+  // nothing to do, delegating to main constructor with no parameterization
 }
 
 void CondensedMPC::getPredictedStateTrajectory(

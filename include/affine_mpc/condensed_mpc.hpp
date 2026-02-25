@@ -12,14 +12,12 @@ class CondensedMPC : public MPCBase
 public:
   CondensedMPC(const int state_dim,
                const int input_dim,
+               const Parameterization& param,
+               const Options& opts = Options{});
+  CondensedMPC(const int state_dim,
+               const int input_dim,
                const int horizon_steps,
-               const int num_control_points,
-               const int spline_degree,
-               const Eigen::Ref<const Eigen::VectorXd>& spline_knots =
-                   Eigen::VectorXd(0),
-               const bool use_input_cost = false,
-               const bool use_slew_rate = false,
-               const bool saturate_states = false);
+               const Options& opts = Options{});
   virtual ~CondensedMPC() = default;
 
   void getPredictedStateTrajectory(

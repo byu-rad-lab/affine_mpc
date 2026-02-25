@@ -3,17 +3,21 @@
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
+#include "affine_mpc/options.hpp"
+#include "affine_mpc/parameterization.hpp"
 
 namespace ampc = affine_mpc;
 
 
 int main()
 {
-  const int n{2}, m{1}, T{10}, p{3}, deg{1};
-  const Eigen::VectorXd knots{0};
-  const bool use_input_cost{true}, use_slew_rate{true};
-  ampc::CondensedMPC msd_mpc{
-      n, m, T, p, deg, knots, use_input_cost, use_slew_rate};
+  const int n{2}, m{1}, T{10}, p{3};
+  auto param{ampc::Parameterization::linearInterp(T, p)};
+  ampc::Options opts{
+      .use_input_cost = true,
+      .slew_control_points = true,
+  };
+  ampc::CondensedMPC msd_mpc{n, m, param, opts};
 
   ampc::MPCLogger logger{&msd_mpc, "/tmp/ampc_example"};
 

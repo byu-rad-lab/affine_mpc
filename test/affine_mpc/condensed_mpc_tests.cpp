@@ -4,13 +4,15 @@
 #include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_logger.hpp"
+#include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
 using namespace Eigen;
+namespace ampc = affine_mpc;
 
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class CondensedMPCProtectedTester : public affine_mpc::CondensedMPC
+class CondensedMPCProtectedTester : public ampc::CondensedMPC
 {
 public:
   using CondensedMPC::CondensedMPC;
@@ -62,7 +64,9 @@ TEST(CondensedMPCProtectedTester, givenParams_FormsSplineCorrectly)
 {
   const int n{2}, m{1};                // not important for this test
   const int T{10}, n_ctrls{5}, deg{2}; // define expected behavior
-  CondensedMPCProtectedTester msd_mpc{n, m, T, n_ctrls, deg};
+  const ampc::Parameterization param{
+      ampc::Parameterization::bspline(T, n_ctrls, deg)};
+  CondensedMPCProtectedTester msd_mpc{n, m, param};
 
   VectorXd knots{n_ctrls + deg + 1}, knots_expected{n_ctrls + deg + 1};
   knots = msd_mpc.getSplineKnots();
@@ -99,8 +103,9 @@ TEST(CondensedMPCProtectedTester, givenParams_FormsSplineCorrectly)
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  CondensedMPCProtectedTester msd_mpc{n, m, T, nc, deg};
+  const int n{2}, m{1}, T{5}, nc{3};
+  CondensedMPCProtectedTester msd_mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc)};
   msd_mpc.setModel();
 
   Eigen::Vector2d x0{0, 0.1};
@@ -135,10 +140,10 @@ TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  const bool use_input_cost{true};
+  const int n{2}, m{1}, T{5}, nc{3};
   CondensedMPCProtectedTester msd_mpc{
-      n, m, T, nc, deg, VectorXd{0}, use_input_cost};
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true}};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 1};
@@ -189,11 +194,11 @@ TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
 
 TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
 {
-  const int n{2}, m{1}, T{10}, nc{10}, deg{1};
-  const bool use_input_cost{true}, use_slew_rate{true};
+  const int n{2}, m{1}, T{10}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
-      n, m, T, nc, deg, VectorXd{0}, use_input_cost, use_slew_rate};
-  affine_mpc::MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true, .slew_control_points = true}};
+  ampc::MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 0.11};
@@ -207,7 +212,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   ASSERT_TRUE(msd_mpc.setSlewRate(slew));
 
   // These are the recommended settings, but explicitly set here for clarity
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  auto settings{ampc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   settings.eps_abs = 1e-6;

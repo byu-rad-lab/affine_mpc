@@ -4,6 +4,7 @@
 #include <stdexcept> // for exceptions
 
 // #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
+#include "affine_mpc/parameterization.hpp"
 #include "eigen_compat.hpp"          // revmove this once Eigen 3.5 is required
 #include <osqp.h>                    // for OSQPSettings
 #include <unsupported/Eigen/Splines> // for B-spline support
@@ -14,31 +15,42 @@ using namespace Eigen;
 
 namespace affine_mpc {
 
-
 MPCBase::MPCBase(const int state_dim,
                  const int input_dim,
                  const int horizon_steps,
-                 const int num_control_points,
-                 const int spline_degree,
-                 const Ref<const VectorXd>& spline_knots,
-                 const bool use_input_cost,
-                 const bool use_slew_rate,
-                 const bool saturate_states,
+                 const Options& opts,
+                 const int num_design_vars,
+                 const int num_custom_constraints) :
+    MPCBase(state_dim,
+            input_dim,
+            Parameterization::moveBlocking(horizon_steps, horizon_steps),
+            opts,
+            num_design_vars,
+            num_custom_constraints)
+{
+  // nothing to do, delegating to main constructor
+  // just specifying no parameterization
+}
+
+MPCBase::MPCBase(const int state_dim,
+                 const int input_dim,
+                 const Parameterization& param,
+                 const Options& opts,
                  const int num_design_vars,
                  const int num_custom_constraints) :
     state_dim_{state_dim},
     input_dim_{input_dim},
-    horizon_steps_{horizon_steps},
-    num_ctrl_pts_{num_control_points},
-    spline_degree_{spline_degree},
-    x_traj_dim_{state_dim * horizon_steps},
-    u_traj_dim_{input_dim * horizon_steps},
-    ctrls_dim_{input_dim * num_control_points},
-    use_input_cost_{use_input_cost},
-    use_slew_rate_{use_slew_rate},
-    saturate_states_{saturate_states},
+    horizon_steps_{param.horizon_steps},
+    num_ctrl_pts_{param.num_control_points},
+    spline_degree_{param.degree},
+    x_traj_dim_{state_dim * param.horizon_steps},
+    u_traj_dim_{input_dim * param.horizon_steps},
+    ctrls_dim_{input_dim * param.num_control_points},
+    use_input_cost_{opts.use_input_cost},
+    use_slew_rate_{opts.slew_control_points},
+    saturate_states_{opts.saturate_states},
     u_sat_dim_{ctrls_dim_},
-    slew_dim_{input_dim * (num_control_points - 1) * use_slew_rate_},
+    slew_dim_{input_dim * (param.num_control_points - 1) * use_slew_rate_},
     x_sat_dim_{x_traj_dim_ * saturate_states_},
     u_sat_idx_{num_custom_constraints},
     slew_idx_{u_sat_idx_ + ctrls_dim_},
@@ -50,14 +62,14 @@ MPCBase::MPCBase(const int state_dim,
     solver_initialized_{false},
     weights_changed_{false},
     solver_{nullptr},
-    spline_segment_idxs_{horizon_steps},
-    spline_knots_{num_control_points + spline_degree + 1},
-    spline_weights_{spline_degree + 1, horizon_steps},
+    spline_segment_idxs_{param.horizon_steps},
+    spline_knots_{param.num_control_points + param.degree + 1},
+    spline_weights_{param.degree + 1, param.horizon_steps},
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
-    Q_big_{state_dim * horizon_steps},
-    x_goal_{state_dim * horizon_steps},
+    Q_big_{state_dim * param.horizon_steps},
+    x_goal_{state_dim * param.horizon_steps},
     u_min_{input_dim},
     u_max_{input_dim},
     solution_map_{nullptr, 0}
@@ -66,9 +78,9 @@ MPCBase::MPCBase(const int state_dim,
     throw std::invalid_argument("state_dim must be greater than zero.");
   if (input_dim <= 0)
     throw std::invalid_argument("input_dim must be greater than zero.");
-  if (horizon_steps <= 0)
+  if (horizon_steps_ <= 0)
     throw std::invalid_argument("horizon_steps must be greater than zero.");
-  if (num_control_points <= 0 || num_control_points > horizon_steps)
+  if (num_ctrl_pts_ <= 0 || num_ctrl_pts_ > horizon_steps_)
     throw std::invalid_argument(
         "num_control_points must be between zero and horizon_steps.");
 
@@ -92,24 +104,24 @@ MPCBase::MPCBase(const int state_dim,
   u_max_.setConstant(std::numeric_limits<double>::infinity());
 
   // allocate memory needed based on options
-  if (use_input_cost) {
+  if (use_input_cost_) {
     R_big_.setIdentity(ctrls_dim_);
     u_goal_.setZero(ctrls_dim_);
   }
-  if (use_slew_rate) {
+  if (use_slew_rate_) {
     A_.middleRows(slew_idx_, slew_dim_).diagonal().setConstant(-1.0);
     A_.middleRows(slew_idx_, slew_dim_).diagonal(input_dim).setOnes();
     u_slew_.resize(input_dim);
     u_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
-  if (saturate_states) {
+  if (saturate_states_) {
     x_min_.resize(state_dim);
     x_max_.resize(state_dim);
     x_min_.setConstant(-std::numeric_limits<double>::infinity());
     x_max_.setConstant(std::numeric_limits<double>::infinity());
   }
 
-  initializeSplineKnots(spline_knots);
+  initializeSplineKnots(param.knots);
   calcSplineParams();
 }
 
@@ -394,32 +406,55 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
 
 void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
 {
-  spline_knots_.head(spline_degree_).setZero();
-  spline_knots_.tail(spline_degree_).setConstant(horizon_steps_ - 1);
-
+  const int size = spline_knots.size();
   const int num_internal_knots = spline_knots_.size() - 2 * spline_degree_;
-  const size_t knots_size = spline_knots.size();
-  if (knots_size > 0) {
-    if (knots_size != num_internal_knots) {
-      std::string err_msg = "[MPCBase::initializeSplineKnots] "
-                            "spline_knots size must be equal to "
-                            "num_control_points - spline_degree + 1 ("
-                            + std::to_string(num_internal_knots) + "), got "
-                            + std::to_string(knots_size) + ".";
-      throw std::invalid_argument(err_msg);
-    }
-    if ((spline_knots(seq(1, ph::last)) - spline_knots(seq(0, ph::last - 1)))
-            .minCoeff()
-        < 0)
-      throw std::invalid_argument("[MPCBase::initializeSplineKnots] "
-                                  "spline_knots must be non-decreasing.");
 
-    spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) =
-        spline_knots;
-  } else {
-    spline_knots_(seq(spline_degree_, ph::last - spline_degree_)) =
+  if (size == 0) {
+    spline_knots_.head(spline_degree_).setZero();
+    spline_knots_.tail(spline_degree_).setConstant(horizon_steps_ - 1);
+    spline_knots_(seqN(spline_degree_, num_internal_knots)) =
         ArrayXd::LinSpaced(num_internal_knots, 0, horizon_steps_ - 1);
+  } else if (size == num_internal_knots) {
+    spline_knots_.head(spline_degree_).setZero();
+    spline_knots_.tail(spline_degree_).setConstant(horizon_steps_ - 1);
+    spline_knots_(seqN(spline_degree_, num_internal_knots)) = spline_knots;
+  } else if (size == spline_knots_.size()) {
+    spline_knots_ = spline_knots;
+  } else {
+    // std::string err_msg = "[MPCBase::initializeSplineKnots] "
+    std::stringstream ss;
+    ss << "[MPCBase::initializeSplineKnots] spline_knots size must be equal to "
+          "the total number of knots (num_control_points + spline_degree + 1), "
+          "the number of internal knots (num_control_points - spline_degree + 1"
+          "), or zero.\n    Expected "
+       << spline_knots_.size() << ", " << num_internal_knots << ", or 0.\n"
+       << "    Got " << size << std::endl;
+    throw std::invalid_argument(ss.str());
   }
+
+  if ((spline_knots_(seq(1, ph::last)) - spline_knots_(seq(0, ph::last - 1)))
+          .minCoeff()
+      < 0)
+    throw std::invalid_argument("[MPCBase::initializeSplineKnots] "
+                                "spline_knots must be non-decreasing.");
+  if (spline_knots_.head(spline_degree_ + 1).minCoeff() > 0.0)
+    throw std::invalid_argument(
+        "[MPCBase::initializeSplineKnots] First degree+1 knots must be less "
+        "than "
+        "or equal to zero so that spline can be evaluated at 0.");
+  if (spline_knots_.tail(spline_degree_ + 1).maxCoeff() < horizon_steps_ - 1)
+    throw std::invalid_argument(
+        "[MPCBase::initializeSplineKnots] Last degree+1 knots must be greater "
+        "than or equal to horizon_steps - 1 so that spline can be evaluated at "
+        "horizon_steps - 1.");
+  if (spline_knots_(spline_degree_) != 0.0)
+    throw std::invalid_argument(
+        "[MPCBase::initializeSplineKnots] First internal knot must be equal to "
+        "zero representing input at current time step (k=0).");
+  if (spline_knots_(ph::lastp1 - spline_degree_) != horizon_steps_ - 1)
+    throw std::invalid_argument(
+        "[MPCBase::initializeSplineKnots] Last internal knot must be equal to "
+        "horizon_steps - 1 representing final input.");
 }
 
 void MPCBase::calcSplineParams()

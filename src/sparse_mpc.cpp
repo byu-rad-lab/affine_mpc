@@ -17,26 +17,17 @@ namespace affine_mpc {
 
 SparseMPC::SparseMPC(const int state_dim,
                      const int input_dim,
-                     const int horizon_steps,
-                     const int num_control_points,
-                     const int spline_degree,
-                     const Ref<const VectorXd>& knots,
-                     const bool use_input_cost,
-                     const bool use_slew_rate,
-                     const bool saturate_states) :
+                     const Parameterization& param,
+                     const Options& opts) :
     MPCBase(state_dim,
             input_dim,
-            horizon_steps,
-            num_control_points,
-            spline_degree,
-            knots,
-            use_input_cost,
-            use_slew_rate,
-            saturate_states,
+            param,
+            opts,
             // num_design_vars
-            input_dim * num_control_points + state_dim * horizon_steps,
+            input_dim * param.num_control_points
+                + state_dim * param.horizon_steps,
             // num_custom_constraints (model)
-            state_dim * horizon_steps),
+            state_dim * param.horizon_steps),
     refs_changed_{true} // ensure q_ updates on first solve
 {
   if (use_input_cost_) {
@@ -55,6 +46,22 @@ SparseMPC::SparseMPC(const int state_dim,
   A_(seqN(0, x_traj_dim_), x_traj_seq).diagonal().setConstant(-1.0);
   if (saturate_states_)
     A_(x_traj_seq, x_traj_seq).setIdentity();
+}
+
+SparseMPC::SparseMPC(const int state_dim,
+                     const int input_dim,
+                     const int horizon_steps,
+                     const Options& opts) :
+    MPCBase(state_dim,
+            input_dim,
+            horizon_steps,
+            opts,
+            // num_design_vars
+            (input_dim + state_dim) * horizon_steps,
+            // num_custom_constraints (model)
+            state_dim * horizon_steps)
+{
+  // nothing to do, delegating to main constructor with default parameterization
 }
 
 void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept

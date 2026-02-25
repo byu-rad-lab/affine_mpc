@@ -1,3 +1,5 @@
+#include "affine_mpc/options.hpp"
+#include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
@@ -6,6 +8,7 @@
 #include "utils.hpp"
 
 using namespace Eigen;
+namespace ampc = affine_mpc;
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
 class SparseMPCProtectedTester : public affine_mpc::SparseMPC
@@ -47,8 +50,9 @@ public:
 
 TEST(SparseMPCProtectedTester, givenModel_FormsModelConstraintsCorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  SparseMPCProtectedTester mpc{n, m, T, nc, deg};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
 
   const MatrixXd A = mpc.getA();
@@ -105,8 +109,9 @@ TEST(SparseMPCProtectedTester, givenModel_FormsModelConstraintsCorrectly)
 TEST(SparseMPCProtectedTester,
      givenInputLimits_FormsSaturationConstraintsCorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  SparseMPCProtectedTester mpc{n, m, T, nc, deg};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
 
   // update l_ and u_ with input limits
@@ -134,10 +139,10 @@ TEST(SparseMPCProtectedTester,
 
 TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  const bool use_input_cost{false}, use_slew_rate{true};
-  SparseMPCProtectedTester mpc{
-      n, m, T, nc, deg, VectorXd{0}, use_input_cost, use_slew_rate};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc),
+                               ampc::Options{.slew_control_points = true}};
   mpc.setModel();
 
   VectorXd slew{1};
@@ -174,11 +179,10 @@ TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
 TEST(SparseMPCProtectedTester,
      givenStateSaturation_FormsStateSaturationConstraintsCorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  const VectorXd knots{0};
-  const bool use_input_cost{false}, use_slew_rate{false}, saturate_states{true};
-  SparseMPCProtectedTester mpc{
-      n, m, T, nc, deg, knots, use_input_cost, use_slew_rate, saturate_states};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc),
+                               ampc::Options{.saturate_states = true}};
   mpc.setModel();
 
   const Vector2d x_min{-1.0, -5.0}, x_max{3.0, 5.0};
@@ -213,11 +217,10 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester,
      givenSlewRateAndStateSaturation_FormsConstraintsCorrectly)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  const VectorXd knots{0};
-  const bool use_input_cost{false}, use_slew_rate{true}, saturate_states{true};
+  const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{
-      n, m, T, nc, deg, knots, use_input_cost, use_slew_rate, saturate_states};
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.slew_control_points = true, .saturate_states = true}};
   mpc.setModel();
 
   VectorXd slew{1};
@@ -276,8 +279,9 @@ TEST(SparseMPCProtectedTester,
 
 TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  SparseMPCProtectedTester mpc{n, m, T, nc, deg};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
 
   const Vector2d Q_diag{2.0, 3.0};
@@ -308,10 +312,10 @@ TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
 
 TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
 {
-  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  const VectorXd knots{0};
-  const bool use_input_cost{true};
-  SparseMPCProtectedTester mpc{n, m, T, nc, deg, knots, use_input_cost};
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc),
+                               ampc::Options{.use_input_cost = true}};
   mpc.setModel();
 
   const Vector2d Q_diag{1.0, 1.0};
@@ -345,10 +349,11 @@ TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
 
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 {
-  const int n{2}, m{1}, T{10}, nc{10}, deg{1};
-  const VectorXd knots{0};
+  const int n{2}, m{1}, T{10}, nc{10};
   const bool use_input_cost{true};
-  SparseMPCProtectedTester mpc{n, m, T, nc, deg, knots, use_input_cost};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc),
+                               ampc::Options{.use_input_cost = true}};
   mpc.setModel();
 
   Vector2d Q_diag{1.0, 0.1};
@@ -388,10 +393,10 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
 {
-  const int n{2}, m{1}, T{10}, nc{10}, deg{1};
-  const bool use_input_cost{true}, use_slew_rate{true};
+  const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
-      n, m, T, nc, deg, VectorXd{0}, use_input_cost, use_slew_rate};
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true, .slew_control_points = true}};
   mpc.setModel();
 
   Vector2d Q_diag{1.0, 0.11};
@@ -427,11 +432,10 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
 
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
 {
-  const int n{2}, m{1}, T{10}, nc{10}, deg{1};
-  const VectorXd knots{0};
-  const bool use_input_cost{true}, use_slew_rate{false}, saturate_states{true};
+  const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
-      n, m, T, nc, deg, knots, use_input_cost, use_slew_rate, saturate_states};
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true, .saturate_states = true}};
   mpc.setModel();
 
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

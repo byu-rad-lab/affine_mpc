@@ -4,7 +4,9 @@
 #include <Eigen/Core>
 #include <memory>
 
+#include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
+#include "affine_mpc/parameterization.hpp"
 
 namespace affine_mpc {
 
@@ -16,12 +18,13 @@ protected:
   MPCBase(const int state_dim,
           const int input_dim,
           const int horizon_steps,
-          const int num_control_points,
-          const int spline_degree,
-          const Eigen::Ref<const Eigen::VectorXd>& spline_knots,
-          const bool use_input_cost,
-          const bool use_slew_rate,
-          const bool saturate_states,
+          const Options& opts,
+          const int num_design_vars,
+          const int num_custom_constraints);
+  MPCBase(const int state_dim,
+          const int input_dim,
+          const Parameterization& parameterization,
+          const Options& opts,
           const int num_design_vars,
           const int num_custom_constraints);
   virtual ~MPCBase() = default;

@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
 
@@ -15,7 +16,14 @@ public:
                 const int T,
                 const int mu,
                 const bool Ju = false) :
-      MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju, false, false, m * mu, 0)
+      // MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju, false, false, m * mu,
+      // 0)
+      MPCBase(n,
+              m,
+              affine_mpc::Parameterization::linearInterp(T, mu),
+              affine_mpc::Options{.use_input_cost = Ju},
+              m * mu,
+              0)
   {}
   virtual ~MPCBaseTester() = default;
   void getPredictedStateTrajectory(

@@ -35,6 +35,7 @@ add_library(${PROJECT_NAME}
   src/osqp_solver.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
+  src/parameterization.cpp
   src/mpc_logger.cpp
 )
 
