@@ -171,14 +171,15 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
   assert(u_traj.size() == u_traj_dim_);
 
-  int seg;
-  Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_, num_ctrl_pts_};
-  VectorXd weights;
+  const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
+                                  num_ctrl_pts_};
+  Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
 
+  const int order{spline_degree_ + 1};
   for (int k{0}; k < horizon_steps_; ++k) {
-    seg = spline_segment_idxs_(k);
-    u_traj(seqN(k, input_dim_)) =
-        ctrls(ph::all, seqN(seg, spline_degree_ + 1)) * spline_weights_.col(k);
+    const int seg{spline_segment_idxs_(k)};
+    u_traj_mat.col(k).noalias() =
+        ctrls.middleCols(seg, order) * spline_weights_.col(k);
   }
 }
 
@@ -267,21 +268,20 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
   assert(Q_diag.size() == state_dim_);
-  for (int i{0}; i < horizon_steps_; ++i)
-    Q_big_.diagonal().segment(state_dim_ * i, state_dim_) = Q_diag;
+  Q_big_.diagonal() = Q_diag.replicate(horizon_steps_, 1);
   weights_changed_ = true;
 }
 
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
                               const Ref<const VectorXd>& Qf_diag)
 {
-  if (Q_diag.minCoeff() < 0.0 || Q_diag.minCoeff() < 0.0)
+  if (Q_diag.minCoeff() < 0.0 || Qf_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
-  assert(Q_diag.size() == Qf_diag.size() == state_dim_);
-  for (int i{0}; i < horizon_steps_ - 1; ++i)
-    Q_big_.diagonal().segment(state_dim_ * i, state_dim_) = Q_diag;
-  Q_big_.diagonal()(ph::lastN(state_dim_)) = Qf_diag;
+  assert(Q_diag.size() == state_dim_ && Qf_diag.size() == state_dim_);
+  Q_big_.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
+      Q_diag.replicate(horizon_steps_ - 1, 1);
+  Q_big_.diagonal().tail(state_dim_) = Qf_diag;
   weights_changed_ = true;
 }
 
@@ -294,8 +294,7 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
     throw std::invalid_argument(
         "[MPCBase::setInputWeights] Input weights must be non-negative.");
   assert(R_diag.size() == input_dim_);
-  for (int i{0}; i < num_ctrl_pts_; ++i)
-    R_big_.diagonal().segment(input_dim_ * i, input_dim_) = R_diag;
+  R_big_.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
   weights_changed_ = true;
 }
 
