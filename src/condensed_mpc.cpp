@@ -75,6 +75,13 @@ void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
   }
 
   updateV(x0);
+
+  if (saturate_states_) {
+    l_.tail(x_traj_dim_) = x_min_.replicate(horizon_steps_, 1) - v_;
+    u_.tail(x_traj_dim_) = x_max_.replicate(horizon_steps_, 1) - v_;
+    success = solver_->updateBounds(l_, u_);
+  }
+
   q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
   if (use_input_cost_)
     q_.noalias() -= R_big_ * u_goal_;
@@ -104,11 +111,9 @@ bool CondensedMPC::qpUpdateInputLimits()
 
 bool CondensedMPC::qpUpdateStateLimits()
 {
-  u_.tail(x_traj_dim_) -= v_;
-  l_.tail(x_traj_dim_) -= v_;
-  if (!solver_initialized_)
-    return true;
-  return solver_->updateBounds(l_, u_);
+  // v affects l/u if state saturation is enabled, but v is updated every solve,
+  // so no need to update l/u here
+  return true;
 }
 
 bool CondensedMPC::qpUpdateSlewRate()
