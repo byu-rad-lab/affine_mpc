@@ -52,16 +52,12 @@ SparseMPC::SparseMPC(const int state_dim,
                      const int input_dim,
                      const int horizon_steps,
                      const Options& opts) :
-    MPCBase(state_dim,
-            input_dim,
-            horizon_steps,
-            opts,
-            // num_design_vars
-            (input_dim + state_dim) * horizon_steps,
-            // num_custom_constraints (model)
-            state_dim * horizon_steps)
+    SparseMPC(state_dim,
+              input_dim,
+              Parameterization::moveBlocking(horizon_steps, horizon_steps),
+              opts)
 {
-  // nothing to do, delegating to main constructor with default parameterization
+  // nothing to do, delegating to main constructor with no parameterization
 }
 
 void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept

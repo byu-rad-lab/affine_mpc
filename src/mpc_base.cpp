@@ -17,23 +17,6 @@ namespace affine_mpc {
 
 MPCBase::MPCBase(const int state_dim,
                  const int input_dim,
-                 const int horizon_steps,
-                 const Options& opts,
-                 const int num_design_vars,
-                 const int num_custom_constraints) :
-    MPCBase(state_dim,
-            input_dim,
-            Parameterization::moveBlocking(horizon_steps, horizon_steps),
-            opts,
-            num_design_vars,
-            num_custom_constraints)
-{
-  // nothing to do, delegating to main constructor
-  // just specifying no parameterization
-}
-
-MPCBase::MPCBase(const int state_dim,
-                 const int input_dim,
                  const Parameterization& param,
                  const Options& opts,
                  const int num_design_vars,

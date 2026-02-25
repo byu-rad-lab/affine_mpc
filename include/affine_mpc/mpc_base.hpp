@@ -17,12 +17,6 @@ class MPCBase
 protected:
   MPCBase(const int state_dim,
           const int input_dim,
-          const int horizon_steps,
-          const Options& opts,
-          const int num_design_vars,
-          const int num_custom_constraints);
-  MPCBase(const int state_dim,
-          const int input_dim,
           const Parameterization& parameterization,
           const Options& opts,
           const int num_design_vars,
