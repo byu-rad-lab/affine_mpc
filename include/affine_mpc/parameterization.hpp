@@ -17,7 +17,7 @@ public:
                    const int num_control_points,
                    const int degree,
                    const Eigen::Ref<const Eigen::VectorXd>& knots);
-  virtual ~Parameterization() = default;
+  ~Parameterization() = default;
 
   /// Factory method for uniform move-blocking parameterization
   /// (i.e. piecewise constant inputs set from previous change point)
