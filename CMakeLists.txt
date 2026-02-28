@@ -85,10 +85,12 @@ if(${PROJECT_NAME}_BUILD_TESTS)
   include(cmake/extern_gtest.cmake)
 
   set(TEST_SOURCES
-    test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/osqp_solver_tests.cpp
+    test/affine_mpc/parameterization_tests.cpp
+    test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
+    test/affine_mpc/consistency_tests.cpp
     # test/affine_mpc/mpc_logger_tests.cpp
   )
 

@@ -47,7 +47,7 @@ public:
   bspline(const int horizon_steps,
           const int num_control_points,
           const int degree,
-          const Eigen::Ref<const Eigen::VectorXd>& internal_knots);
+          const Eigen::Ref<const Eigen::VectorXd>& active_knots);
 
   // public member variables
   Eigen::VectorXd knots;
