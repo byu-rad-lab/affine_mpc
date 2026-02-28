@@ -1,34 +1,32 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
+#include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
+namespace ampc = affine_mpc;
+using namespace Eigen;
 
 // Tests use varying parameters for the MPCBase class, so a GTest fixture is not
 // used
-class MPCBaseTester : public affine_mpc::MPCBase
+class MPCBaseTester : public ampc::MPCBase
 {
 public:
   MPCBaseTester(const int n,
                 const int m,
-                const int T,
-                const int mu,
-                const bool Ju = false) :
-      // MPCBase(n, m, T, mu, 1, Eigen::VectorXd{0}, Ju, false, false, m * mu,
-      // 0)
-      MPCBase(n,
-              m,
-              affine_mpc::Parameterization::linearInterp(T, mu),
-              affine_mpc::Options{.use_input_cost = Ju},
-              m * mu,
-              0)
+                const ampc::Parameterization& param,
+                const ampc::Options& opts = {}) :
+      MPCBase{n, m, param, opts, m * param.num_control_points, 0}
   {}
   virtual ~MPCBaseTester() = default;
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final
   {}
+  const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
+  const auto getSplineKnots() const { return this->spline_knots_; }
+  const auto getSplineWeights() const { return this->spline_weights_; }
   const auto getAd() { return Ad_; }
   const auto getBd() { return Bd_; }
   const auto getWd() { return wd_; }
@@ -46,10 +44,52 @@ protected:
   bool qpUpdateSlewRate() override final { return true; }
 };
 
+TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
+{
+  const int n{2}, m{1};                // not important for this test
+  const int T{10}, n_ctrls{5}, deg{2}; // define expected behavior
+  const ampc::Parameterization param{
+      ampc::Parameterization::bspline(T, n_ctrls, deg)};
+  MPCBaseTester msd_mpc{n, m, param};
+
+  VectorXd knots{n_ctrls + deg + 1}, knots_expected{n_ctrls + deg + 1};
+  knots = msd_mpc.getSplineKnots();
+  knots_expected << 0, 0, 0, 3, 6, 9, 9, 9;
+  ASSERT_TRUE(expectEigenNear(knots, knots_expected, 1e-15));
+
+  VectorXi segment_idxs{T}, segment_idxs_expected{T};
+  segment_idxs = msd_mpc.getSplineSegmentIdxs();
+  segment_idxs_expected << 0, 0, 0, 1, 1, 1, 2, 2, 2, 2;
+  ASSERT_TRUE(expectEigenNear(segment_idxs, segment_idxs_expected, 1e-15));
+
+  VectorXd ctrls{n_ctrls};
+  ctrls << 0, 1, 1, -1, 0;
+  using Spline1d = Spline<double, 1>;
+  Spline1d spline_test{knots_expected, ctrls};
+  MatrixXd weights = msd_mpc.getSplineWeights();
+
+  for (int k{0}; k < T; ++k) {
+    // test weights
+    const double t = k;
+    const RowVectorXd weights_expected =
+        Spline1d::BasisFunctions(t, deg, knots_expected);
+    const RowVectorXd weights_i = weights.col(k);
+    ASSERT_TRUE(expectEigenNear(weights_i, weights_expected, 1e-15));
+
+    // test spline evaluation
+    const int span = Spline1d::Span(t, deg, knots_expected);
+    Ref<const VectorXd> active_ctrls = ctrls.segment(segment_idxs(k), deg + 1);
+    double eval = weights_i * active_ctrls;
+    double eval_expected = spline_test(t)(0);
+    ASSERT_DOUBLE_EQ(eval, eval_expected);
+  }
+}
+
+
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 {
-  const int n{2}, m{1}, T{5}, mu{3};
-  MPCBaseTester base{n, m, T, mu};
+  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A << 0, 1, -0.6, -0.1;
@@ -74,8 +114,8 @@ TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 TEST(MPCBaseTester,
      givenContinuousSystemLinearizedAtEquilibrium_DiscretizesCorrectly)
 {
-  const int n{9}, m{4}, T{5}, mu{3};
-  MPCBaseTester base{n, m, T, mu};
+  const int n{9}, m{4}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A.setZero();
@@ -125,15 +165,14 @@ TEST(MPCBaseTester,
 
 TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
 {
-  const int n{2}, m{2}, T{3}, mu{3};
-  const bool use_input_cost{true};
-  MPCBaseTester base{m, n, T, mu, use_input_cost};
+  const int n{2}, m{2}, T{3}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
   Eigen::Vector2d Q{1, 2}, R{3, 4};
   base.setWeights(Q, R);
 
   Eigen::DiagonalMatrix<double, n * T> Qbig_expected;
   Qbig_expected.diagonal() << Q, Q, Q;
-  Eigen::DiagonalMatrix<double, m * mu> Rbig_expected;
+  Eigen::DiagonalMatrix<double, m * nc> Rbig_expected;
   Rbig_expected.diagonal() << R, R, R;
 
 
@@ -145,9 +184,8 @@ TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
 
 TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
 {
-  const int n{2}, m{2}, T{3}, mu{3};
-  const bool use_input_cost{true};
-  MPCBaseTester base{n, m, T, mu, use_input_cost};
+  const int n{2}, m{2}, T{3}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
 
   Eigen::Vector2d x_des{1, 2}, u_des{3, 4};
   base.setReferenceState(x_des);
@@ -155,11 +193,82 @@ TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
 
   Eigen::Matrix<double, n * T, 1> x_traj_expected;
   x_traj_expected << x_des, x_des, x_des;
-  Eigen::Matrix<double, m * mu, 1> u_traj_expected;
+  Eigen::Matrix<double, m * nc, 1> u_traj_expected;
   u_traj_expected << u_des, u_des, u_des;
 
   ASSERT_TRUE(
       expectEigenNear(x_traj_expected, base.getStateTrajectory(), 1e-6));
   ASSERT_TRUE(
       expectEigenNear(u_traj_expected, base.getInputTrajectory(), 1e-6));
+}
+
+TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
+
+  base.setStateWeights(Q);
+
+  // Qf = Q when not specified, so all steps should use Q
+  Eigen::Matrix<double, n * T, 1> Q_big_diag_expected;
+  Q_big_diag_expected << Q, Q, Q, Q;
+  ASSERT_TRUE(
+      expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
+
+  // Intermediate steps use Q, final step uses Qf
+  base.setStateWeights(Q, Qf);
+  Q_big_diag_expected << Q, Q, Q, Qf;
+
+  ASSERT_TRUE(
+      expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
+}
+
+TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+
+  Eigen::Vector<double, 1> R{3.0};
+
+  Eigen::Matrix<double, 1 * nc, 1> R_big_diag_expected;
+
+  base.setInputWeights(R);
+  R_big_diag_expected << R, R, R;
+
+  ASSERT_TRUE(
+      expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
+}
+
+TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+
+  Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
+  Eigen::Vector<double, 1> R{3.0};
+
+  Eigen::Matrix<double, n * T, 1> Q_big_diag_expected;
+  Eigen::Matrix<double, 1 * nc, 1> R_big_diag_expected;
+
+  // Qf = Q when not specified, so all steps should use Q
+  base.setWeights(Q, R);
+  Q_big_diag_expected << Q, Q, Q, Q;
+  R_big_diag_expected << R, R, R;
+
+  ASSERT_TRUE(
+      expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
+  ASSERT_TRUE(
+      expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
+
+  // Specify Qf
+  base.setWeights(Q, Qf, R);
+  Q_big_diag_expected << Q, Q, Q, Qf;
+  R_big_diag_expected << R, R, R;
+
+  ASSERT_TRUE(
+      expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
+  ASSERT_TRUE(
+      expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
 }

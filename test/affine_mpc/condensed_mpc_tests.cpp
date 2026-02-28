@@ -1,8 +1,8 @@
-#include "affine_mpc/condensed_mpc.hpp"
-
+#include <Eigen/Core>
 #include <gtest/gtest.h>
 #include <unsupported/Eigen/Splines>
 
+#include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
@@ -59,47 +59,6 @@ public:
   const auto getP() const { return this->P_; }
   const auto getQ() const { return this->q_; }
 };
-
-TEST(CondensedMPCProtectedTester, givenParams_FormsSplineCorrectly)
-{
-  const int n{2}, m{1};                // not important for this test
-  const int T{10}, n_ctrls{5}, deg{2}; // define expected behavior
-  const ampc::Parameterization param{
-      ampc::Parameterization::bspline(T, n_ctrls, deg)};
-  CondensedMPCProtectedTester msd_mpc{n, m, param};
-
-  VectorXd knots{n_ctrls + deg + 1}, knots_expected{n_ctrls + deg + 1};
-  knots = msd_mpc.getSplineKnots();
-  knots_expected << 0, 0, 0, 3, 6, 9, 9, 9;
-  ASSERT_TRUE(expectEigenNear(knots, knots_expected, 1e-15));
-
-  VectorXi segment_idxs{T}, segment_idxs_expected{T};
-  segment_idxs = msd_mpc.getSplineSegmentIdxs();
-  segment_idxs_expected << 0, 0, 0, 1, 1, 1, 2, 2, 2, 2;
-  ASSERT_TRUE(expectEigenNear(segment_idxs, segment_idxs_expected, 1e-15));
-
-  VectorXd ctrls{n_ctrls};
-  ctrls << 0, 1, 1, -1, 0;
-  using Spline1d = Spline<double, 1>;
-  Spline1d spline_test{knots_expected, ctrls};
-  MatrixXd weights = msd_mpc.getSplineWeights();
-
-  for (int k{0}; k < T; ++k) {
-    // test weights
-    const double t = k;
-    const RowVectorXd weights_expected =
-        Spline1d::BasisFunctions(t, deg, knots_expected);
-    const RowVectorXd weights_i = weights.col(k);
-    ASSERT_TRUE(expectEigenNear(weights_i, weights_expected, 1e-15));
-
-    // test spline evaluation
-    const int span = Spline1d::Span(t, deg, knots_expected);
-    Ref<const VectorXd> active_ctrls = ctrls.segment(segment_idxs(k), deg + 1);
-    double eval = weights_i * active_ctrls;
-    double eval_expected = spline_test(t)(0);
-    ASSERT_DOUBLE_EQ(eval, eval_expected);
-  }
-}
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
 {
@@ -240,4 +199,111 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   }
 
   ASSERT_EQ(slew_errors, 0);
+}
+
+TEST(CondensedMPCProtectedTester,
+     givenStateSaturation_RespectsStateBoundsInSolve)
+{
+  const int n{2}, m{1}, T{100}, nc{10};
+  CondensedMPCProtectedTester msd_mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true, .saturate_states = true}};
+  msd_mpc.setModel();
+
+  msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
+  msd_mpc.setReferenceState(Vector2d{1.0, 0.0});
+  msd_mpc.setInputLimits(VectorXd::Constant(m, -3.0),
+                         VectorXd::Constant(m, 3.0));
+
+  // Tight state bounds that will be active
+  const Vector2d x_min{-0.2, -2.0}, x_max{0.5, 2.0};
+  msd_mpc.setStateLimits(x_min, x_max);
+
+  auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  // loosened tolerances to speed up test (else hits max iters)
+  settings.eps_abs = 1e-4;
+  settings.eps_rel = 1e-4;
+  settings.adaptive_rho = true;
+  ASSERT_TRUE(msd_mpc.initializeSolver(settings));
+  ASSERT_TRUE(msd_mpc.solve(Vector2d{0.0, 0.0}));
+
+  Eigen::Matrix<double, n * T, 1> x_traj;
+  msd_mpc.getPredictedStateTrajectory(x_traj);
+
+  int bound_violations{0};
+  for (int k{0}; k < T; ++k) {
+    const Vector2d xk = x_traj.segment(n * k, n);
+    bound_violations += (xk.array() > x_max.array() + 1e-3).any();
+    bound_violations += (xk.array() < x_min.array() - 1e-3).any();
+  }
+  ASSERT_EQ(bound_violations, 0);
+}
+
+TEST(CondensedMPCProtectedTester,
+     givenWeightUpdateBetweenSolves_ProducesCorrectSolution)
+{
+  const int n{2}, m{1}, T{10}, nc{10};
+  CondensedMPCProtectedTester msd_mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true}};
+  msd_mpc.setModel();
+
+  msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
+  msd_mpc.setReferenceState(Vector2d{1.0, 0.0});
+  msd_mpc.setInputLimits(VectorXd::Constant(m, 0.0),
+                         VectorXd::Constant(m, 3.0));
+  msd_mpc.setReferenceInput(VectorXd::Zero(m));
+
+  auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ASSERT_TRUE(msd_mpc.initializeSolver(settings));
+
+  const Vector2d x0{0.0, 0.0};
+  ASSERT_TRUE(msd_mpc.solve(x0));
+  Eigen::Matrix<double, m, 1> u_first;
+  msd_mpc.getNextInput(u_first);
+
+  // Heavy input penalty: solution should move away from saturation
+  msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1.0));
+  ASSERT_TRUE(msd_mpc.solve(x0));
+  Eigen::Matrix<double, m, 1> u_second;
+  msd_mpc.getNextInput(u_second);
+
+  // Higher R must reduce the optimal input magnitude
+  ASSERT_LT(u_second(0), u_first(0) - 1e-3);
+}
+
+TEST(CondensedMPCProtectedTester,
+     givenReferenceUpdateBetweenSolves_ProducesCorrectSolution)
+{
+  const int n{2}, m{1}, T{10}, nc{10};
+  CondensedMPCProtectedTester msd_mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.use_input_cost = true}};
+  msd_mpc.setModel();
+
+  msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
+  msd_mpc.setReferenceState(Vector2d{1.0, 0.0});
+  msd_mpc.setInputLimits(VectorXd::Constant(m, -3.0),
+                         VectorXd::Constant(m, 3.0));
+  msd_mpc.setReferenceInput(VectorXd::Zero(m));
+
+  auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ASSERT_TRUE(msd_mpc.initializeSolver(settings));
+
+  const Vector2d x0{0.0, 0.0};
+  ASSERT_TRUE(msd_mpc.solve(x0));
+  Eigen::Matrix<double, m, 1> u_pos;
+  msd_mpc.getNextInput(u_pos);
+
+  // Flip the goal to the other side: optimal input should flip sign
+  msd_mpc.setReferenceState(Vector2d{-1.0, 0.0});
+  ASSERT_TRUE(msd_mpc.solve(x0));
+  Eigen::Matrix<double, m, 1> u_neg;
+  msd_mpc.getNextInput(u_neg);
+
+  ASSERT_GT(u_pos(0), 0.0);
+  ASSERT_LT(u_neg(0), 0.0);
+
+  // symmetric problem, so magnitudes should be similar
+  ASSERT_NEAR(u_pos(0), -u_neg(0), 1e-3);
 }
