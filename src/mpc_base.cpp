@@ -66,6 +66,9 @@ MPCBase::MPCBase(const int state_dim,
   if (num_ctrl_pts_ <= 0 || num_ctrl_pts_ > horizon_steps_)
     throw std::invalid_argument(
         "num_control_points must be between zero and horizon_steps.");
+  if (spline_degree_ < 0 || spline_degree_ > num_ctrl_pts_ - 1)
+    throw std::invalid_argument(
+        "spline_degree must be between zero and num_control_points - 1.");
 
   // allocate QP memory
   const int num_constraints{num_custom_constraints + u_sat_dim_ + slew_dim_
