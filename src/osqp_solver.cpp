@@ -36,10 +36,28 @@ OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);
-  settings.alpha = 1.0;
+
+  // Over-relaxation parameter.
+  //   - alpha = 1.0 -> standard ADMM
+  //   - alpha > 1.0 -> over-relaxation (can improve convergence speed)
+  //   - alpha < 1.0 -> under-relaxation (rarely useful)
+  // If iters is high, consider increasing to 1.6-1.8.
+  // If oscillations occur, consider decreasing to 1.4-1.5.
+  // Can also try 1.0 for standard ADMM if convergence is an issue.
+  settings.alpha = 1.6; // default is 1.6
+
+  // Disable printing to console at each solve
   settings.verbose = false;
-  settings.eps_dual_inf = 1e-6;
-  settings.eps_prim_inf = 1e-6;
+
+  // These control the accuracy of the solution/constraints.
+  // If solution takes a while to converge, consider loosening these.
+  settings.eps_rel = 1e-6; // default is 1e-3
+  settings.eps_abs = 1e-6; // default is 1e-3
+
+  // Adds a polishing step (extra solve after convergence) that can improve
+  // solution accuracy when the solution is near the boundaries of the
+  // constraints. This can be helpful for MPC when the solution saturates inputs
+  // or states, but it does add some extra solve time.
   if (polish_near_boundaries)
     settings.polishing = 1;
   return settings;
