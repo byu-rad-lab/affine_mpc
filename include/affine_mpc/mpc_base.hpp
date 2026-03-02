@@ -89,7 +89,8 @@ protected:
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
-  const bool use_input_cost_, use_slew_rate_, saturate_states_;
+  // const bool use_input_cost_, use_slew_rate_, saturate_states_;
+  const Options opts_;
   const int u_sat_dim_, slew_dim_, x_sat_dim_;
   const int u_sat_idx_, slew_idx_, x_sat_idx_;
   bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
@@ -122,8 +123,6 @@ protected:
   Eigen::MatrixXd spline_weights_;
 
 private:
-  void
-  initializeSplineKnots(const Eigen::Ref<const Eigen::VectorXd>& spline_knots);
   void calcSplineParams();
 
   // need to be implemented by derived classes

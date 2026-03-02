@@ -19,6 +19,8 @@ public:
                    const Eigen::Ref<const Eigen::VectorXd>& knots);
   ~Parameterization() = default;
 
+  bool validateKnots(std::string& error_msg) const;
+
   /// Factory method for uniform move-blocking parameterization
   /// (i.e. piecewise constant inputs set from previous change point)
   static Parameterization moveBlocking(const int horizon_steps,
@@ -51,9 +53,9 @@ public:
 
   // public member variables
   Eigen::VectorXd knots;
-  int horizon_steps;
-  int num_control_points;
-  int degree;
+  const int horizon_steps;
+  const int num_control_points;
+  const int degree;
 };
 
 } // namespace affine_mpc

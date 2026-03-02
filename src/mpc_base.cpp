@@ -107,7 +107,11 @@ MPCBase::MPCBase(const int state_dim,
     x_max_.setConstant(std::numeric_limits<double>::infinity());
   }
 
-  initializeSplineKnots(param.knots);
+  std::string error_msg;
+  const bool valid_knots{param.validateKnots(error_msg)};
+  if (!valid_knots)
+    throw std::invalid_argument(error_msg);
+  spline_knots_ = param.knots;
   calcSplineParams();
 }
 
@@ -387,50 +391,6 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
   u_.segment(slew_idx_, slew_dim_) = u_slew_.replicate(num_ctrl_pts_ - 1, 1);
   l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
   return qpUpdateSlewRate();
-}
-
-void MPCBase::initializeSplineKnots(const Ref<const VectorXd>& spline_knots)
-{
-  const int size = spline_knots.size();
-  const int num_active_knots = spline_knots_.size() - 2 * spline_degree_;
-
-  if (size == 0) {
-    spline_knots_.head(spline_degree_).setZero();
-    spline_knots_.tail(spline_degree_).setConstant(horizon_steps_ - 1);
-    spline_knots_(seqN(spline_degree_, num_active_knots)) =
-        ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps_ - 1);
-  } else if (size == num_active_knots) {
-    spline_knots_.head(spline_degree_).setZero();
-    spline_knots_.tail(spline_degree_).setConstant(horizon_steps_ - 1);
-    spline_knots_(seqN(spline_degree_, num_active_knots)) = spline_knots;
-  } else if (size == spline_knots_.size()) {
-    spline_knots_ = spline_knots;
-  } else {
-    std::stringstream ss;
-    ss << "[MPCBase::initializeSplineKnots] spline_knots size must be equal to "
-          "the total number of knots (num_control_points + spline_degree + 1), "
-          "the number of active knots (num_control_points - spline_degree + 1"
-          "), or zero.\n    Expected "
-       << spline_knots_.size() << ", " << num_active_knots << ", or 0.\n"
-       << "    Got " << size << std::endl;
-    throw std::invalid_argument(ss.str());
-  }
-
-  // Validate knot values (in case user provided custom knots or modified
-  // knots after creating the Parameterization object)
-  if (spline_knots_(spline_degree_) != 0.0)
-    throw std::invalid_argument(
-        "[MPCBase::initializeSplineKnots] First active knot must be equal to "
-        "zero (representing input at current time step, k=0).");
-  if (spline_knots_(ph::last - spline_degree_) != horizon_steps_ - 1)
-    throw std::invalid_argument(
-        "[MPCBase::initializeSplineKnots] Last active knot must be equal to "
-        "horizon_steps - 1 (representing final input).");
-  if ((spline_knots_(seq(1, ph::last)) - spline_knots_(seq(0, ph::last - 1)))
-          .minCoeff()
-      < 0)
-    throw std::invalid_argument("[MPCBase::initializeSplineKnots] "
-                                "spline_knots must be non-decreasing.");
 }
 
 void MPCBase::calcSplineParams()
