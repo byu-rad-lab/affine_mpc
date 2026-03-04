@@ -24,7 +24,7 @@ public:
 
   static OSQPSettings getDefaultSettings() noexcept;
   static OSQPSettings
-  getRecommendedSettings(const bool polish_near_boundaries) noexcept;
+  getRecommendedSettings(const bool polish_near_boundaries = false) noexcept;
 
   [[nodiscard]] const Eigen::Map<const VectorXF>
   getSolutionMap() const noexcept;
