@@ -88,8 +88,8 @@ void MPCLogger::logPreviousSolve(double t0,
                                  int write_every)
 {
   if (!mpc_->solver_initialized_)
-    throw std::runtime_error("[MPCLogger::logPreviousSolve] "
-                             "Solver must be initialized before logging data.");
+    throw std::logic_error("[MPCLogger::logPreviousSolve] "
+                           "Solver must be initialized before logging data.");
   const static int n{mpc_->state_dim_}, m{mpc_->input_dim_};
   const static int T{mpc_->horizon_steps_}, p{mpc_->num_ctrl_pts_};
 

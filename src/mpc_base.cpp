@@ -127,13 +127,27 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
                                const OSQPSettings& solver_settings)
 {
   assert(x_full.size() == state_dim_);
-  assert(model_set_ && "Model must be set before initializing solver");
+
   if (!model_set_)
-    return false;
-  assert(input_limits_set_
-         && "Input limits must be set before initializing solver");
-  if (!input_limits_set_)
-    return false;
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] Model must be set before initializing "
+        "solver.");
+  if (!u_lims_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] Input limits must be set before "
+        "initializing solver.");
+  if (opts_.slew_control_points && !slew_rate_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] Slew rate must be set before initializing "
+        "solver (slew_control_points is enabled).");
+  if (opts_.slew_initial_input && !slew0_rate_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] Initial slew rate must be set before "
+        "initializing solver (slew_initial_input is enabled).");
+  if (opts_.saturate_states && !x_lims_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] State limits must be set before "
+        "initializing solver (saturate_states is enabled).");
 
   if (solver_initialized_)
     return true;
@@ -294,7 +308,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
   if (!opts_.use_input_cost)
-    throw std::runtime_error(
+    throw std::logic_error(
         "[MPCBase::setInputWeights] Input cost is not enabled.");
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
@@ -321,7 +335,7 @@ bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
   if (!opts_.use_input_cost)
-    throw std::runtime_error(
+    throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   assert(u_step.size() == input_dim_);
   u_goal_ = u_step.replicate(num_ctrl_pts_, 1);
@@ -332,7 +346,7 @@ bool MPCBase::setReferenceParameterizedInputTrajectory(
     const Ref<const VectorXd>& u_traj_ctrl_pts)
 {
   if (!opts_.use_input_cost)
-    throw std::runtime_error(
+    throw std::logic_error(
         "[MPCBase::setReferenceParameterizedInputTrajectory] "
         "Input cost is not enabled.");
   assert(u_traj_ctrl_pts.size() == ctrls_dim_);
@@ -360,7 +374,7 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
                              const Ref<const VectorXd>& x_max)
 {
   if (!opts_.saturate_states)
-    throw std::runtime_error(
+    throw std::logic_error(
         "[MPCBase::setStateLimits] State saturation is not enabled.");
   if ((x_max - x_min).minCoeff() < 0.0)
     throw std::invalid_argument(
@@ -378,8 +392,7 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
 bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
   if (!opts_.slew_control_points)
-    throw std::runtime_error(
-        "[MPCBase::setSlewRate] Slew rate is not enabled.");
+    throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
   if (u_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setSlewRate] Slew rate must be non-negative.");
