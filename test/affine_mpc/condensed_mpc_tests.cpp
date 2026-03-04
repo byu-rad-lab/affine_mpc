@@ -303,3 +303,49 @@ TEST(CondensedMPCProtectedTester,
   // symmetric problem, so magnitudes should be similar
   ASSERT_NEAR(u_pos(0), -u_neg(0), 1e-3);
 }
+
+TEST(CondensedMPCProtectedTester,
+     givenNonUniformReferenceTrajectory_SolvesCorrectly)
+{
+  const int n{2}, m{1}, T{10}, nc{10};
+  CondensedMPCProtectedTester mpc{n, m,
+                                  ampc::Parameterization::linearInterp(T, nc),
+                                  ampc::Options{.use_input_cost = true}};
+  mpc.setModel();
+
+  mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
+  mpc.setInputLimits(VectorXd::Constant(m, -3.0), VectorXd::Constant(m, 3.0));
+  mpc.setReferenceInput(VectorXd::Zero(m));
+
+  // slowly ramping reference trajectory so u0 < u_max
+  Vector2d tmp{0.05, 0.0};
+  VectorXd x_traj_ref{n * T};
+  for (int k{0}; k < T; ++k) {
+    const double s = static_cast<double>(k + 1) / T;
+    x_traj_ref.segment(k * n, n) = s * tmp;
+  }
+  mpc.setReferenceStateTrajectory(x_traj_ref);
+
+  ASSERT_TRUE(mpc.initializeSolver());
+  ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+
+  // Solve with uniform reference at the final value for comparison
+  CondensedMPCProtectedTester mpc2{n, m,
+                                   ampc::Parameterization::linearInterp(T, nc),
+                                   ampc::Options{.use_input_cost = true}};
+  mpc2.setModel();
+  mpc2.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
+  mpc2.setInputLimits(VectorXd::Constant(m, -3.0), VectorXd::Constant(m, 3.0));
+  mpc2.setReferenceInput(VectorXd::Zero(m));
+  mpc2.setReferenceState(Vector2d{1.0, 0.0}); // uniform at final value
+  ASSERT_TRUE(mpc2.initializeSolver());
+  ASSERT_EQ(mpc2.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+
+  VectorXd u_ramp{m}, u_uniform{m};
+  mpc.getNextInput(u_ramp);
+  mpc2.getNextInput(u_uniform);
+
+  // Ramp reference starts lower, so the optimal first input should be smaller
+  // than for a uniform reference at the endpoint
+  ASSERT_LT(u_ramp(0), u_uniform(0));
+}

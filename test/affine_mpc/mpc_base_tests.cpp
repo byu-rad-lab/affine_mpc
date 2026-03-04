@@ -3,6 +3,7 @@
 #include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
@@ -34,6 +35,9 @@ public:
   const auto getRbig() { return R_big_; }
   const auto getStateTrajectory() { return x_goal_; }
   const auto getInputTrajectory() { return u_goal_; }
+  const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
+  const auto getLSlew() { return l_.segment(slew0_idx_, totalSlewDim()); }
+  const auto getUSlew() { return u_.segment(slew0_idx_, totalSlewDim()); }
 
 protected:
   void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
@@ -42,6 +46,11 @@ protected:
   bool qpUpdateInputLimits() override final { return true; }
   bool qpUpdateStateLimits() override final { return true; }
   bool qpUpdateSlewRate() override final { return true; }
+
+  int totalSlewDim() const
+  {
+    return slew_dim_ + input_dim_ * opts_.slew_initial_input;
+  }
 };
 
 TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
@@ -271,4 +280,277 @@ TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
       expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
   ASSERT_TRUE(
       expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
+}
+
+TEST(MPCBaseTester, givenInvalidStateDim_Throws)
+{
+  auto testInvalidStateDim = [](int invalid_n) {
+    const int m{1}, T{4}, nc{3}, deg{1};
+    expectInvalidArgumentWithMessage(
+        [&]() { MPCBaseTester base(invalid_n, m, {T, nc, deg}); },
+        "state_dim must be greater than zero.");
+  };
+  testInvalidStateDim(0);
+  testInvalidStateDim(-1);
+}
+
+TEST(MPCBaseTester, givenInvalidInputDim_Throws)
+{
+  auto testInvalidInputDim = [](int invalid_m) {
+    const int n{2}, T{4}, nc{3}, deg{1};
+    expectInvalidArgumentWithMessage(
+        [&]() { MPCBaseTester base(n, invalid_m, {T, nc, deg}); },
+        "input_dim must be greater than zero.");
+  };
+  testInvalidInputDim(0);
+  testInvalidInputDim(-1);
+}
+
+TEST(MPCBaseTester, inputCostDisabledButUsed_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{1}, deg{0};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector<double, 1> R{1.0};
+  expectLogicErrorWithMessage([&base, &R]() { base.setInputWeights(R); },
+                              "Input cost is not enabled");
+  expectLogicErrorWithMessage([&base, &R]() { base.setReferenceInput(R); },
+                              "Input cost is not enabled");
+  expectLogicErrorWithMessage(
+      [&base, &R]() { base.setReferenceParameterizedInputTrajectory(R); },
+      "Input cost is not enabled");
+}
+
+TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector<double, 1> u_slew{0.5};
+  expectLogicErrorWithMessage(
+      [&base, &u_slew]() { base.setSlewRateInitial(u_slew); },
+      "Initial slew rate is not enabled");
+  expectLogicErrorWithMessage(
+      [&base, &u_slew]() { base.setPreviousInput(u_slew); },
+      "Initial slew rate is not enabled");
+}
+
+TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector<double, 1> u_slew{0.5};
+  expectLogicErrorWithMessage([&base, &u_slew]() { base.setSlewRate(u_slew); },
+                              "Slew rate is not enabled");
+}
+
+TEST(MPCBaseTester, stateSaturationDisabledButUsed_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector<double, 2> x_min{-1, -1}, x_max{1, 1};
+  expectLogicErrorWithMessage(
+      [&base, &x_min, &x_max]() { base.setStateLimits(x_min, x_max); },
+      "State saturation is not enabled");
+}
+
+TEST(MPCBaseTester, givenNegativeSlewRate_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_control_points = true}};
+
+  Eigen::Vector<double, 1> u_slew{-0.5};
+  expectInvalidArgumentWithMessage(
+      [&base, &u_slew]() { base.setSlewRate(u_slew); },
+      "Slew rate must be non-negative");
+}
+
+TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_initial_input = true}};
+
+  Eigen::Vector<double, 1> u_slew{-0.5};
+  expectInvalidArgumentWithMessage(
+      [&base, &u_slew]() { base.setSlewRateInitial(u_slew); },
+      "Slew rate must be non-negative");
+}
+
+TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_initial_input = true}};
+
+  Eigen::Vector<double, 1> u_slew{0.5}, u_prev{0.1};
+  base.setSlewRateInitial(u_slew);
+  base.setPreviousInput(u_prev);
+
+  const MatrixXd A = base.getASlew();
+  const VectorXd l = base.getLSlew();
+  const VectorXd u = base.getUSlew();
+
+  ASSERT_EQ(A.rows(), m);
+  ASSERT_EQ(l.size(), m);
+  ASSERT_EQ(u.size(), m);
+
+  ASSERT_TRUE(A.isIdentity());
+
+  VectorXd l_expected = u_prev - u_slew;
+  VectorXd u_expected = u_prev + u_slew;
+
+  ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+}
+
+TEST(MPCBaseTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_control_points = true}};
+
+  Eigen::Vector<double, 1> u_slew{0.5};
+  base.setSlewRate(u_slew);
+
+  const MatrixXd A = base.getASlew();
+  const VectorXd l = base.getLSlew();
+  const VectorXd u = base.getUSlew();
+
+  ASSERT_EQ(A.rows(), m * (nc - 1));
+  ASSERT_EQ(l.size(), m * (nc - 1));
+  ASSERT_EQ(u.size(), m * (nc - 1));
+
+  MatrixXd A_expected = MatrixXd::Zero(A.rows(), A.cols());
+  A_expected.diagonal().setConstant(-1.0);
+  A_expected.diagonal(m).setConstant(1.0);
+  ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
+
+  VectorXd u_expected = u_slew.replicate(m * (nc - 1), 1);
+  VectorXd l_expected = -u_expected;
+
+  ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+}
+
+TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  affine_mpc::Options opts{.slew_initial_input = true,
+                           .slew_control_points = true};
+  MPCBaseTester base{n, m, {T, nc, deg}, opts};
+
+  Eigen::Vector<double, 1> u_slew{0.5}, u_prev{0.1};
+  base.setSlewRate(u_slew);
+  base.setSlewRateInitial(u_slew);
+  base.setPreviousInput(u_prev);
+
+  const MatrixXd A = base.getASlew();
+  const VectorXd l = base.getLSlew();
+  const VectorXd u = base.getUSlew();
+
+  std::cout << "A:\n"
+            << A << "\nl:\n"
+            << l.transpose() << "\nu:\n"
+            << u.transpose() << std::endl;
+
+  ASSERT_EQ(A.rows(), m * nc);
+  ASSERT_EQ(l.size(), m * nc);
+  ASSERT_EQ(u.size(), m * nc);
+
+  MatrixXd A_expected = MatrixXd::Zero(A.rows(), A.cols());
+  A_expected.diagonal().setConstant(1.0);
+  A_expected.diagonal(-m).setConstant(-1.0);
+  ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
+
+  VectorXd u_expected{m * nc}, l_expected{m * nc};
+  u_expected << u_prev + u_slew, u_slew, u_slew;
+  l_expected << u_prev - u_slew, -u_slew, -u_slew;
+
+  std::cout << "l_expected:\n"
+            << l_expected.transpose() << "\nu_expected:\n"
+            << u_expected.transpose() << std::endl;
+
+  ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+}
+
+TEST(MPCBaseTester, givenModel_PropagatesModelCorrectly)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Matrix2d A;
+  Eigen::Vector2d B, w;
+  A << 0, 1, -0.6, -0.1;
+  B << 0, 0.2;
+  w << 0.01, 0.02;
+  base.setModelContinuous2Discrete(A, B, w, 0.1);
+
+  const Eigen::Vector2d x0{1.0, -0.5};
+  const Eigen::Vector<double, 1> u{2.0};
+  Eigen::Vector2d x_next;
+  base.propagateModel(x0, u, x_next);
+
+  const Eigen::Vector2d x_next_expected =
+      base.getAd() * x0 + base.getBd() * u + base.getWd();
+  ASSERT_TRUE(expectEigenNear(x_next, x_next_expected, 1e-12));
+}
+
+TEST(MPCBaseTester, givenModel_PropagateModelAllowsAliasing)
+{
+  // x_next = x0 is a common pattern in simulation loops
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Matrix2d A;
+  Eigen::Vector2d B, w;
+  A << 0, 1, -0.6, -0.1;
+  B << 0, 0.2;
+  w.setZero();
+  base.setModelContinuous2Discrete(A, B, w, 0.1);
+
+  Eigen::Vector2d x{1.0, -0.5};
+  const Eigen::Vector<double, 1> u{2.0};
+  const Eigen::Vector2d x_expected =
+      base.getAd() * x + base.getBd() * u + base.getWd();
+
+  base.propagateModel(x, u, x); // aliased: x_next == x0
+  ASSERT_TRUE(expectEigenNear(x, x_expected, 1e-12));
+}
+
+TEST(MPCBaseTester, givenParameterizedInputTrajectory_SetsUgoalCorrectly)
+{
+  const int n{2}, m{2}, T{3}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+
+  VectorXd u_ctrl_pts{m * nc};
+  u_ctrl_pts << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0;
+  base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
+
+  // u_goal_ should be set verbatim (no replication, unlike setReferenceInput)
+  ASSERT_TRUE(expectEigenNear(base.getInputTrajectory(), u_ctrl_pts, 1e-15));
+}
+
+TEST(MPCBaseTester,
+     setReferenceInputAndSetReferenceParameterizedInput_ProduceDifferentUgoal)
+{
+  // setReferenceInput replicates a single step; setReferenceParameterizedInput
+  // sets the full control-point vector directly. Verify they differ for a
+  // non-trivial target.
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+
+  VectorXd u_step{m};
+  u_step << 2.0;
+  base.setReferenceInput(u_step);
+  VectorXd u_goal_replicated = base.getInputTrajectory(); // [2, 2, 2]
+
+  VectorXd u_ctrl_pts{m * nc};
+  u_ctrl_pts << 1.0, 2.0, 3.0; // non-uniform
+  base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
+  VectorXd u_goal_direct = base.getInputTrajectory(); // [1, 2, 3]
+
+  // They should differ
+  ASSERT_FALSE(expectEigenNear(u_goal_replicated, u_goal_direct, 1e-10));
+  ASSERT_TRUE(expectEigenNear(u_goal_direct, u_ctrl_pts, 1e-15));
 }

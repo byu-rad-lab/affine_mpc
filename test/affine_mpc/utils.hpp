@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <stdexcept>
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
 
@@ -30,6 +31,21 @@ void expectInvalidArgumentWithMessage(const std::function<void()>& fn,
         << "Exception message was: " << e.what();
   } catch (...) {
     FAIL() << "Expected std::invalid_argument";
+  }
+}
+
+void expectLogicErrorWithMessage(const std::function<void()>& fn,
+                                 const std::string& expected_substring)
+{
+  try {
+    fn();
+    FAIL() << "Expected std::logic_error";
+  } catch (const std::logic_error& e) {
+    EXPECT_TRUE(std::string(e.what()).find(expected_substring)
+                != std::string::npos)
+        << "Exception message was: " << e.what();
+  } catch (...) {
+    FAIL() << "Expected std::logic_error";
   }
 }
 

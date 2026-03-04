@@ -9,6 +9,32 @@ namespace ampc = affine_mpc;
 
 // ---- Direct constructor (uniform knots) ------------------------------------
 
+TEST(ParameterizationDirectConstructor, givenInvalidHorizonSteps_Throws)
+{
+  expectInvalidArgumentWithMessage([&]() { ampc::Parameterization{-1, 3, 0}; },
+                                   "horizon_steps must be at least 1");
+}
+
+TEST(ParameterizationDirectConstructor, givenInvalidNumControlPoints_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization{5, 0, 0}; },
+      "num_control_points must be in the range [1, horizon_steps]");
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization{5, 6, 0}; },
+      "num_control_points must be in the range [1, horizon_steps]");
+}
+
+TEST(ParameterizationDirectConstructor, givenInvalidDegree_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization{5, 3, -1}; },
+      "degree must be in the range [0, num_control_points - 1]");
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization{5, 3, 3}; },
+      "degree must be in the range [0, num_control_points - 1]");
+}
+
 TEST(ParameterizationDirectConstructor,
      givenMoveBlockingParams_FormsKnotsCorrectly)
 {
