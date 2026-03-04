@@ -15,14 +15,28 @@ using namespace Eigen;
 
 namespace affine_mpc {
 
+constexpr int validateStateDim(const int state_dim)
+{
+  if (state_dim <= 0)
+    throw std::invalid_argument("state_dim must be greater than zero.");
+  return state_dim;
+}
+
+constexpr int validateInputDim(const int input_dim)
+{
+  if (input_dim <= 0)
+    throw std::invalid_argument("input_dim must be greater than zero.");
+  return input_dim;
+}
+
 MPCBase::MPCBase(const int state_dim,
                  const int input_dim,
                  const Parameterization& param,
                  const Options& opts,
                  const int num_design_vars,
                  const int num_custom_constraints) :
-    state_dim_{state_dim},
-    input_dim_{input_dim},
+    state_dim_{validateStateDim(state_dim)},
+    input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
     num_ctrl_pts_{param.num_control_points},
     spline_degree_{param.degree},
@@ -57,19 +71,6 @@ MPCBase::MPCBase(const int state_dim,
     u_max_{input_dim},
     solution_map_{nullptr, 0}
 {
-  if (state_dim <= 0)
-    throw std::invalid_argument("state_dim must be greater than zero.");
-  if (input_dim <= 0)
-    throw std::invalid_argument("input_dim must be greater than zero.");
-  if (horizon_steps_ <= 0)
-    throw std::invalid_argument("horizon_steps must be greater than zero.");
-  if (num_ctrl_pts_ <= 0 || num_ctrl_pts_ > horizon_steps_)
-    throw std::invalid_argument(
-        "num_control_points must be between zero and horizon_steps.");
-  if (spline_degree_ < 0 || spline_degree_ > num_ctrl_pts_ - 1)
-    throw std::invalid_argument(
-        "spline_degree must be between zero and num_control_points - 1.");
-
   // allocate QP memory
   const int num_constraints{num_custom_constraints + u_sat_dim_ + slew_dim_
                             + x_sat_dim_};
