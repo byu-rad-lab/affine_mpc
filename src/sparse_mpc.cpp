@@ -30,7 +30,7 @@ SparseMPC::SparseMPC(const int state_dim,
             state_dim * param.horizon_steps),
     refs_changed_{true} // ensure q_ updates on first solve
 {
-  if (use_input_cost_) {
+  if (opts_.use_input_cost) {
     P_.setIdentity();
     q_.setConstant(-1.0);
   } else {
@@ -44,7 +44,7 @@ SparseMPC::SparseMPC(const int state_dim,
 
   // Model constraints: -I on x_traj block diagonal
   A_(seqN(0, x_traj_dim_), x_traj_seq).diagonal().setConstant(-1.0);
-  if (saturate_states_)
+  if (opts_.saturate_states)
     A_(x_traj_seq, x_traj_seq).setIdentity();
 }
 
@@ -156,7 +156,7 @@ void SparseMPC::calcBothCostTerms()
   P_.diagonal().tail(x_rows) = Q_big_.diagonal();
   q_.tail(x_rows).noalias() = -(Q_big_ * x_goal_);
 
-  if (use_input_cost_) {
+  if (opts_.use_input_cost) {
     const int u_rows{ctrls_dim_};
     P_.diagonal().head(u_rows) = R_big_.diagonal();
     q_.head(u_rows).noalias() = -(R_big_ * u_goal_);
@@ -166,7 +166,7 @@ void SparseMPC::calcBothCostTerms()
 void SparseMPC::calcCostVector()
 {
   q_.tail(x_traj_dim_).noalias() = -(Q_big_ * x_goal_);
-  if (use_input_cost_) {
+  if (opts_.use_input_cost) {
     q_.head(ctrls_dim_).noalias() = -(R_big_ * u_goal_);
   }
 }

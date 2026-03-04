@@ -134,9 +134,12 @@ void MPCLogger::writeParamFile(const std::string& filename)
              << "T: " << mpc_->horizon_steps_ << std::endl
              << "mu: " << mpc_->num_ctrl_pts_ << std::endl
              << "p: " << mpc_->spline_degree_ << std::endl
-             << "use_input_cost: " << mpc_->use_input_cost_ << std::endl
-             << "use_slew_rate: " << mpc_->use_slew_rate_ << std::endl
-             << "saturate_states: " << mpc_->saturate_states_ << std::endl
+             << "use_input_cost: " << mpc_->opts_.use_input_cost << std::endl
+             << "slew_initial_input: " << mpc_->opts_.slew_initial_input
+             << std::endl
+             << "slew_control_points: " << mpc_->opts_.slew_control_points
+             << std::endl
+             << "saturate_states: " << mpc_->opts_.saturate_states << std::endl
              << "u_min: " << eig2Str(mpc_->u_min_) << std::endl
              << "u_max: " << eig2Str(mpc_->u_max_) << std::endl
              << "Q: " << eig2Str(mpc_->Q_big_.diagonal().head(mpc_->state_dim_))
@@ -146,26 +149,26 @@ void MPCLogger::writeParamFile(const std::string& filename)
              << std::endl;
 
   param_fout << "R: ";
-  if (mpc_->use_input_cost_)
+  if (mpc_->opts_.use_input_cost)
     param_fout << eig2Str(mpc_->R_big_.diagonal().head(mpc_->input_dim_))
                << std::endl;
   else
     param_fout << "None" << std::endl;
 
   param_fout << "u_slew: ";
-  if (mpc_->use_slew_rate_)
+  if (mpc_->opts_.slew_control_points)
     param_fout << eig2Str(mpc_->u_slew_) << std::endl;
   else
     param_fout << "None" << std::endl;
 
   param_fout << "x_min: ";
-  if (mpc_->saturate_states_)
+  if (mpc_->opts_.saturate_states)
     param_fout << eig2Str(mpc_->x_min_) << std::endl;
   else
     param_fout << "None" << std::endl;
 
   param_fout << "x_max: ";
-  if (mpc_->saturate_states_)
+  if (mpc_->opts_.saturate_states)
     param_fout << eig2Str(mpc_->x_max_) << std::endl;
   else
     param_fout << "None" << std::endl;

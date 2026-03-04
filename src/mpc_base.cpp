@@ -43,9 +43,7 @@ MPCBase::MPCBase(const int state_dim,
     x_traj_dim_{state_dim * param.horizon_steps},
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
-    use_input_cost_{opts.use_input_cost},
-    use_slew_rate_{opts.slew_control_points},
-    saturate_states_{opts.saturate_states},
+    opts_{opts},
     u_sat_dim_{ctrls_dim_},
     slew_dim_{input_dim * (param.num_control_points - 1) * use_slew_rate_},
     x_sat_dim_{x_traj_dim_ * saturate_states_},
@@ -91,17 +89,17 @@ MPCBase::MPCBase(const int state_dim,
   u_max_.setConstant(std::numeric_limits<double>::infinity());
 
   // allocate memory needed based on options
-  if (use_input_cost_) {
+  if (opts_.use_input_cost) {
     R_big_.setIdentity(ctrls_dim_);
     u_goal_.setZero(ctrls_dim_);
   }
-  if (use_slew_rate_) {
+  if (opts.slew_control_points) {
     A_.middleRows(slew_idx_, slew_dim_).diagonal().setConstant(-1.0);
     A_.middleRows(slew_idx_, slew_dim_).diagonal(input_dim).setOnes();
     u_slew_.resize(input_dim);
     u_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
-  if (saturate_states_) {
+  if (opts_.saturate_states) {
     x_min_.resize(state_dim);
     x_max_.resize(state_dim);
     x_min_.setConstant(-std::numeric_limits<double>::infinity());
@@ -295,7 +293,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
 
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
-  if (!use_input_cost_)
+  if (!opts_.use_input_cost)
     throw std::runtime_error(
         "[MPCBase::setInputWeights] Input cost is not enabled.");
   if (R_diag.minCoeff() < 0.0)
@@ -322,7 +320,7 @@ bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 
 bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
-  if (!use_input_cost_)
+  if (!opts_.use_input_cost)
     throw std::runtime_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   assert(u_step.size() == input_dim_);
@@ -333,7 +331,7 @@ bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 bool MPCBase::setReferenceParameterizedInputTrajectory(
     const Ref<const VectorXd>& u_traj_ctrl_pts)
 {
-  if (!use_input_cost_)
+  if (!opts_.use_input_cost)
     throw std::runtime_error(
         "[MPCBase::setReferenceParameterizedInputTrajectory] "
         "Input cost is not enabled.");
@@ -361,7 +359,7 @@ bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
 bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
                              const Ref<const VectorXd>& x_max)
 {
-  if (!saturate_states_)
+  if (!opts_.saturate_states)
     throw std::runtime_error(
         "[MPCBase::setStateLimits] State saturation is not enabled.");
   if ((x_max - x_min).minCoeff() < 0.0)
@@ -379,7 +377,7 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
 
 bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
 {
-  if (!use_slew_rate_)
+  if (!opts_.slew_control_points)
     throw std::runtime_error(
         "[MPCBase::setSlewRate] Slew rate is not enabled.");
   if (u_slew.minCoeff() < 0.0)
