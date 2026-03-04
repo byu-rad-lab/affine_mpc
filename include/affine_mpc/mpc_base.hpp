@@ -40,8 +40,7 @@ public:
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
   void getParameterizedInputTrajectory(
       Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const noexcept;
-  virtual void
-  getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
+  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
   virtual void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
 
