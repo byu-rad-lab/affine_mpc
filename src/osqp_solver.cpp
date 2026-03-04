@@ -1,4 +1,5 @@
 #include "affine_mpc/osqp_solver.hpp"
+#include "affine_mpc/solve_status.hpp"
 #include "osqp_api_functions.h"
 #include "osqp_api_types.h"
 
@@ -36,6 +37,7 @@ OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);
+  settings.warm_starting = true; // default is false
 
   // Over-relaxation parameter.
   //   - alpha = 1.0 -> standard ADMM
@@ -77,22 +79,21 @@ OSQPFloat OSQPSolver::getSolveTime() const noexcept
   return solver_->info->solve_time;
 }
 
-bool OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
+SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);
-  assert(initialized_);
-
-  osqp_solve(solver_.get());
+  const SolveStatus status{solve()};
   Eigen::Map<VectorXF> map_solution{solver_->solution->x, n_, 1};
   solution = map_solution;
-  return solver_->info->status_val == OSQP_SOLVED;
+  return status;
 }
 
-bool OSQPSolver::solve()
+SolveStatus OSQPSolver::solve()
 {
-  assert(initialized_);
+  if (!initialized_)
+    return SolveStatus::NotInitialized;
   osqp_solve(solver_.get());
-  return solver_->info->status_val == OSQP_SOLVED;
+  return osqpStatusToSolveStatus(solver_->info->status_val);
 }
 
 bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,

@@ -7,6 +7,7 @@
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
 
@@ -34,7 +35,7 @@ public:
                        OSQPSolver::getRecommendedSettings(true));
 
   // Must be called before accesing optimized variables
-  [[nodiscard]] bool solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
+  [[nodiscard]] SolveStatus solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
   // Getters for optimized variables
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;

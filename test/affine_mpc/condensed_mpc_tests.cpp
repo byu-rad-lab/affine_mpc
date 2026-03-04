@@ -27,12 +27,6 @@ public:
     w.setZero();
     const double ts{0.1};
     setModelContinuous2Discrete(A, B, w, ts);
-    // Matrix2d Ad;
-    // Vector2d Bd, wd;
-    // Ad << 0.99701147, 0.09940219, -0.05964131, 0.98707125;
-    // Bd << 0.00099618, 0.01988044;
-    // wd << 0.01193257, 0.138468;
-    // setModelDiscrete(Ad, Bd, wd);
   }
 
   void findSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0)
@@ -170,7 +164,6 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   msd_mpc.setReferenceInput(u_goal);
   ASSERT_TRUE(msd_mpc.setSlewRate(slew));
 
-  // These are the recommended settings, but explicitly set here for clarity
   auto settings{ampc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
@@ -180,17 +173,20 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
 
   x0.setZero();
   Eigen::Matrix<double, m, 1> u_star, u_star_expected;
-  bool solved;
-  solved = msd_mpc.solve(x0);
+  ampc::SolveStatus status;
+  status = msd_mpc.solve(x0);
+  ASSERT_EQ(status, ampc::SolveStatus::Success);
+
   msd_mpc.getNextInput(u_star);
   logger.logPreviousSolve(0, 0.1, x0);
 
   u_star_expected << 3.0;
-
   ASSERT_TRUE(expectEigenNear(u_star, u_star_expected, 1e-5));
 
   Eigen::Matrix<double, m * nc, 1> u_traj;
-  solved = msd_mpc.solve(x0);
+  status = msd_mpc.solve(x0);
+  ASSERT_EQ(status, ampc::SolveStatus::Success);
+
   msd_mpc.getParameterizedInputTrajectory(u_traj);
   logger.logPreviousSolve(0, 0.1, x0);
   int slew_errors{0};
@@ -225,7 +221,7 @@ TEST(CondensedMPCProtectedTester,
   settings.eps_rel = 1e-4;
   settings.adaptive_rho = true;
   ASSERT_TRUE(msd_mpc.initializeSolver(settings));
-  ASSERT_TRUE(msd_mpc.solve(Vector2d{0.0, 0.0}));
+  ASSERT_EQ(msd_mpc.solve(Vector2d{0.0, 0.0}), ampc::SolveStatus::Success);
 
   Eigen::Matrix<double, n * T, 1> x_traj;
   msd_mpc.getPredictedStateTrajectory(x_traj);
@@ -258,13 +254,13 @@ TEST(CondensedMPCProtectedTester,
   ASSERT_TRUE(msd_mpc.initializeSolver(settings));
 
   const Vector2d x0{0.0, 0.0};
-  ASSERT_TRUE(msd_mpc.solve(x0));
+  ASSERT_EQ(msd_mpc.solve(x0), ampc::SolveStatus::Success);
   Eigen::Matrix<double, m, 1> u_first;
   msd_mpc.getNextInput(u_first);
 
   // Heavy input penalty: solution should move away from saturation
   msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1.0));
-  ASSERT_TRUE(msd_mpc.solve(x0));
+  ASSERT_EQ(msd_mpc.solve(x0), ampc::SolveStatus::Success);
   Eigen::Matrix<double, m, 1> u_second;
   msd_mpc.getNextInput(u_second);
 
@@ -291,13 +287,13 @@ TEST(CondensedMPCProtectedTester,
   ASSERT_TRUE(msd_mpc.initializeSolver(settings));
 
   const Vector2d x0{0.0, 0.0};
-  ASSERT_TRUE(msd_mpc.solve(x0));
+  ASSERT_EQ(msd_mpc.solve(x0), ampc::SolveStatus::Success);
   Eigen::Matrix<double, m, 1> u_pos;
   msd_mpc.getNextInput(u_pos);
 
   // Flip the goal to the other side: optimal input should flip sign
   msd_mpc.setReferenceState(Vector2d{-1.0, 0.0});
-  ASSERT_TRUE(msd_mpc.solve(x0));
+  ASSERT_EQ(msd_mpc.solve(x0), ampc::SolveStatus::Success);
   Eigen::Matrix<double, m, 1> u_neg;
   msd_mpc.getNextInput(u_neg);
 

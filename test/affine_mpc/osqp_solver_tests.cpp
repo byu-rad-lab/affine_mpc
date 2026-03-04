@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "affine_mpc/osqp_solver.hpp"
+#include "affine_mpc/solve_status.hpp"
 #include "utils.hpp"
 
 class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver
@@ -324,16 +325,15 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
   // polishing tests the boundary conditions better but is a little slower
   settings.polishing = true;
 
-  bool success{true};
-  success &= base.initialize(P, A, q, l, u, settings);
+  const bool success{base.initialize(P, A, q, l, u, settings)};
+  ASSERT_TRUE(success);
 
   Eigen::Vector2d calculated_solution;
-  success &= base.solve(calculated_solution);
+  const affine_mpc::SolveStatus status{base.solve(calculated_solution)};
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   Eigen::Vector2d actual_solution{0.3, 0.7};
-
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-6));
-  ASSERT_TRUE(success);
 }
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
@@ -360,17 +360,18 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   success &= base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
-  success &= base.solve(calculated_solution);
+  affine_mpc::SolveStatus status{base.solve(calculated_solution)};
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   q << 2, 3;
   l << 2, -1, -1;
   u << 2, 2.5, 2.5;
   success &= base.updateCostVector(q);
   success &= base.updateBounds(l, u);
-  success &= base.solve(calculated_solution);
+  status = base.solve(calculated_solution);
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   Eigen::Vector2d actual_solution{0.75, 1.25};
-
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-5));
 
   q.setOnes();
@@ -378,10 +379,10 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   u << 1, 0.7, 0.7;
   success &= base.updateCostVector(q);
   success &= base.updateBounds(l, u);
-  success &= base.solve(calculated_solution);
+  status = base.solve(calculated_solution);
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   actual_solution << 0.3, 0.7;
-
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 2e-5));
 
   ASSERT_TRUE(success);
@@ -410,26 +411,26 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
   success &= base.initialize(P, A, q, l, u, settings);
 
   Eigen::Vector2d calculated_solution;
-  success &= base.solve(calculated_solution);
+  affine_mpc::SolveStatus status{base.solve(calculated_solution)};
 
   P << 5, 1.5, 1.5, 1;
   A << 1.2, 1.1, 1.5, 0, 0, 0.8;
   success &= base.updateCostMatrix(P);
   success &= base.updateConstraintMatrix(A);
-  success &= base.solve(calculated_solution);
+  status = base.solve(calculated_solution);
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   Eigen::Vector2d actual_solution{0.03125, 0.875};
-
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-5));
 
   P << 4, 1, 1, 2;
   A << 1, 1, 1, 0, 0, 1;
   success &= base.updateCostMatrix(P);
   success &= base.updateConstraintMatrix(A);
-  success &= base.solve(calculated_solution);
+  status = base.solve(calculated_solution);
+  ASSERT_EQ(status, affine_mpc::SolveStatus::Success);
 
   actual_solution << 0.3, 0.7;
-
   ASSERT_TRUE(expectEigenNear(calculated_solution, actual_solution, 1e-5));
 
   ASSERT_TRUE(success);

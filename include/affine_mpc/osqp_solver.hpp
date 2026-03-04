@@ -4,6 +4,8 @@
 #include <Eigen/Core>
 #include <osqp.h>
 
+#include "affine_mpc/solve_status.hpp"
+
 namespace affine_mpc {
 
 class OSQPSolver
@@ -29,8 +31,8 @@ public:
   [[nodiscard]] const Eigen::Map<const VectorXF>
   getSolutionMap() const noexcept;
   OSQPFloat getSolveTime() const noexcept;
-  [[nodiscard]] bool solve(Eigen::Ref<VectorXF> solution);
-  [[nodiscard]] bool solve();
+  [[nodiscard]] SolveStatus solve(Eigen::Ref<VectorXF> solution);
+  [[nodiscard]] SolveStatus solve();
   [[nodiscard]] bool initialize(const Eigen::Ref<const MatrixXF>& P,
                                 const Eigen::Ref<const MatrixXF>& A,
                                 Eigen::Ref<VectorXF> q,

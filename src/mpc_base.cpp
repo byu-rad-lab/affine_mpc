@@ -5,6 +5,7 @@
 
 // #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/solve_status.hpp"
 #include "eigen_compat.hpp"          // revmove this once Eigen 3.5 is required
 #include <osqp.h>                    // for OSQPSettings
 #include <unsupported/Eigen/Splines> // for B-spline support
@@ -176,11 +177,14 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
   return solver_initialized_;
 }
 
-bool MPCBase::solve(const Ref<const VectorXd>& x0)
+SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
 {
+  if (!solver_initialized_)
+    return SolveStatus::NotInitialized;
   assert(x0.size() == state_dim_);
+
   qpUpdateX0(x0);
-  const bool solved{solver_->solve()};
+  const SolveStatus status{solver_->solve()};
 
   // update u_prev after solve rather than before so user can manually
   // overwrite it between solves if desired
@@ -188,7 +192,7 @@ bool MPCBase::solve(const Ref<const VectorXd>& x0)
     u_prev_ = solution_map_.head(input_dim_);
     setPreviousInput(u_prev_);
   }
-  return solved;
+  return status;
 }
 
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept

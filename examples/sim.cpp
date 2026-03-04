@@ -57,12 +57,12 @@ int main()
   xk.setZero();
 
   Eigen::Matrix<double, m, 1> uk;
-  bool solved;
+  affine_mpc::SolveStatus status;
   double tf{5};
   for (double t{0}; t < tf; t += ts) {
-    solved = msd_mpc.solve(xk);
-    if (!solved)
-      std::cout << "Did not solve :(" << std::endl;
+    status = msd_mpc.solve(xk);
+    if (status != ampc::SolveStatus::Success)
+      std::cout << "Solver status: " << status << std::endl;
     msd_mpc.getNextInput(uk);
     logger.logPreviousSolve(t, ts, xk);
     msd_mpc.propagateModel(xk, uk, xk);

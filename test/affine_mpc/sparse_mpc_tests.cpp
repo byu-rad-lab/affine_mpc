@@ -372,7 +372,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
   ASSERT_TRUE(mpc.initializeSolver());
 
   Vector2d x0{0.0, 0.0};
-  ASSERT_TRUE(mpc.solve(x0));
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
 
   VectorXd u_star{m};
   mpc.getNextInput(u_star);
@@ -418,7 +418,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
   ASSERT_TRUE(mpc.initializeSolver(settings));
 
   Vector2d x0{0.0, 0.0};
-  ASSERT_TRUE(mpc.solve(x0));
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
 
   // verify slew rate was respected in the trajectory
   VectorXd u_traj{m * nc};
@@ -447,7 +447,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
   mpc.setStateLimits(x_min, x_max);
 
   ASSERT_TRUE(mpc.initializeSolver());
-  ASSERT_TRUE(mpc.solve(Vector2d{0.0, 0.0}));
+  ASSERT_EQ(mpc.solve(Vector2d{0.0, 0.0}), ampc::SolveStatus::Success);
 
   VectorXd x_traj(n * T);
   mpc.getPredictedStateTrajectory(x_traj);
@@ -527,13 +527,13 @@ TEST(SparseMPCProtectedTester,
   ASSERT_TRUE(mpc.initializeSolver());
 
   const Vector2d x0{0.0, 0.0};
-  ASSERT_TRUE(mpc.solve(x0));
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
   VectorXd u_first{m};
   mpc.getNextInput(u_first);
 
   // Heavy input penalty: solution should move away from saturation
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1.0));
-  ASSERT_TRUE(mpc.solve(x0));
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
   VectorXd u_second{m};
   mpc.getNextInput(u_second);
 
