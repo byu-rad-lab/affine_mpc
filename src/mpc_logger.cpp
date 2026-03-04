@@ -183,9 +183,9 @@ void MPCLogger::handleStringSubstitutions()
   if (save_dir_.back() != slash.back())
     save_dir_ += slash;
 
-  if (save_dir_.front() == std::string("~").front() ||
-      save_dir_.substr(0, 5) == std::string("$HOME") ||
-      save_dir_.substr(0, 7) == std::string("${HOME}")) {
+  if (save_dir_.front() == std::string("~").front()
+      || save_dir_.substr(0, 5) == std::string("$HOME")
+      || save_dir_.substr(0, 7) == std::string("${HOME}")) {
     std::string env_home{std::getenv("HOME")};
     int pos = save_dir_.find_first_of("/");
     save_dir_.replace(0, pos, env_home);
