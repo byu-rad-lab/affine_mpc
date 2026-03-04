@@ -1,5 +1,5 @@
-#ifndef MPC_CONFIG_HPP
-#define MPC_CONFIG_HPP
+#ifndef AFFINE_MPC_MPC_OPTIONS_HPP
+#define AFFINE_MPC_MPC_OPTIONS_HPP
 
 namespace affine_mpc {
 
@@ -13,4 +13,4 @@ struct Options
 
 } // namespace affine_mpc
 
-#endif // MPC_CONFIG_HPP
+#endif // AFFINE_MPC_MPC_OPTIONS_HPP

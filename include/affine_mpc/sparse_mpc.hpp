@@ -1,5 +1,5 @@
-#ifndef SPARSE_MPC_HPP
-#define SPARSE_MPC_HPP
+#ifndef AFFINE_MPC_SPARSE_MPC_HPP
+#define AFFINE_MPC_SPARSE_MPC_HPP
 
 #include <Eigen/Core>
 
@@ -43,4 +43,4 @@ private:
 
 } // namespace affine_mpc
 
-#endif // SPARSE_MPC_HPP
+#endif // AFFINE_MPC_SPARSE_MPC_HPP

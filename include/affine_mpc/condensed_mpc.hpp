@@ -1,5 +1,5 @@
-#ifndef CONDENSED_MPC_HPP
-#define CONDENSED_MPC_HPP
+#ifndef AFFINE_MPC_CONDENSED_MPC_HPP
+#define AFFINE_MPC_CONDENSED_MPC_HPP
 
 #include <Eigen/Core>
 
@@ -45,4 +45,4 @@ private:
 
 } // namespace affine_mpc
 
-#endif // CONDENSED_MPC_HPP
+#endif // AFFINE_MPC_CONDENSED_MPC_HPP

@@ -1,5 +1,5 @@
-#ifndef MPC_LOGGER_HPP
-#define MPC_LOGGER_HPP
+#ifndef AFFINE_MPC_MPC_LOGGER_HPP
+#define AFFINE_MPC_MPC_LOGGER_HPP
 
 #include <Eigen/Core>
 #include <fstream>
@@ -40,4 +40,4 @@ private:
 
 } // namespace affine_mpc
 
-#endif // MPC_LOGGER_HPP
+#endif // AFFINE_MPC_MPC_LOGGER_HPP

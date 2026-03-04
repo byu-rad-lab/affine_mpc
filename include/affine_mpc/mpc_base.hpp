@@ -1,5 +1,5 @@
-#ifndef MPC_BASE_HPP
-#define MPC_BASE_HPP
+#ifndef AFFINE_MPC_MPC_BASE_HPP
+#define AFFINE_MPC_MPC_BASE_HPP
 
 #include <Eigen/Core>
 #include <memory>
@@ -138,4 +138,4 @@ private:
 
 } // namespace affine_mpc
 
-#endif // MPC_BASE_HPP
+#endif // AFFINE_MPC_MPC_BASE_HPP

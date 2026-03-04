@@ -1,5 +1,5 @@
-#ifndef OSQP_BASE_HPP
-#define OSQP_BASE_HPP
+#ifndef AFFINE_MPC_OSQP_SOLVER_HPP
+#define AFFINE_MPC_OSQP_SOLVER_HPP
 
 #include <Eigen/Core>
 #include <osqp.h>
@@ -74,4 +74,4 @@ protected: // Not private for unit tests
 
 } // namespace affine_mpc
 
-#endif // OSQP_BASE_HPP
+#endif // AFFINE_MPC_OSQP_SOLVER_HPP

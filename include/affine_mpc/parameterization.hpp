@@ -1,5 +1,5 @@
-#ifndef PARAMETERIZATION_HPP
-#define PARAMETERIZATION_HPP
+#ifndef AFFINE_MPC_PARAMETERIZATION_HPP
+#define AFFINE_MPC_PARAMETERIZATION_HPP
 
 #include <Eigen/Core>
 
@@ -60,4 +60,4 @@ public:
 
 } // namespace affine_mpc
 
-#endif // PARAMETERIZATION_HPP
+#endif // AFFINE_MPC_PARAMETERIZATION_HPP
