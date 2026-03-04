@@ -26,7 +26,8 @@ CondensedMPC::CondensedMPC(const int state_dim,
             0),                                   // num_custom_constraints
     S_{x_traj_dim_, ctrls_dim_},
     v_{x_traj_dim_},
-    model_changed_{false}
+    model_changed_{false},
+    bounds_changed_{false}
 {
   // Avoids setting first row block of S_ to zero every time solve() is
   // called (a minor speed optimization)
@@ -79,13 +80,18 @@ void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
   if (opts_.saturate_states) {
     l_.tail(x_traj_dim_) = x_min_.replicate(horizon_steps_, 1) - v_;
     u_.tail(x_traj_dim_) = x_max_.replicate(horizon_steps_, 1) - v_;
-    success = solver_->updateBounds(l_, u_);
+    bounds_changed_ = true;
   }
 
   q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
   if (opts_.use_input_cost)
     q_.noalias() -= R_big_ * u_goal_;
   success = solver_->updateCostVector(q_);
+
+  if (bounds_changed_) {
+    bounds_changed_ = false;
+    success = solver_->updateBounds(l_, u_);
+  }
 }
 
 bool CondensedMPC::qpUpdateModel()
@@ -104,9 +110,8 @@ bool CondensedMPC::qpUpdateReferences()
 
 bool CondensedMPC::qpUpdateInputLimits()
 {
-  if (!solver_initialized_)
-    return true;
-  return solver_->updateBounds(l_, u_);
+  bounds_changed_ = true;
+  return true;
 }
 
 bool CondensedMPC::qpUpdateStateLimits()
@@ -118,9 +123,8 @@ bool CondensedMPC::qpUpdateStateLimits()
 
 bool CondensedMPC::qpUpdateSlewRate()
 {
-  if (!solver_initialized_)
-    return true;
-  return solver_->updateBounds(l_, u_);
+  bounds_changed_ = true;
+  return true;
 }
 
 void CondensedMPC::updateS()

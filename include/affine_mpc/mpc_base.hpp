@@ -78,6 +78,8 @@ public:
   bool setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
   bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
+  bool setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
+  bool setPreviousInput(const Eigen::Ref<const Eigen::VectorXd>& u_prev);
 
   constexpr int getStateDim() const noexcept { return state_dim_; };
   constexpr int getInputDim() const noexcept { return input_dim_; };
@@ -91,21 +93,21 @@ protected:
   // const bool use_input_cost_, use_slew_rate_, saturate_states_;
   const Options opts_;
   const int u_sat_dim_, slew_dim_, x_sat_dim_;
-  const int u_sat_idx_, slew_idx_, x_sat_idx_;
-  bool model_set_, input_limits_set_, slew_rate_set_, state_limits_set_;
+  const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;
+  bool model_set_, u_lims_set_, slew0_rate_set_, slew_rate_set_, x_lims_set_;
   bool solver_initialized_;
   bool weights_changed_;
 
   // MPC variables
-  Eigen::MatrixXd Ad_;
-  Eigen::MatrixXd Bd_;
+  Eigen::MatrixXd Ad_, Bd_;
   Eigen::VectorXd wd_;
 
   // Working matrices for model discretization
   Eigen::MatrixXd G_, At_, At_pow_;
 
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_, R_big_;
-  Eigen::VectorXd x_goal_, u_goal_, u_min_, u_max_, x_min_, x_max_, u_slew_;
+  Eigen::VectorXd x_goal_, u_goal_, u_min_, u_max_, x_min_, x_max_;
+  Eigen::VectorXd u_slew_, u0_slew_, u_prev_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html

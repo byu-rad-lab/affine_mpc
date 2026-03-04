@@ -45,15 +45,16 @@ MPCBase::MPCBase(const int state_dim,
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
     u_sat_dim_{ctrls_dim_},
-    slew_dim_{input_dim * (param.num_control_points - 1) * use_slew_rate_},
-    x_sat_dim_{x_traj_dim_ * saturate_states_},
+    slew_dim_{(ctrls_dim_ - input_dim_) * opts.slew_control_points},
+    x_sat_dim_{x_traj_dim_ * opts.saturate_states},
     u_sat_idx_{num_custom_constraints},
-    slew_idx_{u_sat_idx_ + ctrls_dim_},
+    slew0_idx_{u_sat_idx_ + ctrls_dim_},
+    slew_idx_{slew0_idx_ + input_dim * opts.slew_initial_input},
     x_sat_idx_{slew_idx_ + slew_dim_},
     model_set_{false},
-    input_limits_set_{false},
+    u_lims_set_{false},
     slew_rate_set_{false},
-    state_limits_set_{false},
+    x_lims_set_{false},
     solver_initialized_{false},
     weights_changed_{false},
     solver_{nullptr},
@@ -70,8 +71,9 @@ MPCBase::MPCBase(const int state_dim,
     solution_map_{nullptr, 0}
 {
   // allocate QP memory
-  const int num_constraints{num_custom_constraints + u_sat_dim_ + slew_dim_
-                            + x_sat_dim_};
+  const int slew0_dim{input_dim * opts.slew_initial_input};
+  const int num_constraints{num_custom_constraints + u_sat_dim_ + slew0_dim
+                            + slew_dim_ + x_sat_dim_};
   solver_ = std::make_unique<OSQPSolver>(num_design_vars, num_constraints);
   P_.resize(num_design_vars, num_design_vars);
   A_.resize(num_constraints, num_design_vars);
@@ -81,7 +83,7 @@ MPCBase::MPCBase(const int state_dim,
 
   // initiallize common constraint matrix blocks
   A_.setZero();
-  A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes(); // u sat
+  A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();
 
   // set defaults
   Q_big_.setIdentity();
@@ -93,9 +95,16 @@ MPCBase::MPCBase(const int state_dim,
     R_big_.setIdentity(ctrls_dim_);
     u_goal_.setZero(ctrls_dim_);
   }
+  if (opts.slew_initial_input) {
+    A_.middleRows(slew0_idx_, input_dim_).diagonal().setOnes();
+    u_prev_.setZero(input_dim_);
+    u0_slew_.resize(input_dim);
+    u0_slew_.setConstant(std::numeric_limits<double>::infinity());
+  }
   if (opts.slew_control_points) {
-    A_.middleRows(slew_idx_, slew_dim_).diagonal().setConstant(-1.0);
-    A_.middleRows(slew_idx_, slew_dim_).diagonal(input_dim).setOnes();
+    const int slew_cp_dim{input_dim * (param.num_control_points - 1)};
+    A_.middleRows(slew_idx_, slew_cp_dim).diagonal().setConstant(-1.0);
+    A_.middleRows(slew_idx_, slew_cp_dim).diagonal(input_dim).setOnes();
     u_slew_.resize(input_dim);
     u_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
@@ -171,7 +180,15 @@ bool MPCBase::solve(const Ref<const VectorXd>& x0)
 {
   assert(x0.size() == state_dim_);
   qpUpdateX0(x0);
-  return solver_->solve();
+  const bool solved{solver_->solve()};
+
+  // update u_prev after solve rather than before so user can manually
+  // overwrite it between solves if desired
+  if (opts_.slew_initial_input) {
+    u_prev_ = solution_map_.head(input_dim_);
+    setPreviousInput(u_prev_);
+  }
+  return solved;
 }
 
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
@@ -363,7 +380,7 @@ bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
   assert(u_min.size() == input_dim_ && u_max.size() == input_dim_);
   u_min_ = u_min;
   u_max_ = u_max;
-  input_limits_set_ = true;
+  u_lims_set_ = true;
 
   l_.segment(u_sat_idx_, u_sat_dim_) = u_min_.replicate(num_ctrl_pts_, 1);
   u_.segment(u_sat_idx_, u_sat_dim_) = u_max_.replicate(num_ctrl_pts_, 1);
@@ -382,7 +399,7 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   assert(x_min.size() == state_dim_ && x_max.size() == state_dim_);
   x_min_ = x_min;
   x_max_ = x_max;
-  state_limits_set_ = true;
+  x_lims_set_ = true;
 
   l_.tail(x_sat_dim_) = x_min_.replicate(horizon_steps_, 1);
   u_.tail(x_sat_dim_) = x_max_.replicate(horizon_steps_, 1);
@@ -402,6 +419,36 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
 
   u_.segment(slew_idx_, slew_dim_) = u_slew_.replicate(num_ctrl_pts_ - 1, 1);
   l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
+  return qpUpdateSlewRate();
+}
+
+bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::setSlewRateInitial] Initial slew rate is not enabled.");
+  if (u0_slew.minCoeff() < 0.0)
+    throw std::invalid_argument(
+        "[MPCBase::setSlewRate] Slew rate must be non-negative.");
+  assert(u0_slew.size() == input_dim_);
+  u0_slew_ = u0_slew;
+  slew0_rate_set_ = true;
+
+  l_.segment(slew0_idx_, input_dim_) = u_prev_ - u0_slew_;
+  u_.segment(slew0_idx_, input_dim_) = u_prev_ + u0_slew_;
+  return qpUpdateSlewRate();
+}
+
+bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::setPreviousInput] Initial slew rate is not enabled.");
+  assert(u_prev.size() == input_dim_);
+  u_prev_ = u_prev;
+
+  l_.segment(slew0_idx_, input_dim_) = u_prev_ - u0_slew_;
+  u_.segment(slew0_idx_, input_dim_) = u_prev_ + u0_slew_;
   return qpUpdateSlewRate();
 }
 

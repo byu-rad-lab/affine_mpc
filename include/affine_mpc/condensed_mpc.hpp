@@ -40,6 +40,7 @@ private:
   bool qpUpdateSlewRate() override final;
 
   bool model_changed_;
+  bool bounds_changed_;
 };
 
 } // namespace affine_mpc

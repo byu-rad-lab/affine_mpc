@@ -22,7 +22,7 @@ void validateConstructorParams(const int horizon_steps,
   if (num_control_points < 1 || num_control_points > horizon_steps) {
     std::stringstream ss;
     ss << "[Parameterization] "
-       << "num_control_points must be in the range (1, horizon_steps].\n    "
+       << "num_control_points must be in the range [1, horizon_steps].\n    "
        << "Got " << num_control_points
        << " with horizon_steps = " << horizon_steps << std::endl;
     throw std::invalid_argument(ss.str());
