@@ -38,6 +38,9 @@ public:
   const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
   const auto getLSlew() { return l_.segment(slew0_idx_, totalSlewDim()); }
   const auto getUSlew() { return u_.segment(slew0_idx_, totalSlewDim()); }
+  const auto getASatU() { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
+  const auto getLSatU() { return l_.segment(u_sat_idx_, u_sat_dim_); }
+  const auto getUSatU() { return u_.segment(u_sat_idx_, u_sat_dim_); }
 
 protected:
   void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
@@ -378,6 +381,155 @@ TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
       "Slew rate must be non-negative");
 }
 
+TEST(MPCBaseTester, givenInvalidInputLimits_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_states = true}};
+
+  Eigen::Vector<double, 1> u_min{1}, u_max{0};
+  expectInvalidArgumentWithMessage(
+      [&base, &u_min, &u_max]() { base.setInputLimits(u_min, u_max); },
+      "u_min cannot be greater than u_max");
+}
+
+TEST(MPCBaseTester, givenInvalidStateLimits_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_states = true}};
+
+  Eigen::Vector<double, 2> x_min{1, 1}, x_max{-1, -1};
+  expectInvalidArgumentWithMessage(
+      [&base, &x_min, &x_max]() { base.setStateLimits(x_min, x_max); },
+      "x_min cannot be greater than x_max");
+}
+
+TEST(MPCBaseTester, givenInvalidStateWeights_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}};
+
+  Eigen::Vector2d Q{-1, 1}, Q2{1, 1};
+  expectInvalidArgumentWithMessage([&base, &Q]() { base.setStateWeights(Q); },
+                                   "State weights must be non-negative");
+  // same test but on Qf
+  expectInvalidArgumentWithMessage(
+      [&base, &Q, &Q2]() { base.setStateWeights(Q2, Q); },
+      "State weights must be non-negative");
+}
+
+TEST(MPCBaseTester, givenInvalidInputWeights_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+
+  Eigen::Vector<double, 1> R{-1};
+  expectInvalidArgumentWithMessage([&base, &R]() { base.setInputWeights(R); },
+                                   "Input weights must be non-negative");
+}
+
+TEST(MPCBaseTester,
+     givenControlPointSatOption_FormsInputSaturationConstraintsCorrectly)
+{
+
+  auto test = [&](bool sat_u_traj) {
+    const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+    const ampc::Options opts{.saturate_input_trajectory = sat_u_traj};
+    MPCBaseTester base{n, m, {T, nc, deg}, opts};
+
+    Eigen::Vector<double, 1> u_min{-1}, u_max{2};
+    base.setInputLimits(u_min, u_max);
+
+    const MatrixXd A = base.getASatU();
+    const VectorXd l = base.getLSatU();
+    const VectorXd u = base.getUSatU();
+
+    ASSERT_EQ(A.rows(), m * nc);
+    ASSERT_EQ(l.size(), m * nc);
+    ASSERT_EQ(u.size(), m * nc);
+
+    ASSERT_TRUE(A.isIdentity());
+
+    VectorXd l_expected = u_min.replicate(nc, 1);
+    VectorXd u_expected = u_max.replicate(nc, 1);
+    ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+    ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+  };
+
+  test(false);
+  // when asked to saturate input traj, but deg < 2, then it should still only
+  // saturate control points, not the whole trajectory
+  test(true);
+}
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionSimpleCase_FormsInputSaturationConstraintsCorrectly)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{2};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_input_trajectory = true}};
+
+  Eigen::Vector<double, 1> u_min{-1}, u_max{2};
+  base.setInputLimits(u_min, u_max);
+
+  const MatrixXd A = base.getASatU();
+  const VectorXd l = base.getLSatU();
+  const VectorXd u = base.getUSatU();
+
+  ASSERT_EQ(A.rows(), m * T);
+  ASSERT_EQ(l.size(), m * T);
+  ASSERT_EQ(u.size(), m * T);
+
+  // this only works for m = 1 and nc = deg+1, otherwise each weight is
+  // multiplied by I(m,m) or 0(m,m)
+  const MatrixXd A_expected = base.getSplineWeights().transpose();
+  ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
+
+  VectorXd l_expected = u_min.replicate(T, 1);
+  VectorXd u_expected = u_max.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+}
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionMIMO_FormsInputSaturationConstraintsCorrectly)
+{
+  const int n{4}, m{2}, T{10}, nc{5}, deg{2};
+  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_input_trajectory = true}};
+
+  Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
+  base.setInputLimits(u_min, u_max);
+
+  const MatrixXd A = base.getASatU();
+  const VectorXd l = base.getLSatU();
+  const VectorXd u = base.getUSatU();
+
+  ASSERT_EQ(A.rows(), m * T);
+  ASSERT_EQ(l.size(), m * T);
+  ASSERT_EQ(u.size(), m * T);
+
+  const MatrixXd c = base.getSplineWeights();
+  const MatrixXd I = MatrixXd::Identity(m, m);
+
+  MatrixXd A_expected = MatrixXd::Zero(A.rows(), A.cols());
+  // clang-format off
+  A_expected << c(0,0)*I, c(1,0)*I, c(2,0)*I,      0*I,      0*I,
+                c(0,1)*I, c(1,1)*I, c(2,1)*I,      0*I,      0*I,
+                c(0,2)*I, c(1,2)*I, c(2,2)*I,      0*I,      0*I,
+                     0*I, c(0,3)*I, c(1,3)*I, c(2,3)*I,      0*I,
+                     0*I, c(0,4)*I, c(1,4)*I, c(2,4)*I,      0*I,
+                     0*I, c(0,5)*I, c(1,5)*I, c(2,5)*I,      0*I,
+                     0*I,      0*I, c(0,6)*I, c(1,6)*I, c(2,6)*I,
+                     0*I,      0*I, c(0,7)*I, c(1,7)*I, c(2,7)*I,
+                     0*I,      0*I, c(0,8)*I, c(1,8)*I, c(2,8)*I,
+                     0*I,      0*I, c(0,9)*I, c(1,9)*I, c(2,9)*I;
+  // clang-format on
+  ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
+
+  VectorXd l_expected = u_min.replicate(T, 1);
+  VectorXd u_expected = u_max.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
+}
+
 TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
@@ -448,11 +600,6 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   const VectorXd l = base.getLSlew();
   const VectorXd u = base.getUSlew();
 
-  std::cout << "A:\n"
-            << A << "\nl:\n"
-            << l.transpose() << "\nu:\n"
-            << u.transpose() << std::endl;
-
   ASSERT_EQ(A.rows(), m * nc);
   ASSERT_EQ(l.size(), m * nc);
   ASSERT_EQ(u.size(), m * nc);
@@ -465,10 +612,6 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   VectorXd u_expected{m * nc}, l_expected{m * nc};
   u_expected << u_prev + u_slew, u_slew, u_slew;
   l_expected << u_prev - u_slew, -u_slew, -u_slew;
-
-  std::cout << "l_expected:\n"
-            << l_expected.transpose() << "\nu_expected:\n"
-            << u_expected.transpose() << std::endl;
 
   ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));

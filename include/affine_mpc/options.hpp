@@ -9,6 +9,7 @@ struct Options
   bool slew_initial_input = false;
   bool slew_control_points = false;
   bool saturate_states = false;
+  bool saturate_input_trajectory = false;
 };
 
 } // namespace affine_mpc

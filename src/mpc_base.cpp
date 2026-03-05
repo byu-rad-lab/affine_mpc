@@ -30,6 +30,11 @@ constexpr int validateInputDim(const int input_dim)
   return input_dim;
 }
 
+constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
+{
+  return opts.saturate_input_trajectory && param.degree > 1;
+}
+
 MPCBase::MPCBase(const int state_dim,
                  const int input_dim,
                  const Parameterization& param,
@@ -45,11 +50,13 @@ MPCBase::MPCBase(const int state_dim,
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
-    u_sat_dim_{ctrls_dim_},
+    num_u_sat_cons_{satInputTraj(param, opts) ? param.horizon_steps
+                                              : param.num_control_points},
+    u_sat_dim_{input_dim_ * num_u_sat_cons_},
     slew_dim_{(ctrls_dim_ - input_dim_) * opts.slew_control_points},
     x_sat_dim_{x_traj_dim_ * opts.saturate_states},
     u_sat_idx_{num_custom_constraints},
-    slew0_idx_{u_sat_idx_ + ctrls_dim_},
+    slew0_idx_{u_sat_idx_ + u_sat_dim_},
     slew_idx_{slew0_idx_ + input_dim * opts.slew_initial_input},
     x_sat_idx_{slew_idx_ + slew_dim_},
     model_set_{false},
@@ -82,14 +89,34 @@ MPCBase::MPCBase(const int state_dim,
   l_.resize(num_constraints);
   u_.resize(num_constraints);
 
-  // initiallize common constraint matrix blocks
-  A_.setZero();
-  A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();
-
   // set defaults
   Q_big_.setIdentity();
   u_min_.setConstant(-std::numeric_limits<double>::infinity());
   u_max_.setConstant(std::numeric_limits<double>::infinity());
+
+  std::string error_msg;
+  const bool valid_knots{param.validateKnots(error_msg)};
+  if (!valid_knots)
+    throw std::invalid_argument(error_msg);
+  spline_knots_ = param.knots;
+  calcSplineParams();
+
+  // initiallize common constraint matrix blocks
+  A_.setZero();
+
+  if (satInputTraj(param, opts)) {
+    const int num_weights{spline_degree_ + 1};
+    for (int k{0}, row{0}; k < horizon_steps_; ++k, row += input_dim_)
+      for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
+           ++i, col += input_dim_) {
+        A_.block(row, col, input_dim_, input_dim_)
+            .diagonal()
+            .setConstant(spline_weights_(i, k));
+      }
+  } else {
+    // saturate control points directly (much fewer constraints)
+    A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();
+  }
 
   // allocate memory needed based on options
   if (opts_.use_input_cost) {
@@ -115,13 +142,6 @@ MPCBase::MPCBase(const int state_dim,
     x_min_.setConstant(-std::numeric_limits<double>::infinity());
     x_max_.setConstant(std::numeric_limits<double>::infinity());
   }
-
-  std::string error_msg;
-  const bool valid_knots{param.validateKnots(error_msg)};
-  if (!valid_knots)
-    throw std::invalid_argument(error_msg);
-  spline_knots_ = param.knots;
-  calcSplineParams();
 }
 
 bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
@@ -386,8 +406,8 @@ bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
   u_max_ = u_max;
   u_lims_set_ = true;
 
-  l_.segment(u_sat_idx_, u_sat_dim_) = u_min_.replicate(num_ctrl_pts_, 1);
-  u_.segment(u_sat_idx_, u_sat_dim_) = u_max_.replicate(num_ctrl_pts_, 1);
+  l_.segment(u_sat_idx_, u_sat_dim_) = u_min_.replicate(num_u_sat_cons_, 1);
+  u_.segment(u_sat_idx_, u_sat_dim_) = u_max_.replicate(num_u_sat_cons_, 1);
   return qpUpdateInputLimits();
 }
 
