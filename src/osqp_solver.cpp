@@ -11,7 +11,6 @@ namespace affine_mpc {
 
 OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
     solver_{nullptr, osqp_cleanup},
-    // settings_{OSQPSettings_new(), OSQPSettings_free},
     P_{nullptr, OSQPCscMatrix_free},
     A_{nullptr, OSQPCscMatrix_free},
     initialized_{false},
@@ -98,9 +97,9 @@ SolveStatus OSQPSolver::solve()
 
 bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
                             const Eigen::Ref<const MatrixXF>& A,
-                            Eigen::Ref<VectorXF> q,
-                            Eigen::Ref<VectorXF> l,
-                            Eigen::Ref<VectorXF> u,
+                            const Eigen::Ref<const VectorXF>& q,
+                            const Eigen::Ref<const VectorXF>& l,
+                            const Eigen::Ref<const VectorXF>& u,
                             const OSQPSettings& settings)
 {
   assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
@@ -157,7 +156,7 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
   return exit_status == 0;
 }
 
-bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
+bool OSQPSolver::updateCostVector(const Eigen::Ref<const VectorXF>& q)
 {
   assert(q.size() == n_);
   if (!initialized_)
@@ -168,7 +167,8 @@ bool OSQPSolver::updateCostVector(Eigen::Ref<VectorXF> q)
   return exit_status == 0;
 }
 
-bool OSQPSolver::updateBounds(Eigen::Ref<VectorXF> l, Eigen::Ref<VectorXF> u)
+bool OSQPSolver::updateBounds(const Eigen::Ref<const VectorXF>& l,
+                              const Eigen::Ref<const VectorXF>& u)
 {
   assert(l.size() == m_ && u.size() == m_);
   if (!initialized_)

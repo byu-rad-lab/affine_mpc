@@ -278,8 +278,8 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
 bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
-                                          double dt,
-                                          double tol)
+                                          const double dt,
+                                          const double tol)
 {
   assert(Ac.rows() == state_dim_ && Ac.cols() == state_dim_);
   assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);

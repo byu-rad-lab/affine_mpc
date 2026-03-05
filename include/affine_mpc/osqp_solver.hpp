@@ -105,9 +105,9 @@ public:
    */
   [[nodiscard]] bool initialize(const Eigen::Ref<const MatrixXF>& P,
                                 const Eigen::Ref<const MatrixXF>& A,
-                                Eigen::Ref<VectorXF> q,
-                                Eigen::Ref<VectorXF> l,
-                                Eigen::Ref<VectorXF> u,
+                                const Eigen::Ref<const VectorXF>& q,
+                                const Eigen::Ref<const VectorXF>& l,
+                                const Eigen::Ref<const VectorXF>& u,
                                 const OSQPSettings& settings);
 
   /**
@@ -132,7 +132,7 @@ public:
    * @param q New cost vector.
    * @return True if update succeeds, false otherwise.
    */
-  [[nodiscard]] bool updateCostVector(Eigen::Ref<VectorXF> q);
+  [[nodiscard]] bool updateCostVector(const Eigen::Ref<const VectorXF>& q);
 
   /**
    * @brief Update the lower and upper bounds vectors.
@@ -140,8 +140,8 @@ public:
    * @param u New upper bounds.
    * @return True if update succeeds, false otherwise.
    */
-  [[nodiscard]] bool updateBounds(Eigen::Ref<VectorXF> l,
-                                  Eigen::Ref<VectorXF> u);
+  [[nodiscard]] bool updateBounds(const Eigen::Ref<const VectorXF>& l,
+                                  const Eigen::Ref<const VectorXF>& u);
 
 private:
   /**

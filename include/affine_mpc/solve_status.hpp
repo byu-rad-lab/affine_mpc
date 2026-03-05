@@ -35,7 +35,7 @@ enum class SolveStatus
  * @param osqp_status Integer status code from OSQP.
  * @return Corresponding SolveStatus value.
  */
-inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
+inline SolveStatus osqpStatusToSolveStatus(const int osqp_status)
 {
   switch (osqp_status) {
   case osqp_status_type::OSQP_SOLVED:
@@ -65,7 +65,7 @@ inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
  * @param status SolveStatus value.
  * @return String representation of the status.
  */
-inline const char* toString(SolveStatus status)
+inline const char* toString(const SolveStatus status)
 {
   switch (status) {
   case SolveStatus::Success:
@@ -95,7 +95,7 @@ inline const char* toString(SolveStatus status)
  * @param status SolveStatus value.
  * @return Reference to the output stream.
  */
-inline std::ostream& operator<<(std::ostream& os, SolveStatus status)
+inline std::ostream& operator<<(std::ostream& os, const SolveStatus status)
 {
   os << toString(status);
   return os;

@@ -140,8 +140,8 @@ public:
   bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   double dt,
-                                   double tol = 1e-6);
+                                   const double dt,
+                                   const double tol = 1e-6);
 
   /**
    * @brief Set state and input weights for the cost function.

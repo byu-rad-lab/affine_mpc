@@ -84,8 +84,8 @@ MPCLogger::~MPCLogger()
 void MPCLogger::logPreviousSolve(double t0,
                                  double ts,
                                  const Eigen::Ref<const Eigen::VectorXd>& x0,
-                                 double solve_time,
-                                 int write_every)
+                                 const double solve_time,
+                                 const int write_every)
 {
   if (!mpc_->solver_initialized_)
     throw std::logic_error("[MPCLogger::logPreviousSolve] "

@@ -49,8 +49,8 @@ public:
   void logPreviousSolve(double t0,
                         double ts,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
-                        double solve_time = -1,
-                        int write_every = 1);
+                        const double solve_time = -1,
+                        const int write_every = 1);
 
   /**
    * @brief Write MPC parameters and metadata to a YAML file.
