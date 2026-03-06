@@ -61,17 +61,6 @@ public:
                        OSQPSolver::getRecommendedSettings(true));
 
   /**
-   * @brief Initialize the OSQP solver with a full state trajectory.
-   * @param x_full Full state trajectory (for warm start).
-   * @param solver_settings OSQP solver settings (optional).
-   * @return True if initialization succeeds, false otherwise.
-   */
-  [[nodiscard]] bool
-  initializeSolver(const Eigen::Ref<const Eigen::VectorXd>& x_full,
-                   const OSQPSettings& solver_settings =
-                       OSQPSolver::getRecommendedSettings(true));
-
-  /**
    * @brief Solve the MPC QP for the given initial state.
    * @param x0 Initial state vector.
    * @return SolveStatus indicating result.

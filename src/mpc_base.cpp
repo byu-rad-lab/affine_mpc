@@ -146,18 +146,6 @@ MPCBase::MPCBase(const int state_dim,
 
 bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
 {
-  // Avoid zeros in initial cost/constraint matrices. OSQP is a sparse solver
-  // that only tracks elements that are initially non-zero.
-  VectorXd x_full{state_dim_};
-  x_full.setOnes(); // assuming ones won't zero out any matrix entries
-  return initializeSolver(x_full, solver_settings);
-}
-
-bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
-                               const OSQPSettings& solver_settings)
-{
-  assert(x_full.size() == state_dim_);
-
   if (!model_set_)
     throw std::logic_error(
         "[MPCBase::initializeSolver] Model must be set before initializing "
@@ -182,6 +170,10 @@ bool MPCBase::initializeSolver(const Ref<const VectorXd>& x_full,
   if (solver_initialized_)
     return true;
 
+  // x0 only affects vector terms (q, l, u) so the values don't matter to set
+  // initial sparsity structure. Setting to ones.
+  VectorXd x_full{state_dim_};
+  x_full.setOnes();
   qpUpdateX0(x_full);
 
   solver_initialized_ =
