@@ -56,9 +56,8 @@ public:
    * @param solver_settings OSQP solver settings (optional).
    * @return True if initialization succeeds, false otherwise.
    */
-  [[nodiscard]] bool
-  initializeSolver(const OSQPSettings& solver_settings =
-                       OSQPSolver::getRecommendedSettings(true));
+  [[nodiscard]] bool initializeSolver(const OSQPSettings& solver_settings =
+                                          OSQPSolver::getRecommendedSettings());
 
   /**
    * @brief Solve the MPC QP for the given initial state.
