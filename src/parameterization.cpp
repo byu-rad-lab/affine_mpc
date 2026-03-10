@@ -57,10 +57,20 @@ void validateKnotValues(const Ref<const VectorXd>& knots,
        << " with horizon_steps = " << horizon_steps << std::endl;
     throw std::invalid_argument(ss.str());
   }
-  if ((knots(seq(1, ph::last)) - knots(seq(0, ph::last - 1))).minCoeff() < 0)
+  const VectorXd diff{knots(seq(1, ph::last)) - knots(seq(0, ph::last - 1))};
+  if (diff.minCoeff() < 0)
     throw std::invalid_argument(
         "[Parameterization::validateKnots] knots must be non-decreasing.\n");
-  // may want to add more checks (e.g. max multiplicity of knots)
+
+  const int num_active_knots = knots.size() - 2 * degree;
+  // deg 0 can repeat the last knot (last one isn't really active)
+  const int size{degree == 0 ? num_active_knots - 2 : num_active_knots - 1};
+  if (size > 0 && diff(seqN(degree, size)).minCoeff() == 0.0)
+    throw std::invalid_argument(
+        "[Parameterization::validateKnots] active knots can not be repeated "
+        "(technically a spline can repeat knots, but it causes discontinuities "
+        "that essentially leave some control points unused and wastes "
+        "optimization effort in this context).\n");
 }
 
 Parameterization::Parameterization(const int horizon_steps,
@@ -134,8 +144,20 @@ Parameterization
 Parameterization::moveBlocking(const int horizon_steps,
                                const Ref<const VectorXd>& change_points)
 {
-  const int num_control_points = change_points.size() - 1;
-  Parameterization param{horizon_steps, num_control_points, 0, change_points};
+  if (change_points.size() > horizon_steps) {
+    throw std::invalid_argument(
+        "[Parameterization::moveBlocking] change_points size must be less than "
+        "or equal to horizon_steps.");
+  }
+  if (change_points(ph::last) > horizon_steps - 1) {
+    throw std::invalid_argument(
+        "[Parameterization::moveBlocking] change_points must be less than "
+        "or equal to horizon_steps - 1.");
+  }
+  const int num_control_points = change_points.size();
+  VectorXd knots{num_control_points + 1};
+  knots << change_points, horizon_steps - 1;
+  Parameterization param{horizon_steps, num_control_points, 0, knots};
   return param;
 }
 
@@ -148,16 +170,16 @@ Parameterization Parameterization::linearInterp(const int horizon_steps,
 
 Parameterization
 Parameterization::linearInterp(const int horizon_steps,
-                               const Ref<const VectorXd>& change_points)
+                               const Ref<const VectorXd>& endpoints)
 {
-  const int num_control_points = change_points.size();
-  if (change_points.size() > horizon_steps) {
+  const int num_control_points = endpoints.size();
+  if (endpoints.size() > horizon_steps) {
     throw std::invalid_argument(
         "[Parameterization::linearInterp] change_points size must be less than "
         "or equal to horizon_steps.");
   }
   VectorXd knots{num_control_points + 2};
-  knots << 0.0, change_points, horizon_steps - 1.0;
+  knots << 0.0, endpoints, horizon_steps - 1.0;
   Parameterization param{horizon_steps, num_control_points, 1, knots};
   return param;
 }

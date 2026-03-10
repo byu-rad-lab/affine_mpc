@@ -4,6 +4,8 @@
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
+#include <unsupported/Eigen/Splines>
+
 using namespace Eigen;
 namespace ampc = affine_mpc;
 
@@ -174,7 +176,7 @@ TEST(ParameterizationCustomKnotsConstructor,
 TEST(ParameterizationMoveBlocking, givenUniformParams_FormsKnotsCorrectly)
 {
   const int T{6}, nc{3};
-  const ampc::Parameterization p{ampc::Parameterization::moveBlocking(T, nc)};
+  const auto p{ampc::Parameterization::moveBlocking(T, nc)};
 
   ASSERT_EQ(p.horizon_steps, T);
   ASSERT_EQ(p.num_control_points, nc);
@@ -189,17 +191,19 @@ TEST(ParameterizationMoveBlocking, givenUniformParams_FormsKnotsCorrectly)
 
 TEST(ParameterizationMoveBlocking, givenCustomChangePoints_FormsKnotsCorrectly)
 {
-  // change_points is the FULL knot vector for degree=0 (must include 0 and T-1)
+  // change_points is the FULL knot vector for degree=0 (must include 0)
   const int T{6}, nc{3};
-  VectorXd change_points{nc + 1};
-  change_points << 0, 2, 4, 5;
-  const ampc::Parameterization p{
-      ampc::Parameterization::moveBlocking(T, change_points)};
+  VectorXd change_points{nc};
+  change_points << 0, 2, 5;
+  const auto p{ampc::Parameterization::moveBlocking(T, change_points)};
 
   ASSERT_EQ(p.horizon_steps, T);
   ASSERT_EQ(p.num_control_points, nc);
   ASSERT_EQ(p.degree, 0);
-  ASSERT_TRUE(expectEigenNear(p.knots, change_points, 1e-15));
+
+  VectorXd knots_expected{nc + 1};
+  knots_expected << change_points, T - 1;
+  ASSERT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-15));
 }
 
 TEST(ParameterizationMoveBlocking, givenChangePointsFirstNotZero_Throws)
@@ -212,14 +216,68 @@ TEST(ParameterizationMoveBlocking, givenChangePointsFirstNotZero_Throws)
       "First active knot must equal zero");
 }
 
-TEST(ParameterizationMoveBlocking, givenChangePointsLastNotHorizonMinus1_Throws)
+TEST(ParameterizationMoveBlocking,
+     givenChangePointsLastAboveHorizonMinus1_Throws)
 {
   const int T{6};
   VectorXd change_points{4};
-  change_points << 0, 2, 4, 4; // last must be T-1=5
+  change_points << 0, 2, 4, 6; // last must be T-1=5
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::moveBlocking(T, change_points); },
-      "Last active knot must equal horizon_steps - 1");
+      "change_points must be less than or equal to horizon_steps - 1");
+}
+
+TEST(ParameterizationMoveBlocking,
+     givenCustomChangePoints_SplineEvaluatesProperly)
+{
+  using Spline1d = Spline<double, 1>;
+  const int T{10}, nc{3};
+  const Vector3d controls{0, 1, -1}, change_pts{0, 2, 5};
+
+  VectorXd vals{T}, vals_expected{T};
+  // change at idxs 0, 2, & 5
+  // mostly verifying that final knot at T-1 doesn't change last value
+  vals_expected(seq(0, 2)).setConstant(controls(0));
+  vals_expected(seq(2, 5)).setConstant(controls(1));
+  vals_expected(seq(5, T - 1)).setConstant(controls(2));
+
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  const Spline1d spline{p.knots, controls};
+  for (int k{0}; k < T; ++k) {
+    const double t = k;
+    vals(k) = spline(t)(0);
+  }
+
+  ASSERT_TRUE(expectEigenNear(vals, vals_expected, 1e-15));
+}
+
+TEST(ParameterizationMoveBlocking,
+     givenLenHorizonCustomChangePoints_SplineEvaluatesProperly)
+{
+  using Spline1d = Spline<double, 1>;
+  const int T{3}, nc{3};
+  const Vector3d controls{0, 1, -1}, change_pts{0, 1, 2};
+
+  VectorXd vals{T}, vals_expected{T};
+  vals_expected << controls;
+
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  const Spline1d spline{p.knots, controls};
+  for (int k{0}; k < T; ++k) {
+    const double t = k;
+    vals(k) = spline(t)(0);
+  }
+
+  ASSERT_TRUE(expectEigenNear(vals, vals_expected, 1e-15));
+}
+
+TEST(ParameterizationMoveBlocking, givenRepeatedChangePoint_Throws)
+{
+  const int T{5};
+  const Vector3d change_points{0, 2, 2};
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::moveBlocking(T, change_points); },
+      "active knots can not be repeated");
 }
 
 // ---- Factory: linearInterp -------------------------------------------------
@@ -296,6 +354,15 @@ TEST(ParameterizationLinearInterp, givenChangePointsSizeEqualsT_Succeeds)
   VectorXd change_points{T};
   change_points << 0, 1, 2, 3, 4;
   ASSERT_NO_THROW(ampc::Parameterization::linearInterp(T, change_points));
+}
+
+TEST(ParameterizationLinearInterp, givenRepeatedChangePoint_Throws)
+{
+  const int T{5};
+  const Vector4d endpoints{0, 2, 2, 4};
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::linearInterp(T, endpoints); },
+      "active knots can not be repeated");
 }
 
 // ---- Factory: bspline ------------------------------------------------------

@@ -97,12 +97,13 @@ public:
    * @brief Factory method for linear interpolation parameterization with custom
    *   change points.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param change_points Vector of change point locations.
+   * @param endpoints Vector of linear segment endpoint locations. Must include
+   *   0 and horizon_steps - 1.
    * @return Parameterization instance.
    */
   static Parameterization
   linearInterp(const int horizon_steps,
-               const Eigen::Ref<const Eigen::VectorXd>& change_points);
+               const Eigen::Ref<const Eigen::VectorXd>& endpoints);
 
   /**
    * @brief Factory method for uniform clamped B-spline parameterization.
