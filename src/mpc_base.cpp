@@ -245,7 +245,8 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
                              const Ref<const VectorXd>& u,
                              Ref<VectorXd> x_next) const
 {
-  assert(model_set_ && "Model must be set before propagation");
+  if (!model_set_)
+    throw std::logic_error("Model must be set before propagation");
   assert(u.size() == input_dim_);
   assert(x0.size() == state_dim_ && x_next.size() == state_dim_);
   // do not use noalias here since x_next could be an alias of x0
