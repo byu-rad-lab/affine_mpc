@@ -48,9 +48,10 @@ protected:
           const Options& opts,
           const int num_design_vars,
           const int num_custom_constraints);
-  virtual ~MPCBase() = default;
 
 public:
+  virtual ~MPCBase() = default;
+
   /**
    * @brief Initialize the OSQP solver with current model and constraints.
    * @param solver_settings OSQP solver settings (optional).
