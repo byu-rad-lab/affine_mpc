@@ -29,36 +29,32 @@ public:
   /**
    * @brief Direct constructor for uniform clamped B-spline parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of B-spline control points.
    * @param degree B-spline polynomial degree.
+   * @param num_control_points Number of B-spline control points.
    *
    * For common cases, prefer the named factory methods.
    */
   Parameterization(const int horizon_steps,
-                   const int num_control_points,
-                   const int degree);
+                   const int degree,
+                   const int num_control_points);
 
   /**
    * @brief Direct constructor for advanced use cases with custom knot vector
    *   (e.g. unclamped B-splines).
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of B-spline control points.
    * @param degree B-spline polynomial degree.
-   * @param knots Full knot vector (size = num_control_points + degree + 1).
+   * @param knots Full knot vector with size in the range
+   *   [2*(degree+1), horizon_steps+degree+1].
    */
   Parameterization(const int horizon_steps,
-                   const int num_control_points,
                    const int degree,
                    const Eigen::Ref<const Eigen::VectorXd>& knots);
 
   ~Parameterization() = default;
 
-  /**
-   * @brief Validates the knot vector for correctness.
-   * @param error_msg Populated with error description if validation fails.
-   * @return True if knots are valid, false otherwise.
-   */
-  bool validateKnots(std::string& error_msg) const;
+  static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
+                                                 const int degree,
+                                                 const int num_control_points);
 
   /**
    * @brief Factory method for uniform move-blocking parameterization.
@@ -108,40 +104,38 @@ public:
   /**
    * @brief Factory method for uniform clamped B-spline parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of control points.
    * @param degree B-spline polynomial degree.
+   * @param num_control_points Number of control points.
    * @return Parameterization instance.
    */
   static Parameterization bspline(const int horizon_steps,
-                                  const int num_control_points,
-                                  const int degree);
+                                  const int degree,
+                                  const int num_control_points);
 
   /**
    * @brief Factory method for clamped B-spline parameterization with custom
    *   active knots.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of control points.
    * @param degree B-spline polynomial degree.
-   * @param active_knots Vector of active knot locations.
+   * @param active_knots Vector of active knots (need at least deg+1).
    * @return Parameterization instance.
    */
   static Parameterization
   bspline(const int horizon_steps,
-          const int num_control_points,
           const int degree,
           const Eigen::Ref<const Eigen::VectorXd>& active_knots);
-
-  /// Full knot vector of size num_control_points + degree + 1.
-  Eigen::VectorXd knots;
 
   /// Number of discrete time steps in the horizon.
   const int horizon_steps;
 
+  /// B-spline polynomial degree.
+  const int degree;
+
   /// Number of B-spline control points.
   const int num_control_points;
 
-  /// B-spline polynomial degree.
-  const int degree;
+  /// Full knot vector of size num_control_points + degree + 1.
+  const Eigen::VectorXd knots;
 };
 
 } // namespace affine_mpc

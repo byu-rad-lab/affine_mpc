@@ -67,7 +67,8 @@ MPCBase::MPCBase(const int state_dim,
     weights_changed_{false},
     solver_{nullptr},
     spline_segment_idxs_{param.horizon_steps},
-    spline_knots_{param.num_control_points + param.degree + 1},
+    // spline_knots_{param.num_control_points + param.degree + 1},
+    spline_knots_{param.knots},
     spline_weights_{param.degree + 1, param.horizon_steps},
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
@@ -94,11 +95,6 @@ MPCBase::MPCBase(const int state_dim,
   u_min_.setConstant(-std::numeric_limits<double>::infinity());
   u_max_.setConstant(std::numeric_limits<double>::infinity());
 
-  std::string error_msg;
-  const bool valid_knots{param.validateKnots(error_msg)};
-  if (!valid_knots)
-    throw std::invalid_argument(error_msg);
-  spline_knots_ = param.knots;
   calcSplineParams();
 
   // initiallize common constraint matrix blocks

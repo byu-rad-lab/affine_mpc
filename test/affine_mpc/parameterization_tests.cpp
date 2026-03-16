@@ -9,32 +9,130 @@
 using namespace Eigen;
 namespace ampc = affine_mpc;
 
+
+// ---- static unform clamped knots -------------------------------------------
+
+TEST(ParameterizationUniformClampedKnots, givenHorizon_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::makeUniformClampedKnots(0, 0, 1); },
+      "horizon_steps must be positive");
+}
+
+TEST(ParameterizationUniformClampedKnots, givenInvalidDegree_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::makeUniformClampedKnots(5, -1, 1); },
+      "degree can not be negative");
+}
+
+TEST(ParameterizationUniformClampedKnots, givenInvalidNumControls_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(5, 0, 0); },
+      "must have at least degree+1 control points");
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(5, 1, 1); },
+      "must have at least degree+1 control points");
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(5, 2, 2); },
+      "must have at least degree+1 control points");
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(5, 0, 6); },
+      "num_control_points can not be greater than horizon_steps");
+}
+
 // ---- Direct constructor (uniform knots) ------------------------------------
 
 TEST(ParameterizationDirectConstructor, givenInvalidHorizonSteps_Throws)
 {
-  expectInvalidArgumentWithMessage([&]() { ampc::Parameterization{-1, 3, 0}; },
-                                   "horizon_steps must be at least 1");
+  expectInvalidArgumentWithMessage(
+      [&]() {
+        const Vector4d knots{0, 1, 2, 3};
+        ampc::Parameterization{-1, 0, knots};
+      },
+      "horizon_steps must be positive");
 }
 
-TEST(ParameterizationDirectConstructor, givenInvalidNumControlPoints_Throws)
+TEST(ParameterizationDirectConstructor, givenNegativeDegree_Throws)
 {
+  const Vector4d knots{0, 1, 2, 3};
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{5, 0, 0}; },
-      "num_control_points must be in the range [1, horizon_steps]");
-  expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{5, 6, 0}; },
-      "num_control_points must be in the range [1, horizon_steps]");
+      [&]() { ampc::Parameterization{5, -1, knots}; },
+      "degree can not be negative");
 }
 
-TEST(ParameterizationDirectConstructor, givenInvalidDegree_Throws)
+TEST(ParameterizationDirectConstructor,
+     givenDegreeGreaterThanHorizonSteps_Throws)
+{
+  expectInvalidArgumentWithMessage([&]() { ampc::Parameterization{3, 4, 5}; },
+                                   "degree must be less than horizon_steps");
+}
+
+TEST(ParameterizationDirectConstructor, givenKnotsTooSmallForDegree_Throws)
 {
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{5, 3, -1}; },
-      "degree must be in the range [0, num_control_points - 1]");
+      [&]() {
+        const Vector3d knots{0, 1, 4};
+        ampc::Parameterization{5, 1, knots};
+      },
+      "Size of knots must be at least 2*(degree+1)");
+}
+
+TEST(ParameterizationDirectConstructor, givenKnotsTooLargeForHorizon_Throws)
+{
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{5, 3, 3}; },
-      "degree must be in the range [0, num_control_points - 1]");
+      [&]() {
+        VectorXd knots{6};
+        knots << 0, 1, 2, 3, 4, 4;
+        ampc::Parameterization{4, 0, knots};
+      },
+      "Size of knots can not exceed horizon_steps+degree+1");
+}
+
+TEST(ParameterizationDirectConstructor, givenFirstActiveKnotNotZero_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() {
+        VectorXd knots{5};
+        knots << 0, 1, 2, 3, 3;
+        ampc::Parameterization{4, 1, knots};
+      },
+      "First active knot must equal zero");
+}
+
+TEST(ParameterizationDirectConstructor,
+     givenLastActiveKnotNotHorizonMinus1_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() {
+        VectorXd knots{5};
+        knots << 0, 0, 1, 2, 2;
+        ampc::Parameterization{4, 1, knots};
+      },
+      "Last active knot must equal horizon_steps-1");
+}
+
+TEST(ParameterizationDirectConstructor, givenKnotsDecreasing_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() {
+        VectorXd knots{5};
+        knots << 0, 0, 1, 3, 2;
+        ampc::Parameterization{4, 1, knots};
+      },
+      "knots must be non-decreasing");
+}
+
+TEST(ParameterizationDirectConstructor, givenRepeatedActiveKnots_Throws)
+{
+  expectInvalidArgumentWithMessage(
+      [&]() {
+        VectorXd knots{5};
+        knots << -1, 0, 0, 3, 4;
+        ampc::Parameterization{4, 1, knots};
+      },
+      "active knots can not be repeated");
 }
 
 TEST(ParameterizationDirectConstructor,
@@ -43,7 +141,7 @@ TEST(ParameterizationDirectConstructor,
   // degree=0: no clamped head/tail, all knots are active, LinSpaced over [0,
   // T-1]
   const int T{6}, nc{3}, deg{0};
-  const ampc::Parameterization p{T, nc, deg};
+  const ampc::Parameterization p{T, deg, nc};
 
   ASSERT_EQ(p.horizon_steps, T);
   ASSERT_EQ(p.num_control_points, nc);
@@ -60,7 +158,7 @@ TEST(ParameterizationDirectConstructor,
 {
   // degree=1: head(1)=0, tail(1)=T-1, 3 active knots LinSpaced over [0, T-1]
   const int T{6}, nc{3}, deg{1};
-  const ampc::Parameterization p{T, nc, deg};
+  const ampc::Parameterization p{T, deg, nc};
 
   ASSERT_EQ(p.horizon_steps, T);
   ASSERT_EQ(p.num_control_points, nc);
@@ -77,7 +175,7 @@ TEST(ParameterizationDirectConstructor, givenBsplineParams_FormsKnotsCorrectly)
   // degree=2: head(2)=0, tail(2)=T-1, 4 active knots LinSpaced over [0, T-1]
   // This mirrors the mpc_base_tests.cpp spline test
   const int T{10}, nc{5}, deg{2};
-  const ampc::Parameterization p{T, nc, deg};
+  const ampc::Parameterization p{T, deg, nc};
 
   ASSERT_EQ(p.knots.size(), nc + deg + 1);
 
@@ -91,7 +189,7 @@ TEST(ParameterizationDirectConstructor,
 {
   // Minimal case: single control point, degree 0 — constant input over horizon
   const int T{5}, nc{1}, deg{0};
-  const ampc::Parameterization p{T, nc, deg};
+  const ampc::Parameterization p{T, deg, nc};
 
   ASSERT_EQ(p.knots.size(), 2);
   VectorXd knots_expected{2};
@@ -103,7 +201,7 @@ TEST(ParameterizationDirectConstructor, givenNcEqualsT_deg1_FormsKnotsCorrectly)
 {
   // Maximum control points for linearInterp: one node per step (no reduction)
   const int T{5}, nc{5}, deg{1};
-  const ampc::Parameterization p{T, nc, deg};
+  const ampc::Parameterization p{T, deg, nc};
 
   ASSERT_EQ(p.knots.size(), nc + deg + 1);
 
@@ -120,7 +218,7 @@ TEST(ParameterizationCustomKnotsConstructor,
   const int T{10}, nc{5}, deg{2};
   VectorXd knots{8};
   knots << 0, 0, 0, 3, 6, 9, 9, 9;
-  const ampc::Parameterization p{T, nc, deg, knots};
+  const ampc::Parameterization p{T, deg, knots};
 
   ASSERT_TRUE(expectEigenNear(p.knots, knots, 1e-15));
   ASSERT_EQ(p.horizon_steps, T);
@@ -130,32 +228,32 @@ TEST(ParameterizationCustomKnotsConstructor,
 
 TEST(ParameterizationCustomKnotsConstructor, givenWrongKnotsSize_Throws)
 {
-  const int T{10}, nc{5}, deg{2};
-  VectorXd knots{7}; // expected 8 = nc + deg + 1
-  knots << 0, 0, 0, 3, 6, 9, 9;
+  const int T{6}, deg{2};
+  VectorXd knots{10}; // expected 8 = nc + deg + 1
+  knots << 0, 0, 0, 1, 2, 3, 4, 5, 5, 5;
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{T, nc, deg, knots}; },
-      "Invalid knots size");
+      [&]() { ampc::Parameterization{T, deg, knots}; },
+      "Size of knots can not exceed horizon_steps+degree+1");
 }
 
 TEST(ParameterizationCustomKnotsConstructor, givenDecreasingKnots_Throws)
 {
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   VectorXd knots{8};
   knots << 0, 0, 0, 6, 3, 9, 9, 9; // 6 > 3: non-decreasing violated
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{T, nc, deg, knots}; },
+      [&]() { ampc::Parameterization{T, deg, knots}; },
       "knots must be non-decreasing");
 }
 
 TEST(ParameterizationCustomKnotsConstructor, givenFirstActiveKnotNonZero_Throws)
 {
   // knots[degree] must equal 0
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   VectorXd knots{8};
   knots << 0, 0, 1, 3, 6, 9, 9, 9; // knots[2] != 0
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{T, nc, deg, knots}; },
+      [&]() { ampc::Parameterization{T, deg, knots}; },
       "First active knot must equal zero");
 }
 
@@ -163,12 +261,12 @@ TEST(ParameterizationCustomKnotsConstructor,
      givenLastActiveKnotNotHorizonMinus1_Throws)
 {
   // knots[nc] must equal T-1
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   VectorXd knots{8};
   knots << 0, 0, 0, 3, 6, 8, 9, 9; // knots[5]=8 != 9
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization{T, nc, deg, knots}; },
-      "Last active knot must equal horizon_steps - 1");
+      [&]() { ampc::Parameterization{T, deg, knots}; },
+      "Last active knot must equal horizon_steps-1");
 }
 
 // ---- Factory: moveBlocking -------------------------------------------------
@@ -324,7 +422,7 @@ TEST(ParameterizationLinearInterp, givenTooManyChangePoints_Throws)
   change_points << 0, 1, 2, 3, 3.5, 4;
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::linearInterp(T, change_points); },
-      "change_points size must be less than or equal to horizon_steps");
+      "Size of endpoints can not exceed horizon_steps");
 }
 
 TEST(ParameterizationLinearInterp, givenChangePointsFirstNotZero_Throws)
@@ -344,7 +442,7 @@ TEST(ParameterizationLinearInterp, givenChangePointsLastNotHorizonMinus1_Throws)
   change_points << 0, 4, 7; // last must be T-1=9 (becomes knots[nc])
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::linearInterp(T, change_points); },
-      "Last active knot must equal horizon_steps - 1");
+      "Last active knot must equal horizon_steps-1");
 }
 
 TEST(ParameterizationLinearInterp, givenChangePointsSizeEqualsT_Succeeds)
@@ -370,7 +468,7 @@ TEST(ParameterizationLinearInterp, givenRepeatedChangePoint_Throws)
 TEST(ParameterizationBspline, givenUniformParams_FormsKnotsCorrectly)
 {
   const int T{10}, nc{5}, deg{2};
-  const ampc::Parameterization p{ampc::Parameterization::bspline(T, nc, deg)};
+  const ampc::Parameterization p{ampc::Parameterization::bspline(T, deg, nc)};
 
   ASSERT_EQ(p.horizon_steps, T);
   ASSERT_EQ(p.num_control_points, nc);
@@ -389,7 +487,7 @@ TEST(ParameterizationBspline, givenCustomActiveKnots_FormsKnotsCorrectly)
   VectorXd active_knots{4};
   active_knots << 0, 2, 5, 9; // first must be 0, last must be T-1 = 9
   const ampc::Parameterization p{
-      ampc::Parameterization::bspline(T, nc, deg, active_knots)};
+      ampc::Parameterization::bspline(T, deg, active_knots)};
 
   VectorXd knots_expected{8};
   knots_expected << 0, 0, 0, 2, 5, 9, 9, 9;
@@ -398,13 +496,13 @@ TEST(ParameterizationBspline, givenCustomActiveKnots_FormsKnotsCorrectly)
 
 TEST(ParameterizationBspline, givenWrongActiveKnotsCount_Throws)
 {
-  const int T{10}, nc{5}, deg{2};
+  const int T{5}, deg{2};
   // expected nc - deg + 1 = 4 active knots, providing 3
-  VectorXd active_knots{3};
-  active_knots << 0, 5, 9;
+  VectorXd active_knots{9};
+  active_knots << 0, 0, 0, 1, 2, 3, 4, 4, 4;
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization::bspline(T, nc, deg, active_knots); },
-      "Invalid active_knots size");
+      [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
+      "Size of knots can not exceed horizon_steps+degree+1");
 }
 
 TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
@@ -416,12 +514,12 @@ TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
   // first active knot must be 0
   active_knots << 1, 2, 5, 9;
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization::bspline(T, nc, deg, active_knots); },
+      [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
       "First active knot must equal zero");
 
   // last active knot must be T-1
   active_knots << 0, 2, 5, 7;
   expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization::bspline(T, nc, deg, active_knots); },
-      "Last active knot must equal horizon_steps - 1");
+      [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
+      "Last active knot must equal horizon_steps-1");
 }

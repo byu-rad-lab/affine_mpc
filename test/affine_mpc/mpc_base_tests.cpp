@@ -61,7 +61,7 @@ TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
   const int n{2}, m{1};                // not important for this test
   const int T{10}, n_ctrls{5}, deg{2}; // define expected behavior
   const ampc::Parameterization param{
-      ampc::Parameterization::bspline(T, n_ctrls, deg)};
+      ampc::Parameterization::bspline(T, deg, n_ctrls)};
   MPCBaseTester msd_mpc{n, m, param};
 
   VectorXd knots{n_ctrls + deg + 1}, knots_expected{n_ctrls + deg + 1};
@@ -101,7 +101,7 @@ TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A << 0, 1, -0.6, -0.1;
@@ -127,7 +127,7 @@ TEST(MPCBaseTester,
      givenContinuousSystemLinearizedAtEquilibrium_DiscretizesCorrectly)
 {
   const int n{9}, m{4}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A.setZero();
@@ -178,7 +178,7 @@ TEST(MPCBaseTester,
 TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
   Eigen::Vector2d Q{1, 2}, R{3, 4};
   base.setWeights(Q, R);
 
@@ -197,7 +197,7 @@ TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
 TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector2d x_des{1, 2}, u_des{3, 4};
   base.setReferenceState(x_des);
@@ -217,7 +217,7 @@ TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
 TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
 
@@ -240,7 +240,7 @@ TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
 TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector<double, 1> R{3.0};
 
@@ -256,7 +256,7 @@ TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
 TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
   Eigen::Vector<double, 1> R{3.0};
@@ -290,8 +290,8 @@ TEST(MPCBaseTester, givenInvalidStateDim_Throws)
   auto testInvalidStateDim = [](int invalid_n) {
     const int m{1}, T{4}, nc{3}, deg{1};
     expectInvalidArgumentWithMessage(
-        [&]() { MPCBaseTester base(invalid_n, m, {T, nc, deg}); },
-        "state_dim must be greater than zero.");
+        [&]() { MPCBaseTester base(invalid_n, m, {T, deg, nc}); },
+        "state_dim must be positive");
   };
   testInvalidStateDim(0);
   testInvalidStateDim(-1);
@@ -302,8 +302,8 @@ TEST(MPCBaseTester, givenInvalidInputDim_Throws)
   auto testInvalidInputDim = [](int invalid_m) {
     const int n{2}, T{4}, nc{3}, deg{1};
     expectInvalidArgumentWithMessage(
-        [&]() { MPCBaseTester base(n, invalid_m, {T, nc, deg}); },
-        "input_dim must be greater than zero.");
+        [&]() { MPCBaseTester base(n, invalid_m, {T, deg, nc}); },
+        "input_dim must be positive");
   };
   testInvalidInputDim(0);
   testInvalidInputDim(-1);
@@ -312,7 +312,7 @@ TEST(MPCBaseTester, givenInvalidInputDim_Throws)
 TEST(MPCBaseTester, inputCostDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{1}, deg{0};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> R{1.0};
   expectLogicErrorWithMessage([&base, &R]() { base.setInputWeights(R); },
@@ -327,7 +327,7 @@ TEST(MPCBaseTester, inputCostDisabledButUsed_Throws)
 TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> u_slew{0.5};
   expectLogicErrorWithMessage(
@@ -341,7 +341,7 @@ TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
 TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> u_slew{0.5};
   expectLogicErrorWithMessage([&base, &u_slew]() { base.setSlewRate(u_slew); },
@@ -351,7 +351,7 @@ TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)
 TEST(MPCBaseTester, stateSaturationDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 2> x_min{-1, -1}, x_max{1, 1};
   expectLogicErrorWithMessage(
@@ -362,7 +362,7 @@ TEST(MPCBaseTester, stateSaturationDisabledButUsed_Throws)
 TEST(MPCBaseTester, givenNegativeSlewRate_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_control_points = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
 
   Eigen::Vector<double, 1> u_slew{-0.5};
   expectInvalidArgumentWithMessage(
@@ -373,7 +373,7 @@ TEST(MPCBaseTester, givenNegativeSlewRate_Throws)
 TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_initial_input = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
 
   Eigen::Vector<double, 1> u_slew{-0.5};
   expectInvalidArgumentWithMessage(
@@ -384,7 +384,7 @@ TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
 TEST(MPCBaseTester, givenInvalidInputLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_states = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
 
   Eigen::Vector<double, 1> u_min{1}, u_max{0};
   expectInvalidArgumentWithMessage(
@@ -395,7 +395,7 @@ TEST(MPCBaseTester, givenInvalidInputLimits_Throws)
 TEST(MPCBaseTester, givenInvalidStateLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_states = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
 
   Eigen::Vector<double, 2> x_min{1, 1}, x_max{-1, -1};
   expectInvalidArgumentWithMessage(
@@ -406,7 +406,7 @@ TEST(MPCBaseTester, givenInvalidStateLimits_Throws)
 TEST(MPCBaseTester, givenInvalidStateWeights_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector2d Q{-1, 1}, Q2{1, 1};
   expectInvalidArgumentWithMessage([&base, &Q]() { base.setStateWeights(Q); },
@@ -420,7 +420,7 @@ TEST(MPCBaseTester, givenInvalidStateWeights_Throws)
 TEST(MPCBaseTester, givenInvalidInputWeights_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector<double, 1> R{-1};
   expectInvalidArgumentWithMessage([&base, &R]() { base.setInputWeights(R); },
@@ -434,7 +434,7 @@ TEST(MPCBaseTester,
   auto test = [&](bool sat_u_traj) {
     const int n{2}, m{1}, T{4}, nc{3}, deg{1};
     const ampc::Options opts{.saturate_input_trajectory = sat_u_traj};
-    MPCBaseTester base{n, m, {T, nc, deg}, opts};
+    MPCBaseTester base{n, m, {T, deg, nc}, opts};
 
     Eigen::Vector<double, 1> u_min{-1}, u_max{2};
     base.setInputLimits(u_min, u_max);
@@ -465,7 +465,7 @@ TEST(MPCBaseTester,
      givenInputTrajSatOptionSimpleCase_FormsInputSaturationConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_input_trajectory = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -493,7 +493,7 @@ TEST(MPCBaseTester,
      givenInputTrajSatOptionMIMO_FormsInputSaturationConstraintsCorrectly)
 {
   const int n{4}, m{2}, T{10}, nc{5}, deg{2};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.saturate_input_trajectory = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -533,7 +533,7 @@ TEST(MPCBaseTester,
 TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_initial_input = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
 
   Eigen::Vector<double, 1> u_slew{0.5}, u_prev{0.1};
   base.setSlewRateInitial(u_slew);
@@ -559,7 +559,7 @@ TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
 TEST(MPCBaseTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.slew_control_points = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
 
   Eigen::Vector<double, 1> u_slew{0.5};
   base.setSlewRate(u_slew);
@@ -589,7 +589,7 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
   affine_mpc::Options opts{.slew_initial_input = true,
                            .slew_control_points = true};
-  MPCBaseTester base{n, m, {T, nc, deg}, opts};
+  MPCBaseTester base{n, m, {T, deg, nc}, opts};
 
   Eigen::Vector<double, 1> u_slew{0.5}, u_prev{0.1};
   base.setSlewRate(u_slew);
@@ -620,7 +620,7 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
 TEST(MPCBaseTester, givenModel_PropagatesModelCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;
@@ -643,7 +643,7 @@ TEST(MPCBaseTester, givenModel_PropagateModelAllowsAliasing)
 {
   // x_next = x0 is a common pattern in simulation loops
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}};
+  MPCBaseTester base{n, m, {T, deg, nc}};
 
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;
@@ -664,7 +664,7 @@ TEST(MPCBaseTester, givenModel_PropagateModelAllowsAliasing)
 TEST(MPCBaseTester, givenParameterizedInputTrajectory_SetsUgoalCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0;
@@ -681,7 +681,7 @@ TEST(MPCBaseTester,
   // sets the full control-point vector directly. Verify they differ for a
   // non-trivial target.
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, nc, deg}, {.use_input_cost = true}};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   VectorXd u_step{m};
   u_step << 2.0;
