@@ -76,6 +76,7 @@ MPCLogger::~MPCLogger()
   states_fout_.close();
   refs_fout_.close();
   inputs_fout_.close();
+  spline_knots_fout_.close();
   if (!wrote_params_)
     writeParamFile();
 }
