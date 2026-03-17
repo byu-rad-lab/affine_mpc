@@ -30,8 +30,8 @@ public:
    *   MPC configuration options.
    * @param state_dim State vector dimension.
    * @param input_dim Input vector dimension.
-   * @param param Input parameterization (B-spline, etc.).
-   * @param opts Optional features to enable.
+   * @param param Input trajectory parameterization.
+   * @param opts Optional MPC configuration features to enable.
    */
   CondensedMPC(const int state_dim,
                const int input_dim,
@@ -39,12 +39,12 @@ public:
                const Options& opts = Options{});
 
   /**
-   * @brief Construct CondensedMPC with no parameterization (inputs optimized
-   *   at every step).
+   * @brief Construct CondensedMPC with no parameterization (full input
+   *   trajectory will be optimized) and MPC configuration options.
    * @param state_dim State vector dimension.
    * @param input_dim Input vector dimension.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param opts Optional features to enable.
+   * @param opts Optional MPC configuration features to enable.
    */
   CondensedMPC(const int state_dim,
                const int input_dim,

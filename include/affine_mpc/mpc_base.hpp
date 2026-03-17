@@ -36,8 +36,8 @@ protected:
    *   constraint counts.
    * @param state_dim State vector dimension.
    * @param input_dim Input vector dimension.
-   * @param parameterization Input parameterization (B-spline, etc.).
-   * @param opts Optional features to enable.
+   * @param parameterization Input trajectory parameterization.
+   * @param opts Optional MPC configuration features to enable.
    * @param num_design_vars Number of QP decision variables.
    * @param num_custom_constraints Number of custom constraints (other than
    *   input saturation, slew rate constraints, and state saturation).
@@ -53,50 +53,67 @@ public:
   virtual ~MPCBase() = default;
 
   /**
-   * @brief Initialize the OSQP solver with current model and constraints.
-   * @param solver_settings OSQP solver settings (optional).
+   * @brief Initialize OSQP solver after configuring MPC setup. Calling this
+   *   method after a successful initialization will simply return true without
+   *   doing anything.
+   *
+   *   Prior to calling this function, you must have set the model and input
+   *   limits. You must also provide parameters for all enabled options before
+   *   calling this function. For example, if state saturation is enabled then
+   *   `setStateLimits()` must be called beforehand.
+   * @param solver_settings OSQP solver settings (optional). Defaults to
+   *   recommended settings.
    * @return True if initialization succeeds, false otherwise.
    */
   [[nodiscard]] bool initializeSolver(const OSQPSettings& solver_settings =
                                           OSQPSolver::getRecommendedSettings());
 
   /**
-   * @brief Solve the MPC QP for the given initial state.
-   * @param x0 Initial state vector.
-   * @return SolveStatus indicating result.
+   * @brief Solve the optimization problem for the given initial state.
+   *
+   *   Must have previously called initializeSolver() prior to calling this.
+   *   Call getNextInput(), getParameterizedInputTrajectory(),
+   *   getInputTrajectory(), or getPredictedStateTrajectory() after calling this
+   *   function to access the results.
+   * @param x0 Initial (current) state vector.
+   * @return SolveStatus Result indication. Generally expected to be `Success`
+   *   unless the solver has not been initialized, then `NotInitialized`. Verify
+   *   your problem setup and consult OSQP documentation for any other value.
    */
   [[nodiscard]] SolveStatus solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
   /**
-   * @brief Get the next input to apply (first step of optimized trajectory).
+   * @brief Get the next input to apply (initial input from optimized
+   *   trajectory) from the previous solve.
    * @param u0 Output vector for input.
    */
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
 
   /**
-   * @brief Get the optimized control points for the parameterized input
-   *   trajectory.
+   * @brief Get the parameterized input trajectory (control points) from the
+   *   previous solve.
    * @param u_traj_ctrl_pts Output vector for control points.
    */
   void getParameterizedInputTrajectory(
       Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const noexcept;
 
   /**
-   * @brief Get the full input trajectory over the horizon (after
-   *   parameterization).
+   * @brief Get the full input trajectory from the previous solve.
    * @param u_traj Output vector for input trajectory.
    */
   void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
 
   /**
-   * @brief Get the predicted state trajectory over the horizon.
+   * @brief Get the predicted state trajectory from the previous solve.
    * @param x_traj Output vector for state trajectory.
    */
   virtual void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
 
   /**
-   * @brief Propagate the discrete-time model for one step.
+   * @brief Propagate the internal discrete-time model for one step.
+   *
+   *   Model must be set prior to calling this method.
    * @param x Current state.
    * @param u Current input.
    * @param x_next Output vector for next state.
@@ -106,25 +123,36 @@ public:
                       Eigen::Ref<Eigen::VectorXd> x_next) const;
 
   /**
-   * @brief Set the discrete-time model matrices.
-   * @param Ad Discrete-time state matrix.
-   * @param Bd Discrete-time input matrix.
-   * @param wd Discrete-time affine/bias term.
-   * @return True if model is valid and set.
+   * @brief Set the internal discrete-time model directly from a discrete model.
+   *   The model being `x_next = Ax + Bu + w`.
+   * @param Ad Discrete-time state matrix A.
+   * @param Bd Discrete-time input matrix B.
+   * @param wd Discrete-time affine/bias vector w.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
                         const Eigen::Ref<const Eigen::MatrixXd>& Bd,
                         const Eigen::Ref<const Eigen::VectorXd>& wd);
 
   /**
-   * @brief Set the model by discretizing continuous-time matrices.
-   * @param Ac Continuous-time state matrix.
-   * @param Bc Continuous-time input matrix.
-   * @param wc Continuous-time affine/bias term.
-   * @param dt Discretization timestep.
-   * @param tol Tolerance for matrix exponential (stop Taylor series expansion
-   *   when the scalar multiplier is less than this value).
-   * @return True if model is valid and set.
+   * @brief Set the internal discrete-time model from a continuous-time model,
+   *   which will be discretized. The model being `x_next = Ax + Bu + w`.
+   *
+   *   The discretization assumes the input u is constant over the time step
+   *   (true for discrete controllers like MPC) and uses a matrix exponential,
+   *   which is an exact discretization (theoretically). The matrix exponential
+   *   involves a Taylor series expansion $\sum_{i=0}^\inf (A*dt)^i / i!$. Thus
+   *   the scalar term is `dt^i / i!`. The infinite summation is stopped when
+   *   this term becomes smaller than `tol`.
+   * @param Ac Continuous-time state matrix A.
+   * @param Bc Continuous-time input matrix B.
+   * @param wc Continuous-time affine/bias term w.
+   * @param dt Discretization time step in seconds. Usually should be much
+   *   smaller than 1s for numeric stability reasons. This usually matches the
+   *   control rate, and the input is held constant for this duration.
+   * @param tol Tolerance for the matrix exponential. Taylor series expansion
+   *   stops once scalar multiplier becomes smaller than this value.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
@@ -134,106 +162,153 @@ public:
 
   /**
    * @brief Set state and input weights for the cost function.
-   * @param Q_diag Vector for diagonal of state weight matrix.
-   * @param R_diag Vector for diagonal of input weight matrix.
+   *
+   *   This method can only be called if `use_input_cost` is enabled.
+   * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
+   * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
   void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   /**
    * @brief Set state, terminal state, and input weights for the cost function.
-   * @param Q_diag Vector for diagonal of state weight matrix.
-   * @param Qf_diag Vector for diagonal of terminal state weight matrix.
-   * @param R_diag Vector for diagonal of input weight matrix.
+   *
+   *   This method can only be called if `use_input_cost` is enabled.
+   * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
+   * @param Qf_diag Vector for diagonal of terminal state weight matrix
+   *   (non-negative).
+   * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
   void setWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& Qf_diag,
                   const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   /**
-   * @brief Set state weights only.
-   * @param Q_diag Vector for diagonal of state weight matrix.
+   * @brief Set only the state weights for the cost function.
+   * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    */
   void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag);
 
   /**
-   * @brief Set state and terminal state weights only.
-   * @param Q_diag Vector for diagonal of state weight matrix.
-   * @param Qf_diag Vector for diagonal of terminal state weight matrix.
+   * @brief Set only the state and terminal state weights for the cost function.
+   * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
+   * @param Qf_diag Vector for diagonal of terminal state weight matrix
+   *   (non-negative).
    */
   void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
                        const Eigen::Ref<const Eigen::VectorXd>& Qf_diag);
 
   /**
-   * @brief Set input weights only.
-   * @param R_diag Vector for diagonal of input weight matrix.
+   * @brief Set only the input weights for the cost function.
+   *
+   *   This method can only be called if `use_input_cost` is enabled.
+   * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   /**
-   * @brief Set reference state for tracking.
-   * @param x_step Reference state vector.
-   * @return True if reference is valid and set.
+   * @brief Set reference state trajectory as a step command.
+   * @param x_step Reference state vector to use for entire trajectory.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
 
   /**
    * @brief Set reference state trajectory for tracking.
-   * @param x_traj Reference state trajectory vector.
-   * @return True if reference is valid and set.
+   * @param x_traj Reference state trajectory as a vector of stacked states.
+   *   Should have length of state_dim * horizon_steps. If you have a matrix
+   *   where each column is a state at index k in the horizon, then you can pass
+   *   in `x_traj.reshaped()` to convert it to a vector.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool
   setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
 
   /**
-   * @brief Set reference input for tracking.
-   * @param u_step Reference input vector.
-   * @return True if reference is valid and set.
+   * @brief Set reference input trajectory as a step command (reference for all
+   *   control points set to this value).
+   *
+   *   This method can only be called if `use_input_cost` is enabled.
+   * @param u_step Reference input vector to use for entire trajectory.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
 
   /**
-   * @brief Set reference parameterized input trajectory (control points).
-   * @param u_traj_ctrl_pts Reference control points vector.
-   * @return True if reference is valid and set.
+   * @brief Set reference control points for the input trajectory.
+   *
+   *   This method can only be called if `use_input_cost` is enabled.
+   * @param u_traj_ctrl_pts Reference control points as a vector of stacked
+   *   inputs. Should have length of input_dim * num_control_points. If you have
+   *   a matrix where each column is a control point, then you can pass in
+   *   `u_traj_ctrl_pts.reshaped()` to convert it to a vector.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setReferenceParameterizedInputTrajectory(
       const Eigen::Ref<const Eigen::VectorXd>& u_traj_ctrl_pts);
 
   /**
-   * @brief Set input box constraints.
-   * @param u_min Input lower bounds.
-   * @param u_max Input upper bounds.
-   * @return True if limits are valid and set.
+   * @brief Set input saturation limits.
+   *
+   *   This function must be called prior to `initializeSolver()`, but can also
+   *   be called after if limits change between solves.
+   * @param u_min Lower bound on input vector.
+   * @param u_max Upper bound on input vector.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
 
   /**
-   * @brief Set state box constraints.
-   * @param x_min State lower bounds.
-   * @param x_max State upper bounds.
-   * @return True if limits are valid and set.
+   * @brief Set state saturation limits.
+   *
+   *    This function can only be called if `saturate_states` is enabled. Must
+   *    be called prior to `initializeSolver()`, but can also be called after if
+   *    limits change between solves.
+   * @param x_min Lower bound on state vector.
+   * @param x_max Upper bound on state vector.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
 
   /**
-   * @brief Set slew-rate constraint for control points.
+   * @brief Set slew-rate constraint limits for control points. Control points
+   *   can vary by up to this magnitude from one index to the next.
+   *
+   *   This function can only be called if `slew_control_points` is enabled.
+   *   Must be called prior to `initializeSolver()`, but can also be called
+   *   after if limits change between solves.
    * @param u_slew Slew-rate vector.
-   * @return True if constraint is valid and set.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
 
   /**
-   * @brief Set initial slew-rate constraint (reserved/future use).
+   * @brief Set initial slew-rate constraint limits for control points. Initial
+   *   input can vary by up to this magnitude from the previous input. See
+   *   `setPreviousInput()`.
+   *
+   *   This function can only be called if `slew_initial_input` is enabled.
+   *   Must be called prior to `initializeSolver()`, but can also be called
+   *   after if limits change between solves.
    * @param u0_slew Initial slew-rate vector.
-   * @return True if constraint is valid and set.
+   * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
 
   /**
-   * @brief Set previous input for slew-rate constraints.
+   * @brief Set the previous input, which is only used with the
+   *   `slew_initial_input` constraint option. Defaults to zeros, but should be
+   *   set prior to first solve if a different value is desired.
+   *
+   *   This value is automatically updated after each solve, so you really only
+   *   need to call this function once before the first solve, or potentially if
+   *   a solve fails and you want to set a custom strategy for handling it.
+   *
+   *   This function can only be called if `slew_initial_input` is enabled.
+   *   Must be called prior to `initializeSolver()`, but can also be called
+   *   after if limits change between solves.
    * @param u_prev Previous input vector.
    * @return True if previous input is valid and set.
    */
@@ -252,7 +327,6 @@ protected:
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
-  // const bool use_input_cost_, use_slew_rate_, saturate_states_;
   const Options opts_;
   const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
   const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;

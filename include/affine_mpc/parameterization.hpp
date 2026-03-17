@@ -29,8 +29,10 @@ public:
   /**
    * @brief Direct constructor for uniform clamped B-spline parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree B-spline polynomial degree.
-   * @param num_control_points Number of B-spline control points.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
    *
    * For common cases, prefer the named factory methods.
    */
@@ -42,9 +44,11 @@ public:
    * @brief Direct constructor for advanced use cases with custom knot vector
    *   (e.g. unclamped B-splines).
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree B-spline polynomial degree.
-   * @param knots Full knot vector with size in the range
-   *   [2*(degree+1), horizon_steps+degree+1].
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   horizon_steps.
+   * @param knots Full knot vector with size in the range [2*(degree+1),
+   *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
+   *   last knot must be horizon_steps-1.
    */
   Parameterization(const int horizon_steps,
                    const int degree,
@@ -52,6 +56,16 @@ public:
 
   ~Parameterization() = default;
 
+  /**
+   * @brief Static method for generating a uniform clamped knot vector. Useful
+   *   for generating a starting point that can be modified for custom
+   *   parameterizations.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
+   */
   static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
                                                  const int degree,
                                                  const int num_control_points);
@@ -59,7 +73,8 @@ public:
   /**
    * @brief Factory method for uniform move-blocking parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of control points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
    * @return Parameterization instance.
    *
    * Piecewise constant inputs set from previous change point.
@@ -81,7 +96,8 @@ public:
   /**
    * @brief Factory method for uniform linear interpolation parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param num_control_points Number of control points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
    * @return Parameterization instance.
    *
    * Change points are evenly spaced between 0 and horizon_steps - 1.
@@ -104,8 +120,10 @@ public:
   /**
    * @brief Factory method for uniform clamped B-spline parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree B-spline polynomial degree.
-   * @param num_control_points Number of control points.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
    * @return Parameterization instance.
    */
   static Parameterization bspline(const int horizon_steps,
@@ -116,7 +134,8 @@ public:
    * @brief Factory method for clamped B-spline parameterization with custom
    *   active knots.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree B-spline polynomial degree.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   horizon_steps.
    * @param active_knots Vector of active knots (need at least deg+1).
    * @return Parameterization instance.
    */

@@ -12,7 +12,8 @@ namespace affine_mpc {
  * @struct Options
  * @brief Controls which optional features are enabled at MPC construction time.
  *
- * All fields default to false. These options are immutable after construction.
+ * All fields default to false. These options are immutable after constructing
+ * an MPC instance.
  *
  * - use_input_cost: Enables input regularization term in the cost function
  *     ((uref_k - u_k)^T R (uref_k - u_k)).
