@@ -19,14 +19,16 @@ namespace affine_mpc {
 constexpr int validateStateDim(const int state_dim)
 {
   if (state_dim <= 0)
-    throw std::invalid_argument("state_dim must be greater than zero.");
+    throw std::invalid_argument(
+        "[MPCBase::validateStateDim] state_dim must be positive.");
   return state_dim;
 }
 
 constexpr int validateInputDim(const int input_dim)
 {
   if (input_dim <= 0)
-    throw std::invalid_argument("input_dim must be greater than zero.");
+    throw std::invalid_argument(
+        "[MPCBase::validateInputDim] input_dim must be positive.");
   return input_dim;
 }
 
