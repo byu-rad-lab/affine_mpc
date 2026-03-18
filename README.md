@@ -286,19 +286,24 @@ logger = MPCLogger(mpc, "$HOME/data/mpc")
 ```
 
 To create a logger object you must pass in a pointer to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script):
+#### Logging
 
-#### Log Data
-
-#### C++
 ```cpp
-void logPreviousSolve(double t, double dt, const VectorXd& x0,
-                      double solve_time=-1, int write_every=1);
+void logStep(double t,
+             const VectorXd& x,
+             const VectorXd& u,
+             const VectorXd& x_pred = {},
+             const VectorXd& u_pred = {},
+             double solve_time = -1,
+             double osqp_solve_time = -1);
 ```
 
 #### Python
+
 ```python
-def logPreviousSolve(t: float, dt: float, x0: NDArray,
-                     solve_time: float=-1, write_every: int=1);
+def logStep(t: float, x: NDArray, u: NDArray,
+            x_pred: NDArray = None, u_pred: NDArray = None,
+            solve_time: float = -1, osqp_solve_time: float = -1);
 ```
 
 Data should only be logged after calling the solve function on the MPC class the logger is tracking. To perform MPC you will likely have a loop of code that solves for an input to apply at each step. The loop can also update the desired state/input trajectory, change the weights, or update other pieces of the MPC problem, but the bare bones will look something like this:
@@ -312,17 +317,30 @@ while t <= t_final:
 
   if not solved:
     # handle this how you want
+    break
+
   uk = mpc.getNextInput()
-  logger.logPreviousSolve(t, dt, xk, solve_time)
-  xk = system.propagateDynamics(xk, uk) # or publish the command somehow
+  x_pred = mpc.getPredictedStateTrajectory()
+  u_pred = mpc.getInputTrajectory()
+
+  logger.logStep(t, xk, uk, x_pred, u_pred, solve_time, mpc.getSolveTime())
+
+  xk = mpc.propagateModel(xk, uk)
   t += dt
 ```
 
-The logger creates 4 txt files of data within the `save_location` directory that contain all of the data. These files can be loaded in Python with `np.loadtxt('states.txt')` and each row of data represents a single time horizon (e.g., if there were 2 states and a horizon of 3 steps then a row of data would contain 6 numbers for state 1 at the first time step, state 2 at the first time step, state 1 at the second time step, etc.). This pattern follows for `inputs.txt`, `time.txt`, and `ref_states.txt`.
+The logger creates a `log.npz` binary file and a `params.yaml` metadata file within the `save_location` directory. The `.npz` file contains the following datasets:
+- `time`: `(N,)` simulation timestamps
+- `x_curr`: `(N, state_dim)` actual state at each step
+- `u_curr`: `(N, input_dim)` applied input at each step
+- `x_pred`: `(N, horizon_steps, state_dim)` predicted state trajectories
+- `u_pred`: `(N, horizon_steps, input_dim)` predicted input trajectories
+- `solve_times`: `(N, 2)` user and solver-reported times
+- `meta_*`: Self-describing copies of all metadata (e.g., `meta_state_dim`)
 
-The `solve_time` function parameter is optional. The logger will record this time as well as the solve time reported from the solver on the same line. This is to allow the user to keep track of the time it takes to setup the MPC problem as well as the time it takes just to solve after it is setup.
+These can be loaded in Python with `data = np.load('log.npz')`.
 
-The `write_every` variable is used to specify how frequently you wish to record data in a single time horizon (e.g., the default value of 1 will record all data, 2 will record every other time step, etc.).
+The `solve_time` parameter is optional. The logger records both this time and the solver-reported time to allow tracking of both setup and solve overhead.
 
 #### Write Param File
 

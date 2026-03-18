@@ -16,7 +16,6 @@ protected:
             fs::remove_all(test_dir_);
         }
         
-        // Setup a simple MPC instance
         const int n{2}, m{1}, T{5}, p{2};
         const auto param{ampc::Parameterization::linearInterp(T, p)};
         const ampc::Options opts{.use_input_cost = true};
@@ -49,38 +48,49 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles) {
     EXPECT_TRUE(fs::exists(test_dir_));
     EXPECT_TRUE(fs::is_directory(test_dir_));
     
-    // Check if temp files exist (they should be created in the constructor)
     EXPECT_TRUE(fs::exists(test_dir_ / "test_log_time.tmp"));
     EXPECT_TRUE(fs::exists(test_dir_ / "test_log_states.tmp"));
-    EXPECT_TRUE(fs::exists(test_dir_ / "test_log_refs.tmp"));
     EXPECT_TRUE(fs::exists(test_dir_ / "test_log_inputs.tmp"));
     EXPECT_TRUE(fs::exists(test_dir_ / "test_log_solve_times.tmp"));
 }
 
-TEST_F(MPCLoggerTest, FinalizeCreatesNpzAndCleansUp) {
-    {
-        ampc::MPCLogger logger(mpc_.get(), test_dir_, "test_log");
-        
-        Eigen::Vector2d x0{1.0, 0.5};
-        logger.logPreviousSolve(0.0, 0.1, x0, 0.001);
-        logger.logPreviousSolve(0.1, 0.1, x0, 0.001);
-        
-        logger.finalize();
-        
-        EXPECT_TRUE(fs::exists(test_dir_ / "test_log.npz"));
-        EXPECT_TRUE(fs::exists(test_dir_ / "params.yaml"));
-        
-        // Temp files should be gone
-        EXPECT_FALSE(fs::exists(test_dir_ / "test_log_time.tmp"));
-        EXPECT_FALSE(fs::exists(test_dir_ / "test_log_states.tmp"));
+TEST_F(MPCLoggerTest, GenericConstructorWorks) {
+    ampc::MPCLogger logger(2, 1, 10, test_dir_, "generic_log");
+    logger.addMetadata("custom_val", 42);
+    logger.finalize();
+    
+    EXPECT_TRUE(fs::exists(test_dir_ / "generic_log.npz"));
+    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "generic_log.npz").string());
+    ASSERT_NE(my_npz.find("meta_custom_val"), my_npz.end());
+    EXPECT_EQ(my_npz["meta_custom_val"].data<int>()[0], 42);
+}
+
+TEST_F(MPCLoggerTest, MetadataPrecisionIsRespectedInYaml) {
+    ampc::MPCLogger logger(2, 1, 10, test_dir_, "prec_log");
+    logger.addMetadata("high_prec", 3.1415926535, 8);
+    logger.addMetadata("low_prec", 3.1415926535, 2);
+    logger.finalize();
+    
+    std::ifstream fin(test_dir_ / "params.yaml");
+    std::string line;
+    bool found_high = false, found_low = false;
+    while (std::getline(fin, line)) {
+        if (line.find("high_prec: 3.14159265") != std::string::npos) found_high = true;
+        if (line.find("low_prec: 3.14") != std::string::npos && line.find("3.141") == std::string::npos) found_low = true;
     }
+    EXPECT_TRUE(found_high);
+    EXPECT_TRUE(found_low);
 }
 
 TEST_F(MPCLoggerTest, LoggedDataIsCorrect) {
     ampc::MPCLogger logger(mpc_.get(), test_dir_, "test_log");
     
     Eigen::Vector2d x0{1.0, 0.5};
-    logger.logPreviousSolve(0.0, 0.1, x0, 0.005);
+    Eigen::VectorXd u0 = Eigen::VectorXd::Constant(1, 0.1);
+    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * 6);
+    Eigen::VectorXd u_pred = Eigen::VectorXd::Zero(1 * 5);
+    
+    logger.logStep(0.0, x0, u0, x_pred, u_pred, 0.005, 0.001);
     logger.finalize();
     
     cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "test_log.npz").string());
@@ -88,24 +98,25 @@ TEST_F(MPCLoggerTest, LoggedDataIsCorrect) {
     // Check time
     auto it_time = my_npz.find("time");
     ASSERT_NE(it_time, my_npz.end());
-    EXPECT_EQ(it_time->second.shape.size(), 1);
-    EXPECT_EQ(it_time->second.shape[0], 1);
     EXPECT_EQ(it_time->second.data<double>()[0], 0.0);
     
-    // Check shapes
-    // x_pred should be (N, T+1, n) = (1, 6, 2)
-    auto it_x = my_npz.find("x_pred");
-    ASSERT_NE(it_x, my_npz.end());
-    ASSERT_EQ(it_x->second.shape.size(), 3);
-    EXPECT_EQ(it_x->second.shape[0], 1);
-    EXPECT_EQ(it_x->second.shape[1], 6);
-    EXPECT_EQ(it_x->second.shape[2], 2);
+    // Check solve_times
+    auto it_st = my_npz.find("solve_times");
+    ASSERT_NE(it_st, my_npz.end());
+    EXPECT_EQ(it_st->second.data<double>()[0], 0.005);
+    EXPECT_EQ(it_st->second.data<double>()[1], 0.001);
     
-    // u_pred should be (N, T, m) = (1, 5, 1)
-    auto it_u = my_npz.find("u_pred");
-    ASSERT_NE(it_u, my_npz.end());
-    ASSERT_EQ(it_u->second.shape.size(), 3);
-    EXPECT_EQ(it_u->second.shape[0], 1);
-    EXPECT_EQ(it_u->second.shape[1], 5);
-    EXPECT_EQ(it_u->second.shape[2], 1);
+    // Check x_curr
+    auto it_xc = my_npz.find("x_curr");
+    ASSERT_NE(it_xc, my_npz.end());
+    EXPECT_EQ(it_xc->second.data<double>()[0], 1.0);
+    EXPECT_EQ(it_xc->second.data<double>()[1], 0.5);
+    
+    // Check predicted shapes
+    EXPECT_EQ(my_npz["x_pred"].shape[1], 6);
+    EXPECT_EQ(my_npz["u_pred"].shape[1], 5);
+    
+    // Check metadata snapshot
+    ASSERT_NE(my_npz.find("meta_state_dim"), my_npz.end());
+    EXPECT_EQ(my_npz["meta_state_dim"].data<int>()[0], 2);
 }

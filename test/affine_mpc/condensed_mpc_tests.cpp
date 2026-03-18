@@ -178,7 +178,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
   msd_mpc.getNextInput(u_star);
-  logger.logPreviousSolve(0, 0.1, x0);
+  logger.logStep(0, x0, u_star);
 
   u_star_expected << 3.0;
   ASSERT_TRUE(expectEigenNear(u_star, u_star_expected, 1e-5));
@@ -188,7 +188,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
   msd_mpc.getParameterizedInputTrajectory(u_traj);
-  logger.logPreviousSolve(0, 0.1, x0);
+  logger.logStep(0, x0, u_star);
   int slew_errors{0};
   for (int i{0}; i < nc - 1; ++i) {
     slew_errors += abs(u_traj(i + 1) - u_traj(i)) > slew(0) + 1e-6;
