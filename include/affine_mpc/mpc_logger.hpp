@@ -18,13 +18,14 @@ namespace affine_mpc {
  * @brief High-performance binary logger for MPC data and metadata.
  *
  * Uses a "write-raw, pack-later" strategy to support 1kHz+ logging frequencies.
- * Stores per-step data in an .npz file and human-readable metadata in a .yaml file.
+ * Stores per-step data in an .npz file and human-readable metadata in a .yaml
+ * file.
  */
 class MPCLogger
 {
 public:
-  using MetadataValue =
-      std::variant<int, double, std::string, Eigen::VectorXd, std::vector<double>>;
+  using MetadataValue = std::
+      variant<int, double, std::string, Eigen::VectorXd, std::vector<double>>;
 
   struct MetadataEntry
   {
@@ -33,40 +34,37 @@ public:
   };
 
   /**
-   * @brief Construct an MPCLogger for a given MPC instance (automatic metadata).
+   * @brief Construct an MPCLogger for a given MPC instance.
+   * @param mpc The MPC object to log parameters from.
+   * @param save_location Directory to save log files.
+   * @param ts Simulation time step for predicting future timestamps.
+   * @param prediction_stride Downsample factor for predicted trajectories. 0
+   * logs only current step.
+   * @param log_control_points If true, logs raw control points instead of
+   * evaluated input trajectory.
+   * @param save_name Base name for the log file.
    */
-  MPCLogger(const MPCBase* const mpc,
+  MPCLogger(const MPCBase& mpc,
             const std::filesystem::path& save_location,
-            const std::string& save_name = "log");
-
-  /**
-   * @brief Generic constructor for non-MPC use cases (manual metadata).
-   */
-  MPCLogger(int state_dim,
-            int input_dim,
-            int horizon_steps,
-            const std::filesystem::path& save_location,
+            double ts,
+            int prediction_stride = 0,
+            bool log_control_points = false,
             const std::string& save_name = "log");
 
   virtual ~MPCLogger();
 
   /**
-   * @brief Log a single step of data.
+   * @brief Convenience overload: Automatically fetches trajectories from MPC
+   * and applies striding.
    * @param t Current simulation time.
-   * @param x Current state (size state_dim).
-   * @param u Current applied input (size input_dim).
-   * @param x_pred Predicted state trajectory (size state_dim * horizon_steps or empty).
-   * @param u_pred Predicted input trajectory (size input_dim * horizon_steps or empty).
+   * @param x0 Current state.
+   * @param mpc The MPC object to log.
    * @param solve_time User-calculated solve time (optional).
-   * @param osqp_solve_time OSQP-calculated solve time (optional).
    */
   void logStep(double t,
-               const Eigen::Ref<const Eigen::VectorXd>& x,
-               const Eigen::Ref<const Eigen::VectorXd>& u,
-               const Eigen::Ref<const Eigen::VectorXd>& x_pred = Eigen::VectorXd{},
-               const Eigen::Ref<const Eigen::VectorXd>& u_pred = Eigen::VectorXd{},
-               double solve_time = -1.0,
-               double osqp_solve_time = -1.0);
+               const Eigen::Ref<const Eigen::VectorXd>& x0,
+               const MPCBase& mpc,
+               double solve_time = -1.0);
 
   /**
    * @brief Add or overwrite metadata to be saved in both NPZ and YAML.
@@ -74,6 +72,11 @@ public:
   void addMetadata(const std::string& key,
                    const MetadataValue& value,
                    int precision = -1);
+
+  /**
+   * @brief Manually capture a snapshot of an MPC object's current parameters.
+   */
+  void captureMPCSnapshot(const MPCBase& mpc);
 
   /**
    * @brief Pack all data and metadata into the final .npz and .yaml files.
@@ -86,11 +89,25 @@ public:
   void writeParamFile(const std::filesystem::path& filename = "params.yaml");
 
 private:
-  void initTempFiles();
-  void captureMPCSnapshot();
+  /**
+   * @brief Internal raw logger: logs strided arrays directly to binary.
+   */
+  void logStep(double t,
+               const Eigen::Ref<const Eigen::VectorXd>& states,
+               const Eigen::Ref<const Eigen::VectorXd>& inputs,
+               double solve_time,
+               double osqp_solve_time);
 
-  const MPCBase* const mpc_;
-  int state_dim_, input_dim_, horizon_steps_;
+  void initTempFiles();
+
+  int state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_;
+  double ts_;
+  int prediction_stride_;
+  bool log_control_points_;
+
+  std::vector<int> strided_k_;
+  int logged_x_dim_, logged_u_dim_;
+
   std::filesystem::path save_path_;
   std::string save_name_;
   bool is_finalized_;
@@ -99,13 +116,15 @@ private:
   std::vector<std::string> metadata_keys_;
   std::map<std::string, MetadataEntry> metadata_registry_;
 
+  // Internal buffers to avoid re-allocation during logging
+  Eigen::VectorXd x_pred_buf_, u_pred_buf_;
+  Eigen::VectorXd states_out_buf_, inputs_out_buf_;
+
   // Temp binary output streams
   std::ofstream time_bin_;
   std::ofstream solve_times_bin_;
   std::ofstream states_bin_;
   std::ofstream inputs_bin_;
-  std::ofstream x_pred_bin_;
-  std::ofstream u_pred_bin_;
 };
 
 } // namespace affine_mpc

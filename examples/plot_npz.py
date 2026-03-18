@@ -22,25 +22,39 @@ def plot_log(data, params):
     Basic plot of states and inputs from the log.
     """
     time = data['time']
-    x_pred = data['x_pred'] # Shape (N, T+1, n)
-    u_pred = data['u_pred'] # Shape (N, T, m)
+    states = data['states'] # Shape (N, K, n)
+    inputs = data['inputs'] # Shape (N, K, m) or (N, nc, m)
+    t_pred = data['meta_t_pred']
+    log_ctrl_pts = data['meta_log_control_points']
     
-    n = params['n']
-    m = params['m']
+    n = params['state_dim']
+    m = params['input_dim']
     
-    # Plot current states (first element of each prediction)
-    x_curr = x_pred[:, 0, :]
+    # Extract current actual state
+    is_2d = (states.ndim == 2)
+    x_curr = states if is_2d else states[:, 0, :]
+    u_curr = inputs if (inputs.ndim == 2) else inputs[:, 0, :]
     
     fig, ax = plt.subplots(n + m, 1, sharex=True, figsize=(10, 8))
     
     for i in range(n):
-        ax[i].plot(time, x_curr[:, i], label=f'x_{i}')
+        ax[i].plot(time, x_curr[:, i], linewidth=3, label=f'Actual x_{i}')
+        # Plot predictions
+        if not is_2d:
+            for j in range(0, len(time), max(1, len(time)//5)):
+                ax[i].plot(time[j] + t_pred, states[j, :, i], 'r--', alpha=0.5)
+        
         ax[i].set_ylabel(f'State {i}')
         ax[i].grid(True)
         ax[i].legend()
         
     for i in range(m):
-        ax[n+i].step(time, u_pred[:, 0, i], where='post', label=f'u_{i}')
+        ax[n+i].step(time, u_curr[:, i], where='post', linewidth=3, label=f'Applied u_{i}')
+        
+        if not is_2d and not log_ctrl_pts:
+            for j in range(0, len(time), max(1, len(time)//5)):
+                ax[n+i].step(time[j] + t_pred, inputs[j, :, i], 'g--', where='post', alpha=0.5)
+                
         ax[n+i].set_ylabel(f'Input {i}')
         ax[n+i].set_xlabel('Time [s]')
         ax[n+i].grid(True)
@@ -54,7 +68,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         log_dir = sys.argv[1]
     else:
-        # Default to the example directory if it exists
         import tempfile
         log_dir = os.path.join(tempfile.gettempdir(), "ampc_example")
         

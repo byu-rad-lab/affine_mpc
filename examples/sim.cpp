@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <iostream>
+#include <chrono>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
@@ -23,7 +24,8 @@ int main()
   // generic option
   const auto savedir{fs::temp_directory_path() / "ampc_example"};
 
-  ampc::MPCLogger logger{&msd_mpc, savedir};
+  double ts{0.1};
+  ampc::MPCLogger logger{msd_mpc, savedir, ts, 1, false};
   logger.addMetadata("example_name", "mass_spring_damper");
 
   Eigen::Matrix2d A;
@@ -31,7 +33,6 @@ int main()
   A << 0, 1, -0.6, -0.1;
   B << 0, 0.2;
   w.setZero();
-  double ts{0.1};
   msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
 
   Eigen::Matrix<double, m, 1> u_min{0}, u_max{3}, slew{1};
@@ -56,20 +57,22 @@ int main()
   xk.setZero();
 
   Eigen::Matrix<double, m, 1> uk;
-  Eigen::VectorXd x_pred(n * T), u_pred(m * T);
   
   affine_mpc::SolveStatus status;
   double tf{5};
   for (double t{0}; t < tf; t += ts) {
+    auto start = std::chrono::high_resolution_clock::now();
     status = msd_mpc.solve(xk);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = end - start;
+
     if (status != ampc::SolveStatus::Success)
       std::cout << "Solver status: " << status << std::endl;
     
     msd_mpc.getNextInput(uk);
-    msd_mpc.getPredictedStateTrajectory(x_pred);
-    msd_mpc.getInputTrajectory(u_pred);
     
-    logger.logStep(t, xk, uk, x_pred, u_pred);
+    // Use the convenience overload!
+    logger.logStep(t, xk, msd_mpc, diff.count());
     
     msd_mpc.propagateModel(xk, uk, xk);
   }

@@ -151,7 +151,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
       ampc::Options{.use_input_cost = true, .slew_control_points = true}};
-  ampc::MPCLogger logger{&msd_mpc, "~/tmp/mpc_data"};
+  ampc::MPCLogger logger{msd_mpc, "~/tmp/mpc_data", 0.1, 1, false};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 0.11};
@@ -178,7 +178,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
   msd_mpc.getNextInput(u_star);
-  logger.logStep(0, x0, u_star);
+  logger.logStep(0, x0, msd_mpc);
 
   u_star_expected << 3.0;
   ASSERT_TRUE(expectEigenNear(u_star, u_star_expected, 1e-5));
@@ -188,7 +188,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
   msd_mpc.getParameterizedInputTrajectory(u_traj);
-  logger.logStep(0, x0, u_star);
+  logger.logStep(0, x0, msd_mpc);
   int slew_errors{0};
   for (int i{0}; i < nc - 1; ++i) {
     slew_errors += abs(u_traj(i + 1) - u_traj(i)) > slew(0) + 1e-6;

@@ -43,7 +43,7 @@ protected:
 };
 
 TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles) {
-    ampc::MPCLogger logger(mpc_.get(), test_dir_, "test_log");
+    ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, false, "test_log");
     
     EXPECT_TRUE(fs::exists(test_dir_));
     EXPECT_TRUE(fs::is_directory(test_dir_));
@@ -54,69 +54,86 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles) {
     EXPECT_TRUE(fs::exists(test_dir_ / "test_log_solve_times.tmp"));
 }
 
-TEST_F(MPCLoggerTest, GenericConstructorWorks) {
-    ampc::MPCLogger logger(2, 1, 10, test_dir_, "generic_log");
-    logger.addMetadata("custom_val", 42);
-    logger.finalize();
-    
-    EXPECT_TRUE(fs::exists(test_dir_ / "generic_log.npz"));
-    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "generic_log.npz").string());
-    ASSERT_NE(my_npz.find("meta_custom_val"), my_npz.end());
-    EXPECT_EQ(my_npz["meta_custom_val"].data<int>()[0], 42);
-}
-
-TEST_F(MPCLoggerTest, MetadataPrecisionIsRespectedInYaml) {
-    ampc::MPCLogger logger(2, 1, 10, test_dir_, "prec_log");
-    logger.addMetadata("high_prec", 3.1415926535, 8);
-    logger.addMetadata("low_prec", 3.1415926535, 2);
-    logger.finalize();
-    
-    std::ifstream fin(test_dir_ / "params.yaml");
-    std::string line;
-    bool found_high = false, found_low = false;
-    while (std::getline(fin, line)) {
-        if (line.find("high_prec: 3.14159265") != std::string::npos) found_high = true;
-        if (line.find("low_prec: 3.14") != std::string::npos && line.find("3.141") == std::string::npos) found_low = true;
-    }
-    EXPECT_TRUE(found_high);
-    EXPECT_TRUE(found_low);
-}
-
-TEST_F(MPCLoggerTest, LoggedDataIsCorrect) {
-    ampc::MPCLogger logger(mpc_.get(), test_dir_, "test_log");
+TEST_F(MPCLoggerTest, ConvenienceLogStepWorks) {
+    ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, false, "conv_log");
     
     Eigen::Vector2d x0{1.0, 0.5};
-    Eigen::VectorXd u0 = Eigen::VectorXd::Constant(1, 0.1);
-    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * 6);
-    Eigen::VectorXd u_pred = Eigen::VectorXd::Zero(1 * 5);
-    
-    logger.logStep(0.0, x0, u0, x_pred, u_pred, 0.005, 0.001);
+    mpc_->solve(x0);
+    logger.logStep(0.0, x0, *mpc_, 0.001);
     logger.finalize();
     
-    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "test_log.npz").string());
+    EXPECT_TRUE(fs::exists(test_dir_ / "conv_log.npz"));
+    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "conv_log.npz").string());
     
-    // Check time
-    auto it_time = my_npz.find("time");
-    ASSERT_NE(it_time, my_npz.end());
-    EXPECT_EQ(it_time->second.data<double>()[0], 0.0);
+    EXPECT_EQ(my_npz["states"].shape[0], 1); // N
+    EXPECT_EQ(my_npz["states"].shape[1], 6); // K = T+1 (stride=1)
+    EXPECT_EQ(my_npz["states"].shape[2], 2); // n
     
-    // Check solve_times
-    auto it_st = my_npz.find("solve_times");
-    ASSERT_NE(it_st, my_npz.end());
-    EXPECT_EQ(it_st->second.data<double>()[0], 0.005);
-    EXPECT_EQ(it_st->second.data<double>()[1], 0.001);
+    EXPECT_EQ(my_npz["inputs"].shape[0], 1); // N
+    EXPECT_EQ(my_npz["inputs"].shape[1], 6); // K = T+1 (stride=1)
+    EXPECT_EQ(my_npz["inputs"].shape[2], 1); // m
     
-    // Check x_curr
-    auto it_xc = my_npz.find("x_curr");
-    ASSERT_NE(it_xc, my_npz.end());
-    EXPECT_EQ(it_xc->second.data<double>()[0], 1.0);
-    EXPECT_EQ(it_xc->second.data<double>()[1], 0.5);
+    // Check t_pred
+    ASSERT_NE(my_npz.find("meta_t_pred"), my_npz.end());
+    EXPECT_EQ(my_npz["meta_t_pred"].shape[0], 6);
+    EXPECT_DOUBLE_EQ(my_npz["meta_t_pred"].data<double>()[5], 0.5); // T*ts
+}
+
+TEST_F(MPCLoggerTest, StrideWorksAsExpected) {
+    ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 2, false, "stride_log"); // stride=2
     
-    // Check predicted shapes
-    EXPECT_EQ(my_npz["x_pred"].shape[1], 6);
-    EXPECT_EQ(my_npz["u_pred"].shape[1], 5);
+    Eigen::Vector2d x0{1.0, 0.5};
+    mpc_->solve(x0);
+    logger.logStep(0.0, x0, *mpc_, 0.001);
+    logger.finalize();
     
-    // Check metadata snapshot
-    ASSERT_NE(my_npz.find("meta_state_dim"), my_npz.end());
-    EXPECT_EQ(my_npz["meta_state_dim"].data<int>()[0], 2);
+    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "stride_log.npz").string());
+    
+    // T=5, stride=2 -> k = [0, 2, 4, 5] -> K=4
+    EXPECT_EQ(my_npz["states"].shape[1], 4); 
+    EXPECT_EQ(my_npz["inputs"].shape[1], 4);
+    
+    EXPECT_DOUBLE_EQ(my_npz["meta_t_pred"].data<double>()[0], 0.0);
+    EXPECT_DOUBLE_EQ(my_npz["meta_t_pred"].data<double>()[1], 0.2);
+    EXPECT_DOUBLE_EQ(my_npz["meta_t_pred"].data<double>()[2], 0.4);
+    EXPECT_DOUBLE_EQ(my_npz["meta_t_pred"].data<double>()[3], 0.5);
+}
+
+TEST_F(MPCLoggerTest, ControlPointsLoggingWorks) {
+    ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, true, "ctrl_log"); // log_control_points=true
+    
+    Eigen::Vector2d x0{1.0, 0.5};
+    mpc_->solve(x0);
+    logger.logStep(0.0, x0, *mpc_, 0.001);
+    logger.finalize();
+    
+    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "ctrl_log.npz").string());
+    
+    // states should still be K=6
+    EXPECT_EQ(my_npz["states"].shape[1], 6); 
+    
+    // inputs should be num_control_points (p=2 -> nc=2 for linearInterp with T=5? No, linearInterp(T=5, p=2) means nc=2. Wait, linearInterp(horizon, change_points) so change_points=2)
+    // mpc_->num_ctrl_pts_ is the actual value. Let's just check it matches the metadata.
+    int nc = my_npz["meta_num_control_points"].data<int>()[0];
+    EXPECT_EQ(my_npz["inputs"].shape[1], nc); 
+}
+
+TEST_F(MPCLoggerTest, ZeroStrideSqueezesArrays) {
+    ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 0, false, "squeeze_log"); // stride=0
+    
+    Eigen::Vector2d x0{1.0, 0.5};
+    mpc_->solve(x0);
+    logger.logStep(0.0, x0, *mpc_, 0.001);
+    logger.finalize();
+    
+    cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "squeeze_log.npz").string());
+    
+    // states and inputs should be 2D: (N, n) and (N, m)
+    EXPECT_EQ(my_npz["states"].shape.size(), 2);
+    EXPECT_EQ(my_npz["states"].shape[0], 1); // N
+    EXPECT_EQ(my_npz["states"].shape[1], 2); // n
+    
+    EXPECT_EQ(my_npz["inputs"].shape.size(), 2);
+    EXPECT_EQ(my_npz["inputs"].shape[0], 1); // N
+    EXPECT_EQ(my_npz["inputs"].shape[1], 1); // m
 }

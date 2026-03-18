@@ -11,14 +11,8 @@
 namespace affine_mpc {
 
 namespace {
-const Eigen::IOFormat kVectorFormat(Eigen::StreamPrecision,
-                                    Eigen::DontAlignCols,
-                                    ", ",
-                                    ", ",
-                                    "",
-                                    "",
-                                    "[",
-                                    "]");
+const Eigen::IOFormat kVectorFormat(
+    Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ", "", "", "[", "]");
 
 std::string vec2Str(const Eigen::VectorXd& vec, int precision)
 {
@@ -31,7 +25,8 @@ std::string vec2Str(const Eigen::VectorXd& vec, int precision)
   return ss.str();
 }
 
-void writeBinary(std::ofstream& fout, const Eigen::Ref<const Eigen::VectorXd>& vec)
+void writeBinary(std::ofstream& fout,
+                 const Eigen::Ref<const Eigen::VectorXd>& vec)
 {
   if (vec.size() > 0)
     fout.write(reinterpret_cast<const char*>(vec.data()),
@@ -51,39 +46,56 @@ std::vector<double> loadBinary(const std::filesystem::path& path)
 }
 } // namespace
 
-MPCLogger::MPCLogger(const MPCBase* const mpc,
+MPCLogger::MPCLogger(const MPCBase& mpc,
                      const std::filesystem::path& save_location,
+                     double ts,
+                     int prediction_stride,
+                     bool log_control_points,
                      const std::string& save_name) :
-    mpc_{mpc},
-    state_dim_{mpc->state_dim_},
-    input_dim_{mpc->input_dim_},
-    horizon_steps_{mpc->horizon_steps_},
+    state_dim_{mpc.state_dim_},
+    input_dim_{mpc.input_dim_},
+    horizon_steps_{mpc.horizon_steps_},
+    num_ctrl_pts_{mpc.num_ctrl_pts_},
+    ts_{ts},
+    prediction_stride_{prediction_stride},
+    log_control_points_{log_control_points},
     save_path_{save_location.lexically_normal()},
     save_name_{save_name},
     is_finalized_{false},
-    num_logged_steps_{0}
+    num_logged_steps_{0},
+    x_pred_buf_{mpc.state_dim_ * mpc.horizon_steps_},
+    u_pred_buf_{log_control_points ? mpc.input_dim_ * mpc.num_ctrl_pts_
+                                   : mpc.input_dim_ * mpc.horizon_steps_}
 {
-  captureMPCSnapshot();
-  initTempFiles();
-}
+  if (prediction_stride_ <= 0) {
+    strided_k_.push_back(0);
+  } else {
+    for (int k = 0; k <= horizon_steps_; k += prediction_stride_) {
+      strided_k_.push_back(k);
+    }
+    if (strided_k_.back() != horizon_steps_) {
+      strided_k_.push_back(horizon_steps_);
+    }
+  }
 
-MPCLogger::MPCLogger(int state_dim,
-                     int input_dim,
-                     int horizon_steps,
-                     const std::filesystem::path& save_location,
-                     const std::string& save_name) :
-    mpc_{nullptr},
-    state_dim_{state_dim},
-    input_dim_{input_dim},
-    horizon_steps_{horizon_steps},
-    save_path_{save_location.lexically_normal()},
-    save_name_{save_name},
-    is_finalized_{false},
-    num_logged_steps_{0}
-{
-  addMetadata("state_dim", state_dim);
-  addMetadata("input_dim", input_dim);
-  addMetadata("horizon_steps", horizon_steps);
+  logged_x_dim_ = state_dim_ * strided_k_.size();
+  logged_u_dim_ = log_control_points_ ? input_dim_ * num_ctrl_pts_
+                                      : input_dim_ * strided_k_.size();
+
+  states_out_buf_.resize(logged_x_dim_);
+  inputs_out_buf_.resize(logged_u_dim_);
+
+  captureMPCSnapshot(mpc);
+
+  std::vector<double> t_pred(strided_k_.size());
+  for (size_t i = 0; i < strided_k_.size(); ++i) {
+    t_pred[i] = strided_k_[i] * ts_;
+  }
+  addMetadata("t_pred", t_pred);
+  addMetadata("ts", ts_);
+  addMetadata("prediction_stride", prediction_stride_);
+  addMetadata("log_control_points", (int)log_control_points_);
+
   initTempFiles();
 }
 
@@ -111,47 +123,38 @@ void MPCLogger::initTempFiles()
   open_bin(solve_times_bin_, "solve_times");
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
-  open_bin(x_pred_bin_, "x_pred");
-  open_bin(u_pred_bin_, "u_pred");
 }
 
-void MPCLogger::captureMPCSnapshot()
+void MPCLogger::captureMPCSnapshot(const MPCBase& mpc)
 {
-  if (!mpc_)
-    return;
-  // User preferred order:
-  // state_dim, input_dim, horizon_steps, degree, num_control_points, knots, opts
-  addMetadata("state_dim", mpc_->state_dim_);
-  addMetadata("input_dim", mpc_->input_dim_);
-  addMetadata("horizon_steps", mpc_->horizon_steps_);
-  addMetadata("spline_degree", mpc_->spline_degree_);
-  addMetadata("num_control_points", mpc_->num_ctrl_pts_);
-  
-  if (mpc_->spline_knots_.size() > 0)
-    addMetadata("knots", mpc_->spline_knots_);
+  addMetadata("state_dim", mpc.state_dim_);
+  addMetadata("input_dim", mpc.input_dim_);
+  addMetadata("horizon_steps", mpc.horizon_steps_);
+  addMetadata("spline_degree", mpc.spline_degree_);
+  addMetadata("num_control_points", mpc.num_ctrl_pts_);
 
-  // Options
-  addMetadata("opt_use_input_cost", (int)mpc_->opts_.use_input_cost);
-  addMetadata("opt_slew_initial_input", (int)mpc_->opts_.slew_initial_input);
-  addMetadata("opt_slew_control_points", (int)mpc_->opts_.slew_control_points);
-  addMetadata("opt_saturate_states", (int)mpc_->opts_.saturate_states);
-  addMetadata("opt_saturate_input_trajectory", (int)mpc_->opts_.saturate_input_trajectory);
+  if (mpc.spline_knots_.size() > 0)
+    addMetadata("knots", mpc.spline_knots_);
 
-  // Constraints/Weights
-  addMetadata("u_min", mpc_->u_min_, 3);
-  addMetadata("u_max", mpc_->u_max_, 3);
-  addMetadata("Q_diag", mpc_->Q_big_.diagonal().head(mpc_->state_dim_), 3);
-  addMetadata("Qf_diag", mpc_->Q_big_.diagonal().tail(mpc_->state_dim_), 3);
+  addMetadata("opt_use_input_cost", (int)mpc.opts_.use_input_cost);
+  addMetadata("opt_slew_initial_input", (int)mpc.opts_.slew_initial_input);
+  addMetadata("opt_slew_control_points", (int)mpc.opts_.slew_control_points);
+  addMetadata("opt_saturate_states", (int)mpc.opts_.saturate_states);
+  addMetadata("opt_saturate_input_trajectory",
+              (int)mpc.opts_.saturate_input_trajectory);
 
-  if (mpc_->opts_.use_input_cost)
-    addMetadata("R_diag", mpc_->R_big_.diagonal().head(mpc_->input_dim_), 3);
-  
-  if (mpc_->opts_.slew_control_points)
-    addMetadata("u_slew", mpc_->u_slew_, 3);
-  
-  if (mpc_->opts_.saturate_states) {
-    addMetadata("x_min", mpc_->x_min_, 3);
-    addMetadata("x_max", mpc_->x_max_, 3);
+  addMetadata("u_min", mpc.u_min_, 3);
+  addMetadata("u_max", mpc.u_max_, 3);
+  addMetadata("Q_diag", mpc.Q_big_.diagonal().head(mpc.state_dim_), 3);
+  addMetadata("Qf_diag", mpc.Q_big_.diagonal().tail(mpc.state_dim_), 3);
+
+  if (mpc.opts_.use_input_cost)
+    addMetadata("R_diag", mpc.R_big_.diagonal().head(mpc.input_dim_), 3);
+  if (mpc.opts_.slew_control_points)
+    addMetadata("u_slew", mpc.u_slew_, 3);
+  if (mpc.opts_.saturate_states) {
+    addMetadata("x_min", mpc.x_min_, 3);
+    addMetadata("x_max", mpc.x_max_, 3);
   }
 }
 
@@ -166,21 +169,56 @@ void MPCLogger::addMetadata(const std::string& key,
 }
 
 void MPCLogger::logStep(double t,
-                        const Eigen::Ref<const Eigen::VectorXd>& x,
-                        const Eigen::Ref<const Eigen::VectorXd>& u,
-                        const Eigen::Ref<const Eigen::VectorXd>& x_pred,
-                        const Eigen::Ref<const Eigen::VectorXd>& u_pred,
+                        const Eigen::Ref<const Eigen::VectorXd>& x0,
+                        const MPCBase& mpc,
+                        double solve_time)
+{
+  mpc.getPredictedStateTrajectory(x_pred_buf_);
+
+  if (log_control_points_) {
+    mpc.getParameterizedInputTrajectory(u_pred_buf_);
+    inputs_out_buf_ = u_pred_buf_;
+  } else {
+    mpc.getInputTrajectory(u_pred_buf_);
+  }
+
+  for (size_t i = 0; i < strided_k_.size(); ++i) {
+    int k = strided_k_[i];
+
+    // States: x[0] is x0, x[k] is x_pred[k-1]
+    if (k == 0) {
+      states_out_buf_.segment(i * state_dim_, state_dim_) = x0;
+    } else {
+      states_out_buf_.segment(i * state_dim_, state_dim_) =
+          x_pred_buf_.segment((k - 1) * state_dim_, state_dim_);
+    }
+
+    // Inputs: u[0] is u0 (or u_pred[0]). u[k] is u_pred[k] or u_pred[T-1] for
+    // terminal.
+    if (!log_control_points_) {
+      int u_idx = std::min(k, horizon_steps_ - 1);
+      inputs_out_buf_.segment(i * input_dim_, input_dim_) =
+          u_pred_buf_.segment(u_idx * input_dim_, input_dim_);
+    }
+  }
+
+  logStep(t, states_out_buf_, inputs_out_buf_, solve_time,
+          mpc.solver_->getSolveTime());
+}
+
+void MPCLogger::logStep(double t,
+                        const Eigen::Ref<const Eigen::VectorXd>& states,
+                        const Eigen::Ref<const Eigen::VectorXd>& inputs,
                         double solve_time,
                         double osqp_solve_time)
 {
   time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
-  writeBinary(states_bin_, x);
-  writeBinary(inputs_bin_, u);
-  writeBinary(x_pred_bin_, x_pred);
-  writeBinary(u_pred_bin_, u_pred);
+  writeBinary(states_bin_, states);
+  writeBinary(inputs_bin_, inputs);
 
   double times[2] = {solve_time, osqp_solve_time};
-  solve_times_bin_.write(reinterpret_cast<const char*>(times), 2 * sizeof(double));
+  solve_times_bin_.write(reinterpret_cast<const char*>(times),
+                         2 * sizeof(double));
   num_logged_steps_++;
 }
 
@@ -193,56 +231,60 @@ void MPCLogger::finalize()
   solve_times_bin_.close();
   states_bin_.close();
   inputs_bin_.close();
-  x_pred_bin_.close();
-  u_pred_bin_.close();
 
   const std::string npz_path = (save_path_ / (save_name_ + ".npz")).string();
   const size_t N = (size_t)num_logged_steps_;
 
-  auto pack_clean = [&](const std::string& key, const std::string& name,
+  auto pack_clean = [&](const std::string& name,
                         const std::vector<size_t>& shape, bool append) {
     auto path = save_path_ / (save_name_ + "_" + name + ".tmp");
     auto data = loadBinary(path);
     if (!data.empty())
-      cnpy::npz_save(npz_path, key, data.data(), shape, append ? "a" : "w");
+      cnpy::npz_save(npz_path, name, data.data(), shape, append ? "a" : "w");
     std::filesystem::remove(path);
   };
 
-  pack_clean("time", "time", {N}, false);
-  pack_clean("solve_times", "solve_times", {N, 2}, true);
-  pack_clean("x_curr", "states", {N, (size_t)state_dim_}, true);
-  pack_clean("u_curr", "inputs", {N, (size_t)input_dim_}, true);
+  pack_clean("time", {N}, false);
+  pack_clean("solve_times", {N, 2}, true);
 
-  auto x_p_data = loadBinary(save_path_ / (save_name_ + "_x_pred.tmp"));
-  if (!x_p_data.empty()) {
-    size_t Tx = x_p_data.size() / (N * state_dim_);
-    cnpy::npz_save(npz_path, "x_pred", x_p_data.data(), {N, Tx, (size_t)state_dim_}, "a");
-  }
-  std::filesystem::remove(save_path_ / (save_name_ + "_x_pred.tmp"));
+  size_t K = strided_k_.size();
 
-  auto u_p_data = loadBinary(save_path_ / (save_name_ + "_u_pred.tmp"));
-  if (!u_p_data.empty()) {
-    size_t Tu = u_p_data.size() / (N * input_dim_);
-    cnpy::npz_save(npz_path, "u_pred", u_p_data.data(), {N, Tu, (size_t)input_dim_}, "a");
+  if (K == 1) {
+    pack_clean("states", {N, (size_t)state_dim_}, true);
+  } else {
+    pack_clean("states", {N, K, (size_t)state_dim_}, true);
   }
-  std::filesystem::remove(save_path_ / (save_name_ + "_u_pred.tmp"));
+
+  if (log_control_points_) {
+    pack_clean("inputs", {N, (size_t)num_ctrl_pts_, (size_t)input_dim_}, true);
+  } else {
+    if (K == 1) {
+      pack_clean("inputs", {N, (size_t)input_dim_}, true);
+    } else {
+      pack_clean("inputs", {N, K, (size_t)input_dim_}, true);
+    }
+  }
 
   for (const auto& key : metadata_keys_) {
     const auto& entry = metadata_registry_[key];
-    std::visit([&](auto&& arg) {
-      using T = std::decay_t<decltype(arg)>;
-      if constexpr (std::is_same_v<T, int>) {
-        int val = arg;
-        cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
-      } else if constexpr (std::is_same_v<T, double>) {
-        double val = arg;
-        cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
-      } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-        cnpy::npz_save(npz_path, "meta_" + key, arg.data(), {(size_t)arg.size()}, "a");
-      } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-        cnpy::npz_save(npz_path, "meta_" + key, arg.data(), {arg.size()}, "a");
-      }
-    }, entry.value);
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, int>) {
+            int val = arg;
+            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
+          } else if constexpr (std::is_same_v<T, double>) {
+            double val = arg;
+            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
+          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
+            cnpy::npz_save(npz_path, "meta_" + key, arg.data(),
+                           {(size_t)arg.size()}, "a");
+          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+            cnpy::npz_save(npz_path, "meta_" + key, arg.data(), {arg.size()},
+                           "a");
+          }
+        },
+        entry.value);
   }
 
   writeParamFile();
@@ -256,20 +298,25 @@ void MPCLogger::writeParamFile(const std::filesystem::path& filename)
   for (const auto& key : metadata_keys_) {
     const auto& entry = metadata_registry_[key];
     fout << key << ": ";
-    std::visit([&](auto&& arg) {
-      using T = std::decay_t<decltype(arg)>;
-      if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double> || std::is_same_v<T, std::string>) {
-        if (entry.precision >= 0 && std::is_same_v<T, double>)
-          fout << std::fixed << std::setprecision(entry.precision) << arg << "\n";
-        else
-          fout << arg << "\n";
-      } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-        fout << vec2Str(arg, entry.precision) << "\n";
-      } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-        Eigen::VectorXd v = Eigen::Map<const Eigen::VectorXd>(arg.data(), arg.size());
-        fout << vec2Str(v, entry.precision) << "\n";
-      }
-    }, entry.value);
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double>
+                        || std::is_same_v<T, std::string>) {
+            if (entry.precision >= 0 && std::is_same_v<T, double>)
+              fout << std::fixed << std::setprecision(entry.precision) << arg
+                   << "\n";
+            else
+              fout << arg << "\n";
+          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
+            fout << vec2Str(arg, entry.precision) << "\n";
+          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+            Eigen::VectorXd v =
+                Eigen::Map<const Eigen::VectorXd>(arg.data(), arg.size());
+            fout << vec2Str(v, entry.precision) << "\n";
+          }
+        },
+        entry.value);
   }
 }
 

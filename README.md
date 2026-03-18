@@ -273,37 +273,28 @@ An `MPCLogger` class is provided to log data for time, predicted state trajector
 
 #### C++
 ```cpp
-MPCLogger(const MPCBase* const mpc, const std::string& save_location);
+MPCLogger(const MPCBase& mpc, const std::filesystem::path& save_location,
+          double ts, int prediction_stride = 1, bool log_control_points = false);
 // usage
-MPCLogger logger{&mpc, "~/data/mpc"};
+MPCLogger logger{mpc, "~/data/mpc", 0.1, 2, false};
 ```
 
-#### Python
-```python
-def __init__(self, mpc: MPCBase, save_location: str) -> None:
-# usage
-logger = MPCLogger(mpc, "$HOME/data/mpc")
-```
+To create a logger object you must pass in a reference to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script). 
 
-To create a logger object you must pass in a pointer to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script):
+You must also provide the time step `ts`. The `prediction_stride` parameter reduces file size by downsampling the predicted trajectories (e.g., `stride=2` logs every other step, but always includes the terminal state. `stride=0` logs only the current step). If `log_control_points` is true, the logger saves the raw QP control points instead of the evaluated input trajectory.
+
 #### Logging
 
+#### C++
 ```cpp
-void logStep(double t,
-             const VectorXd& x,
-             const VectorXd& u,
-             const VectorXd& x_pred = {},
-             const VectorXd& u_pred = {},
-             double solve_time = -1,
-             double osqp_solve_time = -1);
+// Convenience: automatically gets trajectories from MPC
+void logStep(double t, const Eigen::VectorXd& x0, const MPCBase& mpc, double solve_time = -1);
 ```
 
 #### Python
-
 ```python
-def logStep(t: float, x: NDArray, u: NDArray,
-            x_pred: NDArray = None, u_pred: NDArray = None,
-            solve_time: float = -1, osqp_solve_time: float = -1);
+# Convenience: automatically gets trajectories from MPC
+def logStep(t: float, x0: NDArray, mpc: MPCBase, solve_time: float = -1);
 ```
 
 Data should only be logged after calling the solve function on the MPC class the logger is tracking. To perform MPC you will likely have a loop of code that solves for an input to apply at each step. The loop can also update the desired state/input trajectory, change the weights, or update other pieces of the MPC problem, but the bare bones will look something like this:
@@ -319,24 +310,19 @@ while t <= t_final:
     # handle this how you want
     break
 
+  logger.logStep(t, xk, mpc, solve_time)
+
   uk = mpc.getNextInput()
-  x_pred = mpc.getPredictedStateTrajectory()
-  u_pred = mpc.getInputTrajectory()
-
-  logger.logStep(t, xk, uk, x_pred, u_pred, solve_time, mpc.getSolveTime())
-
   xk = mpc.propagateModel(xk, uk)
   t += dt
 ```
 
 The logger creates a `log.npz` binary file and a `params.yaml` metadata file within the `save_location` directory. The `.npz` file contains the following datasets:
 - `time`: `(N,)` simulation timestamps
-- `x_curr`: `(N, state_dim)` actual state at each step
-- `u_curr`: `(N, input_dim)` applied input at each step
-- `x_pred`: `(N, horizon_steps, state_dim)` predicted state trajectories
-- `u_pred`: `(N, horizon_steps, input_dim)` predicted input trajectories
+- `states`: `(N, K, state_dim)` where `states[:, 0, :]` is the actual state $x_0$, and subsequent indices are the strided predictions.
+- `inputs`: `(N, K, input_dim)` applied inputs and strided predictions (or `(N, num_control_points, input_dim)` if `log_control_points` is true).
 - `solve_times`: `(N, 2)` user and solver-reported times
-- `meta_*`: Self-describing copies of all metadata (e.g., `meta_state_dim`)
+- `meta_*`: Self-describing copies of all metadata, including `meta_t_pred` for perfectly aligning predicted trajectories in time.
 
 These can be loaded in Python with `data = np.load('log.npz')`.
 
