@@ -8,7 +8,7 @@
 #include "affine_mpc/mpc_base.hpp"
 
 /**
- * @file mpc_logger.hpp
+ *  mpc_logger.hpp
  * @brief Defines the MPCLogger class for logging MPC solve results and
  *   parameters.
  */
@@ -33,14 +33,7 @@ public:
    * @param save_location Directory to save log files (default: /tmp/ampc_data).
    */
   MPCLogger(const MPCBase* const mpc,
-            const std::string& save_location = "/tmp/ampc_data");
-
-  // MPCLogger(const MPCBase* const mpc, const std::filesystem::path&
-  // save_location) :
-  //     MPCLogger(mpc, save_location.string())
-  // {
-  //   save_location.
-  // }
+            const std::filesystem::path& save_location = "/tmp/ampc_data");
 
   virtual ~MPCLogger();
 
@@ -68,17 +61,18 @@ public:
    * @brief Write MPC parameters and metadata to a YAML file.
    * @param filename Output filename (default: params.yaml).
    */
-  void writeParamFile(const std::string& filename = "params.yaml");
+  void writeParamFile(const std::filesystem::path& filename =
+                          std::filesystem::path{"params.yaml"});
 
 protected:
   /**
-   * @brief Handle string substitutions for file naming and metadata.
+   * @brief Normalize and expand save path (e.g. '~', '$HOME', '${HOME}').
    */
-  void handleStringSubstitutions();
+  void handlePathSubstitutions();
 
 private:
   const MPCBase* const mpc_;
-  std::string save_dir_;
+  std::filesystem::path save_path_;
   bool wrote_params_;
   Eigen::VectorXd x_traj_, u_traj_;
   std::ofstream time_fout_;

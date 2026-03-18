@@ -12,8 +12,8 @@ namespace ampc = affine_mpc;
 int main()
 {
   const int n{2}, m{1}, T{10}, p{3};
-  auto param{ampc::Parameterization::linearInterp(T, p)};
-  ampc::Options opts{
+  const auto param{ampc::Parameterization::linearInterp(T, p)};
+  const ampc::Options opts{
       .use_input_cost = true,
       .slew_control_points = true,
   };

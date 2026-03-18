@@ -1,11 +1,11 @@
 #include "affine_mpc/mpc_logger.hpp"
 
 #include <cassert>
-#include <exception>
-#include <filesystem>
+#include <cstdlib>
+#include <sstream>
+#include <stdexcept>
 
 namespace affine_mpc {
-
 
 std::string eig2Str(const Eigen::Ref<const Eigen::VectorXd>& vec)
 {
@@ -13,38 +13,40 @@ std::string eig2Str(const Eigen::Ref<const Eigen::VectorXd>& vec)
   ss << vec.transpose();
   std::string pretty_vec{ss.str()};
 
-  while (pretty_vec.front() == std::string(" ").front())
-    pretty_vec.replace(0, 1, "");
+  if (pretty_vec.empty())
+    return "[]";
 
-  std::size_t pos{pretty_vec.find(" ")};
+  while (!pretty_vec.empty() && pretty_vec.front() == ' ')
+    pretty_vec.erase(0, 1);
+
+  std::size_t pos{pretty_vec.find(' ')};
   while (pos != std::string::npos) {
     pretty_vec.replace(pos, 1, ", ");
-    pos = pretty_vec.find(" ", pos + 2);
+    pos = pretty_vec.find(' ', pos + 2);
   }
 
   return "[" + pretty_vec + "]";
 }
 
-
 MPCLogger::MPCLogger(const MPCBase* const mpc,
-                     const std::string& save_location) :
+                     const std::filesystem::path& save_location) :
     mpc_{mpc},
-    save_dir_{save_location},
+    save_path_{save_location},
     x_traj_{mpc->state_dim_ * mpc->horizon_steps_},
     u_traj_{mpc_->input_dim_ * mpc_->horizon_steps_},
     wrote_params_{false}
 {
-  handleStringSubstitutions();
+  handlePathSubstitutions();
 
-  if (!std::filesystem::exists(save_dir_))
-    std::filesystem::create_directories(save_dir_);
+  if (!std::filesystem::exists(save_path_))
+    std::filesystem::create_directories(save_path_);
 
-  time_fout_.open(save_dir_ + "time.txt");
-  solve_time_fout_.open(save_dir_ + "solve_times.txt");
-  states_fout_.open(save_dir_ + "states.txt");
-  refs_fout_.open(save_dir_ + "ref_states.txt");
-  inputs_fout_.open(save_dir_ + "inputs.txt");
-  spline_knots_fout_.open(save_dir_ + "spline_knots.txt");
+  time_fout_.open(save_path_ / "time.txt");
+  solve_time_fout_.open(save_path_ / "solve_times.txt");
+  states_fout_.open(save_path_ / "states.txt");
+  refs_fout_.open(save_path_ / "ref_states.txt");
+  inputs_fout_.open(save_path_ / "inputs.txt");
+  spline_knots_fout_.open(save_path_ / "spline_knots.txt");
 
   if (!time_fout_.is_open())
     throw std::runtime_error("[MPCLogger Constructor] "
@@ -64,7 +66,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
   if (!spline_knots_fout_.is_open())
     throw std::runtime_error("[MPCLogger Constructor] "
                              "Failed to open spline_knots file for writing.");
-  // write knots to file
+
   spline_knots_fout_ << mpc_->spline_knots_.transpose() << std::endl;
   spline_knots_fout_.close();
 }
@@ -91,8 +93,9 @@ void MPCLogger::logPreviousSolve(double t0,
   if (!mpc_->solver_initialized_)
     throw std::logic_error("[MPCLogger::logPreviousSolve] "
                            "Solver must be initialized before logging data.");
-  const static int n{mpc_->state_dim_}, m{mpc_->input_dim_};
-  const static int T{mpc_->horizon_steps_}, p{mpc_->num_ctrl_pts_};
+  const int n{mpc_->state_dim_};
+  const int m{mpc_->input_dim_};
+  const int T{mpc_->horizon_steps_};
 
   double time{t0};
 
@@ -112,7 +115,7 @@ void MPCLogger::logPreviousSolve(double t0,
       inputs_fout_ << u_traj_.segment(k * m, m).transpose() << " ";
     }
   }
-  // always write data from last time step
+
   time += ts;
   time_fout_ << time << std::endl;
   solve_time_fout_ << solve_time << " " << mpc_->solver_->getSolveTime()
@@ -122,10 +125,10 @@ void MPCLogger::logPreviousSolve(double t0,
   inputs_fout_ << u_traj_.tail(m).transpose() << std::endl;
 }
 
-void MPCLogger::writeParamFile(const std::string& filename)
+void MPCLogger::writeParamFile(const std::filesystem::path& filename)
 {
   std::ofstream param_fout;
-  param_fout.open(save_dir_ + filename);
+  param_fout.open(save_path_ / filename);
   if (!param_fout.is_open()) {
     throw std::runtime_error("[MPCLogger::writeParamFile] "
                              "Failed to open parameter file for writing.");
@@ -178,18 +181,31 @@ void MPCLogger::writeParamFile(const std::string& filename)
   wrote_params_ = true;
 }
 
-void MPCLogger::handleStringSubstitutions()
+void MPCLogger::handlePathSubstitutions()
 {
-  std::string slash{"/"};
-  if (save_dir_.back() != slash.back())
-    save_dir_ += slash;
+  const std::string raw = save_path_.string();
+  if (raw.empty())
+    return;
 
-  if (save_dir_.front() == std::string("~").front()
-      || save_dir_.substr(0, 5) == std::string("$HOME")
-      || save_dir_.substr(0, 7) == std::string("${HOME}")) {
-    std::string env_home{std::getenv("HOME")};
-    int pos = save_dir_.find_first_of("/");
-    save_dir_.replace(0, pos, env_home);
+  const char* home_cstr = std::getenv("HOME");
+  if (home_cstr == nullptr)
+    return;
+
+  const std::string home{home_cstr};
+
+  if (raw.front() == '~') {
+    save_path_ = std::filesystem::path{home} / raw.substr(1);
+    return;
+  }
+
+  if (raw.rfind("$HOME", 0) == 0) {
+    save_path_ = std::filesystem::path{home} / raw.substr(5);
+    return;
+  }
+
+  if (raw.rfind("${HOME}", 0) == 0) {
+    save_path_ = std::filesystem::path{home} / raw.substr(7);
+    return;
   }
 }
 
