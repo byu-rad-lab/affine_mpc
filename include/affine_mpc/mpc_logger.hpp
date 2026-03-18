@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 #include "affine_mpc/mpc_base.hpp"
 
@@ -30,10 +31,12 @@ public:
   /**
    * @brief Construct an MPCLogger for a given MPC instance.
    * @param mpc Pointer to MPCBase instance to log.
-   * @param save_location Directory to save log files.
+   * @param save_location Directory to save log files and temp binary data.
+   * @param save_name Base name for the final .npz file (default: "log").
    */
   MPCLogger(const MPCBase* const mpc,
-            const std::filesystem::path& save_location);
+            const std::filesystem::path& save_location,
+            const std::string& save_name = "log");
 
   virtual ~MPCLogger();
 
@@ -58,6 +61,11 @@ public:
                         const int write_every = 1);
 
   /**
+   * @brief Pack all temp binary data into a single .npz file and write parameters.
+   */
+  void finalize();
+
+  /**
    * @brief Write MPC parameters and metadata to a YAML file.
    * @param filename Output filename (default: params.yaml).
    */
@@ -67,14 +75,19 @@ public:
 private:
   const MPCBase* const mpc_;
   std::filesystem::path save_path_;
+  std::string save_name_;
   bool wrote_params_;
+  bool is_finalized_;
+  int num_logged_steps_;
+
   Eigen::VectorXd x_traj_, u_traj_;
-  std::ofstream time_fout_;
-  std::ofstream solve_time_fout_;
-  std::ofstream states_fout_;
-  std::ofstream refs_fout_;
-  std::ofstream inputs_fout_;
-  std::ofstream spline_knots_fout_;
+
+  // Temp binary output streams for high-frequency logging
+  std::ofstream time_bin_;
+  std::ofstream solve_times_bin_; // [user_solve_time, osqp_solve_time]
+  std::ofstream states_bin_;
+  std::ofstream refs_bin_;
+  std::ofstream inputs_bin_;
 };
 
 } // namespace affine_mpc

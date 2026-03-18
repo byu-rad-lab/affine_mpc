@@ -26,6 +26,7 @@ option(${PROJECT_NAME}_BINDINGS "Set on when building python bindings" OFF)
 include(FetchContent)
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
+include(cmake/extern_cnpy.cmake)
 
 # --------------------------------------------------
 # Main library
@@ -60,9 +61,10 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 # Link dependencies
-target_link_libraries(${PROJECT_NAME} PUBLIC
-  Eigen3::Eigen
-  osqp::osqp
+target_link_libraries(${PROJECT_NAME}
+  PUBLIC Eigen3::Eigen
+  PUBLIC osqp::osqp
+  PRIVATE $<BUILD_INTERFACE:cnpy::cnpy>
 )
 
 # C++ standard
@@ -91,7 +93,7 @@ if(${PROJECT_NAME}_BUILD_TESTS)
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
-    # test/affine_mpc/mpc_logger_tests.cpp
+    test/affine_mpc/mpc_logger_tests.cpp
   )
 
   foreach(TEST_SRC IN LISTS TEST_SOURCES)
@@ -100,6 +102,7 @@ if(${PROJECT_NAME}_BUILD_TESTS)
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
+      cnpy::cnpy
     )
     gtest_discover_tests(${TEST_NAME})
   endforeach()
