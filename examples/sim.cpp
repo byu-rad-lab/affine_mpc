@@ -7,6 +7,7 @@
 #include "affine_mpc/parameterization.hpp"
 
 namespace ampc = affine_mpc;
+namespace fs = std::filesystem;
 
 
 int main()
@@ -19,7 +20,14 @@ int main()
   };
   ampc::CondensedMPC msd_mpc{n, m, param, opts};
 
-  ampc::MPCLogger logger{&msd_mpc, "/tmp/ampc_example"};
+  // generic option
+  const auto savedir{fs::temp_directory_path() / "ampc_example"};
+  // linux/mac option
+  // const auto savedir{fs::path{std::getenv("HOME")} / "ampc_example"};
+  // windows option
+  // const auto savedir{fs::path{std::getenv("USERPROFILE")} / "ampc_example"};
+
+  ampc::MPCLogger logger{&msd_mpc, savedir};
 
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;

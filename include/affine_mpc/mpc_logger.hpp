@@ -30,10 +30,10 @@ public:
   /**
    * @brief Construct an MPCLogger for a given MPC instance.
    * @param mpc Pointer to MPCBase instance to log.
-   * @param save_location Directory to save log files (default: /tmp/ampc_data).
+   * @param save_location Directory to save log files.
    */
   MPCLogger(const MPCBase* const mpc,
-            const std::filesystem::path& save_location = "/tmp/ampc_data");
+            const std::filesystem::path& save_location);
 
   virtual ~MPCLogger();
 
@@ -63,12 +63,6 @@ public:
    */
   void writeParamFile(const std::filesystem::path& filename =
                           std::filesystem::path{"params.yaml"});
-
-protected:
-  /**
-   * @brief Normalize and expand save path (e.g. '~', '$HOME', '${HOME}').
-   */
-  void handlePathSubstitutions();
 
 private:
   const MPCBase* const mpc_;
