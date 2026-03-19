@@ -1,12 +1,10 @@
 #include "affine_mpc/mpc_logger.hpp"
 
-#include <cassert>
 #include <cnpy.h>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <stdexcept>
 
 namespace affine_mpc {
 
@@ -47,7 +45,7 @@ std::vector<double> loadBinary(const std::filesystem::path& path)
 } // namespace
 
 MPCLogger::MPCLogger(const MPCBase& mpc,
-                     const std::filesystem::path& save_location,
+                     const std::filesystem::path& save_dir,
                      double ts,
                      int prediction_stride,
                      bool log_control_points,
@@ -60,7 +58,7 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
-    save_path_{save_location.lexically_normal()},
+    save_dir_{save_dir.lexically_normal()},
     save_name_{save_name},
     is_finalized_{false},
     num_logged_steps_{0},
@@ -68,11 +66,6 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
     u_pred_buf_{log_control_points ? mpc.input_dim_ * mpc.num_ctrl_pts_
                                    : mpc.input_dim_ * mpc.horizon_steps_}
 {
-  // if (!mpc.solver_initialized_)
-  //   throw std::logic_error("[MPCLogger::MPCLogger] "
-  //                          "mpc object must be initialized for snapshot to
-  //                          be")
-
   if (prediction_stride_ <= 0) {
     strided_k_.push_back(0);
   } else {
@@ -119,11 +112,11 @@ MPCLogger::~MPCLogger()
 
 void MPCLogger::initTempFiles()
 {
-  if (!std::filesystem::exists(save_path_))
-    std::filesystem::create_directories(save_path_);
+  if (!std::filesystem::exists(save_dir_))
+    std::filesystem::create_directories(save_dir_);
 
   auto open_bin = [&](std::ofstream& fout, const std::string& name) {
-    fout.open(save_path_ / (save_name_ + "_" + name + ".tmp"),
+    fout.open(save_dir_ / (save_name_ + "_" + name + ".tmp"),
               std::ios::binary | std::ios::out);
   };
 
@@ -262,12 +255,12 @@ void MPCLogger::finalize()
   ref_states_bin_.close();
   ref_inputs_bin_.close();
 
-  const std::string npz_path = (save_path_ / (save_name_ + ".npz")).string();
+  const std::string npz_path = (save_dir_ / (save_name_ + ".npz")).string();
   const size_t N = (size_t)num_logged_steps_;
 
   auto pack_clean = [&](const std::string& name,
                         const std::vector<size_t>& shape, bool append) {
-    auto path = save_path_ / (save_name_ + "_" + name + ".tmp");
+    auto path = save_dir_ / (save_name_ + "_" + name + ".tmp");
     auto data = loadBinary(path);
     if (!data.empty())
       cnpy::npz_save(npz_path, name, data.data(), shape, append ? "a" : "w");
@@ -330,7 +323,7 @@ void MPCLogger::finalize()
 
 void MPCLogger::writeParamFile(const std::filesystem::path& filename)
 {
-  std::ofstream fout(save_path_ / filename);
+  std::ofstream fout(save_dir_ / filename);
   fout << std::boolalpha;
   for (const auto& key : metadata_keys_) {
     const auto& entry = metadata_registry_[key];
