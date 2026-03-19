@@ -59,10 +59,8 @@ The following equations show the supported cost function and constraints within 
 
 $$
 \begin{equation}
-% J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
-    + \underbrace{
-          \sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R
-      }_{\textcolor{red}{\text{input cost}}}
+J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
+    + \underbrace{\sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R}_{\textcolor{red}{\text{input cost}}}
 \text{argmin} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
     + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
     + \underbrace{
