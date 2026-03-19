@@ -1,81 +1,97 @@
 # affine_mpc
 
 ## Overview
-`affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use a discrete-time affine time-invariant model. `affine_mpc_py` is a Pybind wrapper around the `affine_mpc` library in order to provide a Python interface.
+
+`affine_mpc` is a C++ library that provides a convenient interface to the OSQP solver library in order to solve MPC problems that use a discrete-time affine time-invariant model.
 
 ## License
+
 This work is licensed with the BSD 3-clause license, see `LICENSE` file for details.
 
 ## Dependencies
+
 Note that this project was developed using both Ubuntu 20.04 and 22.04 with the GCC
 compiler (version 11).
 
 #### Required:
-- [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html)
-  - Known to work with versions 3.3.7 and 3.4.0 - newer versions will likely also work
-  - This is probably already installed on your system if you have ROS
-  - Can install with `sudo apt install libeigen3-dev`
+
+- [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) (3.4+) - Matrix library
+  - Ubuntu: `sudo apt install libeigen3-dev`
+  - Arch: `sudo pacman -S --asdeps eigen`
   - Can install from [source](https://gitlab.com/libeigen/eigen)
-- [OSQP](https://osqp.org/docs/get_started/)
-  - Known to work with version 0.6.2
-  - This project will locally clone and build OSQP for you if you do nothing
-  - Can install to system from [source](https://github.com/osqp/osqp)
+  - A system install is recommended, but if not found then this project will locally clone and build Eigen
+- [OSQP](https://osqp.org/docs/get_started/) (1.0+) - QP library
+  - Arch: `sudo pacman -S --asdeps osqp`
+  - Can install from [source](https://github.com/osqp/osqp)
+  - This project will locally clone and build OSQP if it is not found on your system
+- [cnpy](https://github.com/rogersce/cnpy.git) - Save NPY/NPZ files for logging
+  - This project will locally clone and build cnpy
 
 #### Optional:
-- [GTest](https://google.github.io/googletest/) (required if you build the unit tests)
-  - Known to work with version 1.11.0
-  - This is probably already installed on your system if you have ROS
-  - Can install to system with `sudo apt install libgtest-dev`
-  - Can install to system from [source](https://github.com/google/googletest)
-- [Pybind11](https://pybind11.readthedocs.io/en/stable/index.html) (required if you build Python bindings)
-  - Known to work with versions 2.4.3 and 2.9.2
-  - This project will locally clone and build Pybind11 version 2.9.2 for you if you do nothing
-  - Can install to system with `sudo apt install pybind11-dev`, which will give you version 2.4.3 and you must specify the cmake variable `PYBIND11_VER=2.4.3` if you want to use this version
-  - Can install to system from [source](https://github.com/pybind/pybind11)
-- [NumPy](https://numpy.org/) (required if you want to use Python bindings)
-  - Can install with 'pip install numpy'
+
+- [GTest](https://google.github.io/googletest/) (1.11+) - Unit testing
+  - Ubuntu: `sudo apt install libgtest-dev`
+  - Arch: `sudo pacman -S --asdeps gtest`
+  - Can install from [source](https://github.com/google/googletest)
+  - A system install is recommended, but if not found then this project will locally clone and build GTest
 
 ## Building the Library
+
 This library is designed to be built using CMake. There are 3 flags available:
-- `BUILD_BINDINGS` (specify whether to build Python bindings for the `affine_mpc_py` package)
-- `BUILD_EXAMPLE` (specify whether to build C++ example)
-- `BUILD_TESTS` (specify whether to build)
 
-Additionally, you can set `-DPYBIND11_VER=2.4.3` to use the apt installed version of Pybind11 (on Ubuntu 20.04). For example:
+- `affine_mpc_BUILD_EXAMPLE` (specify whether to build C++ example)
+- `affine_mpc_BUILD_TESTS` (specify whether to build)
 
-```shell
-mkdir build && cd build
-cmake -DBUILD_TESTS=OFF -DBUILD_BINDINGS=ON ..
-make
+Run these in top-level of repo:
+
+```sh
+cmake -S . -B build -Daffine_mpc_BUILD_TESTS=OFF -Daffine_mpc_BUILD_BINDINGS=ON
+cmake --build build --config Release --parallel
 ```
 
-**NOTE:** It is recommended to build the `affine_mpc` library in `DEBUG` mode (`-DCMAKE_BUILD_TYPE=Debug`) while initially setting up your problem so that you can receive useful error statements regarding usable functions and size of function arguments. Once you have your problem running, then you can build in `RELEASE` mode to gain some extra speed.
-
-#### Python Bindings
-If you specified `-DBUILD_BINDINGS=ON`, then the python bindings were built and placed into the `python/affine_mpc_py` package, which can be installed locally with pip (run in top-level directory of repository):
-
-```shell
-pip install .
-```
-Then in a python file you can import the package:
-```python
-import affine_mpc_py as ampc
-```
+**Note**: Building in `Debug` mode provides additional shape checks on Eigen variables, which may be useful in
+development.
+Once developed though, `Release` mode will run _a lot_ faster.
 
 ## MPC Problem
+
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
+
+$$
+\begin{equation}
+% J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
+    + \underbrace{
+          \sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R
+      }_{\textcolor{red}{\text{input cost}}}
+\text{argmin} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
+    + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
+    + \underbrace{
+        \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
+      }_{\textcolor{red}{\text{input cost}}}
+\end{equation}
+$$
 
 ```math
 \begin{equation}
-% J = \sum_{k=1}^{T+1} ||x_k - x_{k,des}||_Q + \underbrace{\sum_{k=0}^{p} ||u_k - u_{k,des}||_R}_{\textcolor{red}{\text{input cost}}}
-\text{argmin} \quad || \bar{x}_T - x_T ||^2_{Q_f} + \sum_{k=1}^{T-1} || \bar{x}_k - x_k ||^2_Q + \underbrace{\sum_{i=0}^{p-1} || \bar{\nu}_i - \nu_i ||^2_R}_{\textcolor{red}{\text{input cost}}}
+% J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
+    + \underbrace{
+          \sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R
+      }_{\textcolor{red}{\text{input cost}}}
+\text{argmin} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
+    + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
+    + \underbrace{
+        \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
+      }_{\textcolor{red}{\text{input cost}}}
 \end{equation}
 ```
 
 ```math
 \begin{align}
-% \text{min} &\quad \sum_{k=1}^T ||x_k - x_{k,des}||^2_Q + \underbrace{\sum_{i=0}^{p-1} ||\nu_i - \nu_{i,des}||^2_R}_{\textcolor{red}{\text{input cost}}} \\
-w.r.t &\quad \nu_0,...,\nu_{p-1} \\
+% \text{min} &\quad \sum_{k=1}^T \left\lVert x_k - x_{k,des} \right\rVert^2_Q
+    + \underbrace{
+        \sum_{i=0}^{p-1} \left\lVert \nu_i - \nu_{i,des} \right\rVert^2_R
+      }_{\textcolor{red}{\text{input cost}}} \\
+w.r.t. &\quad \nu_0,...,\nu_{p-1} \\
 s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
 &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
 &\quad u_{min} \leq u_k \leq u_{max} \\
@@ -86,7 +102,7 @@ s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
 
 where, $`x \in \mathbb{R}^n`$ is the state, $`\bar{x} \in \mathbb{R}^n`$ is the reference state, $`u \in \mathbb{R}^m`$ is the input, $`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory, $`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point, $`g`$ is the function to evaluate the parameterized input trajectory, $`T`$ is the number of steps in the prediction horizon, $`p`$ is the number of control points used to parameterize the input trajectory, the discrete-time affine model is defined by $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, and $`w \in \mathbb{R}^n`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal weighting matrices.
 
-**NOTE:** The norm in the cost function is a weighted 2-norm where $`||x||^2_M = x^\top M x`$.
+**NOTE:** The norm in the cost function is a weighted 2-norm where $`\left\lVert x \right\rVert^2_M = x^\top M x`$.
 
 The MPC optimization problem must be converted to a QP optimization problem in order to use the OSQP solver. This [paper](https://arxiv.org/pdf/2001.04931.pdf) shows how the conversion is done. Note that Implicit MPC is what the paper calls Small Matrix Formulation.
 
@@ -100,14 +116,17 @@ Possible additions:
 -->
 
 ## Examples
+
 A C++ example (`example_sim` target built with `-DBUILD_EXAMPLE=ON`) and a Python example are both available in the `examples` folder. There is also a `plot_sim.py` script, which can be used to visualize the results from either the C++ or Python example; both examples are the same just in different languages.
 
 ## API
+
 The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (both fixed size and dynamic size matrices work) while Python uses Numpy arrays.
 
 **Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the C++ header files or using iPython for some documentation of the Python bindings. A stub file for the Python bindings is included in `affine_mpc_py` to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
 
 ### Step 1: MPC Constructor
+
 When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the number of steps and control points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no usable solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
 
 #### C++
@@ -129,6 +148,7 @@ def __init__(self, state_dim: int, input_dim: int, horizon_steps: int,
 ```
 
 ### Step 2: MPC Pre-Initialization Setup
+
 _AFTER_ creating an MPC object with the format of the MPC problem you wish to use, **you must specify all of the applicable parameters (set the model, input saturation limits, slew rate, and state saturation limits) _BEFORE_ initializing the solver.** The state weights (Q) will default to identity while the input weights (R) will default to zero.
 
 **Relevant Member Functions**
@@ -159,6 +179,7 @@ The OSQP solver is a sparse solver and it will only keep track of elements that 
 **If you pass in a 0 somewhere that will not be a 0 later on in the code, the solver will not track the value and the model will not be what you expect it to be.** You might get lucky, but there is no safety check or guarantee that your code will work as expected if you are not careful when you initialize the solver.
 
 ### Step 3: Initialize OSQP Solver
+
 This library uses the OSQP solver for the optimization. After specifying the parameters from the previous section, the solver can be initialized. If you do not pass in `solver_settings` then the default settings can be found in the `OSQPSolver` constructor, which modifies a couple of OSQP's default settings.
 
 **NOTE:** To learn more about the OSQP solver and its settings, visit the [OSQP website](https://osqp.org/docs/solver/index.html).
@@ -184,6 +205,7 @@ def initializeSolver(solver_settings: OSQPSettings=None) -> bool: # returns true
 Once the solver is initialized, you need to specify weights and reference trajectories you wish to use:
 
 #### Relevant Functions
+
 **Note:** all of the following function arguents are 1D vectors/arrays.
 
 #### C++
@@ -219,7 +241,9 @@ def setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts: NDArray) -> None:
 ```
 
 #### Update parameters from pre-initialization setup
+
 You can call any of the pre-initialization setup to update them before solving. If you want to successively linearize or affinize then you will need to update the model before each solve.
+
 ```cpp
 setModelDiscrete(Ad, Bd, wd)
 setModelContinuous2Discrete(Ac, Bc, wc, dt)
@@ -243,6 +267,7 @@ def solve(x0: NDArray) -> bool: # returns true if successful
 ```
 
 #### Get desired information from solve
+
 You can get the next input to apply (the first input from the prediction horizon), the parameterized input trajectory, or the entire input trajectory over the prediction horizon. You can also get the predicted state trajectory (where MPC thinks the system will go).
 
 #### C++
@@ -255,6 +280,7 @@ void getPredictedStateTrajectory(VectorXd& x_traj);
 ```
 
 #### Python
+
 These functions allow you to call them like C++ where the return value is the function argument (avoids memory allocation and copying). They can also be called with no arguments, which will allocate memory and return the vector.
 
 ```python
@@ -267,11 +293,13 @@ def getPredictedStateTrajectory([x_traj]) -> x_traj:
 After solving, you can update any of the parameters before solving again (if you want to change your model, the weights, reference trajectories, etc.). Then you write a loop that will continuously pass in the current state and solve for inputs.
 
 ### Step 5: Logging (Optional)
+
 An `MPCLogger` class is provided to log data for time, predicted state trajectory, optimized input trajectory, and reference state trajectory at each time step. This can be used as a debugging tool to visualize the entire solutions generated by the solver rather than just inputs that are actually applied to the system (usually only the first input calculated in the optimization).
 
 #### Constructor
 
 #### C++
+
 ```cpp
 MPCLogger(const MPCBase& mpc, const std::filesystem::path& save_location,
           double ts, int prediction_stride = 1, bool log_control_points = false);
@@ -279,19 +307,21 @@ MPCLogger(const MPCBase& mpc, const std::filesystem::path& save_location,
 MPCLogger logger{mpc, "~/data/mpc", 0.1, 2, false};
 ```
 
-To create a logger object you must pass in a reference to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script). 
+To create a logger object you must pass in a reference to an existing MPC object along with a string for where you want the data to be stored (default is `"/tmp/mpc_data"` and you can use `"~/"`, `"$HOME/"`, and `"${HOME}/"` at the beginning for your home directory - if the string does not start with one of these three strings or `"/"` then it is a path relative to the script).
 
 You must also provide the time step `ts`. The `prediction_stride` parameter reduces file size by downsampling the predicted trajectories (e.g., `stride=2` logs every other step, but always includes the terminal state. `stride=0` logs only the current step). If `log_control_points` is true, the logger saves the raw QP control points instead of the evaluated input trajectory.
 
 #### Logging
 
 #### C++
+
 ```cpp
 // Convenience: automatically gets trajectories from MPC
 void logStep(double t, const Eigen::VectorXd& x0, const MPCBase& mpc, double solve_time = -1);
 ```
 
 #### Python
+
 ```python
 # Convenience: automatically gets trajectories from MPC
 def logStep(t: float, x0: NDArray, mpc: MPCBase, solve_time: float = -1);
@@ -318,6 +348,7 @@ while t <= t_final:
 ```
 
 The logger creates a `log.npz` binary file and a `params.yaml` metadata file within the `save_location` directory. The `.npz` file contains the following datasets:
+
 - `time`: `(N,)` simulation timestamps
 - `states`: `(N, K, state_dim)` where `states[:, 0, :]` is the actual state $x_0$, and subsequent indices are the strided predictions.
 - `ref_states`: `(N, K, state_dim)` where `ref_states[:, 0, :]` is the reference at $t=1$, and subsequent indices perfectly align with the strided predictions.
@@ -333,11 +364,13 @@ The `solve_time` parameter is optional. The logger records both this time and th
 #### Write Param File
 
 #### C++
+
 ```cpp
 void writeParamFile(const std::string& filename="params.yaml");
 ```
 
 #### Python
+
 ```python
 def writeParamFile(filename: str="params.yaml") -> None:
 ```
@@ -347,14 +380,17 @@ This function is used to write all of the parameters of the MPC problem setup to
 Also, the `MPCLogger` destructor is set to write a param file with the default name if you never call the function yourself. **NOTE: Python does not seem to call destructors in the correct order, so to avoid a runtime error after your script is finished you MUST have called this function manually at some point or else call `del logger` at the end of the script.** C++ does not have any issues with this.
 
 ## Testing
+
 **Note:** The following commands are all written to be run inside of the top-level directory of the repository (assuming code is built in `build`).
 
 #### Test C++ library only
+
 ```shell
 ./build/affine_mpc_UnitTests
 ```
 
 #### Test Python bindings only
+
 With `pytest`:
 
 ```shell
@@ -372,4 +408,5 @@ python3 test/bindings/<testfile>.py
 ```shell
 ctest --test-dir build
 ```
+
 (if `BUILD_BINDINGS=OFF` then this will only run C++ tests):
