@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <sstream>
 #include <stdexcept>
+#include <unsupported/Eigen/Splines>
 
 namespace affine_mpc {
 
@@ -124,6 +125,38 @@ Parameterization::Parameterization(const int horizon_steps,
   validateHorizonSteps(horizon_steps);
   validateDegree(degree, horizon_steps);
   validateKnots(knots, horizon_steps, degree);
+}
+
+VectorXd Parameterization::evaluate(
+    int input_dim,
+    const Eigen::Ref<const Eigen::VectorXd>& control_points) const
+{
+  if (input_dim < 1)
+    throw std::invalid_argument(
+        "[Parameterization::evaluate] input_dim must be positive.");
+  if (control_points.size() != num_control_points * input_dim)
+    throw std::invalid_argument(
+        "[Parameterization::evaluate] "
+        "Size of control_points must be input_dim*horizon_steps");
+
+  using Spline1d = Spline<double, 1>;
+  VectorXd u_traj{input_dim * horizon_steps};
+  u_traj.setZero();
+
+  Map<MatrixXd> map{u_traj.data(), input_dim, horizon_steps};
+  Map<const MatrixXd> ctrls{control_points.data(), input_dim,
+                            num_control_points};
+  const int order{degree + 1};
+  VectorXd weights{order};
+
+  for (int k{0}; k < horizon_steps; ++k) {
+    const double t = k;
+    const int idx = Spline1d::Span(t, degree, knots) - degree;
+    weights = Spline1d::BasisFunctions(t, degree, knots);
+    for (int i{0}; i < order; ++i)
+      map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
+  }
+  return u_traj;
 }
 
 Parameterization Parameterization::moveBlocking(const int horizon_steps,

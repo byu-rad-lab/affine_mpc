@@ -210,6 +210,36 @@ TEST(ParameterizationDirectConstructor, givenNcEqualsT_deg1_FormsKnotsCorrectly)
   ASSERT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-15));
 }
 
+// ---- Methods ---------------------------------------------------------------
+
+TEST(Parameterization, givenControlPoints_EvaluatesInputTrajCorrectly)
+{
+  const int T{10}, m{1}, nc{4};
+  const Vector4d ctrls{0, 1, -1, 0};
+
+  const affine_mpc::Parameterization p0{T, 0, nc};
+  const affine_mpc::Parameterization p1{T, 1, nc};
+  const affine_mpc::Parameterization p2{T, 2, nc};
+
+  const auto u_traj0{p0.evaluate(m, ctrls)};
+  const auto u_traj1{p1.evaluate(m, ctrls)};
+  const auto u_traj2{p2.evaluate(m, ctrls)};
+
+  std::cout << u_traj0.transpose() << std::endl;
+
+  VectorXd u_traj0_expected{m * T}, u_traj1_expected{m * T},
+      u_traj2_expected{m * T};
+  u_traj0_expected << 0, 0, 0, 1, 1, -1, -1, 0, 0, 0;
+  u_traj1_expected << 0, 0.33333333, 0.66666666, 1, 0.33333333, -0.33333333, -1,
+      -0.66666666, -0.33333333, 0;
+  u_traj2_expected << 0, 0.34567901, 0.49382716, 0.44444444, 0.19753086,
+      -0.19753086, -0.44444444, -0.49382716, -0.34567901, 0;
+
+  expectEigenNear(u_traj0, u_traj0_expected, 1e-8);
+  expectEigenNear(u_traj1, u_traj1_expected, 1e-8);
+  expectEigenNear(u_traj2, u_traj2_expected, 1e-8);
+}
+
 // ---- Direct constructor (custom knots) — validation paths ------------------
 
 TEST(ParameterizationCustomKnotsConstructor,

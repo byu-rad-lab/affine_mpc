@@ -57,6 +57,17 @@ public:
   ~Parameterization() = default;
 
   /**
+   * @brief Evalutate an input trajectory from provided control_points.
+   * @param input_dim Dimension of input vector.
+   * @param control_points Parameterized input trajectory as a vector of size
+   *   input_dim*num_control_points.
+   * @return input_traj The evaluated input trajectory.
+   */
+  Eigen::VectorXd
+  evaluate(int input_dim,
+           const Eigen::Ref<const Eigen::VectorXd>& control_points) const;
+
+  /**
    * @brief Static method for generating a uniform clamped knot vector. Useful
    *   for generating a starting point that can be modified for custom
    *   parameterizations.
@@ -65,6 +76,7 @@ public:
    *   num_control_points.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @return knots The uniform clamped knot vector.
    */
   static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
                                                  const int degree,
