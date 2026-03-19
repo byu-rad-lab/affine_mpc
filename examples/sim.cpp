@@ -1,6 +1,6 @@
 #include <Eigen/Core>
-#include <iostream>
 #include <chrono>
+#include <iostream>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
@@ -21,18 +21,12 @@ int main()
   };
   ampc::CondensedMPC msd_mpc{n, m, param, opts};
 
-  // generic option
-  const auto savedir{fs::temp_directory_path() / "ampc_example"};
-
-  double ts{0.1};
-  ampc::MPCLogger logger{msd_mpc, savedir, ts, 1, false};
-  logger.addMetadata("example_name", "mass_spring_damper");
-
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;
   A << 0, 1, -0.6, -0.1;
   B << 0, 0.2;
   w.setZero();
+  double ts{0.1};
   msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
 
   Eigen::Matrix<double, m, 1> u_min{0}, u_max{3}, slew{1};
@@ -53,13 +47,18 @@ int main()
     return 1;
   }
 
+  const auto savedir{fs::temp_directory_path() / "ampc_example"};
+  const int pred_stride{1}; // 1 logs every step of each solve horizon
+  ampc::MPCLogger logger{msd_mpc, savedir, ts, pred_stride};
+  logger.addMetadata("example_name", "mass_spring_damper");
+
   Eigen::Vector2d xk;
   xk.setZero();
 
   Eigen::Matrix<double, m, 1> uk;
-  
-  affine_mpc::SolveStatus status;
+
   double tf{5};
+  affine_mpc::SolveStatus status;
   for (double t{0}; t < tf; t += ts) {
     auto start = std::chrono::high_resolution_clock::now();
     status = msd_mpc.solve(xk);
@@ -68,12 +67,10 @@ int main()
 
     if (status != ampc::SolveStatus::Success)
       std::cout << "Solver status: " << status << std::endl;
-    
+
     msd_mpc.getNextInput(uk);
-    
-    // Use the convenience overload!
     logger.logStep(t, xk, msd_mpc, diff.count());
-    
+
     msd_mpc.propagateModel(xk, uk, xk);
   }
 

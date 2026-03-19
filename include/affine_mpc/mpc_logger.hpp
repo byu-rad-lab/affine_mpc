@@ -47,15 +47,15 @@ public:
   MPCLogger(const MPCBase& mpc,
             const std::filesystem::path& save_location,
             double ts,
-            int prediction_stride = 0,
+            int prediction_stride = 1,
             bool log_control_points = false,
             const std::string& save_name = "log");
 
   virtual ~MPCLogger();
 
   /**
-   * @brief Convenience overload: Automatically fetches trajectories from MPC
-   * and applies striding.
+   * @brief Convenience overload: Automatically fetches trajectories and
+   * references from MPC.
    * @param t Current simulation time.
    * @param x0 Current state.
    * @param mpc The MPC object to log.
@@ -95,12 +95,13 @@ private:
   void logStep(double t,
                const Eigen::Ref<const Eigen::VectorXd>& states,
                const Eigen::Ref<const Eigen::VectorXd>& inputs,
-               double solve_time,
-               double osqp_solve_time);
+               const Eigen::Ref<const Eigen::VectorXd>& ref_states,
+               const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
+               const Eigen::Ref<const Eigen::VectorXd>& solve_times);
 
   void initTempFiles();
 
-  int state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_;
+  int state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, spline_degree_;
   double ts_;
   int prediction_stride_;
   bool log_control_points_;
@@ -119,12 +120,15 @@ private:
   // Internal buffers to avoid re-allocation during logging
   Eigen::VectorXd x_pred_buf_, u_pred_buf_;
   Eigen::VectorXd states_out_buf_, inputs_out_buf_;
+  Eigen::VectorXd ref_states_out_buf_, ref_inputs_out_buf_;
 
   // Temp binary output streams
   std::ofstream time_bin_;
   std::ofstream solve_times_bin_;
   std::ofstream states_bin_;
   std::ofstream inputs_bin_;
+  std::ofstream ref_states_bin_;
+  std::ofstream ref_inputs_bin_;
 };
 
 } // namespace affine_mpc

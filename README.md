@@ -320,7 +320,9 @@ while t <= t_final:
 The logger creates a `log.npz` binary file and a `params.yaml` metadata file within the `save_location` directory. The `.npz` file contains the following datasets:
 - `time`: `(N,)` simulation timestamps
 - `states`: `(N, K, state_dim)` where `states[:, 0, :]` is the actual state $x_0$, and subsequent indices are the strided predictions.
+- `ref_states`: `(N, K, state_dim)` where `ref_states[:, 0, :]` is the reference at $t=1$, and subsequent indices perfectly align with the strided predictions.
 - `inputs`: `(N, K, input_dim)` applied inputs and strided predictions (or `(N, num_control_points, input_dim)` if `log_control_points` is true).
+- `ref_inputs`: `(N, K, input_dim)` applied inputs and strided references (or `(N, num_control_points, input_dim)` if `log_control_points` is true).
 - `solve_times`: `(N, 2)` user and solver-reported times
 - `meta_*`: Self-describing copies of all metadata, including `meta_t_pred` for perfectly aligning predicted trajectories in time.
 

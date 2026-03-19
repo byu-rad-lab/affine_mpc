@@ -56,6 +56,7 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
     input_dim_{mpc.input_dim_},
     horizon_steps_{mpc.horizon_steps_},
     num_ctrl_pts_{mpc.num_ctrl_pts_},
+    spline_degree_{mpc.spline_degree_},
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
@@ -67,6 +68,11 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
     u_pred_buf_{log_control_points ? mpc.input_dim_ * mpc.num_ctrl_pts_
                                    : mpc.input_dim_ * mpc.horizon_steps_}
 {
+  // if (!mpc.solver_initialized_)
+  //   throw std::logic_error("[MPCLogger::MPCLogger] "
+  //                          "mpc object must be initialized for snapshot to
+  //                          be")
+
   if (prediction_stride_ <= 0) {
     strided_k_.push_back(0);
   } else {
@@ -84,6 +90,8 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
 
   states_out_buf_.resize(logged_x_dim_);
   inputs_out_buf_.resize(logged_u_dim_);
+  ref_states_out_buf_.resize(logged_x_dim_);
+  ref_inputs_out_buf_.resize(logged_u_dim_);
 
   captureMPCSnapshot(mpc);
 
@@ -123,6 +131,8 @@ void MPCLogger::initTempFiles()
   open_bin(solve_times_bin_, "solve_times");
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
+  open_bin(ref_states_bin_, "ref_states");
+  open_bin(ref_inputs_bin_, "ref_inputs");
 }
 
 void MPCLogger::captureMPCSnapshot(const MPCBase& mpc)
@@ -136,25 +146,28 @@ void MPCLogger::captureMPCSnapshot(const MPCBase& mpc)
   if (mpc.spline_knots_.size() > 0)
     addMetadata("knots", mpc.spline_knots_);
 
-  addMetadata("opt_use_input_cost", (int)mpc.opts_.use_input_cost);
-  addMetadata("opt_slew_initial_input", (int)mpc.opts_.slew_initial_input);
-  addMetadata("opt_slew_control_points", (int)mpc.opts_.slew_control_points);
-  addMetadata("opt_saturate_states", (int)mpc.opts_.saturate_states);
+  addMetadata("opt_use_input_cost", static_cast<int>(mpc.opts_.use_input_cost));
+  addMetadata("opt_slew_initial_input",
+              static_cast<int>(mpc.opts_.slew_initial_input));
+  addMetadata("opt_slew_control_points",
+              static_cast<int>(mpc.opts_.slew_control_points));
+  addMetadata("opt_saturate_states",
+              static_cast<int>(mpc.opts_.saturate_states));
   addMetadata("opt_saturate_input_trajectory",
-              (int)mpc.opts_.saturate_input_trajectory);
+              static_cast<int>(mpc.opts_.saturate_input_trajectory));
 
-  addMetadata("u_min", mpc.u_min_, 3);
-  addMetadata("u_max", mpc.u_max_, 3);
-  addMetadata("Q_diag", mpc.Q_big_.diagonal().head(mpc.state_dim_), 3);
-  addMetadata("Qf_diag", mpc.Q_big_.diagonal().tail(mpc.state_dim_), 3);
+  addMetadata("u_min", mpc.u_min_);
+  addMetadata("u_max", mpc.u_max_);
+  addMetadata("Q_diag", mpc.Q_big_.diagonal().head(mpc.state_dim_));
+  addMetadata("Qf_diag", mpc.Q_big_.diagonal().tail(mpc.state_dim_));
 
   if (mpc.opts_.use_input_cost)
-    addMetadata("R_diag", mpc.R_big_.diagonal().head(mpc.input_dim_), 3);
+    addMetadata("R_diag", mpc.R_big_.diagonal().head(mpc.input_dim_));
   if (mpc.opts_.slew_control_points)
-    addMetadata("u_slew", mpc.u_slew_, 3);
+    addMetadata("u_slew", mpc.u_slew_);
   if (mpc.opts_.saturate_states) {
-    addMetadata("x_min", mpc.x_min_, 3);
-    addMetadata("x_max", mpc.x_max_, 3);
+    addMetadata("x_min", mpc.x_min_);
+    addMetadata("x_max", mpc.x_max_);
   }
 }
 
@@ -178,48 +191,63 @@ void MPCLogger::logStep(double t,
   if (log_control_points_) {
     mpc.getParameterizedInputTrajectory(u_pred_buf_);
     inputs_out_buf_ = u_pred_buf_;
+    ref_inputs_out_buf_ = mpc.u_goal_;
   } else {
     mpc.getInputTrajectory(u_pred_buf_);
   }
 
-  for (size_t i = 0; i < strided_k_.size(); ++i) {
-    int k = strided_k_[i];
+  // Handle Input References Evaluation if not logging control points
+  const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc.u_goal_.data(), input_dim_,
+                                                num_ctrl_pts_};
+  const int order{spline_degree_ + 1};
 
-    // States: x[0] is x0, x[k] is x_pred[k-1]
+  for (size_t i = 0; i < strided_k_.size(); ++i) {
+    const int k{strided_k_[i]};
+
+    // 1. States
     if (k == 0) {
       states_out_buf_.segment(i * state_dim_, state_dim_) = x0;
+      ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
+          mpc.x_goal_.head(state_dim_);
     } else {
       states_out_buf_.segment(i * state_dim_, state_dim_) =
           x_pred_buf_.segment((k - 1) * state_dim_, state_dim_);
+      ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
+          mpc.x_goal_.segment((k - 1) * state_dim_, state_dim_);
     }
 
-    // Inputs: u[0] is u0 (or u_pred[0]). u[k] is u_pred[k] or u_pred[T-1] for
-    // terminal.
+    // 2. Inputs
     if (!log_control_points_) {
-      int u_idx = std::min(k, horizon_steps_ - 1);
+      const int u_idx{std::min(k, horizon_steps_ - 1)};
       inputs_out_buf_.segment(i * input_dim_, input_dim_) =
           u_pred_buf_.segment(u_idx * input_dim_, input_dim_);
+
+      // Evaluate spline for reference input at step u_idx
+      const int seg{mpc.spline_segment_idxs_(u_idx)};
+      ref_inputs_out_buf_.segment(i * input_dim_, input_dim_).noalias() =
+          ctrls.middleCols(seg, order) * mpc.spline_weights_.col(u_idx);
     }
   }
 
-  logStep(t, states_out_buf_, inputs_out_buf_, solve_time,
-          mpc.solver_->getSolveTime());
+  const Eigen::Vector2d solve_times{solve_time, mpc.solver_->getSolveTime()};
+  logStep(t, states_out_buf_, inputs_out_buf_, ref_states_out_buf_,
+          ref_inputs_out_buf_, solve_times);
 }
 
 void MPCLogger::logStep(double t,
                         const Eigen::Ref<const Eigen::VectorXd>& states,
                         const Eigen::Ref<const Eigen::VectorXd>& inputs,
-                        double solve_time,
-                        double osqp_solve_time)
+                        const Eigen::Ref<const Eigen::VectorXd>& ref_states,
+                        const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
+                        const Eigen::Ref<const Eigen::VectorXd>& solve_times)
 {
   time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
   writeBinary(states_bin_, states);
   writeBinary(inputs_bin_, inputs);
-
-  double times[2] = {solve_time, osqp_solve_time};
-  solve_times_bin_.write(reinterpret_cast<const char*>(times),
-                         2 * sizeof(double));
-  num_logged_steps_++;
+  writeBinary(ref_states_bin_, ref_states);
+  writeBinary(ref_inputs_bin_, ref_inputs);
+  writeBinary(solve_times_bin_, solve_times);
+  ++num_logged_steps_;
 }
 
 void MPCLogger::finalize()
@@ -231,6 +259,8 @@ void MPCLogger::finalize()
   solve_times_bin_.close();
   states_bin_.close();
   inputs_bin_.close();
+  ref_states_bin_.close();
+  ref_inputs_bin_.close();
 
   const std::string npz_path = (save_path_ / (save_name_ + ".npz")).string();
   const size_t N = (size_t)num_logged_steps_;
@@ -247,21 +277,28 @@ void MPCLogger::finalize()
   pack_clean("time", {N}, false);
   pack_clean("solve_times", {N, 2}, true);
 
-  size_t K = strided_k_.size();
-
+  const size_t K{strided_k_.size()};
+  const size_t n{static_cast<size_t>(state_dim_)};
+  const size_t m{static_cast<size_t>(input_dim_)};
+  const size_t nc{static_cast<size_t>(num_ctrl_pts_)};
   if (K == 1) {
-    pack_clean("states", {N, (size_t)state_dim_}, true);
+    pack_clean("states", {N, n}, true);
+    pack_clean("ref_states", {N, n}, true);
   } else {
-    pack_clean("states", {N, K, (size_t)state_dim_}, true);
+    pack_clean("states", {N, K, n}, true);
+    pack_clean("ref_states", {N, K, n}, true);
   }
 
   if (log_control_points_) {
-    pack_clean("inputs", {N, (size_t)num_ctrl_pts_, (size_t)input_dim_}, true);
+    pack_clean("inputs", {N, nc, m}, true);
+    pack_clean("ref_inputs", {N, nc, m}, true);
   } else {
     if (K == 1) {
-      pack_clean("inputs", {N, (size_t)input_dim_}, true);
+      pack_clean("inputs", {N, m}, true);
+      pack_clean("ref_inputs", {N, m}, true);
     } else {
-      pack_clean("inputs", {N, K, (size_t)input_dim_}, true);
+      pack_clean("inputs", {N, K, m}, true);
+      pack_clean("ref_inputs", {N, K, m}, true);
     }
   }
 

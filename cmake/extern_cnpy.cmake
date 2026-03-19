@@ -1,5 +1,3 @@
-include(FetchContent)
-
 # cnpy requires zlib
 find_package(ZLIB REQUIRED)
 
