@@ -342,7 +342,7 @@ protected:
   Eigen::MatrixXd G_, At_, At_pow_;
 
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_, R_big_;
-  Eigen::VectorXd x_goal_, u_goal_, u_min_, u_max_, x_min_, x_max_;
+  Eigen::VectorXd x_ref_, u_ref_, u_min_, u_max_, x_min_, x_max_;
   Eigen::VectorXd u_slew_, u0_slew_, u_prev_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 

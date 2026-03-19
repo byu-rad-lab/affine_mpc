@@ -154,20 +154,20 @@ void SparseMPC::calcBothCostTerms()
 {
   const int x_rows{x_traj_dim_};
   P_.diagonal().tail(x_rows) = Q_big_.diagonal();
-  q_.tail(x_rows).noalias() = -(Q_big_ * x_goal_);
+  q_.tail(x_rows).noalias() = -(Q_big_ * x_ref_);
 
   if (opts_.use_input_cost) {
     const int u_rows{ctrls_dim_};
     P_.diagonal().head(u_rows) = R_big_.diagonal();
-    q_.head(u_rows).noalias() = -(R_big_ * u_goal_);
+    q_.head(u_rows).noalias() = -(R_big_ * u_ref_);
   }
 }
 
 void SparseMPC::calcCostVector()
 {
-  q_.tail(x_traj_dim_).noalias() = -(Q_big_ * x_goal_);
+  q_.tail(x_traj_dim_).noalias() = -(Q_big_ * x_ref_);
   if (opts_.use_input_cost) {
-    q_.head(ctrls_dim_).noalias() = -(R_big_ * u_goal_);
+    q_.head(ctrls_dim_).noalias() = -(R_big_ * u_ref_);
   }
 }
 

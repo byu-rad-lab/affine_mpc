@@ -83,9 +83,9 @@ void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
     bounds_changed_ = true;
   }
 
-  q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_goal_);
+  q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_ref_);
   if (opts_.use_input_cost)
-    q_.noalias() -= R_big_ * u_goal_;
+    q_.noalias() -= R_big_ * u_ref_;
   success = solver_->updateCostVector(q_);
 
   if (bounds_changed_) {

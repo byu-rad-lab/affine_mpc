@@ -33,8 +33,8 @@ public:
   const auto getWd() { return wd_; }
   const auto getQbig() { return Q_big_; }
   const auto getRbig() { return R_big_; }
-  const auto getStateTrajectory() { return x_goal_; }
-  const auto getInputTrajectory() { return u_goal_; }
+  const auto getStateTrajectory() { return x_ref_; }
+  const auto getInputTrajectory() { return u_ref_; }
   const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
   const auto getLSlew() { return l_.segment(slew0_idx_, totalSlewDim()); }
   const auto getUSlew() { return u_.segment(slew0_idx_, totalSlewDim()); }
@@ -670,12 +670,12 @@ TEST(MPCBaseTester, givenParameterizedInputTrajectory_SetsUgoalCorrectly)
   u_ctrl_pts << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0;
   base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
 
-  // u_goal_ should be set verbatim (no replication, unlike setReferenceInput)
+  // u_ref_ should be set verbatim (no replication, unlike setReferenceInput)
   ASSERT_TRUE(expectEigenNear(base.getInputTrajectory(), u_ctrl_pts, 1e-15));
 }
 
 TEST(MPCBaseTester,
-     setReferenceInputAndSetReferenceParameterizedInput_ProduceDifferentUgoal)
+     setReferenceInputAndSetReferenceParameterizedInput_ProduceDifferentUref)
 {
   // setReferenceInput replicates a single step; setReferenceParameterizedInput
   // sets the full control-point vector directly. Verify they differ for a
@@ -686,14 +686,14 @@ TEST(MPCBaseTester,
   VectorXd u_step{m};
   u_step << 2.0;
   base.setReferenceInput(u_step);
-  VectorXd u_goal_replicated = base.getInputTrajectory(); // [2, 2, 2]
+  VectorXd u_ref_replicated = base.getInputTrajectory(); // [2, 2, 2]
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0; // non-uniform
   base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
-  VectorXd u_goal_direct = base.getInputTrajectory(); // [1, 2, 3]
+  VectorXd u_ref_direct = base.getInputTrajectory(); // [1, 2, 3]
 
   // They should differ
-  ASSERT_FALSE(expectEigenNear(u_goal_replicated, u_goal_direct, 1e-10));
-  ASSERT_TRUE(expectEigenNear(u_goal_direct, u_ctrl_pts, 1e-15));
+  ASSERT_FALSE(expectEigenNear(u_ref_replicated, u_ref_direct, 1e-10));
+  ASSERT_TRUE(expectEigenNear(u_ref_direct, u_ctrl_pts, 1e-15));
 }

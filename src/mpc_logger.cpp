@@ -184,13 +184,13 @@ void MPCLogger::logStep(double t,
   if (log_control_points_) {
     mpc.getParameterizedInputTrajectory(u_pred_buf_);
     inputs_out_buf_ = u_pred_buf_;
-    ref_inputs_out_buf_ = mpc.u_goal_;
+    ref_inputs_out_buf_ = mpc.u_ref_;
   } else {
     mpc.getInputTrajectory(u_pred_buf_);
   }
 
   // Handle Input References Evaluation if not logging control points
-  const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc.u_goal_.data(), input_dim_,
+  const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc.u_ref_.data(), input_dim_,
                                                 num_ctrl_pts_};
   const int order{spline_degree_ + 1};
 
@@ -201,12 +201,12 @@ void MPCLogger::logStep(double t,
     if (k == 0) {
       states_out_buf_.segment(i * state_dim_, state_dim_) = x0;
       ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
-          mpc.x_goal_.head(state_dim_);
+          mpc.x_ref_.head(state_dim_);
     } else {
       states_out_buf_.segment(i * state_dim_, state_dim_) =
           x_pred_buf_.segment((k - 1) * state_dim_, state_dim_);
       ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
-          mpc.x_goal_.segment((k - 1) * state_dim_, state_dim_);
+          mpc.x_ref_.segment((k - 1) * state_dim_, state_dim_);
     }
 
     // 2. Inputs

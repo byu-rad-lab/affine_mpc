@@ -37,10 +37,10 @@ int main()
   Eigen::Matrix<double, m, 1> R_diag{.0001};
   msd_mpc.setWeights(Q_diag, R_diag);
 
-  Eigen::Vector2d x_goal{1, 0};
-  Eigen::Matrix<double, m, 1> u_goal{0.01};
-  msd_mpc.setReferenceState(x_goal);
-  msd_mpc.setReferenceInput(u_goal);
+  Eigen::Vector2d x_ref{1, 0};
+  Eigen::Matrix<double, m, 1> u_ref{0.01};
+  msd_mpc.setReferenceState(x_ref);
+  msd_mpc.setReferenceInput(u_ref);
 
   if (!msd_mpc.initializeSolver()) {
     std::cerr << "Failed to initialize solver\n";

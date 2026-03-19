@@ -76,7 +76,7 @@ MPCBase::MPCBase(const int state_dim,
     Bd_{state_dim, input_dim},
     wd_{state_dim},
     Q_big_{state_dim * param.horizon_steps},
-    x_goal_{state_dim * param.horizon_steps},
+    x_ref_{state_dim * param.horizon_steps},
     u_min_{input_dim},
     u_max_{input_dim},
     solution_map_{nullptr, 0}
@@ -119,7 +119,7 @@ MPCBase::MPCBase(const int state_dim,
   // allocate memory needed based on options
   if (opts_.use_input_cost) {
     R_big_.setIdentity(ctrls_dim_);
-    u_goal_.setZero(ctrls_dim_);
+    u_ref_.setZero(ctrls_dim_);
   }
   if (opts.slew_initial_input) {
     A_.middleRows(slew0_idx_, input_dim_).diagonal().setOnes();
@@ -353,14 +353,14 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
 bool MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   assert(x_step.size() == state_dim_);
-  x_goal_ = x_step.replicate(horizon_steps_, 1);
+  x_ref_ = x_step.replicate(horizon_steps_, 1);
   return qpUpdateReferences();
 }
 
 bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
   assert(x_traj.size() == x_traj_dim_);
-  x_goal_ = x_traj;
+  x_ref_ = x_traj;
   return qpUpdateReferences();
 }
 
@@ -370,7 +370,7 @@ bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
     throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   assert(u_step.size() == input_dim_);
-  u_goal_ = u_step.replicate(num_ctrl_pts_, 1);
+  u_ref_ = u_step.replicate(num_ctrl_pts_, 1);
   return qpUpdateReferences();
 }
 
@@ -382,7 +382,7 @@ bool MPCBase::setReferenceParameterizedInputTrajectory(
         "[MPCBase::setReferenceParameterizedInputTrajectory] "
         "Input cost is not enabled.");
   assert(u_traj_ctrl_pts.size() == ctrls_dim_);
-  u_goal_ = u_traj_ctrl_pts;
+  u_ref_ = u_traj_ctrl_pts;
   return qpUpdateReferences();
 }
 
