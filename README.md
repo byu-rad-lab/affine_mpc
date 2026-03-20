@@ -82,7 +82,7 @@ w.r.t.
 s.t.
     &\quad x_{k+1} = A x_k + B u_k + w \\
     &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
-    &\quad u_{min} \leq \nu_k \leq u_{max} OR
+    &\quad u_{min} \leq \nu_k \leq u_{max} \quad \text{OR} \quad
         \underbrace{u_{min} \leq u_k \leq u_{max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
     &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
     &\quad \underbrace{|u_{-1} - \nu_0| \leq \nu_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
