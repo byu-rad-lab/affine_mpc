@@ -71,7 +71,7 @@ The following equations show the supported cost function and constraints within 
 
 ```math
 \begin{align}
-\argmin_{\nu_0,...,\nu_{p-1}}
+\min_{\nu_0,...,\nu_{p-1}}
     &\quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
     + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
     + \underbrace{
