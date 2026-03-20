@@ -71,8 +71,8 @@ The following equations show the supported cost function and constraints within 
 
 ```math
 \begin{align}
-\min_{\nu_0,...,\nu_{p-1}}
-    &\quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
+\min
+    &\quad J = \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
     + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
     + \underbrace{
         \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
@@ -82,9 +82,11 @@ w.r.t.
 s.t.
     &\quad x_{k+1} = A x_k + B u_k + w \\
     &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
-    &\quad u_{min} \leq u_k \leq u_{max} \\
+    &\quad u_{min} \leq \nu_k \leq u_{max} \\
+    &\quad \underbrace{u_{min} \leq u_k \leq u_{max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
     &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
-    &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew rate}}}
+    &\quad \underbrace{|\u_{-1} - \nu_0| \leq \nu_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
+    &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew control points}}}
 \end{align}
 ```
 
@@ -95,7 +97,7 @@ $`u \in \mathbb{R}^m`$ is the input,
 $`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory,
 $`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point,
 $`g`$ is the function to evaluate the parameterized input trajectory,
-$`T`$ is the number of steps in the prediction horizon,
+$T$ is the number of steps in the prediction horizon,
 $`p`$ is the number of control points used to parameterize the input trajectory,
 the discrete-time affine model is defined by
 $`A \in \mathbb{R}^{n \times n}`$,
