@@ -57,57 +57,64 @@ Once developed though, `Release` mode will run _a lot_ faster.
 
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
 
-$$
-\begin{equation}
-J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
-    + \underbrace{\sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R}_{\textcolor{red}{\text{input cost}}}
-\text{argmin} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
-    + \underbrace{
-        \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
-      }_{\textcolor{red}{\text{input cost}}}
-\end{equation}
-$$
+### Cost Function
 
-```math
-\begin{equation}
-% J = \sum_{k=1}^{T+1} \left\lVert x_k - x_{k,des} \right\rVert_Q
-    + \underbrace{
-          \sum_{k=0}^{p} \left\lVert u_k - u_{k,des} \right\rVert_R
-      }_{\textcolor{red}{\text{input cost}}}
-\text{argmin} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
-    + \underbrace{
-        \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
-      }_{\textcolor{red}{\text{input cost}}}
-\end{equation}
-```
+<!-- ```math -->
+<!-- \begin{equation} -->
+<!-- \argmin_{\nu_0,...,\nu_{p-1}} \quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f} -->
+<!--     + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q -->
+<!--     + \underbrace{ -->
+<!--         \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R -->
+<!--       }_{\textcolor{red}{\text{input cost}}} -->
+<!-- \end{equation} -->
+<!-- ``` -->
 
 ```math
 \begin{align}
-% \text{min} &\quad \sum_{k=1}^T \left\lVert x_k - x_{k,des} \right\rVert^2_Q
+\argmin_{\nu_0,...,\nu_{p-1}}
+    &\quad \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
+    + \sum_{k=1}^{T-1} \left\lVert \bar{x}_k - x_k \right\rVert^2_Q
     + \underbrace{
-        \sum_{i=0}^{p-1} \left\lVert \nu_i - \nu_{i,des} \right\rVert^2_R
+        \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
       }_{\textcolor{red}{\text{input cost}}} \\
-w.r.t. &\quad \nu_0,...,\nu_{p-1} \\
-s.t. &\quad x_{k+1} = A x_k + B u_k + w \\
-&\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
-&\quad u_{min} \leq u_k \leq u_{max} \\
-&\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
-&\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew rate}}}
+w.r.t.
+    &\quad \nu_0,...,\nu_{p-1} \\
+s.t.
+    &\quad x_{k+1} = A x_k + B u_k + w \\
+    &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
+    &\quad u_{min} \leq u_k \leq u_{max} \\
+    &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
+    &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew rate}}}
 \end{align}
 ```
 
-where, $`x \in \mathbb{R}^n`$ is the state, $`\bar{x} \in \mathbb{R}^n`$ is the reference state, $`u \in \mathbb{R}^m`$ is the input, $`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory, $`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point, $`g`$ is the function to evaluate the parameterized input trajectory, $`T`$ is the number of steps in the prediction horizon, $`p`$ is the number of control points used to parameterize the input trajectory, the discrete-time affine model is defined by $`A \in \mathbb{R}^{n \times n}`$, $`B \in \mathbb{R}^{n \times m}`$, and $`w \in \mathbb{R}^n`$, and $`Q \in \mathbb{R}^{n \times n}`$ and $`R \in \mathbb{R}^{m \times m}`$ are positive semi-definite diagonal weighting matrices.
+where,
+$`x \in \mathbb{R}^n`$ is the state,
+$`\bar{x} \in \mathbb{R}^n`$ is the reference state,
+$`u \in \mathbb{R}^m`$ is the input,
+$`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory,
+$`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point,
+$`g`$ is the function to evaluate the parameterized input trajectory,
+$`T`$ is the number of steps in the prediction horizon,
+$`p`$ is the number of control points used to parameterize the input trajectory,
+the discrete-time affine model is defined by
+$`A \in \mathbb{R}^{n \times n}`$,
+$`B \in \mathbb{R}^{n \times m}`$,
+and $`w \in \mathbb{R}^n`$,
+and $`Q \in \mathbb{R}^{n \times n}`$
+and $`R \in \mathbb{R}^{m \times m}`$
+are positive semi-definite diagonal weighting matrices.
 
-**NOTE:** The norm in the cost function is a weighted 2-norm where $`\left\lVert x \right\rVert^2_M = x^\top M x`$.
+**NOTE:** The norm in the cost function is a weighted 2-norm where
+$`\left\lVert x \right\rVert^2_M = x^\top M x`$.
 
-The MPC optimization problem must be converted to a QP optimization problem in order to use the OSQP solver. This [paper](https://arxiv.org/pdf/2001.04931.pdf) shows how the conversion is done. Note that Implicit MPC is what the paper calls Small Matrix Formulation.
+The MPC optimization problem must be converted to a QP optimization problem in order to use the OSQP solver.
+This [paper](https://arxiv.org/pdf/2001.04931.pdf) shows how the conversion is done.
+Note that Condensed MPC is what the paper calls Small Matrix Formulation,
+and Sparse MPC is what the paper calls Large Matrix Formulation.
 
 <!--
 Possible additions:
-  - Terminal state weights (Q_final)
-  - Terminal input weights (R_final)
   - Slew rate cost instead of constraint
   - State saturation cost?
   - Arbitrary constraint matrix addition
@@ -115,17 +122,31 @@ Possible additions:
 
 ## Examples
 
-A C++ example (`example_sim` target built with `-DBUILD_EXAMPLE=ON`) and a Python example are both available in the `examples` folder. There is also a `plot_sim.py` script, which can be used to visualize the results from either the C++ or Python example; both examples are the same just in different languages.
+An example doing MPC for a mass-spring-damper system is available in the `examples` folder.
+The `plot_sim_tracking.py` and `plot_sim_predictions.py` can be used to visualize the results,
+one plots tracking only while the other also plots the prediction horizons for each solve.
 
 ## API
 
-The C++ and Python APIs are almost identical, but I will try to highlight the differences here. Note that the C++ interface uses Eigen (both fixed size and dynamic size matrices work) while Python uses Numpy arrays.
+This library uses Eigen (both fixed size and dynamic size matrices work).
 
-**Not all functionality is documented here - only the basics.** You can see the interface to all available functions by looking at the C++ header files or using iPython for some documentation of the Python bindings. A stub file for the Python bindings is included in `affine_mpc_py` to enable autocompletion in an IDE like VS Code. More on [stubgen](https://manpages.ubuntu.com/manpages/focal/man1/stubgen.1.html).
+**Not all functionality is documented here - only the basics.**
+You can see the interface to all available functions by looking at the header files.
 
 ### Step 1: MPC Constructor
 
-When you create an instance of any MPC class within the library, you must specify the number of states and inputs in your system, the number of steps and control points you want to use in your prediction horizon, and the options you wish to use in your cost and constraint functions (shown [above](#mpc-problem) with red labels). Note that all of the cost and constraint options default to `false`. Once you specify all of these values in the constructor, those values can not change. All of the applicable values in the cost and constraint functions can be changed, but not the size and setup of the MPC problem. All MPC classes within this library inherit from the `MPCBase` interface class (which is not usable on its own as it has no usable solver - it is used to define a consistent interface with all of the MPC classes). All MPC classes in this library have the same constructor structure as `MPCBase`:
+When you create an instance of any MPC class within the library,
+you must specify the dimention of the state and input vectors in your system,
+the input trajectory parameterization,
+and the options you wish to use in your cost and constraint functions
+(shown [above](#mpc-problem) with red labels).
+Note that all of the cost and constraint options default to `false`.
+Once you specify all of these values in the constructor, those values can not change.
+All of the applicable values in the cost and constraint functions can be changed,
+but not the size and setup of the MPC problem.
+All MPC classes within this library inherit from the `MPCBase` abstract interface class
+(which is not usable on its own - it defines a consistent interface for all MPC classes).
+All MPC classes in this library have the same constructor structure as `MPCBase`:
 
 #### C++
 
