@@ -78,7 +78,7 @@ The following equations show the supported cost function and constraints within 
         \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
       }_{\textcolor{red}{\text{input cost}}} \\
 w.r.t.
-    &\quad \nu_0,...,\nu_{p-1} \\
+    &\quad \nu_0, \dots ,\nu_{p-1} \underbrace{x_1, \dots, x_T}_{\textcolor{red}{\text{sparse only}}}\\
 s.t.
     &\quad x_{k+1} = A x_k + B u_k + w \\
     &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
