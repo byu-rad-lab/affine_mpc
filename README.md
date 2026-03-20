@@ -85,7 +85,7 @@ s.t.
     &\quad u_{min} \leq \nu_k \leq u_{max} \\
     &\quad \underbrace{u_{min} \leq u_k \leq u_{max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
     &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
-    &\quad \underbrace{|\u_{-1} - \nu_0| \leq \nu_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
+    &\quad \underbrace{|u_{-1} - \nu_0| \leq \nu_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
     &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew control points}}}
 \end{align}
 ```
