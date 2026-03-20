@@ -78,12 +78,12 @@ The following equations show the supported cost function and constraints within 
         \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
       }_{\textcolor{red}{\text{input cost}}} \\
 w.r.t.
-    &\quad \nu_0, \dots ,\nu_{p-1} \underbrace{x_1, \dots, x_T}_{\textcolor{red}{\text{sparse only}}}\\
+    &\quad \nu_0, \dots ,\nu_{p-1} \quad \underbrace{x_1, \dots, x_T}_{\textcolor{red}{\text{sparse only}}}\\
 s.t.
     &\quad x_{k+1} = A x_k + B u_k + w \\
     &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
-    &\quad u_{min} \leq \nu_k \leq u_{max} \\
-    &\quad \underbrace{u_{min} \leq u_k \leq u_{max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
+    &\quad u_{min} \leq \nu_k \leq u_{max} OR
+        \underbrace{u_{min} \leq u_k \leq u_{max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
     &\quad \underbrace{x_{min} \leq x_k \leq x_{max}}_{\textcolor{red}{\text{saturate states}}} \\
     &\quad \underbrace{|u_{-1} - \nu_0| \leq \nu_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
     &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew control points}}}
