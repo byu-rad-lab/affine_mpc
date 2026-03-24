@@ -16,9 +16,9 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 # Options
 # --------------------------------------------------
-option(${PROJECT_NAME}_BUILD_TESTS "Build unit tests" OFF)
-option(${PROJECT_NAME}_BUILD_EXAMPLE "Build examples" OFF)
-option(${PROJECT_NAME}_BINDINGS "Set on when building python bindings" OFF)
+option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
+option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
+option(AFFINE_MPC_BINDINGS "Set on when building python bindings" OFF)
 
 # --------------------------------------------------
 # Dependencies
@@ -47,7 +47,7 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
-if(NOT ${PROJECT_NAME}_BINDINGS)
+if(NOT AFFINE_MPC_BINDINGS)
   set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
@@ -73,7 +73,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 # --------------------------------------------------
 # Examples
 # --------------------------------------------------
-if(${PROJECT_NAME}_BUILD_EXAMPLE)
+if(AFFINE_MPC_BUILD_EXAMPLES)
   add_executable(example_sim examples/sim.cpp)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
 endif()
@@ -81,7 +81,7 @@ endif()
 # --------------------------------------------------
 # Tests
 # --------------------------------------------------
-if(${PROJECT_NAME}_BUILD_TESTS)
+if(AFFINE_MPC_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   include(cmake/extern_gtest.cmake)
@@ -99,6 +99,7 @@ if(${PROJECT_NAME}_BUILD_TESTS)
   foreach(TEST_SRC IN LISTS TEST_SOURCES)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
     add_executable(${TEST_NAME} ${TEST_SRC})
+    set_target_properties(${TEST_NAME} PROPERTIES FOLDER tests)
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
