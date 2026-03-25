@@ -33,8 +33,8 @@ public:
   const auto getWd() { return wd_; }
   const auto getQbig() { return Q_big_; }
   const auto getRbig() { return R_big_; }
-  const auto getStateTrajectory() { return x_ref_; }
-  const auto getInputTrajectory() { return u_ref_; }
+  const auto getRefStateTrajectory() { return x_ref_; }
+  const auto getRefParamInputTrajectory() { return u_ref_; }
   const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
   const auto getLSlew() { return l_.segment(slew0_idx_, totalSlewDim()); }
   const auto getUSlew() { return u_.segment(slew0_idx_, totalSlewDim()); }
@@ -209,9 +209,9 @@ TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
   u_traj_expected << u_des, u_des, u_des;
 
   ASSERT_TRUE(
-      expectEigenNear(x_traj_expected, base.getStateTrajectory(), 1e-6));
-  ASSERT_TRUE(
-      expectEigenNear(u_traj_expected, base.getInputTrajectory(), 1e-6));
+      expectEigenNear(x_traj_expected, base.getRefStateTrajectory(), 1e-6));
+  ASSERT_TRUE(expectEigenNear(u_traj_expected,
+                              base.getRefParamInputTrajectory(), 1e-6));
 }
 
 TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
@@ -671,7 +671,8 @@ TEST(MPCBaseTester, givenParameterizedInputTrajectory_SetsUgoalCorrectly)
   base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
 
   // u_ref_ should be set verbatim (no replication, unlike setReferenceInput)
-  ASSERT_TRUE(expectEigenNear(base.getInputTrajectory(), u_ctrl_pts, 1e-15));
+  ASSERT_TRUE(
+      expectEigenNear(base.getRefParamInputTrajectory(), u_ctrl_pts, 1e-15));
 }
 
 TEST(MPCBaseTester,
@@ -686,12 +687,12 @@ TEST(MPCBaseTester,
   VectorXd u_step{m};
   u_step << 2.0;
   base.setReferenceInput(u_step);
-  VectorXd u_ref_replicated = base.getInputTrajectory(); // [2, 2, 2]
+  VectorXd u_ref_replicated = base.getRefParamInputTrajectory(); // [2, 2, 2]
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0; // non-uniform
   base.setReferenceParameterizedInputTrajectory(u_ctrl_pts);
-  VectorXd u_ref_direct = base.getInputTrajectory(); // [1, 2, 3]
+  VectorXd u_ref_direct = base.getRefParamInputTrajectory(); // [1, 2, 3]
 
   // They should differ
   ASSERT_FALSE(expectEigenNear(u_ref_replicated, u_ref_direct, 1e-10));
