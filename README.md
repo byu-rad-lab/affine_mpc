@@ -55,9 +55,7 @@ Once developed though, `Release` mode will run _a lot_ faster.
 
 The following equations show the supported cost function and constraints within the `affine_mpc` library (the underlined portions with a red label are optional):
 
-### Cost Function
-
-```math
+$$
 \begin{align}
 \min
     &\quad J = \left\lVert \bar{x}_T - x_T \right\rVert^2_{Q_f}
@@ -66,7 +64,7 @@ The following equations show the supported cost function and constraints within 
         \sum_{i=0}^{p-1} \left\lVert \bar{\nu}_i - \nu_i \right\rVert^2_R
       }_{\textcolor{red}{\text{input cost}}} \\
 w.r.t.
-    &\quad \nu_0, \dots ,\nu_{p-1} \quad \underbrace{x_1, \dots, x_T}_{\textcolor{red}{\text{sparse only}}}\\
+    &\quad \nu_0, \dots ,\nu_{p-1} \quad \underbrace{x_1, \dots, x_T}_{\textcolor{magenta}{\text{sparse only}}}\\
 s.t.
     &\quad x_{k+1} = A x_k + B u_k + w \\
     &\quad u_k = g(\nu_0,...,\nu_{p-1}) \\
@@ -76,27 +74,27 @@ s.t.
     &\quad \underbrace{|u_0 - u_{{-}1}| \leq u_{0,slew}}_{\textcolor{red}{\text{initial slew rate}}} \\
     &\quad \underbrace{|\nu_{i+1} - \nu_i| \leq \nu_{slew}}_{\textcolor{red}{\text{slew control points}}}
 \end{align}
-```
+$$
 
 where,
-$`x \in \mathbb{R}^n`$ is the state,
-$`\bar{x} \in \mathbb{R}^n`$ is the reference state,
-$`u \in \mathbb{R}^m`$ is the input,
-$`\nu \in \mathbb{R}^m`$ is a control point used to parameterize the input trajectory,
-$`\bar{\nu} \in \mathbb{R}^m`$ is a reference control point,
-$`g`$ is the function to evaluate the parameterized input trajectory (e.g., using B-splines),
+$x \in \mathbb{R}^n$ is the state,
+$\bar{x} \in \mathbb{R}^n$ is the reference state,
+$u \in \mathbb{R}^m$ is the input,
+$\nu \in \mathbb{R}^m$ is a control point used to parameterize the input trajectory,
+$\bar{\nu} \in \mathbb{R}^m$ is a reference control point,
+$g$ is the function to evaluate the parameterized input trajectory (e.g., using B-splines),
 $T$ is the number of steps in the prediction horizon,
-$`p`$ is the number of control points used to parameterize the input trajectory,
+$p$ is the number of control points used to parameterize the input trajectory,
 the discrete-time affine model is defined by
-$`A \in \mathbb{R}^{n \times n}`$,
-$`B \in \mathbb{R}^{n \times m}`$,
-and $`w \in \mathbb{R}^n`$,
-and $`Q \in \mathbb{R}^{n \times n}`$
-and $`R \in \mathbb{R}^{m \times m}`$
+$A \in \mathbb{R}^{n \times n}$,
+$B \in \mathbb{R}^{n \times m}$,
+and $w \in \mathbb{R}^n$,
+and $Q \in \mathbb{R}^{n \times n}$
+and $R \in \mathbb{R}^{m \times m}$
 are positive semi-definite diagonal weighting matrices.
 
 **NOTE:** The norm in the cost function is a weighted 2-norm where
-$`\left\lVert x \right\rVert^2_M = x^\top M x`$.
+$\left\lVert x \right\rVert^2_M = x^\top M x$.
 
 The MPC optimization problem must be converted to a QP optimization problem in order to use the OSQP solver.
 This [paper](https://arxiv.org/pdf/2001.04931.pdf) shows how most of the conversion is done;
@@ -232,7 +230,7 @@ while (t <= t_final) {
   }
 
   // Retrieve the optimal inputs
-  Eigen::VectorXd uk(input_dim);
+  Eigen::VectorXd uk{input_dim};
   mpc.getNextInput(uk);
 
   // (Optional) Get full predicted trajectories
@@ -255,7 +253,7 @@ It uses a "write-raw, pack-later" strategy to avoid bottlenecking high-frequency
 // Initialize logger with the MPC instance, a save directory, and a simulation time step.
 // The 'prediction_stride' allows downsampling prediction trajectories to save space.
 int stride = 1;
-affine_mpc::MPCLogger logger(mpc, "/tmp/mpc_data", dt, stride);
+affine_mpc::MPCLogger logger{mpc, "/tmp/mpc_data", dt, stride};
 
 // Inside your loop, log data automatically (extracts trajectories from the mpc object)
 logger.logStep(t, xk, mpc, user_solve_time);
@@ -290,4 +288,3 @@ cmake -S . -B build -DAFFINE_MPC_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
-
