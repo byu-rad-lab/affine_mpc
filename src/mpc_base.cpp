@@ -203,7 +203,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   // update u_prev after solve rather than before so user can manually
   // overwrite it between solves if desired
   if (opts_.slew_initial_input) {
-    u_prev_ = solution_map_.head(input_dim_);
+    getNextInput(u_prev_);
     setPreviousInput(u_prev_);
   }
   return status;
@@ -212,6 +212,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
   assert(u0.size() == input_dim_);
+  // Assumes that the control points are first elements of solution
   const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
                                   num_ctrl_pts_};
   const int order{spline_degree_ + 1};
@@ -222,6 +223,7 @@ void MPCBase::getParameterizedInputTrajectory(
     Ref<VectorXd> u_traj_ctrl_pts) const noexcept
 {
   assert(u_traj_ctrl_pts.size() == ctrls_dim_);
+  // Assumes that the control points are first elements of solution
   u_traj_ctrl_pts = solution_map_.head(ctrls_dim_);
 }
 
@@ -229,10 +231,12 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
   assert(u_traj.size() == u_traj_dim_);
 
+  // Assumes that the control points are first elements of solution
   const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
                                   num_ctrl_pts_};
   Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
 
+  // same as Parameterization::evaluate except uses pre-computed weights
   const int order{spline_degree_ + 1};
   for (int k{0}; k < horizon_steps_; ++k) {
     const int seg{spline_segment_idxs_(k)};
