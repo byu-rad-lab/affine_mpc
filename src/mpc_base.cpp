@@ -212,7 +212,10 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
   assert(u0.size() == input_dim_);
-  u0 = solution_map_.head(input_dim_);
+  const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
+                                  num_ctrl_pts_};
+  const int order{spline_degree_ + 1};
+  u0.noalias() = ctrls.leftCols(order) * spline_weights_.col(0);
 }
 
 void MPCBase::getParameterizedInputTrajectory(
