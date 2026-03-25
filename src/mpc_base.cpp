@@ -122,7 +122,11 @@ MPCBase::MPCBase(const int state_dim,
     u_ref_.setZero(ctrls_dim_);
   }
   if (opts.slew_initial_input) {
-    A_.middleRows(slew0_idx_, input_dim_).diagonal().setOnes();
+    for (int i{0}, col{0}; i < spline_degree_ + 1; ++i, col += input_dim_) {
+      A_.block(slew0_idx_, col, input_dim_, input_dim_)
+          .diagonal()
+          .setConstant(spline_weights_(i, 0));
+    }
     u_prev_.setZero(input_dim_);
     u0_slew_.resize(input_dim);
     u0_slew_.setConstant(std::numeric_limits<double>::infinity());
