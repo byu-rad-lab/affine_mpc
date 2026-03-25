@@ -345,6 +345,55 @@ TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
   ASSERT_TRUE(expectEigenNear(q, q_expected, 1e-15));
 }
 
+TEST(SparseMPCProtectedTester,
+     givenWeightsAndReferenceUpdatedSimultaneously_QvectorIsCorrect)
+{
+  // Verifies the refs_changed_ flag is not lost when weights_changed_ fires
+  // first. Both updates must be reflected in q_ after a single qpUpdateX0 call.
+  const int n{2}, m{1}, T{5}, nc{3};
+  SparseMPCProtectedTester mpc{n, m,
+                               ampc::Parameterization::linearInterp(T, nc),
+                               ampc::Options{.use_input_cost = true}};
+  mpc.setModel();
+
+  const Vector2d Q_diag{1.0, 1.0};
+  const VectorXd R_diag = VectorXd::Constant(m, 0.5);
+  const Vector2d x_goal_step{1.0, 0.1};
+  const VectorXd u_goal = VectorXd::Constant(m, 2.0);
+  mpc.setWeights(Q_diag, R_diag);
+  mpc.setReferenceState(x_goal_step);
+  mpc.setReferenceInput(u_goal);
+  mpc.setInputLimits(VectorXd::Constant(m, -10.0), VectorXd::Constant(m, 10.0));
+  ASSERT_TRUE(mpc.initializeSolver());
+
+  const Vector2d x0{0.0, 0.0};
+  mpc.updateQPTerms(x0); // first solve cycle
+
+  // Now update both weights and reference between solves
+  const Vector2d Q_diag2{2.0, 3.0};
+  const VectorXd R_diag2 = VectorXd::Constant(m, 4.0);
+  const Vector2d x_goal_step2{0.5, -0.5};
+  const VectorXd u_goal2 = VectorXd::Constant(m, 0.5);
+  mpc.setWeights(Q_diag2, R_diag2);    // sets weights_changed_ = true
+  mpc.setReferenceState(x_goal_step2); // sets refs_changed_ = true
+  mpc.setReferenceInput(u_goal2);      // sets refs_changed_ = true
+
+  // weights_changed_ branch fires, must use new x_goal_ and u_goal_
+  mpc.updateQPTerms(x0);
+
+  const VectorXd q = mpc.getQ();
+  const int ctrls_dim = m * nc;
+  const int x_traj_dim = n * T;
+
+  // Expected q: -(R_diag2 * u_goal2).replicate(nc) for controls,
+  //             -(Q_diag2 * x_goal_step2).replicate(T) for states
+  VectorXd q_expected{ctrls_dim + x_traj_dim};
+  q_expected << (-R_diag2.cwiseProduct(u_goal2)).replicate(nc, 1),
+      (-Q_diag2.cwiseProduct(x_goal_step2)).replicate(T, 1);
+
+  ASSERT_TRUE(expectEigenNear(q, q_expected, 1e-12));
+}
+
 // ---- End-to-end solve tests ------------------------------------------------
 
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
@@ -459,55 +508,6 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
     bound_violations += (xk.array() < x_min.array() - 1e-5).any();
   }
   ASSERT_EQ(bound_violations, 0);
-}
-
-TEST(SparseMPCProtectedTester,
-     givenWeightsAndReferenceUpdatedSimultaneously_QvectorIsCorrect)
-{
-  // Verifies the refs_changed_ flag is not lost when weights_changed_ fires
-  // first. Both updates must be reflected in q_ after a single qpUpdateX0 call.
-  const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
-  mpc.setModel();
-
-  const Vector2d Q_diag{1.0, 1.0};
-  const VectorXd R_diag = VectorXd::Constant(m, 0.5);
-  const Vector2d x_goal_step{1.0, 0.1};
-  const VectorXd u_goal = VectorXd::Constant(m, 2.0);
-  mpc.setWeights(Q_diag, R_diag);
-  mpc.setReferenceState(x_goal_step);
-  mpc.setReferenceInput(u_goal);
-  mpc.setInputLimits(VectorXd::Constant(m, -10.0), VectorXd::Constant(m, 10.0));
-  ASSERT_TRUE(mpc.initializeSolver());
-
-  const Vector2d x0{0.0, 0.0};
-  mpc.updateQPTerms(x0); // first solve cycle
-
-  // Now update both weights and reference between solves
-  const Vector2d Q_diag2{2.0, 3.0};
-  const VectorXd R_diag2 = VectorXd::Constant(m, 4.0);
-  const Vector2d x_goal_step2{0.5, -0.5};
-  const VectorXd u_goal2 = VectorXd::Constant(m, 0.5);
-  mpc.setWeights(Q_diag2, R_diag2);    // sets weights_changed_ = true
-  mpc.setReferenceState(x_goal_step2); // sets refs_changed_ = true
-  mpc.setReferenceInput(u_goal2);      // sets refs_changed_ = true
-
-  // weights_changed_ branch fires, must use new x_goal_ and u_goal_
-  mpc.updateQPTerms(x0);
-
-  const VectorXd q = mpc.getQ();
-  const int ctrls_dim = m * nc;
-  const int x_traj_dim = n * T;
-
-  // Expected q: -(R_diag2 * u_goal2).replicate(nc) for controls,
-  //             -(Q_diag2 * x_goal_step2).replicate(T) for states
-  VectorXd q_expected{ctrls_dim + x_traj_dim};
-  q_expected << (-R_diag2.cwiseProduct(u_goal2)).replicate(nc, 1),
-      (-Q_diag2.cwiseProduct(x_goal_step2)).replicate(T, 1);
-
-  ASSERT_TRUE(expectEigenNear(q, q_expected, 1e-12));
 }
 
 TEST(SparseMPCProtectedTester,
