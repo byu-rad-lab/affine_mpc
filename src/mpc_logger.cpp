@@ -223,16 +223,16 @@ void MPCLogger::logStep(double t,
   }
 
   const Eigen::Vector2d solve_times{solve_time, mpc.solver_->getSolveTime()};
-  logStep(t, states_out_buf_, inputs_out_buf_, ref_states_out_buf_,
-          ref_inputs_out_buf_, solve_times);
+  writeStep(t, states_out_buf_, inputs_out_buf_, ref_states_out_buf_,
+            ref_inputs_out_buf_, solve_times);
 }
 
-void MPCLogger::logStep(double t,
-                        const Eigen::Ref<const Eigen::VectorXd>& states,
-                        const Eigen::Ref<const Eigen::VectorXd>& inputs,
-                        const Eigen::Ref<const Eigen::VectorXd>& ref_states,
-                        const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
-                        const Eigen::Ref<const Eigen::VectorXd>& solve_times)
+void MPCLogger::writeStep(double t,
+                          const Eigen::Ref<const Eigen::VectorXd>& states,
+                          const Eigen::Ref<const Eigen::VectorXd>& inputs,
+                          const Eigen::Ref<const Eigen::VectorXd>& ref_states,
+                          const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
+                          const Eigen::Ref<const Eigen::VectorXd>& solve_times)
 {
   time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
   writeBinary(states_bin_, states);
