@@ -86,79 +86,6 @@ void validateKnots(const Ref<const VectorXd>& knots,
         "optimization effort in this context).\n");
 }
 
-Eigen::VectorXd Parameterization::makeUniformClampedKnots(
-    const int horizon_steps, const int degree, const int num_control_points)
-{
-  validateHorizonSteps(horizon_steps);
-  validateDegree(degree, horizon_steps);
-  validateNumControls(num_control_points, horizon_steps, degree);
-
-  Eigen::VectorXd knots{num_control_points + degree + 1};
-  // Clamped B-spline repeats at head and tail by degree
-  knots.head(degree).setZero();
-  knots.tail(degree).setConstant(horizon_steps - 1);
-
-  // Active knots are uniformly spaced in between
-  const int num_active_knots = knots.size() - 2 * degree;
-  knots(seq(degree, ph::last - degree)) =
-      ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps - 1);
-  return knots;
-}
-
-Parameterization::Parameterization(const int horizon_steps,
-                                   const int degree,
-                                   const int num_control_points) :
-    horizon_steps{horizon_steps},
-    degree{degree},
-    num_control_points{num_control_points},
-    knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)}
-{}
-
-Parameterization::Parameterization(const int horizon_steps,
-                                   const int degree,
-                                   const Ref<const VectorXd>& knots) :
-    horizon_steps{horizon_steps},
-    degree{degree},
-    num_control_points{int(knots.size()) - degree - 1},
-    knots{knots}
-{
-  validateHorizonSteps(horizon_steps);
-  validateDegree(degree, horizon_steps);
-  validateKnots(knots, horizon_steps, degree);
-}
-
-VectorXd Parameterization::evaluate(
-    int input_dim,
-    const Eigen::Ref<const Eigen::VectorXd>& control_points) const
-{
-  if (input_dim < 1)
-    throw std::invalid_argument(
-        "[Parameterization::evaluate] input_dim must be positive.");
-  if (control_points.size() != num_control_points * input_dim)
-    throw std::invalid_argument(
-        "[Parameterization::evaluate] "
-        "Size of control_points must be input_dim*horizon_steps");
-
-  using Spline1d = Spline<double, 1>;
-  VectorXd u_traj{input_dim * horizon_steps};
-  u_traj.setZero();
-
-  Map<MatrixXd> map{u_traj.data(), input_dim, horizon_steps};
-  Map<const MatrixXd> ctrls{control_points.data(), input_dim,
-                            num_control_points};
-  const int order{degree + 1};
-  VectorXd weights{order};
-
-  for (int k{0}; k < horizon_steps; ++k) {
-    const double t = k;
-    const int idx = Spline1d::Span(t, degree, knots) - degree;
-    weights = Spline1d::BasisFunctions(t, degree, knots);
-    for (int i{0}; i < order; ++i)
-      map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
-  }
-  return u_traj;
-}
-
 Parameterization Parameterization::moveBlocking(const int horizon_steps,
                                                 const int num_control_points)
 {
@@ -243,6 +170,79 @@ Parameterization::bspline(const int horizon_steps,
   knots.tail(degree).setConstant(horizon_steps - 1);
   knots(seq(degree, ph::last - degree)) = active_knots;
   return Parameterization{horizon_steps, degree, knots};
+}
+
+Parameterization::Parameterization(const int horizon_steps,
+                                   const int degree,
+                                   const int num_control_points) :
+    horizon_steps{horizon_steps},
+    degree{degree},
+    num_control_points{num_control_points},
+    knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)}
+{}
+
+Parameterization::Parameterization(const int horizon_steps,
+                                   const int degree,
+                                   const Ref<const VectorXd>& knots) :
+    horizon_steps{horizon_steps},
+    degree{degree},
+    num_control_points{int(knots.size()) - degree - 1},
+    knots{knots}
+{
+  validateHorizonSteps(horizon_steps);
+  validateDegree(degree, horizon_steps);
+  validateKnots(knots, horizon_steps, degree);
+}
+
+VectorXd Parameterization::evaluate(
+    int input_dim,
+    const Eigen::Ref<const Eigen::VectorXd>& control_points) const
+{
+  if (input_dim < 1)
+    throw std::invalid_argument(
+        "[Parameterization::evaluate] input_dim must be positive.");
+  if (control_points.size() != num_control_points * input_dim)
+    throw std::invalid_argument(
+        "[Parameterization::evaluate] "
+        "Size of control_points must be input_dim*horizon_steps");
+
+  using Spline1d = Spline<double, 1>;
+  VectorXd u_traj{input_dim * horizon_steps};
+  u_traj.setZero();
+
+  Map<MatrixXd> map{u_traj.data(), input_dim, horizon_steps};
+  Map<const MatrixXd> ctrls{control_points.data(), input_dim,
+                            num_control_points};
+  const int order{degree + 1};
+  VectorXd weights{order};
+
+  for (int k{0}; k < horizon_steps; ++k) {
+    const double t = k;
+    const int idx = Spline1d::Span(t, degree, knots) - degree;
+    weights = Spline1d::BasisFunctions(t, degree, knots);
+    for (int i{0}; i < order; ++i)
+      map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
+  }
+  return u_traj;
+}
+
+Eigen::VectorXd Parameterization::makeUniformClampedKnots(
+    const int horizon_steps, const int degree, const int num_control_points)
+{
+  validateHorizonSteps(horizon_steps);
+  validateDegree(degree, horizon_steps);
+  validateNumControls(num_control_points, horizon_steps, degree);
+
+  Eigen::VectorXd knots{num_control_points + degree + 1};
+  // Clamped B-spline repeats at head and tail by degree
+  knots.head(degree).setZero();
+  knots.tail(degree).setConstant(horizon_steps - 1);
+
+  // Active knots are uniformly spaced in between
+  const int num_active_knots = knots.size() - 2 * degree;
+  knots(seq(degree, ph::last - degree)) =
+      ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps - 1);
+  return knots;
 }
 
 } // namespace affine_mpc

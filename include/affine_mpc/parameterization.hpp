@@ -27,62 +27,6 @@ class Parameterization
 {
 public:
   /**
-   * @brief Direct constructor for uniform clamped B-spline parameterization.
-   * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree Degree of B-spline polynomials. Must be less than
-   *   num_control_points.
-   * @param num_control_points Number of B-spline control points. Cannot be
-   *   greater than horizon_steps.
-   *
-   * For common cases, prefer the named factory methods.
-   */
-  Parameterization(const int horizon_steps,
-                   const int degree,
-                   const int num_control_points);
-
-  /**
-   * @brief Direct constructor for advanced use cases with custom knot vector
-   *   (e.g. unclamped B-splines).
-   * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree Degree of B-spline polynomials. Must be less than
-   *   horizon_steps.
-   * @param knots Full knot vector with size in the range [2*(degree+1),
-   *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
-   *   last knot must be horizon_steps-1.
-   */
-  Parameterization(const int horizon_steps,
-                   const int degree,
-                   const Eigen::Ref<const Eigen::VectorXd>& knots);
-
-  ~Parameterization() = default;
-
-  /**
-   * @brief Evalutate an input trajectory from provided control_points.
-   * @param input_dim Dimension of input vector.
-   * @param control_points Parameterized input trajectory as a vector of size
-   *   input_dim*num_control_points.
-   * @return input_traj The evaluated input trajectory.
-   */
-  Eigen::VectorXd
-  evaluate(int input_dim,
-           const Eigen::Ref<const Eigen::VectorXd>& control_points) const;
-
-  /**
-   * @brief Static method for generating a uniform clamped knot vector. Useful
-   *   for generating a starting point that can be modified for custom
-   *   parameterizations.
-   * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param degree Degree of B-spline polynomials. Must be less than
-   *   num_control_points.
-   * @param num_control_points Number of B-spline control points. Cannot be
-   *   greater than horizon_steps.
-   * @return knots The uniform clamped knot vector.
-   */
-  static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
-                                                 const int degree,
-                                                 const int num_control_points);
-
-  /**
    * @brief Factory method for uniform move-blocking parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param num_control_points Number of B-spline control points. Cannot be
@@ -155,6 +99,62 @@ public:
   bspline(const int horizon_steps,
           const int degree,
           const Eigen::Ref<const Eigen::VectorXd>& active_knots);
+
+  /**
+   * @brief Direct constructor for uniform clamped B-spline parameterization.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
+   *
+   * For common cases, prefer the named factory methods.
+   */
+  Parameterization(const int horizon_steps,
+                   const int degree,
+                   const int num_control_points);
+
+  /**
+   * @brief Direct constructor for advanced use cases with custom knot vector
+   *   (e.g. unclamped B-splines).
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   horizon_steps.
+   * @param knots Full knot vector with size in the range [2*(degree+1),
+   *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
+   *   last knot must be horizon_steps-1.
+   */
+  Parameterization(const int horizon_steps,
+                   const int degree,
+                   const Eigen::Ref<const Eigen::VectorXd>& knots);
+
+  ~Parameterization() = default;
+
+  /**
+   * @brief Evalutate an input trajectory from provided control_points.
+   * @param input_dim Dimension of input vector.
+   * @param control_points Parameterized input trajectory as a vector of size
+   *   input_dim*num_control_points.
+   * @return input_traj The evaluated input trajectory.
+   */
+  Eigen::VectorXd
+  evaluate(int input_dim,
+           const Eigen::Ref<const Eigen::VectorXd>& control_points) const;
+
+  /**
+   * @brief Static method for generating a uniform clamped knot vector. Useful
+   *   for generating a starting point that can be modified for custom
+   *   parameterizations.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
+   * @return knots The uniform clamped knot vector.
+   */
+  static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
+                                                 const int degree,
+                                                 const int num_control_points);
 
   /// Number of discrete time steps in the horizon.
   const int horizon_steps;

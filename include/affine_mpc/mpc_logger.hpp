@@ -17,7 +17,7 @@ namespace affine_mpc {
  * @class MPCLogger
  * @brief High-performance binary logger for MPC data and metadata.
  *
- * Uses a "write-raw, pack-later" strategy to support 1kHz+ logging frequencies.
+ * Uses a "write-raw, pack-later" strategy to support high logging frequencies.
  * Per-step data is temporarily stored in binary files and then packed into a
  * single .npz file during finalization. Metadata is stored in a .yaml file.
  *
@@ -30,16 +30,6 @@ class MPCLogger
 public:
   using MetadataValue = std::
       variant<int, double, std::string, Eigen::VectorXd, std::vector<double>>;
-
-  /**
-   * @struct MetadataEntry
-   * @brief Internal storage for metadata values and their formatting options.
-   */
-  struct MetadataEntry
-  {
-    MetadataValue value;
-    int precision = -1; ///< -1 for default.
-  };
 
   /**
    * @brief Construct an MPCLogger for a given MPC instance.
@@ -135,6 +125,21 @@ public:
 
 private:
   /**
+   * @struct MetadataEntry
+   * @brief Internal storage for metadata values and their formatting options.
+   */
+  struct MetadataEntry
+  {
+    MetadataValue value;
+    int precision = -1; ///< -1 for default.
+  };
+
+  /**
+   * @brief Opens the temporary binary files for writing.
+   */
+  void initTempFiles();
+
+  /**
    * @brief Internal raw logger: writes strided arrays directly to binary
    *   streams.
    */
@@ -144,11 +149,6 @@ private:
                  const Eigen::Ref<const Eigen::VectorXd>& ref_states,
                  const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
                  const Eigen::Ref<const Eigen::VectorXd>& solve_times);
-
-  /**
-   * @brief Opens the temporary binary files for writing.
-   */
-  void initTempFiles();
 
   int state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, spline_degree_;
   double ts_;

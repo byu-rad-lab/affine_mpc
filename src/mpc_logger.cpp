@@ -110,24 +110,6 @@ MPCLogger::~MPCLogger()
   }
 }
 
-void MPCLogger::initTempFiles()
-{
-  if (!std::filesystem::exists(save_dir_))
-    std::filesystem::create_directories(save_dir_);
-
-  auto open_bin = [&](std::ofstream& fout, const std::string& name) {
-    fout.open(save_dir_ / (save_name_ + "_" + name + ".tmp"),
-              std::ios::binary | std::ios::out);
-  };
-
-  open_bin(time_bin_, "time");
-  open_bin(solve_times_bin_, "solve_times");
-  open_bin(states_bin_, "states");
-  open_bin(inputs_bin_, "inputs");
-  open_bin(ref_states_bin_, "ref_states");
-  open_bin(ref_inputs_bin_, "ref_inputs");
-}
-
 void MPCLogger::captureMPCSnapshot(const MPCBase& mpc)
 {
   addMetadata("state_dim", mpc.state_dim_);
@@ -225,22 +207,6 @@ void MPCLogger::logStep(double t,
   const Eigen::Vector2d solve_times{solve_time, mpc.solver_->getSolveTime()};
   writeStep(t, states_out_buf_, inputs_out_buf_, ref_states_out_buf_,
             ref_inputs_out_buf_, solve_times);
-}
-
-void MPCLogger::writeStep(double t,
-                          const Eigen::Ref<const Eigen::VectorXd>& states,
-                          const Eigen::Ref<const Eigen::VectorXd>& inputs,
-                          const Eigen::Ref<const Eigen::VectorXd>& ref_states,
-                          const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
-                          const Eigen::Ref<const Eigen::VectorXd>& solve_times)
-{
-  time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
-  writeBinary(states_bin_, states);
-  writeBinary(inputs_bin_, inputs);
-  writeBinary(ref_states_bin_, ref_states);
-  writeBinary(ref_inputs_bin_, ref_inputs);
-  writeBinary(solve_times_bin_, solve_times);
-  ++num_logged_steps_;
 }
 
 void MPCLogger::finalize()
@@ -348,6 +314,40 @@ void MPCLogger::writeParamFile(const std::filesystem::path& filename)
         },
         entry.value);
   }
+}
+
+void MPCLogger::initTempFiles()
+{
+  if (!std::filesystem::exists(save_dir_))
+    std::filesystem::create_directories(save_dir_);
+
+  auto open_bin = [&](std::ofstream& fout, const std::string& name) {
+    fout.open(save_dir_ / (save_name_ + "_" + name + ".tmp"),
+              std::ios::binary | std::ios::out);
+  };
+
+  open_bin(time_bin_, "time");
+  open_bin(solve_times_bin_, "solve_times");
+  open_bin(states_bin_, "states");
+  open_bin(inputs_bin_, "inputs");
+  open_bin(ref_states_bin_, "ref_states");
+  open_bin(ref_inputs_bin_, "ref_inputs");
+}
+
+void MPCLogger::writeStep(double t,
+                          const Eigen::Ref<const Eigen::VectorXd>& states,
+                          const Eigen::Ref<const Eigen::VectorXd>& inputs,
+                          const Eigen::Ref<const Eigen::VectorXd>& ref_states,
+                          const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
+                          const Eigen::Ref<const Eigen::VectorXd>& solve_times)
+{
+  time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
+  writeBinary(states_bin_, states);
+  writeBinary(inputs_bin_, inputs);
+  writeBinary(ref_states_bin_, ref_states);
+  writeBinary(ref_inputs_bin_, ref_inputs);
+  writeBinary(solve_times_bin_, solve_times);
+  ++num_logged_steps_;
 }
 
 } // namespace affine_mpc
