@@ -16,6 +16,8 @@ using namespace Eigen;
 
 namespace affine_mpc {
 
+namespace { // utilities for this file
+
 constexpr int validateStateDim(const int state_dim)
 {
   if (state_dim <= 0)
@@ -36,6 +38,8 @@ constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
 {
   return opts.saturate_input_trajectory && param.degree > 1;
 }
+
+} // namespace
 
 MPCBase::MPCBase(const int state_dim,
                  const int input_dim,

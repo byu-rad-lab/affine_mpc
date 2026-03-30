@@ -8,7 +8,8 @@
 
 namespace affine_mpc {
 
-namespace {
+namespace { // utilities for this file
+
 const Eigen::IOFormat kVectorFormat(
     Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ", "", "", "[", "]");
 

@@ -10,6 +10,8 @@ namespace affine_mpc {
 using namespace Eigen;
 namespace ph = Eigen::placeholders;
 
+namespace { // utilities for this file
+
 void validateHorizonSteps(const int horizon_steps)
 {
   if (horizon_steps < 1)
@@ -85,6 +87,8 @@ void validateKnots(const Ref<const VectorXd>& knots,
         "that essentially leave some control points unused and wastes "
         "optimization effort in this context).\n");
 }
+
+} // namespace
 
 Parameterization Parameterization::moveBlocking(const int horizon_steps,
                                                 const int num_control_points)
