@@ -1,0 +1,206 @@
+# API Overview
+
+This page shows the intended workflow for the public C++ API and highlights the most commonly used classes and methods.
+
+## Main Types
+
+Public headers are in `include/affine_mpc/`.
+
+The most important types are:
+
+- `affine_mpc::Parameterization`
+- `affine_mpc::Options`
+- `affine_mpc::MPCBase`
+- `affine_mpc::CondensedMPC`
+- `affine_mpc::SparseMPC`
+- `affine_mpc::MPCLogger`
+- `affine_mpc::SolveStatus`
+
+## Typical Usage Flow
+
+### 1. Choose a parameterization
+
+```cpp
+auto param = affine_mpc::Parameterization::linearInterp(horizon_steps,
+                                                        num_control_points);
+```
+
+### 2. Configure options (all default to false)
+
+```cpp
+affine_mpc::Options opts;
+opts.use_input_cost = false;
+opts.slew_initial_input = false;
+opts.slew_control_points = false;
+opts.saturate_states = false;
+opts.saturate_input_trajectory = false;
+```
+
+### 3. Construct the MPC object
+
+```cpp
+affine_mpc::CondensedMPC mpc(state_dim, input_dim, param, opts);
+```
+
+Or:
+
+```cpp
+affine_mpc::SparseMPC mpc(state_dim, input_dim, param, opts);
+```
+
+### 4. Set the model
+
+Either provide a discrete model directly:
+
+```cpp
+mpc.setModelDiscrete(Ad, Bd, wd);
+```
+
+or discretize from continuous time:
+
+```cpp
+mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt);
+```
+
+### 5. Set limits and enabled optional constraints
+
+```cpp
+mpc.setInputLimits(u_min, u_max);
+if (opts.slew_initial_input) mpc.setSlewRateInitial(u0_slew);
+if (opts.slew_control_points) mpc.setSlewRate(u_slew);
+if (opts.saturate_states) mpc.setStateLimits(x_min, x_max);
+```
+
+### 6. Set weights
+
+#### Without input cost
+
+Use one of the following:
+
+```cpp
+mpc.setStateWeights(Q_diag, Qf_diag);
+
+mpc.setStateWeights(Q_diag);
+```
+
+#### With input cost
+
+Use one of the following:
+
+```cpp
+mpc.setWeights(Q_diag, Qf_diag, R_diag);
+
+mpc.setWeights(Q_diag, R_diag);
+
+mpc.setStateWeights(Q_diag, Qf_diag);
+mpc.setInputWeights(R_diag);
+
+mpc.setStateWeights(Q_diag);
+mpc.setInputWeights(R_diag);
+```
+
+### 7. Set references
+
+State reference as a step target:
+
+```cpp
+mpc.setReferenceState(x_ref);
+```
+
+State reference as a stacked trajectory:
+
+```cpp
+mpc.setReferenceStateTrajectory(x_traj);
+```
+
+If input cost is enabled, input reference can also be configured.
+
+### 8. Initialize the solver
+
+```cpp
+if (!mpc.initializeSolver()) {
+  throw std::runtime_error("Failed to initialize MPC solver");
+}
+```
+
+### 9. Solve in the control loop
+
+```cpp
+affine_mpc::SolveStatus status = mpc.solve(xk);
+```
+
+### 10. Retrieve results
+
+```cpp
+Eigen::VectorXd uk(input_dim);
+mpc.getNextInput(uk);
+
+Eigen::VectorXd u_traj(input_dim * horizon_steps);
+mpc.getInputTrajectory(u_traj);
+
+Eigen::VectorXd x_pred(state_dim * horizon_steps);
+mpc.getPredictedStateTrajectory(x_pred);
+```
+
+## Constructor Variants
+
+Both `CondensedMPC` and `SparseMPC` support:
+
+- an explicit `Parameterization` constructor
+- a horizon-only constructor that defaults to move-blocking with one control point per step
+
+Example:
+
+```cpp
+affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
+```
+
+## Solve Status
+
+`solve()` returns `affine_mpc::SolveStatus` instead of throwing for normal solver outcomes.
+
+Common cases include:
+
+- `Success`
+- `NotInitialized`
+- OSQP-derived failure conditions
+
+This split is intentional: configuration misuse tends to throw, while runtime solver outcomes use return values.
+
+## Reference and Trajectory Data
+
+The library supports:
+
+- state reference trajectories
+- optional input reference data when input cost is enabled
+- retrieval of optimal control points and dense trajectories after each solve
+
+Trajectory getters use preallocated output buffers where possible to avoid unnecessary allocations.
+
+## Model Propagation Helper
+
+You can propagate the internal model one step with:
+
+```cpp
+mpc.propagateModel(xk, uk, x_next);
+```
+
+This is useful for examples and closed-loop simulations.
+
+## Logging
+
+The logger is separate from the MPC classes:
+
+```cpp
+affine_mpc::MPCLogger logger{mpc, "/tmp/ampc_example", dt};
+logger.logStep(t, xk, user_solve_time);
+```
+
+See `docs/logging.md` for output format and workflow details.
+
+## API Design Notes
+
+- Use `Eigen::Ref` inputs and outputs where possible
+- Fully configure before calling `initializeSolver()`
+- QP matrix sparsity structure is fixed after initialization
+- Prefer `CondensedMPC` unless you have a concrete reason to use the sparse formulation
