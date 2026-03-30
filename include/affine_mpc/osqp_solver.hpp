@@ -2,6 +2,7 @@
 #define AFFINE_MPC_OSQP_SOLVER_HPP
 
 #include <Eigen/Core>
+#include <memory>
 #include <osqp.h>
 
 #include "affine_mpc/solve_status.hpp"
