@@ -213,10 +213,7 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
   assert(u0.size() == input_dim_);
   // Assumes that the control points are first elements of solution
-  const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
-                                  num_ctrl_pts_};
-  const int order{spline_degree_ + 1};
-  u0.noalias() = ctrls.leftCols(order) * spline_weights_.col(0);
+  getInput(0, solution_map_, u0);
 }
 
 void MPCBase::getParameterizedInputTrajectory(
@@ -230,19 +227,8 @@ void MPCBase::getParameterizedInputTrajectory(
 void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
   assert(u_traj.size() == u_traj_dim_);
-
   // Assumes that the control points are first elements of solution
-  const Map<const MatrixXd> ctrls{solution_map_.data(), input_dim_,
-                                  num_ctrl_pts_};
-  Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
-
-  // same as Parameterization::evaluate except uses pre-computed weights
-  const int order{spline_degree_ + 1};
-  for (int k{0}; k < horizon_steps_; ++k) {
-    const int seg{spline_segment_idxs_(k)};
-    u_traj_mat.col(k).noalias() =
-        ctrls.middleCols(seg, order) * spline_weights_.col(k);
-  }
+  evaluateControlPoints(solution_map_, u_traj);
 }
 
 void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
@@ -490,6 +476,31 @@ void MPCBase::calcSplineParams()
     spline_weights_.col(k) =
         Spline1d::BasisFunctions(t, spline_degree_, spline_knots_);
   }
+}
+
+void MPCBase::evaluateControlPoints(const Ref<const VectorXd>& ctrl_pts,
+                                    Ref<VectorXd> u_traj) const noexcept
+{
+  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
+  Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
+
+  // same as Parameterization::evaluate except uses pre-computed weights
+  const int order{spline_degree_ + 1};
+  for (int k{0}; k < horizon_steps_; ++k) {
+    const int seg{spline_segment_idxs_(k)};
+    u_traj_mat.col(k).noalias() =
+        ctrls.middleCols(seg, order) * spline_weights_.col(k);
+  }
+}
+
+void MPCBase::getInput(const int k,
+                       const Ref<const VectorXd>& ctrl_pts,
+                       Ref<VectorXd> uk) const noexcept
+{
+  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
+  const int order{spline_degree_ + 1};
+  const int seg{spline_segment_idxs_(k)};
+  uk.noalias() = ctrls.middleCols(seg, order) * spline_weights_.col(k);
 }
 
 } // namespace affine_mpc

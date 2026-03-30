@@ -361,6 +361,11 @@ protected:
 
 private:
   void calcSplineParams();
+  void evaluateControlPoints(const Eigen::Ref<const Eigen::VectorXd>& ctrl_pts,
+                             Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
+  void getInput(int k,
+                const Eigen::Ref<const Eigen::VectorXd>& ctrl_pts,
+                Eigen::Ref<Eigen::VectorXd> uk) const noexcept;
 
   // need to be implemented by derived classes (they define how to update the
   // QP matrices based on changes to the MPC problem)

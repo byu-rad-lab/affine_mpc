@@ -195,17 +195,15 @@ void MPCLogger::logStep(double t,
 
     // 2. Inputs
     if (!log_control_points_) {
+      // repeats final input
       const int u_idx{std::min(k, horizon_steps_ - 1)};
       inputs_out_buf_.segment(i * input_dim_, input_dim_) =
           u_traj_buf_.segment(u_idx * input_dim_, input_dim_);
 
       if (has_input_ref) {
         // Evaluate spline for reference input at step u_idx
-        const int seg{mpc_->spline_segment_idxs_(u_idx)};
-        const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc_->u_ref_.data(),
-                                                      input_dim_, num_ctrls_};
-        ref_inputs_out_buf_.segment(i * input_dim_, input_dim_).noalias() =
-            ctrls.middleCols(seg, order) * mpc_->spline_weights_.col(u_idx);
+        mpc_->getInput(u_idx, mpc_->u_ref_,
+                       ref_inputs_out_buf_.segment(i * input_dim_, input_dim_));
       }
     }
   }
