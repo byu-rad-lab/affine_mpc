@@ -25,6 +25,7 @@ Note that this project was developed using both Ubuntu 20.04 and 22.04 with the 
   - This project will locally clone and build OSQP if it is not found on your system
 - [cnpy](https://github.com/rogersce/cnpy.git) - Save NPY/NPZ files for logging
   - This project will locally clone and build cnpy automatically.
+- [ZLIB](https://zlib.net/) - Compression library (required by cnpy)
 
 #### Optional:
 
