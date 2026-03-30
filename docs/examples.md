@@ -39,14 +39,10 @@ These files can be plotted from Python.
 
 The repository includes:
 
-- `examples/plot_sim_tracking.py`
-- `examples/plot_sim_predictions.py`
-- `examples/plot_npz.py`
-
-### Tracking view
+- `examples/plot_sim.py`
 
 ```sh
-python examples/plot_sim_tracking.py
+python examples/plot_sim.py
 ```
 
 Shows:
@@ -55,28 +51,8 @@ Shows:
 - reference state history
 - applied input
 - optional input reference if input cost is enabled
+- selected prediction rollouts over time (if logged)
 - solve times
-
-### Prediction view
-
-```sh
-python examples/plot_sim_predictions.py
-```
-
-Shows:
-
-- actual trajectories
-- reference trajectories
-- selected prediction rollouts over time
-- input limits and solve times
-
-### Generic NPZ viewer
-
-```sh
-python examples/plot_npz.py /tmp/ampc_example
-```
-
-This helper loads both the `.npz` data file and the YAML parameter file.
 
 ## Suggested First Modifications
 

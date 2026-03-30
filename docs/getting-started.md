@@ -104,12 +104,10 @@ The example simulates a mass-spring-damper system and writes an `.npz` log and Y
 
 ## Plot the Example Results
 
-After the example runs, use one of the plotting scripts:
+After the example runs, use the plotting script:
 
 ```sh
-python examples/plot_sim_tracking.py
-python examples/plot_sim_predictions.py
-python examples/plot_npz.py /tmp/ampc_example
+python examples/plot_sim.py
 ```
 
 ## First MPC Workflow
