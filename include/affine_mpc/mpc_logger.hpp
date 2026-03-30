@@ -20,6 +20,8 @@ namespace affine_mpc {
  * Uses a "write-raw, pack-later" strategy to support high logging frequencies.
  * Per-step data is temporarily stored in binary files and then packed into a
  * single .npz file during finalization. Metadata is stored in a .yaml file.
+ * Everything in the YAML file is also contained in the NPZ file, but the YAML
+ * provides a quick and easy way to see parameters from a simulation.
  *
  * The logger is designed to be used within a simulation or control loop. It
  * provides a convenience method to automatically extract and stride
@@ -32,11 +34,15 @@ public:
       variant<int, double, std::string, Eigen::VectorXd, std::vector<double>>;
 
   /**
-   * @brief Construct an MPCLogger for a given MPC instance.
+   * @brief Construct an MPCLogger for a given MPC instance; the logger is
+   *   linked to this single MPC instance.
    *
-   * The logger automatically captures a snapshot of the MPC object's current
-   * parameters (dimensions, weights, limits, etc.) at construction. If these
-   * parameters change later, captureMPCSnapshot() should be called manually.
+   *   IMPORTANT: The logger does not own the MPC object; the MPC instance must
+   *   outlive the logger.
+   *
+   *   The logger automatically captures a snapshot of the MPC object's current
+   *   parameters (dimensions, weights, limits, etc.) at construction. If these
+   *   parameters change later, captureMPCSnapshot() should be called manually.
    *
    * @param mpc The MPC object from which to log parameters.
    * @param save_dir Directory to save log files. Created if it doesn't exist.
@@ -51,7 +57,7 @@ public:
    *   input trajectory instead of the evaluated dense input trajectory.
    * @param save_name Base name for the .npz output file (default: "log").
    */
-  MPCLogger(const MPCBase& mpc,
+  MPCLogger(const MPCBase* const mpc,
             const std::filesystem::path& save_dir,
             double ts,
             int prediction_stride = 1,
@@ -71,15 +77,11 @@ public:
    * @param t Current simulation time (time of solve).
    * @param x0 Current state at time t (same as provided to solve() since
    *   MPCBase does not store this).
-   * @param mpc The MPC object from which to extract predictions and references
-   *   (should be the same one that was provided to the constructor - providing
-   *   it again ensures the object still exists in memory).
    * @param solve_time Optional user-calculated solve time (likely to include
    *   setup time). The solve time reported by OSQP is also logged separately.
    */
   void logStep(double t,
                const Eigen::Ref<const Eigen::VectorXd>& x0,
-               const MPCBase& mpc,
                double solve_time = -1.0);
 
   /**
@@ -105,7 +107,7 @@ public:
    *
    * @param mpc The MPC object to snapshot.
    */
-  void captureMPCSnapshot(const MPCBase& mpc);
+  void captureMPCSnapshot();
 
   /**
    * @brief Pack all temporary binary data into the final .npz file and write
@@ -143,17 +145,13 @@ private:
    * @brief Internal raw logger: writes strided arrays directly to binary
    *   streams.
    */
-  void writeStep(double t,
-                 const Eigen::Ref<const Eigen::VectorXd>& states,
-                 const Eigen::Ref<const Eigen::VectorXd>& inputs,
-                 const Eigen::Ref<const Eigen::VectorXd>& ref_states,
-                 const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
-                 const Eigen::Ref<const Eigen::VectorXd>& solve_times);
+  void writeStep(double t);
 
-  int state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, spline_degree_;
-  double ts_;
-  int prediction_stride_;
-  bool log_control_points_;
+  const MPCBase* const mpc_;
+  const int state_dim_, input_dim_, horizon_steps_, num_ctrls_, spline_degree_;
+  const double ts_;
+  const int prediction_stride_;
+  const bool log_control_points_;
 
   std::vector<int> strided_k_; ///< Pre-computed indices for strided logging.
   int logged_x_dim_, logged_u_dim_;
@@ -161,13 +159,14 @@ private:
   std::filesystem::path save_dir_;
   std::string save_name_;
   bool is_finalized_;
-  int num_logged_steps_;
+  size_t num_logged_steps_;
 
   std::vector<std::string> metadata_keys_; ///< Preserves insertion order.
   std::map<std::string, MetadataEntry> metadata_registry_;
 
   // Internal buffers to avoid re-allocation during high-frequency logging.
-  Eigen::VectorXd x_pred_buf_, u_pred_buf_;
+  Eigen::Vector2d solve_times_buf_;
+  Eigen::VectorXd x_traj_buf_, u_traj_buf_;
   Eigen::VectorXd states_out_buf_, inputs_out_buf_;
   Eigen::VectorXd ref_states_out_buf_, ref_inputs_out_buf_;
 

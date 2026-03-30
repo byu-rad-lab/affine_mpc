@@ -44,17 +44,18 @@ std::vector<double> loadBinary(const std::filesystem::path& path)
 }
 } // namespace
 
-MPCLogger::MPCLogger(const MPCBase& mpc,
+MPCLogger::MPCLogger(const MPCBase* const mpc,
                      const std::filesystem::path& save_dir,
-                     double ts,
-                     int prediction_stride,
-                     bool log_control_points,
+                     const double ts,
+                     const int prediction_stride,
+                     const bool log_control_points,
                      const std::string& save_name) :
-    state_dim_{mpc.state_dim_},
-    input_dim_{mpc.input_dim_},
-    horizon_steps_{mpc.horizon_steps_},
-    num_ctrl_pts_{mpc.num_ctrl_pts_},
-    spline_degree_{mpc.spline_degree_},
+    mpc_{mpc},
+    state_dim_{mpc_->state_dim_},
+    input_dim_{mpc_->input_dim_},
+    horizon_steps_{mpc_->horizon_steps_},
+    num_ctrls_{mpc_->num_ctrl_pts_},
+    spline_degree_{mpc_->spline_degree_},
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
@@ -62,9 +63,9 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
     save_name_{save_name},
     is_finalized_{false},
     num_logged_steps_{0},
-    x_pred_buf_{mpc.state_dim_ * mpc.horizon_steps_},
-    u_pred_buf_{log_control_points ? mpc.input_dim_ * mpc.num_ctrl_pts_
-                                   : mpc.input_dim_ * mpc.horizon_steps_}
+    x_traj_buf_{state_dim_ * horizon_steps_},
+    u_traj_buf_{log_control_points ? input_dim_ * num_ctrls_
+                                   : input_dim_ * horizon_steps_}
 {
   if (prediction_stride_ <= 0) {
     strided_k_.push_back(0);
@@ -78,7 +79,7 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
   }
 
   logged_x_dim_ = state_dim_ * strided_k_.size();
-  logged_u_dim_ = log_control_points_ ? input_dim_ * num_ctrl_pts_
+  logged_u_dim_ = log_control_points_ ? input_dim_ * num_ctrls_
                                       : input_dim_ * strided_k_.size();
 
   states_out_buf_.resize(logged_x_dim_);
@@ -86,7 +87,7 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
   ref_states_out_buf_.resize(logged_x_dim_);
   ref_inputs_out_buf_.resize(logged_u_dim_);
 
-  captureMPCSnapshot(mpc);
+  captureMPCSnapshot();
 
   std::vector<double> t_pred(strided_k_.size());
   for (size_t i = 0; i < strided_k_.size(); ++i) {
@@ -95,7 +96,7 @@ MPCLogger::MPCLogger(const MPCBase& mpc,
   addMetadata("t_pred", t_pred);
   addMetadata("ts", ts_);
   addMetadata("prediction_stride", prediction_stride_);
-  addMetadata("log_control_points", (int)log_control_points_);
+  addMetadata("log_control_points", int{log_control_points_});
 
   initTempFiles();
 }
@@ -110,39 +111,40 @@ MPCLogger::~MPCLogger()
   }
 }
 
-void MPCLogger::captureMPCSnapshot(const MPCBase& mpc)
+void MPCLogger::captureMPCSnapshot()
 {
-  addMetadata("state_dim", mpc.state_dim_);
-  addMetadata("input_dim", mpc.input_dim_);
-  addMetadata("horizon_steps", mpc.horizon_steps_);
-  addMetadata("spline_degree", mpc.spline_degree_);
-  addMetadata("num_control_points", mpc.num_ctrl_pts_);
+  addMetadata("state_dim", mpc_->state_dim_);
+  addMetadata("input_dim", mpc_->input_dim_);
+  addMetadata("horizon_steps", mpc_->horizon_steps_);
+  addMetadata("spline_degree", mpc_->spline_degree_);
+  addMetadata("num_control_points", mpc_->num_ctrl_pts_);
 
-  if (mpc.spline_knots_.size() > 0)
-    addMetadata("knots", mpc.spline_knots_);
+  if (mpc_->spline_knots_.size() > 0)
+    addMetadata("knots", mpc_->spline_knots_);
 
-  addMetadata("opt_use_input_cost", static_cast<int>(mpc.opts_.use_input_cost));
+  addMetadata("opt_use_input_cost",
+              static_cast<int>(mpc_->opts_.use_input_cost));
   addMetadata("opt_slew_initial_input",
-              static_cast<int>(mpc.opts_.slew_initial_input));
+              static_cast<int>(mpc_->opts_.slew_initial_input));
   addMetadata("opt_slew_control_points",
-              static_cast<int>(mpc.opts_.slew_control_points));
+              static_cast<int>(mpc_->opts_.slew_control_points));
   addMetadata("opt_saturate_states",
-              static_cast<int>(mpc.opts_.saturate_states));
+              static_cast<int>(mpc_->opts_.saturate_states));
   addMetadata("opt_saturate_input_trajectory",
-              static_cast<int>(mpc.opts_.saturate_input_trajectory));
+              static_cast<int>(mpc_->opts_.saturate_input_trajectory));
 
-  addMetadata("u_min", mpc.u_min_);
-  addMetadata("u_max", mpc.u_max_);
-  addMetadata("Q_diag", mpc.Q_big_.diagonal().head(mpc.state_dim_));
-  addMetadata("Qf_diag", mpc.Q_big_.diagonal().tail(mpc.state_dim_));
+  addMetadata("u_min", mpc_->u_min_);
+  addMetadata("u_max", mpc_->u_max_);
+  addMetadata("Q_diag", mpc_->Q_big_.diagonal().head(state_dim_));
+  addMetadata("Qf_diag", mpc_->Q_big_.diagonal().tail(state_dim_));
 
-  if (mpc.opts_.use_input_cost)
-    addMetadata("R_diag", mpc.R_big_.diagonal().head(mpc.input_dim_));
-  if (mpc.opts_.slew_control_points)
-    addMetadata("u_slew", mpc.u_slew_);
-  if (mpc.opts_.saturate_states) {
-    addMetadata("x_min", mpc.x_min_);
-    addMetadata("x_max", mpc.x_max_);
+  if (mpc_->opts_.use_input_cost)
+    addMetadata("R_diag", mpc_->R_big_.diagonal().head(input_dim_));
+  if (mpc_->opts_.slew_control_points)
+    addMetadata("u_slew", mpc_->u_slew_);
+  if (mpc_->opts_.saturate_states) {
+    addMetadata("x_min", mpc_->x_min_);
+    addMetadata("x_max", mpc_->x_max_);
   }
 }
 
@@ -158,55 +160,56 @@ void MPCLogger::addMetadata(const std::string& key,
 
 void MPCLogger::logStep(double t,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
-                        const MPCBase& mpc,
                         double solve_time)
 {
-  mpc.getPredictedStateTrajectory(x_pred_buf_);
+  solve_times_buf_ << solve_time, mpc_->solver_->getSolveTime();
+
+  mpc_->getPredictedStateTrajectory(x_traj_buf_);
+  const bool has_input_ref{mpc_->opts_.use_input_cost};
 
   if (log_control_points_) {
-    mpc.getParameterizedInputTrajectory(u_pred_buf_);
-    inputs_out_buf_ = u_pred_buf_;
-    ref_inputs_out_buf_ = mpc.u_ref_;
+    mpc_->getParameterizedInputTrajectory(inputs_out_buf_);
+    if (has_input_ref)
+      ref_inputs_out_buf_ = mpc_->u_ref_;
   } else {
-    mpc.getInputTrajectory(u_pred_buf_);
+    mpc_->getInputTrajectory(u_traj_buf_);
   }
 
   // Handle Input References Evaluation if not logging control points
-  const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc.u_ref_.data(), input_dim_,
-                                                num_ctrl_pts_};
-  const int order{spline_degree_ + 1};
+  const int order{mpc_->spline_degree_ + 1};
 
   for (size_t i = 0; i < strided_k_.size(); ++i) {
     const int k{strided_k_[i]};
 
     // 1. States
     if (k == 0) {
-      states_out_buf_.segment(i * state_dim_, state_dim_) = x0;
-      ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
-          mpc.x_ref_.head(state_dim_);
+      states_out_buf_.head(state_dim_) = x0;
+      // add 1st ref state for x0 to match size of states & ref_states
+      ref_states_out_buf_.head(state_dim_) = mpc_->x_ref_.head(state_dim_);
     } else {
       states_out_buf_.segment(i * state_dim_, state_dim_) =
-          x_pred_buf_.segment((k - 1) * state_dim_, state_dim_);
+          x_traj_buf_.segment((k - 1) * state_dim_, state_dim_);
       ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
-          mpc.x_ref_.segment((k - 1) * state_dim_, state_dim_);
+          mpc_->x_ref_.segment((k - 1) * state_dim_, state_dim_);
     }
 
     // 2. Inputs
     if (!log_control_points_) {
       const int u_idx{std::min(k, horizon_steps_ - 1)};
       inputs_out_buf_.segment(i * input_dim_, input_dim_) =
-          u_pred_buf_.segment(u_idx * input_dim_, input_dim_);
+          u_traj_buf_.segment(u_idx * input_dim_, input_dim_);
 
-      // Evaluate spline for reference input at step u_idx
-      const int seg{mpc.spline_segment_idxs_(u_idx)};
-      ref_inputs_out_buf_.segment(i * input_dim_, input_dim_).noalias() =
-          ctrls.middleCols(seg, order) * mpc.spline_weights_.col(u_idx);
+      if (has_input_ref) {
+        // Evaluate spline for reference input at step u_idx
+        const int seg{mpc_->spline_segment_idxs_(u_idx)};
+        const Eigen::Map<const Eigen::MatrixXd> ctrls{mpc_->u_ref_.data(),
+                                                      input_dim_, num_ctrls_};
+        ref_inputs_out_buf_.segment(i * input_dim_, input_dim_).noalias() =
+            ctrls.middleCols(seg, order) * mpc_->spline_weights_.col(u_idx);
+      }
     }
   }
-
-  const Eigen::Vector2d solve_times{solve_time, mpc.solver_->getSolveTime()};
-  writeStep(t, states_out_buf_, inputs_out_buf_, ref_states_out_buf_,
-            ref_inputs_out_buf_, solve_times);
+  writeStep(t);
 }
 
 void MPCLogger::finalize()
@@ -219,10 +222,11 @@ void MPCLogger::finalize()
   states_bin_.close();
   inputs_bin_.close();
   ref_states_bin_.close();
-  ref_inputs_bin_.close();
+  if (ref_inputs_bin_.is_open())
+    ref_inputs_bin_.close();
 
   const std::string npz_path = (save_dir_ / (save_name_ + ".npz")).string();
-  const size_t N = (size_t)num_logged_steps_;
+  const size_t N{static_cast<size_t>(num_logged_steps_)};
 
   auto pack_clean = [&](const std::string& name,
                         const std::vector<size_t>& shape, bool append) {
@@ -239,7 +243,7 @@ void MPCLogger::finalize()
   const size_t K{strided_k_.size()};
   const size_t n{static_cast<size_t>(state_dim_)};
   const size_t m{static_cast<size_t>(input_dim_)};
-  const size_t nc{static_cast<size_t>(num_ctrl_pts_)};
+  const size_t nc{static_cast<size_t>(num_ctrls_)};
   if (K == 1) {
     pack_clean("states", {N, n}, true);
     pack_clean("ref_states", {N, n}, true);
@@ -331,22 +335,19 @@ void MPCLogger::initTempFiles()
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
   open_bin(ref_states_bin_, "ref_states");
-  open_bin(ref_inputs_bin_, "ref_inputs");
+  if (mpc_->opts_.use_input_cost)
+    open_bin(ref_inputs_bin_, "ref_inputs");
 }
 
-void MPCLogger::writeStep(double t,
-                          const Eigen::Ref<const Eigen::VectorXd>& states,
-                          const Eigen::Ref<const Eigen::VectorXd>& inputs,
-                          const Eigen::Ref<const Eigen::VectorXd>& ref_states,
-                          const Eigen::Ref<const Eigen::VectorXd>& ref_inputs,
-                          const Eigen::Ref<const Eigen::VectorXd>& solve_times)
+void MPCLogger::writeStep(double t)
 {
   time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
-  writeBinary(states_bin_, states);
-  writeBinary(inputs_bin_, inputs);
-  writeBinary(ref_states_bin_, ref_states);
-  writeBinary(ref_inputs_bin_, ref_inputs);
-  writeBinary(solve_times_bin_, solve_times);
+  writeBinary(solve_times_bin_, solve_times_buf_);
+  writeBinary(states_bin_, states_out_buf_);
+  writeBinary(inputs_bin_, inputs_out_buf_);
+  writeBinary(ref_states_bin_, ref_states_out_buf_);
+  if (mpc_->opts_.use_input_cost)
+    writeBinary(ref_inputs_bin_, ref_inputs_out_buf_);
   ++num_logged_steps_;
 }
 

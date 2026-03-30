@@ -49,7 +49,7 @@ protected:
 
 TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
 {
-  ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, false, "test_log");
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "test_log");
 
   EXPECT_TRUE(fs::exists(test_dir_));
   EXPECT_TRUE(fs::is_directory(test_dir_));
@@ -62,11 +62,11 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
 
 TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
 {
-  ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, false, "conv_log");
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "conv_log");
 
   Eigen::Vector2d x0{1.0, 0.5};
   const auto status = mpc_->solve(x0);
-  logger.logStep(0.0, x0, *mpc_, 0.001);
+  logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 
   EXPECT_TRUE(fs::exists(test_dir_ / "conv_log.npz"));
@@ -88,12 +88,12 @@ TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
 
 TEST_F(MPCLoggerTest, StrideWorksAsExpected)
 {
-  ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 2, false,
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 2, false,
                          "stride_log"); // stride=2
 
   Eigen::Vector2d x0{1.0, 0.5};
   const auto status = mpc_->solve(x0);
-  logger.logStep(0.0, x0, *mpc_, 0.001);
+  logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 
   cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "stride_log.npz").string());
@@ -110,12 +110,12 @@ TEST_F(MPCLoggerTest, StrideWorksAsExpected)
 
 TEST_F(MPCLoggerTest, ControlPointsLoggingWorks)
 {
-  ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 1, true,
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, true,
                          "ctrl_log"); // log_control_points=true
 
   Eigen::Vector2d x0{1.0, 0.5};
   const auto status = mpc_->solve(x0);
-  logger.logStep(0.0, x0, *mpc_, 0.001);
+  logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 
   cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "ctrl_log.npz").string());
@@ -133,12 +133,12 @@ TEST_F(MPCLoggerTest, ControlPointsLoggingWorks)
 
 TEST_F(MPCLoggerTest, ZeroStrideSqueezesArrays)
 {
-  ampc::MPCLogger logger(*mpc_, test_dir_, 0.1, 0, false,
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 0, false,
                          "squeeze_log"); // stride=0
 
   Eigen::Vector2d x0{1.0, 0.5};
   const auto status = mpc_->solve(x0);
-  logger.logStep(0.0, x0, *mpc_, 0.001);
+  logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 
   cnpy::npz_t my_npz = cnpy::npz_load((test_dir_ / "squeeze_log.npz").string());
@@ -151,4 +151,43 @@ TEST_F(MPCLoggerTest, ZeroStrideSqueezesArrays)
   EXPECT_EQ(my_npz["inputs"].shape.size(), 2);
   EXPECT_EQ(my_npz["inputs"].shape[0], 1); // N
   EXPECT_EQ(my_npz["inputs"].shape[1], 1); // m
+}
+
+TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
+{
+  const fs::path test_dir =
+      fs::temp_directory_path() / "mpc_logger_no_input_cost";
+  if (fs::exists(test_dir)) {
+    fs::remove_all(test_dir);
+  }
+
+  const int n{2}, m{1}, T{5}, p{2};
+  const auto param{ampc::Parameterization::linearInterp(T, p)};
+  ampc::CondensedMPC mpc{n, m, param};
+
+  Eigen::Matrix2d A;
+  A << 1, 0.1, 0, 1;
+  Eigen::Vector2d B{0, 0.1}, w{0, 0};
+  mpc.setModelContinuous2Discrete(A, B, w, 0.1);
+  mpc.setInputLimits(Eigen::VectorXd::Constant(m, -1),
+                     Eigen::VectorXd::Constant(m, 1));
+  mpc.setStateWeights(Eigen::VectorXd::Ones(n));
+  mpc.setReferenceState(Eigen::VectorXd::Zero(n));
+  ASSERT_TRUE(mpc.initializeSolver());
+
+  ampc::MPCLogger logger{&mpc, test_dir, 0.1, 1, false, "no_input_cost"};
+
+  Eigen::Vector2d x0{1.0, 0.5};
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  EXPECT_NO_THROW(logger.logStep(0.0, x0, 0.001));
+  logger.finalize();
+
+  cnpy::npz_t my_npz =
+      cnpy::npz_load((test_dir / "no_input_cost.npz").string());
+  ASSERT_EQ(my_npz.find("ref_inputs"), my_npz.end());
+  ASSERT_EQ(my_npz.find("meta_R_diag"), my_npz.end());
+
+  if (fs::exists(test_dir)) {
+    fs::remove_all(test_dir);
+  }
 }
