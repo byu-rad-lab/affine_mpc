@@ -124,9 +124,7 @@ If you are evaluating the library for research use or publication, `docs/concept
 The main C++ example is `examples/sim.cpp`. After running `./build/example_sim`, you can inspect the generated log with:
 
 ```sh
-python examples/plot_sim_tracking.py
-python examples/plot_sim_predictions.py
-python examples/plot_npz.py /tmp/ampc_example
+python examples/plot_sim.py
 ```
 
 ## Community Standards
