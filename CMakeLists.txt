@@ -18,7 +18,11 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
-option(AFFINE_MPC_BINDINGS "Set on when building python bindings" OFF)
+
+# Internal flag for building python bindings
+if(NOT DEFINED AFFINE_MPC_BINDINGS)
+  set(AFFINE_MPC_BINDINGS OFF)
+endif()
 
 # --------------------------------------------------
 # Dependencies
