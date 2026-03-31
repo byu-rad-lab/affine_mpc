@@ -3,7 +3,7 @@ find_package(Eigen3 3.4...5 QUIET NO_MODULE)
 # 3.4.0 (used by Ubuntu 24.04) may not satisfy the version-range query, so
 # explicitly retry with the lower bound.
 if(NOT TARGET Eigen3::Eigen)
-  find_package(Eigen3 3.4 QUIET NO_MODULE)
+  find_package(Eigen3 3.4 QUIET)
 endif()
 
 if(NOT TARGET Eigen3::Eigen)
