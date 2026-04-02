@@ -1,0 +1,48 @@
+name: Check Stubs
+
+on:
+  pull_request:
+    paths:
+      - "python/**"
+      - "pyproject.toml"
+      - ".github/workflows/check_stubs.yaml"
+      - "CMakeLists.txt"
+      - "cmake/**"
+  push:
+    branches: [main]
+    paths:
+      - "python/**"
+      - "pyproject.toml"
+      - ".github/workflows/check_stubs.yaml"
+      - "CMakeLists.txt"
+      - "cmake/**"
+
+jobs:
+  check-stubs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential zlib1g-dev
+
+      - name: Install package and regenerate stubs
+        run: |
+          python -m pip install . --config-settings=cmake.define.GENERATE_STUBS=ON
+
+      - name: Check committed stub file is up to date
+        run: |
+          git diff --exit-code -- python/affine_mpc/_bindings.pyi || {
+            echo "Generated bindings stub differs from python/affine_mpc/_bindings.pyi"
+            echo "Regenerate the stub locally and commit the updated file."
+            exit 1
+          }

@@ -1,0 +1,95 @@
+name: Build Python Wheels
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+env:
+  ## Manually specify versions if one ever fails
+  # CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
+  CIBW_SKIP: "pp* cp3??t-* *-win32 *-manylinux_i686 *-musllinux_i686"
+  CIBW_ARCHS_WINDOWS: AMD64
+  CIBW_TEST_REQUIRES: pytest
+  CIBW_TEST_COMMAND: "python -m pytest {project}/test/bindings"
+  CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
+  CIBW_ENVIRONMENT_WINDOWS: >-
+    CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+  CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
+
+jobs:
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        ## Manually specify versions if one ever fails
+        # os: [ubuntu-24.04, windows-2025, macos-15]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Windows step
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install zlib:x64-windows eigen3:x64-windows
+
+      # macOS step
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install cmake zlib eigen
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel
+
+      - name: Build wheels
+        run: cibuildwheel --output-dir wheelhouse
+
+      - name: List built wheels (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path wheelhouse) {
+              ls wheelhouse
+          } else {
+              Write-Host "wheelhouse folder does not exist yet."
+          }
+
+      - name: List built wheels (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: ls -l wheelhouse
+
+      - name: Upload built wheels as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     user: __token__
+      #     password: ${{ secrets.PYPI_API_TOKEN }}
+      #     packages_dir: wheelhouse
+
+      - name: Publish wheels to TestPyPI
+        if: matrix.os == 'ubuntu-latest'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+          packages_dir: wheelhouse
