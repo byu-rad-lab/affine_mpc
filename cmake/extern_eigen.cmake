@@ -7,7 +7,7 @@ if(NOT TARGET Eigen3::Eigen)
 endif()
 
 if(NOT TARGET Eigen3::Eigen)
-  if(NOT AFFINE_MPC_BINDINGS)
+  if(NOT AFFINE_MPC_BUILD_BINDINGS)
     # System install of Eigen is required for normal builds
     message(FATAL_ERROR
       "Eigen3 not found. Please install Eigen (>= 3.4) on your system "
@@ -19,7 +19,9 @@ if(NOT TARGET Eigen3::Eigen)
   # Github servers, which may not have Eigen installed. For normal builds,
   # using the FetchContent target may cause issues downstream.
   message(STATUS
-    "System install of Eigen3 not found; using FetchContent fallback for bindings build")
+    "System install of Eigen3 not found; "
+    "using FetchContent fallback for bindings build"
+  )
 
   set(Eigen_FIND_VERSION 5.0.1)
   FetchContent_Declare(eigen3_extern

@@ -20,8 +20,8 @@ option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
 
 # Internal flag for building python bindings
-if(NOT DEFINED AFFINE_MPC_BINDINGS)
-  set(AFFINE_MPC_BINDINGS OFF)
+if(NOT DEFINED AFFINE_MPC_BUILD_BINDINGS)
+  set(AFFINE_MPC_BUILD_BINDINGS OFF)
 endif()
 
 # --------------------------------------------------
@@ -51,7 +51,7 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
-if(NOT AFFINE_MPC_BINDINGS)
+if(NOT AFFINE_MPC_BUILD_BINDINGS)
   set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
@@ -80,6 +80,13 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 if(AFFINE_MPC_BUILD_EXAMPLES)
   add_executable(example_sim examples/sim.cpp)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+endif()
+
+# --------------------------------------------------
+# Python Bindings
+# --------------------------------------------------
+if(AFFINE_MPC_BUILD_BINDINGS)
+  add_subdirectory(python)
 endif()
 
 # --------------------------------------------------
