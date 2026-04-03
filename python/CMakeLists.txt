@@ -173,3 +173,11 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc
     PATTERN "*.pyi"
     PATTERN "py.typed"
 )
+
+# Install example files
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../examples/
+  DESTINATION affine_mpc/_examples
+  COMPONENT python_bindings
+  FILES_MATCHING
+    PATTERN "*.py"
+)

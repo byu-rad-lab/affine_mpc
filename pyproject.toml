@@ -36,11 +36,15 @@ dev = [
     "black",
     "pytest",
 ]
-# Install these with `pip install ".[example]"`
-example = [
+# Install these with `pip install ".[examples]"`
+examples = [
     "matplotlib",
     "abracatabra[qt-pyside6]",
 ]
+
+[project.scripts]
+affine-mpc-example-sim = "affine_mpc._examples.sim:main"
+affine-mpc-example-plot = "affine_mpc._examples.plot_sim:main"
 
 # see https://scikit-build-core.readthedocs.io/en/latest/#configuration for 
 # configuration options

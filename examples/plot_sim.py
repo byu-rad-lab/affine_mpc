@@ -1,9 +1,21 @@
 import numpy as np
 from numpy.typing import NDArray
-import abracatabra as plt
-from matplotlib.axes import Axes
 from pathlib import Path
 import tempfile
+
+try:
+    import abracatabra as plt
+    from matplotlib.axes import Axes
+except ImportError:
+    print(
+        "There are missing dependencies.",
+        "You can install them with",
+        '    pip install "affine_mpc[examples]"',
+        "OR",
+        "    pip install matplotlib abracatabra pyside6",
+        sep="\n",
+    )
+    exit(1)
 
 ArrayF = NDArray[np.float64]
 

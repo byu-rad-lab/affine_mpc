@@ -10,6 +10,15 @@ import numpy as np
 import affine_mpc as ampc
 
 
+def plot_example():
+    if __name__ == "__main__":
+        import plot_sim
+    else:
+        from . import plot_sim
+
+    plot_sim.main()
+
+
 def main():
     tmp = Path(tempfile.gettempdir())
     save_dir = tmp / "ampc_example"
@@ -80,9 +89,8 @@ def main():
 
     print("Log file written to", save_dir / "log.npz")
 
+    plot_example()
+
 
 if __name__ == "__main__":
     main()
-
-    # import plot_sim
-    # plot_sim.main()
