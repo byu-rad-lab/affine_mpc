@@ -1,6 +1,7 @@
 # C++ Interface
 
-The C++ library is the core implementation of `affine_mpc`. It provides the public MPC API, the OSQP-backed solver integration, and the logging utilities used by both the native and Python interfaces.
+The C++ library is the core implementation of `affine_mpc`.
+It provides the public MPC API, the OSQP-backed solver integration, and the logging utilities used by both the native and Python interfaces.
 
 ## Start Here
 

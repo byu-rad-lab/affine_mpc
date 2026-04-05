@@ -61,6 +61,9 @@ clang-format -i src/mpc_base.cpp
 
 Use `// clang-format off` only when it clearly improves readability for matrix literals or similarly structured data.
 
+For prose-heavy Markdown documentation, prefer one sentence per line.
+This makes diffs and review comments more localized without affecting rendered output.
+
 ## Coding Conventions
 
 - C++17 only

@@ -1,10 +1,13 @@
 # affine_mpc
 
-`affine_mpc` is a library for model predictive control of discrete-time affine systems with equal first-class interfaces in C++ and Python. It provides condensed and sparse MPC formulations, input trajectory parameterization through move-blocking and B-splines, OSQP-backed solves, and binary logging for simulation and analysis workflows.
+`affine_mpc` is a library for model predictive control of discrete-time affine systems with equal first-class interfaces in C++ and Python.
+It provides condensed and sparse MPC formulations, input trajectory parameterization through move-blocking and B-splines, OSQP-backed solves, and binary logging for simulation and analysis workflows.
 
 ## Who It Is For
 
-`affine_mpc` is aimed at researchers, students, and engineers who want a focused MPC library rather than a general optimization toolkit. The Python interface is convenient for experimentation, analysis, and teaching. The C++ interface is better suited for integration into performance-sensitive applications.
+`affine_mpc` is aimed at researchers, students, and engineers who want a focused MPC library rather than a general optimization toolkit.
+The Python interface is convenient for experimentation, analysis, and teaching.
+The C++ interface is better suited for integration into performance-sensitive applications.
 
 ## What To Do First
 
