@@ -90,6 +90,8 @@ mpc.setStateWeights(Q_diag, Qf_diag);
 mpc.setInputWeights(R_diag);
 ```
 
+These overloads let you either provide a separate terminal state weight or reuse the stage state weights at the terminal step.
+
 ### 7. Set references
 
 State step reference:
@@ -183,3 +185,4 @@ See [Logging](../logging.md) for output format and workflow details.
 - QP matrix sparsity is fixed after initialization
 - Prefer `CondensedMPC` unless you have a concrete reason to use the sparse formulation
 - Use preallocated Eigen buffers in tight loops when practical
+- If you enable `slew_initial_input`, provide the previous input before solving

@@ -4,13 +4,7 @@ This guide gets you to a first successful solve with the Python package.
 
 ## Install
 
-If a published package is available for your platform, install it with `pip`.
-
-```sh
-python -m pip install affine_mpc
-```
-
-To install from this repository instead:
+The most reliable installation path today is from this repository:
 
 ```sh
 python -m pip install .
@@ -21,6 +15,8 @@ To run the example plotting workflow, install the optional extras:
 ```sh
 python -m pip install ".[examples]"
 ```
+
+If you later publish release artifacts to PyPI, `python -m pip install affine_mpc` can become the shortest install path for users who do not need a source checkout.
 
 ## Minimal Example
 
@@ -76,6 +72,12 @@ affine-mpc-example-sim
 
 The example writes output to the system temporary directory under `ampc_example`, typically `/tmp/ampc_example` on Linux.
 
+Expected outcome:
+
+- the script solves a tracking problem for a mass-spring-damper system
+- `log.npz` is written under the `ampc_example` temp directory
+- the plotting helper opens figures showing state tracking, inputs, predictions, and solve times
+
 ## Plot the Results
 
 After running the example, plot the log with:
@@ -94,8 +96,6 @@ affine-mpc-example-plot
 
 - Use NumPy arrays for states, inputs, limits, weights, and references
 - Vector arguments are typically one-dimensional arrays such as `np.zeros(n)`
-- Many getters support both styles:
-  - return a new NumPy array
-  - write into an array you provide and return that same array
+- Many getters support both styles: return a new NumPy array, or write into an array you provide and return that same array
 
 For the full workflow and class-level guidance, see [Usage](usage.md).

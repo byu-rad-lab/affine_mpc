@@ -88,6 +88,8 @@ mpc.setReferenceState(x_ref)
 mpc.setReferenceInput(u_ref)
 ```
 
+You can also provide terminal state weights explicitly with `setStateWeights(Q_diag, Qf_diag)` or `setWeights(Q_diag, Qf_diag, R_diag)`.
+
 ### 7. Initialize the solver
 
 ```python
@@ -124,6 +126,13 @@ mpc.getNextInput(uk)
 
 The in-place form can be useful if you want to reuse arrays in tight loops.
 
+Other common methods include:
+
+- `getParameterizedInputTrajectory()`
+- `getInputTrajectory()`
+- `getPredictedStateTrajectory()`
+- `propagateModel(x, u)`
+
 ## Logging
 
 Create a logger bound to one MPC object:
@@ -147,6 +156,7 @@ See [Logging](../logging.md) for output details.
 - If an option enables a constraint, call the corresponding setter before initialization
 - OSQP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure
 - If you expect model entries to become nonzero later, initialize with that structure already present
+- If you enable `slew_initial_input`, also provide the previous input before solving
 
 ## Choosing Between Condensed and Sparse
 

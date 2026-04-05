@@ -1,20 +1,12 @@
 # affine_mpc
 
-`affine_mpc` is a library for real-time model predictive control using discrete-time affine time-invariant models.
-There are both C++ and Python versions of the library.
-
-<!-- It provides condensed and sparse MPC formulations, -->
-<!-- input trajectory parameterization through move-blocking and B-splines, -->
-<!-- OSQP-backed solves, and binary logging for simulation and analysis workflows. -->
+`affine_mpc` is a library for model predictive control of discrete-time affine systems with equal first-class interfaces in C++ and Python. It provides condensed and sparse MPC formulations, input trajectory parameterization through move-blocking and B-splines, OSQP-backed solves, and binary logging for simulation and analysis workflows.
 
 ## Statement of Need
 
 Researchers and engineers often need an MPC tool that sits between low-level QP assembly and large general-purpose control frameworks.
 `affine_mpc` focuses on a common and practical problem class:
 discrete-time affine models with optional costs and constraints, efficient repeated solves, and a workflow that supports both experimentation in Python and integration in C++.
-
-<!-- `affine_mpc` formulates and manages a QP optimization from a simple and easy-to-use MPC problem that supports commonly used costs and constraints. -->
-<!-- This allows users to think and interact with the MPC problem definition without having to set up an optimization problem at all. -->
 
 ## Highlights
 
@@ -28,17 +20,15 @@ discrete-time affine models with optional costs and constraints, efficient repea
 
 ### Python
 
-The easiest way to get started is by installing from PyPI:
+Use Python if you want fast iteration for research, analysis, scripting, or teaching.
 
-```sh
-python -m pip install affine_mpc
-```
-
-Or install from this repository:
+The most reliable way to get started today is to install from this repository:
 
 ```sh
 python -m pip install .
 ```
+
+If you later publish release artifacts to PyPI, that can become the shortest install path.
 
 Then see:
 
@@ -74,6 +64,13 @@ The full documentation lives in `docs/` and can also be rendered with MkDocs Mat
 - `docs/examples.md` - shared mass-spring-damper example in both interfaces
 - `docs/logging.md` - `MPCLogger` outputs, metadata, and analysis notes
 - `docs/development.md` - repository layout, testing, formatting, and contribution workflow
+
+To build the docs locally:
+
+```sh
+python -m pip install mkdocs mkdocs-material pymdown-extensions
+mkdocs serve
+```
 
 ## Example Workflow
 

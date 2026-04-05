@@ -104,6 +104,8 @@ auto p1 = affine_mpc::Parameterization::linearInterp(T, nc);
 auto p2 = affine_mpc::Parameterization::bspline(T, degree, nc);
 ```
 
+In Python, the same constructors are available as `ampc.Parameterization.moveBlocking(...)`, `linearInterp(...)`, and `bspline(...)`.
+
 ## Condensed vs Sparse MPC
 
 `affine_mpc` provides two MPC formulations.
@@ -139,6 +141,8 @@ opts.saturate_input_trajectory = false;
 
 These flags affect how the QP is assembled.
 In practice, they behave like part of the problem structure, so they should be chosen before the solver is initialized.
+
+The option names are intentionally parallel across C++ and Python so that workflows and examples translate cleanly between interfaces.
 
 ## Configure-Then-Initialize Pattern
 
@@ -179,6 +183,8 @@ The following can typically be updated between solves without full re-initializa
 - slew-rate limits
 
 These updates are efficient only when the sparsity pattern remains unchanged.
+
+This update model is one of the main reasons the library follows a configure-then-initialize workflow rather than rebuilding the solver from scratch on every iteration.
 
 ## Logging Concepts
 

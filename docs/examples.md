@@ -71,6 +71,12 @@ Typical outputs are:
 - `log.npz`
 - `params.yaml`
 
+Expected outcome:
+
+- the controller tracks a constant position target for the mass-spring-damper system
+- the logger records both the realized trajectory and selected predictions
+- the plotting script visualizes tracking error, control effort, predictions, and solve times
+
 These files can be plotted from Python with:
 
 ```sh

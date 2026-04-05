@@ -118,6 +118,12 @@ Build with examples enabled, then run:
 
 The example simulates a mass-spring-damper system and writes an `.npz` log and YAML parameter file into the system temporary directory under `ampc_example`.
 
+Expected outcome:
+
+- the executable runs a closed-loop tracking simulation
+- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory
+- the log can be inspected with the Python plotting helper
+
 To inspect the log from Python:
 
 ```sh

@@ -61,6 +61,8 @@ If `finalize()` is not called manually, the destructor will attempt to finalize 
 - `log_control_points`: whether to log parameterized control points instead of dense evaluated inputs
 - `save_name`: base file name for the `.npz` output
 
+In Python, the constructor can be called with keyword arguments, which is often clearer in scripts.
+
 ## Output Files
 
 The logger writes:
@@ -109,6 +111,12 @@ The logger records configuration metadata such as:
 - logging mode
 
 You can also append custom metadata:
+
+```python
+logger.addMetadata("example_name", "mass_spring_damper")
+```
+
+or in C++:
 
 ```cpp
 logger.addMetadata("example_name", std::string{"mass_spring_damper"});
