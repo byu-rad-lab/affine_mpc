@@ -1,0 +1,58 @@
+site_name: affine_mpc
+site_description: Documentation for the affine_mpc library and Python package
+repo_url: https://github.com/byu-rad-lab/affine_mpc
+repo_name: byu-rad-lab/affine_mpc
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+nav:
+  - Home: index.md
+  - Concepts: concepts.md
+  - Python:
+      - python/index.md
+      - Getting Started: python/getting-started.md
+      - Usage: python/usage.md
+  - C++:
+      - cpp/index.md
+      - Getting Started: cpp/getting-started.md
+      - Usage: cpp/usage.md
+  - Examples: examples.md
+  - Logging: logging.md
+  - Development: development.md

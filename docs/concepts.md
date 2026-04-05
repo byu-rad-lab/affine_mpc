@@ -1,6 +1,6 @@
-# Core Concepts
+# Concepts
 
-This page summarizes the mathematical structure supported by `affine_mpc`, how the input trajectory parameterization works, and the practical constraints imposed by the OSQP backend.
+This page summarizes the mathematical structure supported by `affine_mpc`, how the input trajectory parameterization works, and the practical constraints imposed by the OSQP backend. The same concepts apply to both the C++ and Python interfaces.
 
 ## Problem Class
 
@@ -96,7 +96,7 @@ The `Parameterization` class stores:
 - `num_control_points`
 - `knots`
 
-Factory helpers are available:
+Factory helpers are available in both interfaces:
 
 ```cpp
 auto p0 = affine_mpc::Parameterization::moveBlocking(T, nc);
@@ -149,8 +149,7 @@ One of the most important rules in this library is:
 3. initialize the solver
 4. solve repeatedly while updating values as needed
 
-This matters because OSQP fixes its matrix sparsity structure during initialization,
-so make sure to initialize the solver with a model that has the least possible sparsity.
+This matters because OSQP fixes its matrix sparsity structure during initialization. If a model entry may become nonzero later, initialize the solver with that structure already present.
 
 ## OSQP Sparsity Constraint
 
@@ -188,4 +187,4 @@ These updates are efficient only when the sparsity pattern remains unchanged.
 - a compressed `.npz` data file
 - a YAML parameter file
 
-It stores actual values, predictions, references, and metadata in a format that is easy to inspect from Python. See `docs/logging.md` for details.
+It stores actual values, predictions, references, and metadata in a format that is easy to inspect from Python. See [Logging](logging.md) for details.

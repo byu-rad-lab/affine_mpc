@@ -1,4 +1,4 @@
-# API Overview
+# C++ Usage
 
 This page shows the intended workflow for the public C++ API and highlights the most commonly used classes and methods.
 
@@ -25,7 +25,7 @@ auto param = affine_mpc::Parameterization::linearInterp(horizon_steps,
                                                         num_control_points);
 ```
 
-### 2. Configure options (all default to false)
+### 2. Configure options if needed
 
 ```cpp
 affine_mpc::Options opts;
@@ -73,47 +73,38 @@ if (opts.saturate_states) mpc.setStateLimits(x_min, x_max);
 
 ### 6. Set weights
 
-#### Without input cost
-
-Use one of the following:
+Without input cost:
 
 ```cpp
 mpc.setStateWeights(Q_diag, Qf_diag);
-
 mpc.setStateWeights(Q_diag);
 ```
 
-#### With input cost
-
-Use one of the following:
+With input cost:
 
 ```cpp
 mpc.setWeights(Q_diag, Qf_diag, R_diag);
-
 mpc.setWeights(Q_diag, R_diag);
 
 mpc.setStateWeights(Q_diag, Qf_diag);
-mpc.setInputWeights(R_diag);
-
-mpc.setStateWeights(Q_diag);
 mpc.setInputWeights(R_diag);
 ```
 
 ### 7. Set references
 
-State reference as a step target:
+State step reference:
 
 ```cpp
 mpc.setReferenceState(x_ref);
 ```
 
-State reference as a stacked trajectory:
+State trajectory reference:
 
 ```cpp
 mpc.setReferenceStateTrajectory(x_traj);
 ```
 
-If input cost is enabled, input reference can also be configured.
+If input cost is enabled, input references can also be configured.
 
 ### 8. Initialize the solver
 
@@ -147,7 +138,7 @@ mpc.getPredictedStateTrajectory(x_pred);
 Both `CondensedMPC` and `SparseMPC` support:
 
 - an explicit `Parameterization` constructor
-- a horizon-only constructor that defaults to move-blocking with one control point per step
+- a horizon-only constructor that defaults to one control point per step
 
 Example:
 
@@ -157,7 +148,7 @@ affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
 
 ## Solve Status
 
-`solve()` returns `affine_mpc::SolveStatus` instead of throwing for normal solver outcomes.
+`solve()` returns `affine_mpc::SolveStatus` for normal solver outcomes rather than throwing.
 
 Common cases include:
 
@@ -165,17 +156,7 @@ Common cases include:
 - `NotInitialized`
 - OSQP-derived failure conditions
 
-This split is intentional: configuration misuse tends to throw, while runtime solver outcomes use return values.
-
-## Reference and Trajectory Data
-
-The library supports:
-
-- state reference trajectories
-- optional input reference data when input cost is enabled
-- retrieval of optimal control points and dense trajectories after each solve
-
-Trajectory getters use preallocated output buffers where possible to avoid unnecessary allocations.
+Configuration misuse tends to throw exceptions, while runtime solver outcomes use return values.
 
 ## Model Propagation Helper
 
@@ -185,22 +166,20 @@ You can propagate the internal model one step with:
 mpc.propagateModel(xk, uk, x_next);
 ```
 
-This is useful for examples and closed-loop simulations.
-
 ## Logging
 
 The logger is separate from the MPC classes:
 
 ```cpp
-affine_mpc::MPCLogger logger{mpc, "/tmp/ampc_example", dt};
+affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt};
 logger.logStep(t, xk, user_solve_time);
 ```
 
-See `docs/logging.md` for output format and workflow details.
+See [Logging](../logging.md) for output format and workflow details.
 
-## API Design Notes
+## Practical Guidance
 
-- Use `Eigen::Ref` inputs and outputs where possible
-- Fully configure before calling `initializeSolver()`
-- QP matrix sparsity structure is fixed after initialization
+- Fully configure the model, limits, weights, and references before calling `initializeSolver()`
+- QP matrix sparsity is fixed after initialization
 - Prefer `CondensedMPC` unless you have a concrete reason to use the sparse formulation
+- Use preallocated Eigen buffers in tight loops when practical
