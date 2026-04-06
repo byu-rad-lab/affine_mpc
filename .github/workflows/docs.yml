@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "README.md"
       - "docs/**"
       - "zensical.toml"
+      - "requirements/docs.txt"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
