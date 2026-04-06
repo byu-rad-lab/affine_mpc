@@ -1,11 +1,7 @@
 # affine_mpc
 
-`affine_mpc` is a library for model predictive control (MPC) using discrete-time affine models.
-There are interfaces in C++ and Python.
-The library seeks to enable real-time MPC and lower the barrier to entry to develop an MPC controller.
-It provides a base set of common MPC costs and constraint formulations that can be individually toggled, and efficiently allows for live parameter updates.
-
-<!-- It provides condensed and sparse MPC formulations, input trajectory parameterization, OSQP-backed solves, and binary logging for simulation and analysis workflows. -->
+`affine_mpc` is a library for model predictive control of discrete-time affine systems with equal first-class interfaces in C++ and Python.
+It provides condensed and sparse MPC formulations, input trajectory parameterization through move-blocking and B-splines, OSQP-backed solves, and binary logging for simulation and analysis workflows.
 
 ## Statement of Need
 
@@ -27,16 +23,11 @@ discrete-time affine models with optional costs and constraints, efficient repea
 
 Use Python if you want fast iteration for research, analysis, scripting, or teaching.
 
-The easiest way to get started today is to install from PyPI:
+The easiest way to get started today is to install from TestPyPI:
 
 ```sh
 python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ affine_mpc
 ```
-
-<!-- TODO: uncomment after release -->
-<!-- ```python -->
-<!-- python -m pip install affine_mpc -->
-<!-- ``` -->
 
 Then see:
 
@@ -76,14 +67,11 @@ The full documentation lives in `docs/` and can also be rendered with [Zensical]
 To build the docs locally:
 
 ```sh
-python -m pip install zensical
+python -m pip install -r requirements/docs.txt
 zensical serve
 ```
 
-<!-- ```sh -->
-<!-- python -m pip install mkdocs mkdocs-material pymdown-extensions -->
-<!-- mkdocs serve -->
-<!-- ``` -->
+Use a virtual environment if you want to keep documentation dependencies isolated from your main Python environment.
 
 ## Example Workflow
 

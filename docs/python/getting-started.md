@@ -4,19 +4,37 @@ This guide gets you to a first successful solve with the Python package.
 
 ## Install
 
-The most reliable installation path today is from this repository:
+### From TestPyPI
+
+```sh
+pip install \
+    --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ \
+    affine_mpc
+```
+
+Or if you want to also install the plotting dependencies for the examples:
+
+```sh
+pip install \
+    --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ \
+    "affine_mpc[examples]"
+```
+
+### From Source
+
+For extra control over the build process, you can build from source:
 
 ```sh
 python -m pip install .
 ```
 
-To run the example plotting workflow, install the optional extras:
+Or if you want to also install the plotting dependencies for the examples:
 
 ```sh
 python -m pip install ".[examples]"
 ```
-
-If you later publish release artifacts to PyPI, `python -m pip install affine_mpc` can become the shortest install path for users who do not need a source checkout.
 
 ## Minimal Example
 
@@ -55,6 +73,11 @@ print("next input:", uk)
 ```
 
 ## Run the Example Script
+
+If you installed with `pip` then you will have 2 scripts in your Python environment:
+
+- `affine-mpc-example-sim`
+- `affine-mpc-example-plot`
 
 The repository ships with `examples/sim.py`, which runs a mass-spring-damper example and logs the results.
 
