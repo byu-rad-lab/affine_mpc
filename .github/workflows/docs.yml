@@ -2,8 +2,7 @@ name: Deploy Docs
 
 on:
   push:
-    # branches: [main]
-    branches: [docs]
+    branches: [main]
     paths:
       - "README.md"
       - "docs/**"
