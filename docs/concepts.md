@@ -1,10 +1,11 @@
-# Core Concepts
+# Concepts
 
 This page summarizes the mathematical structure supported by `affine_mpc`, how the input trajectory parameterization works, and the practical constraints imposed by the OSQP backend.
+The same concepts apply to both the C++ and Python interfaces.
 
 ## Problem Class
 
-`affine_mpc` solves model predictive control problems using a discrete-time affine model:
+`affine_mpc` solves model predictive control problems using a discrete-time affine time-invariant model:
 
 $$
 x_{k+1} = A x_k + B u_k + w
@@ -18,7 +19,7 @@ with:
 - optional slew-rate constraints
 - optional state bounds
 
-The library converts the MPC problem into a quadratic program solved by OSQP.
+The library converts the MPC problem into a quadratic program (QP) solved by OSQP, and efficiently manages updates between solves (model, reference, weights, limits, slew-rate).
 
 ## Supported Optimization Problem
 
@@ -56,7 +57,7 @@ Here, `CondensedMPC` optimizes only the control points, while `SparseMPC` also i
 - $\bar{\nu} \in \mathbb{R}^m$ is a reference control point when input cost is enabled
 - $g(\cdot)$ is the trajectory evaluation map induced by the chosen B-spline parameterization
 - $T$ is the number of horizon steps
-- $p$ is the number of control points
+- $n_c$ is the number of control points
 - $A$, $B$, and $w$ define the affine discrete-time model
 - $Q$, $Q_f$, and $R$ are positive semi-definite diagonal weight matrices
 
@@ -66,7 +67,7 @@ $$
 \left\lVert x \right\rVert^2_M = x^\top M x
 $$
 
-The control-point notation matters because the library may optimize a reduced representation of the input trajectory rather than every dense input value directly.
+The control-point notation matters because the library optimizes a reduced representation of the input trajectory rather than every dense input value directly.
 
 ## State, Input, and Reference Conventions
 
@@ -80,6 +81,7 @@ The control-point notation matters because the library may optimize a reduced re
 
 The dense input trajectory is not always optimized directly.
 Instead, it may be parameterized by a smaller set of control points.
+This can significantly reduce solve times and allow for longer horizons.
 
 Supported parameterizations include:
 
@@ -96,13 +98,23 @@ The `Parameterization` class stores:
 - `num_control_points`
 - `knots`
 
-Factory helpers are available:
+Factory helpers are available in both interfaces:
 
-```cpp
-auto p0 = affine_mpc::Parameterization::moveBlocking(T, nc);
-auto p1 = affine_mpc::Parameterization::linearInterp(T, nc);
-auto p2 = affine_mpc::Parameterization::bspline(T, degree, nc);
-```
+=== "Python"
+
+    ```python
+    p0 = affine_mpc.Parameterization.moveBlocking(T, nc);
+    p1 = affine_mpc.Parameterization.linearInterp(T, nc);
+    p2 = affine_mpc.Parameterization.bspline(T, degree, nc);
+    ```
+
+=== "C++"
+
+    ```cpp
+    auto p0 = affine_mpc::Parameterization::moveBlocking(T, nc);
+    auto p1 = affine_mpc::Parameterization::linearInterp(T, nc);
+    auto p2 = affine_mpc::Parameterization::bspline(T, degree, nc);
+    ```
 
 ## Condensed vs Sparse MPC
 
@@ -140,6 +152,8 @@ opts.saturate_input_trajectory = false;
 These flags affect how the QP is assembled.
 In practice, they behave like part of the problem structure, so they should be chosen before the solver is initialized.
 
+The option names are intentionally parallel across C++ and Python so that workflows and examples translate cleanly between interfaces.
+
 ## Configure-Then-Initialize Pattern
 
 One of the most important rules in this library is:
@@ -149,8 +163,7 @@ One of the most important rules in this library is:
 3. initialize the solver
 4. solve repeatedly while updating values as needed
 
-This matters because OSQP fixes its matrix sparsity structure during initialization,
-so make sure to initialize the solver with a model that has the least possible sparsity.
+This matters because OSQP fixes its matrix sparsity structure during initialization. If a model entry may become nonzero later, initialize the solver with that structure already present.
 
 ## OSQP Sparsity Constraint
 
@@ -181,6 +194,8 @@ The following can typically be updated between solves without full re-initializa
 
 These updates are efficient only when the sparsity pattern remains unchanged.
 
+This update model is one of the main reasons the library follows a configure-then-initialize workflow rather than rebuilding the solver from scratch on every iteration.
+
 ## Logging Concepts
 
 `MPCLogger` records simulation-time data into:
@@ -188,4 +203,4 @@ These updates are efficient only when the sparsity pattern remains unchanged.
 - a compressed `.npz` data file
 - a YAML parameter file
 
-It stores actual values, predictions, references, and metadata in a format that is easy to inspect from Python. See `docs/logging.md` for details.
+It stores actual values, predictions, references, and metadata in a format that is easy to inspect from Python. See [Logging](logging.md) for details.

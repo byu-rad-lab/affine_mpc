@@ -6,8 +6,12 @@ This guide summarizes the repository layout, formatting and testing workflow, an
 
 - `include/affine_mpc/` - public C++ API headers
 - `src/` - library implementation
+- `python/affine_mpc/` - Python package sources
+- `python/bindings/` - pybind11 binding implementation
 - `test/affine_mpc/` - unit tests
+- `test/bindings/` - Python binding tests
 - `examples/` - example simulation and plotting scripts
+- `docs/` - user-facing documentation and Zensical source
 - `cmake/` - dependency and package configuration helpers
 
 ## Build Commands
@@ -57,6 +61,9 @@ clang-format -i src/mpc_base.cpp
 
 Use `// clang-format off` only when it clearly improves readability for matrix literals or similarly structured data.
 
+For prose-heavy Markdown documentation, prefer one sentence per line.
+This makes diffs and review comments more localized without affecting rendered output.
+
 ## Coding Conventions
 
 - C++17 only
@@ -86,6 +93,7 @@ Use `// clang-format off` only when it clearly improves readability for matrix l
 When changing user-facing behavior:
 
 - update the public header comments if API semantics changed
+- update Python docstrings or stubs if the binding surface changed
 - update `README.md` if the quick-start path changed
 - update the appropriate file under `docs/`
 

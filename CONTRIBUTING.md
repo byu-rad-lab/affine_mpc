@@ -1,14 +1,15 @@
 # Contributing to affine_mpc
 
-First off, thank you for considering contributing to `affine_mpc`!
-It’s people like you that make open-source research software better.
+First off, thank you for considering contributing to `affine_mpc`.
+It is people like you that make open-source research software better.
 
 ## How Can I Contribute?
 
 ### Reporting Bugs
 
 - Check the existing issues to see if the bug has already been reported.
-- If not, open a new issue. Include a clear title, a description of the problem, and a minimal working example (C++ or Python) that reproduces the issue.
+- If not, open a new issue.
+  Include a clear title, a description of the problem, and a minimal working example (C++ or Python) that reproduces the issue.
 
 ### Suggesting Enhancements
 
@@ -20,7 +21,7 @@ It’s people like you that make open-source research software better.
 1.  Fork the repo and create your branch from `main`.
 2.  Ensure your code follows the existing style (we use `.clang-format`).
 3.  **Tests are required.** Any new feature or bug fix must include corresponding unit tests in the `test/` directory.
-4.  Update the documentation (Doxygen and README) as needed.
+4.  Update the relevant documentation (`README.md`, files under `docs/`, and public API comments or stubs when needed).
 5.  Issue your pull request!
 
 ## Development Environment

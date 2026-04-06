@@ -1,57 +1,95 @@
 # Examples
 
-`affine_mpc` ships with a small but useful example workflow centered on a mass-spring-damper tracking problem.
+`affine_mpc` ships with a shared example workflow centered on a mass-spring-damper tracking problem. The same problem is implemented in both C++ and Python so users can learn one conceptual workflow and choose the interface that best matches their application.
 
-## C++ Example
-
-The main executable example is:
+## Example Files
 
 - `examples/sim.cpp`
+- `examples/sim.py`
+- `examples/plot_sim.py`
 
-It demonstrates:
+## What the Example Demonstrates
 
 - building a linear interpolation parameterization
 - configuring a `CondensedMPC`
 - setting model, limits, weights, and references
-- solving in a loop
+- solving in a closed loop
 - logging outputs with `MPCLogger`
+- plotting the resulting `.npz` log from Python
 
-Build and run it with:
+## Run the Example
 
-```sh
-cmake -S . -B build -DAFFINE_MPC_BUILD_EXAMPLES=ON
-cmake --build build --config Release --parallel
-./build/example_sim
-```
+=== "Python"
+
+    Install from the repository if needed:
+
+    ```sh
+    python -m pip install .
+    python -m pip install ".[examples]"
+    ```
+
+    Run the example:
+
+    ```sh
+    python examples/sim.py
+    ```
+
+=== "C++"
+
+    Build with examples enabled:
+
+    ```sh
+    cmake -S . -B build -DAFFINE_MPC_BUILD_EXAMPLES=ON
+    cmake --build build --config Release --parallel
+    ```
+
+    Run the example:
+
+    ```sh
+    ./build/example_sim
+    ```
+
+## Core Example Structure
+
+The two implementations follow the same steps:
+
+1. define the model dimensions
+2. choose a parameterization
+3. construct `CondensedMPC`
+4. set model, limits, weights, and references
+5. call `initializeSolver()`
+6. solve in a loop
+7. retrieve the next input and propagate the plant
+8. log the results
 
 ## What the Example Produces
 
-The example writes logging output into the system temp directory under `ampc_example`.
+The example writes output into the system temp directory under `ampc_example`.
 
-Typical outputs:
+Typical outputs are:
 
 - `log.npz`
 - `params.yaml`
 
-These files can be plotted from Python.
+Expected outcome:
 
-## Plotting Scripts
+- the controller tracks a constant position target for the mass-spring-damper system
+- the logger records both the realized trajectory and selected predictions
+- the plotting script visualizes tracking error, control effort, predictions, and solve times
 
-The repository includes:
-
-- `examples/plot_sim.py`
+These files can be plotted from Python with:
 
 ```sh
 python examples/plot_sim.py
 ```
 
-Shows:
+The plot shows:
 
 - actual state history
 - reference state history
 - applied input
 - optional input reference if input cost is enabled
-- selected prediction rollouts over time (if logged)
+- selected prediction rollouts over time
 - solve times
 
 ## Suggested First Modifications
@@ -64,22 +102,8 @@ If you are new to the library, try changing:
 - input cost weight `R_diag`
 - input or state limits
 
-This is the fastest way to build intuition for how the parameterization and constraint options affect behavior.
-
-## Using the Example as a Template
-
-For a new application, the example structure is a good starting point:
-
-1. define model dimensions
-2. choose parameterization
-3. construct MPC object
-4. set model and problem data
-5. initialize solver
-6. solve in a loop
-7. retrieve inputs and propagate the plant
-8. optionally log and plot
+This is the fastest way to build intuition for how the parameterization and optional constraints affect behavior.
 
 ## Relationship to Tests
 
-Many tests use the same small mass-spring-damper system because it is easy to understand and fast to run.
-The example therefore reflects the same style of problem setup exercised in the unit tests.
+Many tests use the same small mass-spring-damper system because it is easy to understand and fast to run. The example therefore reflects the same style of problem setup exercised in the unit tests.

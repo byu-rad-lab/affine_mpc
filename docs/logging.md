@@ -3,6 +3,8 @@
 `MPCLogger` provides binary logging for simulation and debugging workflows.
 It is designed to avoid text-format overhead in high-rate loops by writing raw binary data during execution and packing it into a compressed `.npz` file at finalization.
 
+The logger is available from both the C++ and Python interfaces.
+
 Each logger instance is associated with a single MPC object at construction time and reads trajectories and metadata from that stored MPC reference during `logStep()`.
 
 ## Purpose
@@ -16,21 +18,37 @@ The logger is useful for:
 
 ## Basic Usage
 
-```cpp
-affine_mpc::MPCLogger logger{mpc, "/tmp/ampc_example", dt, 1};
+=== "Python"
 
-affine_mpc::SolveStatus status;
-while (t < tf) {
-  status = mpc.solve(xk);
-  if (status != affine_mpc::SolveStatus::Success) {
-    // handle how you wish
-    break;
-  }
+    ```python
+    logger = ampc.MPCLogger(mpc, save_dir, ts, prediction_stride=1)
 
-  logger.logStep(t, xk, user_solve_time);
-  t += dt;
-}
-```
+    while t < tf:
+        status = mpc.solve(xk)
+        if status != ampc.SolveStatus.Success:
+            break
+
+        logger.logStep(t, xk, user_solve_time)
+        t += ts
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::MPCLogger logger{mpc, "/tmp/ampc_example", dt, 1};
+
+    affine_mpc::SolveStatus status;
+    while (t < tf) {
+      status = mpc.solve(xk);
+      if (status != affine_mpc::SolveStatus::Success) {
+        // handle how you wish
+        break;
+      }
+
+      logger.logStep(t, xk, user_solve_time);
+      t += dt;
+    }
+    ```
 
 If `finalize()` is not called manually, the destructor will attempt to finalize automatically.
 
@@ -42,6 +60,8 @@ If `finalize()` is not called manually, the destructor will attempt to finalize 
 - `prediction_stride`: downsampling factor for predicted trajectories
 - `log_control_points`: whether to log parameterized control points instead of dense evaluated inputs
 - `save_name`: base file name for the `.npz` output
+
+In Python, the constructor can be called with keyword arguments, which is often clearer in scripts.
 
 ## Output Files
 
@@ -92,6 +112,12 @@ The logger records configuration metadata such as:
 
 You can also append custom metadata:
 
+```python
+logger.addMetadata("example_name", "mass_spring_damper")
+```
+
+or in C++:
+
 ```cpp
 logger.addMetadata("example_name", std::string{"mass_spring_damper"});
 ```
@@ -106,7 +132,7 @@ time = data["time"]
 states = data["states"]
 ```
 
-The helper script `examples/plot_npz.py` loads both the `.npz` file and `params.yaml`.
+The helper script `examples/plot_sim.py` loads both the `.npz` file and `params.yaml`.
 
 ## Striding Behavior
 

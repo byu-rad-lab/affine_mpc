@@ -19,7 +19,7 @@ def plot_example():
     plot_sim.main()
 
 
-def main():
+def run_example():
     tmp = Path(tempfile.gettempdir())
     save_dir = tmp / "ampc_example"
     if (save_dir / "log.npz").exists():
@@ -89,6 +89,9 @@ def main():
 
     print("Log file written to", save_dir / "log.npz")
 
+
+def main():
+    run_example()
     plot_example()
 
 

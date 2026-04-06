@@ -9,9 +9,9 @@ try:
 except ImportError:
     print(
         "There are missing dependencies.",
-        "You can install them with",
+        "You can install them bundled with affine_mpc:",
         '    pip install "affine_mpc[examples]"',
-        "OR",
+        "OR independently:",
         "    pip install matplotlib abracatabra pyside6",
         sep="\n",
     )
