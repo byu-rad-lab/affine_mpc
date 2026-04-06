@@ -52,6 +52,8 @@ Then see:
 
 ## Documentation
 
+The documentation website can be found [here](https://byu-rad-lab.github.io/affine_mpc/).
+
 The full documentation lives in `docs/` and can also be rendered with [Zensical](https://zensical.org/).
 
 - `docs/index.md` - documentation home page
