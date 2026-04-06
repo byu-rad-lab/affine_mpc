@@ -32,12 +32,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install docs dependencies
-        run: python -m pip install zensical
-        # run: python -m pip install mkdocs mkdocs-material pymdown-extensions
+        run: python -m pip install -r requirements/docs.txt
 
       - name: Build docs site
         run: zensical build
-        # run: mkdocs build --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
