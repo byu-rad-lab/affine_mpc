@@ -42,7 +42,8 @@ examples = [
 ]
 
 [project.scripts]
-affine-mpc-example-sim = "affine_mpc._examples.sim:main"
+affine-mpc-example = "affine_mpc._examples.sim:run_all"
+affine-mpc-example-sim = "affine_mpc._examples.sim:run_example"
 affine-mpc-example-plot = "affine_mpc._examples.plot_sim:main"
 
 # see https://scikit-build-core.readthedocs.io/en/latest/#configuration for 

@@ -90,10 +90,10 @@ def run_example():
     print("Log file written to", save_dir / "log.npz")
 
 
-def main():
+def run_all():
     run_example()
     plot_example()
 
 
 if __name__ == "__main__":
-    main()
+    run_all()
