@@ -7,20 +7,8 @@ if(NOT TARGET Eigen3::Eigen)
 endif()
 
 if(NOT TARGET Eigen3::Eigen)
-  if(NOT AFFINE_MPC_BUILD_BINDINGS)
-    # System install of Eigen is required for normal builds
-    message(FATAL_ERROR
-      "Eigen3 not found. Please install Eigen (>= 3.4) on your system "
-      "before building affine_mpc."
-    )
-  endif()
-
-  # Everything below is intended as a fallback solely for building bindings on
-  # Github servers, which may not have Eigen installed. For normal builds,
-  # using the FetchContent target may cause issues downstream.
   message(STATUS
-    "System install of Eigen3 not found; "
-    "using FetchContent fallback for bindings build"
+    "System install of Eigen not found; using FetchContent"
   )
 
   set(Eigen_FIND_VERSION 5.0.1)
@@ -29,6 +17,11 @@ if(NOT TARGET Eigen3::Eigen)
     GIT_TAG ${Eigen_FIND_VERSION}
   )
 
+  # This intentionally uses FetchContent_Populate() as a fetch-only fallback for
+  # Eigen. Then Eigen3::Eigen is manually defined as an interface target, rather
+  # than relying on FetchContent_MakeAvailable() to integrate Eigen as a
+  # subproject. This may need to be revisited if FetchContent_Populate() is
+  # removed in a future CMake release.
   FetchContent_GetProperties(eigen3_extern)
   if(NOT eigen3_extern_POPULATED)
     FetchContent_Populate(eigen3_extern)
