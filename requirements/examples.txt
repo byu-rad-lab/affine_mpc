@@ -1,0 +1,3 @@
+matplotlib
+abracatabra[qt-pyside6]
+# abracatabra[qt-pyqt6]
