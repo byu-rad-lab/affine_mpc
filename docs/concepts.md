@@ -1,6 +1,6 @@
 # Concepts
 
-This page summarizes the mathematical structure supported by `affine_mpc`, how the input trajectory parameterization works, and the practical constraints imposed by the OSQP backend.
+This page summarizes the mathematical structure supported by `affine_mpc`, how the input trajectory parameterization works, and the practical constraints imposed by the [OSQP](https://osqp.org/) backend.
 The same concepts apply to both the C++ and Python interfaces.
 
 ## Problem Class
@@ -23,7 +23,7 @@ The library converts the MPC problem into a quadratic program (QP) solved by OSQ
 
 ## Supported Optimization Problem
 
-The library supports the following cost and constraint structure, with several optional terms controlled by `Options`:
+The library supports the following cost and constraint structure, with several optional terms controlled by `Options` (labeled in red):
 
 $$
 \begin{align}
@@ -51,10 +51,11 @@ Here, `CondensedMPC` optimizes only the control points, while `SparseMPC` also i
 ## Symbols and Terminology
 
 - $x \in \mathbb{R}^n$ is the system state
-- $\bar{x} \in \mathbb{R}^n$ is the reference state trajectory
-- $u \in \mathbb{R}^m$ is the dense per-step control input
+<!-- - $\bar{x} \in \mathbb{R}^n$ is the reference state -->
+- $u \in \mathbb{R}^m$ is the system input
 - $\nu \in \mathbb{R}^m$ is a control point used to parameterize the dense input trajectory
-- $\bar{\nu} \in \mathbb{R}^m$ is a reference control point when input cost is enabled
+<!-- - $\bar{\nu} \in \mathbb{R}^m$ is a reference control point when input cost is enabled -->
+- $\bar{(\cdot)}$ means reference variable
 - $g(\cdot)$ is the trajectory evaluation map induced by the chosen B-spline parameterization
 - $T$ is the number of horizon steps
 - $n_c$ is the number of control points
@@ -69,25 +70,17 @@ $$
 
 The control-point notation matters because the library optimizes a reduced representation of the input trajectory rather than every dense input value directly.
 
-## State, Input, and Reference Conventions
-
-- `x` is the system state
-- `u` is the dense per-step control input
-- control points are the reduced optimization variables used to parameterize the dense input trajectory
-- `x_ref` is the reference state trajectory
-- input reference data is only meaningful when `use_input_cost` is enabled
-
 ## Input Trajectory Parameterization
 
-The dense input trajectory is not always optimized directly.
-Instead, it may be parameterized by a smaller set of control points.
+The dense input trajectory is not optimized directly.
+Instead, it is parameterized by a smaller set of control points using a B-spline.
 This can significantly reduce solve times and allow for longer horizons.
 
 Supported parameterizations include:
 
 - move-blocking
 - linear interpolation
-- clamped B-splines of arbitrary degree
+- B-splines of arbitrary degree
 
 This lets the user reduce the number of decision variables, smooth the control signal, and trade off fidelity versus solve time.
 
@@ -130,27 +123,41 @@ Factory helpers are available in both interfaces:
 ### SparseMPC
 
 - keeps both state and input variables in the optimization
-- preserves more sparsity structure
+- produces a larger sparse QP
 - can be better for larger or more structured problems
 - state saturation is simpler
 
-If you are unsure, start with `CondensedMPC`.
+If you are unsure, start with `CondensedMPC`...or better yet, try both and time them!
 
 ## Optional Features via `Options`
 
-The `Options` struct enables optional costs and constraints at construction time.
+The `Options` struct enables optional costs and constraints at MPC construction time.
 
-```cpp
-affine_mpc::Options opts;
-opts.use_input_cost = true;
-opts.slew_initial_input = true;
-opts.slew_control_points = true;
-opts.saturate_states = true;
-opts.saturate_input_trajectory = false;
-```
+=== "Python"
+
+    ```python
+    opts = affine_mpc.Options(
+        use_input_cost=True,
+        slew_initial_input=True,
+        slew_control_points=True,
+        saturate_states=True,
+        saturate_input_trajectory=False,
+    )
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::Options opts;
+    opts.use_input_cost = true;
+    opts.slew_initial_input = true;
+    opts.slew_control_points = true;
+    opts.saturate_states = true;
+    opts.saturate_input_trajectory = false;
+    ```
 
 These flags affect how the QP is assembled.
-In practice, they behave like part of the problem structure, so they should be chosen before the solver is initialized.
+In practice, they behave like part of the problem structure and are passed into the MPC constructor; they are fixed for an MPC instance.
 
 The option names are intentionally parallel across C++ and Python so that workflows and examples translate cleanly between interfaces.
 
@@ -171,12 +178,13 @@ OSQP allows value updates after initialization, but not structural sparsity chan
 
 That means:
 
-- matrix values may be updated between solves
-- new nonzero entries may not appear in `P` or `A` after `initializeSolver()`
+- QP matrix values may be updated between solves
+- new nonzero entries in $P$ or $A$ will not be tracked after `initializeSolver()`
 
 Practical consequence:
 
-- if a model entry may become nonzero later, it must already be nonzero when the solver is initialized
+- The terms that affect the QP matrices are the model terms ($A$, $B$, $w$) and the weights ($Q$, $Q_f$, $R$),
+  so if any elements in terms may become nonzero later, they should be nonzero when the solver is initialized
 
 This is especially important for time-varying or re-linearized models.
 
