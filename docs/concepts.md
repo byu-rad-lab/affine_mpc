@@ -170,7 +170,8 @@ One of the most important rules in this library is:
 3. initialize the solver
 4. solve repeatedly while updating values as needed
 
-This matters because OSQP fixes its matrix sparsity structure during initialization. If a model entry may become nonzero later, initialize the solver with that structure already present.
+This matters because OSQP fixes its matrix sparsity structure during initialization.
+If a model coefficient or cost weight may become nonzero later, initialize the solver with that structure already present.
 
 ## OSQP Sparsity Constraint
 
@@ -183,8 +184,7 @@ That means:
 
 Practical consequence:
 
-- The terms that affect the QP matrices are the model terms ($A$, $B$, $w$) and the weights ($Q$, $Q_f$, $R$),
-  so if any elements in terms may become nonzero later, they should be nonzero when the solver is initialized
+- QP matrices $P$ and $A$ are affected by model terms ($A$, $B$, $w$) and weights ($Q$, $Q_f$, $R$); therefore, if model coefficients or weight entries may become nonzero later, they should already be nonzero when the solver is initialized.
 
 This is especially important for time-varying or re-linearized models.
 
@@ -201,6 +201,7 @@ The following can typically be updated between solves without full re-initializa
 - slew-rate limits
 
 These updates are efficient only when the sparsity pattern remains unchanged.
+In particular, model and weight updates must not introduce new nonzero entries into the initialized QP matrices.
 
 This update model is one of the main reasons the library follows a configure-then-initialize workflow rather than rebuilding the solver from scratch on every iteration.
 

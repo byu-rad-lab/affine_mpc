@@ -183,6 +183,8 @@ See [Logging](../logging.md) for output format and workflow details.
 
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`
 - QP matrix sparsity is fixed after initialization
+- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern
+- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present
 - Prefer `CondensedMPC` unless you have a concrete reason to use the sparse formulation
 - Use preallocated Eigen buffers in tight loops when practical
 - If you enable `slew_initial_input`, provide the previous input before solving

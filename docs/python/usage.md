@@ -155,7 +155,8 @@ See [Logging](../logging.md) for output details.
 - Do not call `solve()` before `initializeSolver()`
 - If an option enables a constraint, call the corresponding setter before initialization
 - OSQP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure
-- If you expect model entries to become nonzero later, initialize with that structure already present
+- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern
+- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present
 - If you enable `slew_initial_input`, also provide the previous input before solving
 
 ## Choosing Between Condensed and Sparse
