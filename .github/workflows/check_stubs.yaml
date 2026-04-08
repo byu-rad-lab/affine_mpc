@@ -34,11 +34,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential zlib1g-dev
+          python -m pip install -r requirements/build.txt
 
       - name: Install package and regenerate stubs
         run: |
-          python -m pip install -r requirements/build.txt
-          python -m pip install . --config-settings=cmake.define.AFFINE_MPC_PY_GENERATE_STUBS=ON
+          cmake -S . -B build -DAFFINE_MPC_BUILD_BINDINGS=ON -DAFFINE_MPC_PY_GENERATE_STUBS=ON
+          cmake --build build --config Release --parallel
 
       - name: Check committed stub file is up to date
         run: |
