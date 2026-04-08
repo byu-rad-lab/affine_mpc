@@ -13,8 +13,8 @@ if(DEFINED ENV{VCPKG_TOOLCHAIN_FILE})
   set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_TOOLCHAIN_FILE} CACHE STRING "")
 endif()
 
-include(FetchContent)
-include(../cmake/extern_pybind11.cmake)
+set(PYBIND11_FINDPYTHON ON)
+find_package(pybind11 2.11.1 CONFIG REQUIRED)
 
 if(NOT TARGET affine_mpc::affine_mpc)
   find_package(affine_mpc CONFIG REQUIRED)
@@ -49,9 +49,13 @@ target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
 # -----------------------------------------
 if(AFFINE_MPC_PY_GENERATE_STUBS)
   # Locate build environment dependencies
-  set(get_stubgen_path "${CMAKE_CURRENT_SOURCE_DIR}/get_stubgen_path.py")
+  set(get_stubgen_path
+    "import os"
+    "import pybind11_stubgen"
+    "print(os.path.dirname(os.path.dirname(pybind11_stubgen.__file__)))"
+  )
   execute_process(
-    COMMAND "${Python3_EXECUTABLE}" "${get_stubgen_path}"
+    COMMAND "${Python_EXECUTABLE}" -c "${get_stubgen_path}"
     OUTPUT_VARIABLE build_env_path
     OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE _pystub_found
@@ -90,7 +94,7 @@ if(AFFINE_MPC_PY_GENERATE_STUBS)
 
     # Generate stubs.
     COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${py_paths}"
-      "${Python3_EXECUTABLE}" "${gen_stubs}" "${CMAKE_CURRENT_BINARY_DIR}"
+      "${Python_EXECUTABLE}" "${gen_stubs}" "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()
 
