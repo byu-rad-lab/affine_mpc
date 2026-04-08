@@ -1,4 +1,7 @@
-# cnpy requires zlib.
+# cnpy set's a minimum policy version that is too old, overwrite it here
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+
+# cnpy requires zlib
 find_package(ZLIB REQUIRED)
 
 # Force cnpy to build statically, even if the parent project uses BUILD_SHARED_LIBS

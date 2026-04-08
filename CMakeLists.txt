@@ -3,10 +3,6 @@ project(affine_mpc
   LANGUAGES CXX C
   VERSION 1.0.0
 )
-# Some fetched dependencies still declare very old CMake policy compatibility
-# levels. Keep the effective policy floor at 3.10 so recent CMake versions can
-# still configure those subprojects cleanly.
-set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 
 # --------------------------------------------------
 # Standard includes
