@@ -37,7 +37,8 @@ jobs:
 
       - name: Install package and regenerate stubs
         run: |
-          python -m pip install ".[dev]" --config-settings=cmake.define.AFFINE_MPC_PY_GENERATE_STUBS=ON
+          python -m pip install -r requirements/build.txt
+          python -m pip install . --config-settings=cmake.define.AFFINE_MPC_PY_GENERATE_STUBS=ON
 
       - name: Check committed stub file is up to date
         run: |

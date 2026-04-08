@@ -48,6 +48,7 @@ target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
 # Stub generation
 # -----------------------------------------
 if(AFFINE_MPC_PY_GENERATE_STUBS)
+  message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
   # Locate build environment dependencies
   set(get_stubgen_path
     "import os"
