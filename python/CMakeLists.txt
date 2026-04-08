@@ -1,7 +1,4 @@
-# 3.21 allows for IMPORTED_RUNTIME_ARTIFACTS
-# 3.27 allows for new way to import Python/Pybind11
-# 3.28 allows for EXCLUDE_FROM_ALL in FetchContent
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.18)
 project(affine_mpc_py LANGUAGES CXX)
 
 # Stub files provide IDE support (signature help) for compiled bindings
@@ -13,7 +10,7 @@ option(AFFINE_MPC_PY_GENERATE_STUBS
 # -----------------------------------------
 # Use the vcpkg toolchain file if defined (for the Github workflow)
 if(DEFINED ENV{VCPKG_TOOLCHAIN_FILE})
-    set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_TOOLCHAIN_FILE} CACHE STRING "")
+  set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_TOOLCHAIN_FILE} CACHE STRING "")
 endif()
 
 include(FetchContent)
@@ -52,10 +49,10 @@ target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
 # -----------------------------------------
 if(AFFINE_MPC_PY_GENERATE_STUBS)
   # Locate build environment dependencies
-  set(GET_STUBGEN_PATH "${CMAKE_CURRENT_SOURCE_DIR}/get_stubgen_path.py")
+  set(get_stubgen_path "${CMAKE_CURRENT_SOURCE_DIR}/get_stubgen_path.py")
   execute_process(
-    COMMAND "${Python3_EXECUTABLE}" "${GET_STUBGEN_PATH}"
-    OUTPUT_VARIABLE BUILD_ENV_PATH
+    COMMAND "${Python3_EXECUTABLE}" "${get_stubgen_path}"
+    OUTPUT_VARIABLE build_env_path
     OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE _pystub_found
   )
@@ -69,31 +66,31 @@ if(AFFINE_MPC_PY_GENERATE_STUBS)
 
   # Allow PYTHONPATH to find both build environment and built module
   if(WIN32)
-    set(PYPATH_SEPARATOR ";")
+    set(pypath_separator ";")
   else()
-    set(PYPATH_SEPARATOR ":")
+    set(pypath_separator ":")
   endif()
-  set(PY_PATHS
-    "${BUILD_ENV_PATH}${PYPATH_SEPARATOR}${CMAKE_CURRENT_BINARY_DIR}"
+  set(py_paths
+    "${build_env_path}${pypath_separator}${CMAKE_CURRENT_BINARY_DIR}"
   )
 
   # Path to custom stub generation script
-  set(GEN_STUBS "${CMAKE_CURRENT_SOURCE_DIR}/custom_stubgen.py")
+  set(gen_stubs "${CMAKE_CURRENT_SOURCE_DIR}/custom_stubgen.py")
 
   # Collect package Python files explicitly since wildcard expansion in
   # add_custom_command COMMAND arguments is not portable, especially on Windows.
-  file(GLOB AFFINE_MPC_PY_FILES "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
+  file(GLOB affine_mpc_py_files "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
 
-  # Post-build command to copy generate stubs
+  # Post-build commands to copy package files and generate stubs.
   add_custom_command(TARGET _bindings POST_BUILD
-    # need __init__.py for package recognition (and everything it references)
+    # Need __init__.py for package recognition and anything it references.
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${AFFINE_MPC_PY_FILES}
+      ${affine_mpc_py_files}
       ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc/.
 
-    # generate stubs
-    COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${PY_PATHS}"
-      "${Python3_EXECUTABLE}" "${GEN_STUBS}" "${CMAKE_CURRENT_BINARY_DIR}"
+    # Generate stubs.
+    COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${py_paths}"
+      "${Python3_EXECUTABLE}" "${gen_stubs}" "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()
 
@@ -123,12 +120,12 @@ if(BUILD_SHARED_LIBS)
   get_target_property(osqp_is_aliased osqp::osqp ALIASED_TARGET)
 
   if(affine_mpc_is_aliased OR osqp_is_aliased)
-    # This means there a .so file will be copied into the python environment
+    # This means a .so file will be copied into the python environment
     # and the RPATH must know to look for it there.
     if(APPLE)
-        set_target_properties(_bindings PROPERTIES INSTALL_RPATH "@loader_path")
+      set_target_properties(_bindings PROPERTIES INSTALL_RPATH "@loader_path")
     elseif(UNIX)
-        set_target_properties(_bindings PROPERTIES INSTALL_RPATH "$ORIGIN")
+      set_target_properties(_bindings PROPERTIES INSTALL_RPATH "$ORIGIN")
     endif()
   endif()
 

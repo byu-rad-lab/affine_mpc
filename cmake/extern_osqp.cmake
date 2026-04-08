@@ -1,9 +1,9 @@
 if(BUILD_SHARED_LIBS)
-  # system install osqpstatic had linking issues, so just use fetchcontent for
-  # static builds to manage it here
+  # Only look for a system OSQP when building shared libraries. Static system
+  # linkage has been less reliable, so static builds fetch OSQP explicitly.
   find_package(osqp 1.0.0 CONFIG QUIET)
 
-  # This is a temporary patch to fix the Arch linux osqp package, which currently
+  # This is a temporary patch to fix the Arch Linux osqp package, which currently
   # sets the version to 0.0.0 even though it builds 1.0.0
   cmake_host_system_information(RESULT is_arch QUERY DISTRIB_ID)
   if(NOT osqp_FOUND AND is_arch STREQUAL "arch")
@@ -18,6 +18,8 @@ if(NOT TARGET osqp::osqp)
   else()
     message(STATUS "Fetching OSQP")
   endif()
+
+  include(FetchContent)
 
   set(osqp_find_version "1.0.0") # 0.6.3 no longer supported
   FetchContent_Declare(osqp_extern
@@ -47,10 +49,6 @@ if(NOT TARGET osqp::osqp)
   set(OSQP_BUILD_DEMO_EXE    OFF CACHE BOOL "" FORCE)
   set(OSQP_BUILD_UNITTESTS   OFF CACHE BOOL "" FORCE)
   set(OSQP_COVERAGE_CHECK    OFF CACHE BOOL "" FORCE)
-  ## 0.6.3 flags
-  # set(OSQP_ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-  # set(OSQP_ENABLE_MATLAB     OFF CACHE BOOL "" FORCE)
-  # set(OSQP_ENABLE_DEMO       OFF CACHE BOOL "" FORCE)
 
   FetchContent_MakeAvailable(osqp_extern)
 

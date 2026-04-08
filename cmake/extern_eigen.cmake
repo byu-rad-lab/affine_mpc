@@ -7,14 +7,14 @@ if(NOT TARGET Eigen3::Eigen)
 endif()
 
 if(NOT TARGET Eigen3::Eigen)
-  message(STATUS
-    "System install of Eigen not found; using FetchContent"
-  )
+  message(STATUS "System install of Eigen not found - using FetchContent")
 
-  set(Eigen_FIND_VERSION 5.0.1)
+  include(FetchContent)
+
+  set(eigen_find_version 5.0.1)
   FetchContent_Declare(eigen3_extern
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG ${Eigen_FIND_VERSION}
+    GIT_TAG ${eigen_find_version}
   )
 
   # This intentionally uses FetchContent_Populate() as a fetch-only fallback for
@@ -35,7 +35,7 @@ if(NOT TARGET Eigen3::Eigen)
   endif()
 
   set(Eigen3_FOUND TRUE)
-  set(Eigen3_VERSION ${Eigen_FIND_VERSION})
+  set(Eigen3_VERSION ${eigen_find_version})
 endif()
 
 message(STATUS "Eigen3 version: ${Eigen3_VERSION}")

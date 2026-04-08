@@ -1,10 +1,11 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18)
 project(affine_mpc
   LANGUAGES CXX C
   VERSION 1.0.0
 )
-# OSQP 0.6.x has minimum version of 3.2, which CMake no longer supports
-# Can remove after migrating to OSQP >1.0
+# Some fetched dependencies still declare very old CMake policy compatibility
+# levels. Keep the effective policy floor at 3.10 so recent CMake versions can
+# still configure those subprojects cleanly.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
 
 # --------------------------------------------------
@@ -27,7 +28,6 @@ endif()
 # --------------------------------------------------
 # Dependencies
 # --------------------------------------------------
-include(FetchContent)
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 include(cmake/extern_cnpy.cmake)
@@ -132,12 +132,12 @@ install(TARGETS ${PROJECT_NAME}
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-set(ConfigPackageLocation ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+set(config_package_location ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
 install(EXPORT ${PROJECT_NAME}Targets
   FILE ${PROJECT_NAME}Targets.cmake
   NAMESPACE ${PROJECT_NAME}::
-  DESTINATION ${ConfigPackageLocation}
+  DESTINATION ${config_package_location}
 )
 
 write_basic_package_version_file(
@@ -149,11 +149,11 @@ write_basic_package_version_file(
 configure_package_config_file(
   cmake/${PROJECT_NAME}Config.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-  INSTALL_DESTINATION ${ConfigPackageLocation}
+  INSTALL_DESTINATION ${config_package_location}
 )
 
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-  DESTINATION ${ConfigPackageLocation}
+  DESTINATION ${config_package_location}
 )
