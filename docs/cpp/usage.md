@@ -25,6 +25,8 @@ auto param = affine_mpc::Parameterization::linearInterp(horizon_steps,
                                                         num_control_points);
 ```
 
+Other common choices are `moveBlocking(...)` and `bspline(...)`.
+
 ### 2. Configure options if needed
 
 ```cpp
@@ -66,7 +68,10 @@ mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt);
 
 ```cpp
 mpc.setInputLimits(u_min, u_max);
-if (opts.slew_initial_input) mpc.setSlewRateInitial(u0_slew);
+if (opts.slew_initial_input) {
+    mpc.setSlewRateInitial(u0_slew);
+    mpc.setPreviousInput(u_prev); // defaults to zeros
+}
 if (opts.slew_control_points) mpc.setSlewRate(u_slew);
 if (opts.saturate_states) mpc.setStateLimits(x_min, x_max);
 ```
@@ -77,27 +82,27 @@ Without input cost:
 
 ```cpp
 mpc.setStateWeights(Q_diag, Qf_diag);
-mpc.setStateWeights(Q_diag);
+mpc.setStateWeights(Q_diag); // Qf = Q
 ```
 
 With input cost:
 
 ```cpp
+// set together
 mpc.setWeights(Q_diag, Qf_diag, R_diag);
-mpc.setWeights(Q_diag, R_diag);
+mpc.setWeights(Q_diag, R_diag); // Qf = Q
 
+// OR set individually
 mpc.setStateWeights(Q_diag, Qf_diag);
 mpc.setInputWeights(R_diag);
 ```
-
-These overloads let you either provide a separate terminal state weight or reuse the stage state weights at the terminal step.
 
 ### 7. Set references
 
 State step reference:
 
 ```cpp
-mpc.setReferenceState(x_ref);
+mpc.setReferenceState(x_step);
 ```
 
 State trajectory reference:
@@ -106,7 +111,12 @@ State trajectory reference:
 mpc.setReferenceStateTrajectory(x_traj);
 ```
 
-If input cost is enabled, input references can also be configured.
+If input cost is enabled, input references can also be configured:
+
+```cpp
+mpc.setReferenceInput(u_step)
+mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts)
+```
 
 ### 8. Initialize the solver
 
@@ -120,16 +130,22 @@ if (!mpc.initializeSolver()) {
 
 ```cpp
 affine_mpc::SolveStatus status = mpc.solve(xk);
+if (status != affine_mpc::SolveStatus::Success) {
+    // handle how you want
+}
 ```
 
-### 10. Retrieve results
+### 10. Retrieve results in the control loop
 
 ```cpp
 Eigen::VectorXd uk(input_dim);
-mpc.getNextInput(uk);
+mpc.getNextInput(uk); // most common
 
 Eigen::VectorXd u_traj(input_dim * horizon_steps);
 mpc.getInputTrajectory(u_traj);
+
+Eigen::VectorXd u_traj_ctrl_pts(input_dim * num_control_points);
+mpc.getParameterizedInputTrajectory(u_traj_ctrl_pts);
 
 Eigen::VectorXd x_pred(state_dim * horizon_steps);
 mpc.getPredictedStateTrajectory(x_pred);
@@ -140,7 +156,7 @@ mpc.getPredictedStateTrajectory(x_pred);
 Both `CondensedMPC` and `SparseMPC` support:
 
 - an explicit `Parameterization` constructor
-- a horizon-only constructor that defaults to one control point per step
+- a horizon-only constructor that defaults to one control point per step (same as no parameterization)
 
 Example:
 
@@ -170,10 +186,15 @@ mpc.propagateModel(xk, uk, x_next);
 
 ## Logging
 
-The logger is separate from the MPC classes:
+Create a logger bound to one MPC object:
 
 ```cpp
 affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt};
+```
+
+Inside the control loop:
+
+```cpp
 logger.logStep(t, xk, user_solve_time);
 ```
 
@@ -181,10 +202,20 @@ See [Logging](../logging.md) for output format and workflow details.
 
 ## Practical Guidance
 
-- Fully configure the model, limits, weights, and references before calling `initializeSolver()`
-- QP matrix sparsity is fixed after initialization
-- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern
-- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present
-- Prefer `CondensedMPC` unless you have a concrete reason to use the sparse formulation
-- Use preallocated Eigen buffers in tight loops when practical
-- If you enable `slew_initial_input`, provide the previous input before solving
+- Do not call `solve()` before `initializeSolver()`.
+- If an option enables a constraint, call the corresponding setter before initialization.
+- Fully configure the model, limits, weights, and references before calling `initializeSolver()`.
+- QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
+- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
+- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present.
+- Use preallocated Eigen buffers in tight loops when practical.
+- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve it is automatically set from previous solve.
+
+## Choosing Between Condensed and Sparse
+
+- `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
+- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
+
+The only way to know which is faster for your problem is to try them both!
+
+For the shared mathematical background, see [Concepts](../concepts.md).

@@ -166,9 +166,9 @@ The option names are intentionally parallel across C++ and Python so that workfl
 One of the most important rules in this library is:
 
 1. construct the MPC object
-2. set model, limits, weights, and references
-3. initialize the solver
-4. solve repeatedly while updating values as needed
+1. set model, limits, weights, and references
+1. initialize the solver
+1. solve repeatedly while updating values as needed
 
 This matters because OSQP fixes its matrix sparsity structure during initialization.
 If a model coefficient or cost weight may become nonzero later, initialize the solver with that structure already present.

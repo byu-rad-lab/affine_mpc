@@ -49,6 +49,17 @@ Run one test case:
 ./build/mpc_logger_tests --gtest_filter=MPCLoggerTest.ConvenienceLogStepWorks
 ```
 
+## CMake Configuration
+
+This project defines the following CMake options (specified with `-D`):
+
+| Option                       | Description                                        |
+| ---------------------------- | -------------------------------------------------- |
+| AFFINE_MPC_BUILD_EXAMPLES    | Build example executables                          |
+| AFFINE_MPC_BUILD_TESTS       | Build unit tests with GTest                        |
+| AFFINE_MPC_BUILD_BINDINGS    | Build the Python bindings                          |
+| AFFINE_MPC_PY_GENERATE_STUBS | Generate stub files after building Python bindings |
+
 ## Formatting
 
 The project uses `.clang-format` with an LLVM-based configuration.
@@ -101,9 +112,11 @@ When changing user-facing behavior:
 
 Before opening a PR:
 
-1. format edited C++ files
-2. run the relevant tests
-3. update docs for public behavior changes
-4. keep changes focused and easy to review
+1. Format edited C++ files.
+1. Build with all CMake options enabled.
+1. Run the relevant tests (best to ensure all pass!).
+1. Update docs for public behavior changes.
+1. Ensure consistency in docs/behavior between C++ and Python (including stubs!).
+1. Keep changes focused and easy to review.
 
 See `CONTRIBUTING.md` for the broader contribution process.

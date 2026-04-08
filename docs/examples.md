@@ -1,6 +1,7 @@
 # Examples
 
-`affine_mpc` ships with a shared example workflow centered on a mass-spring-damper tracking problem. The same problem is implemented in both C++ and Python so users can learn one conceptual workflow and choose the interface that best matches their application.
+`affine_mpc` ships with a shared example workflow centered on a simple mass-spring-damper tracking problem (a linear 2nd-order system).
+The same problem is implemented in both C++ and Python so users can learn one conceptual workflow and choose the interface that best matches their application.
 
 ## Example Files
 
@@ -8,102 +9,78 @@
 - `examples/sim.py`
 - `examples/plot_sim.py`
 
+`sim.cpp` and `sim.py` were designed to be near-exact translations of each other; they both run the simple mass-spring-damper sim and print the location of the saved log file.
+The log file is saved to the same location, so running `plot_sim.py` works after running either the C++ or Python versions of the sim.
+
+The C++ version of `affine_mpc` does not come with plotting capabilities.
+It is designed to log `.npz` files that can be loaded in Python with `numpy.load()`.
+Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` will also plot the results when run directly.
+
 ## What the Example Demonstrates
 
-- building a linear interpolation parameterization
-- configuring a `CondensedMPC`
-- setting model, limits, weights, and references
-- solving in a closed loop
-- logging outputs with `MPCLogger`
-- plotting the resulting `.npz` log from Python
+- Building a linear interpolation parameterization
+- Configuring a `CondensedMPC`
+- Setting model, limits, weights, and references
+- Solving in a closed loop
+- Logging outputs with `MPCLogger`
+- Loading and plotting the resulting `.npz` log from Python
 
 ## Run the Example
 
-=== "Python"
+The simulation can be run from either interface, but visualization is currently supported from Python only.
 
-    Install from the repository if needed:
-
-    ```sh
-    python -m pip install .
-    python -m pip install ".[examples]"
-    ```
-
-    Run the example:
-
-    ```sh
-    python examples/sim.py
-    ```
-
-=== "C++"
-
-    Build with examples enabled:
-
-    ```sh
-    cmake -S . -B build -DAFFINE_MPC_BUILD_EXAMPLES=ON
-    cmake --build build --config Release --parallel
-    ```
-
-    Run the example:
-
-    ```sh
-    ./build/example_sim
-    ```
+- To run the Python example, see [Python Getting Started](python/getting-started.md).
+- To build and run the C++ example, see [C++ Getting Started](cpp/getting-started.md).
+- To inspect logs produced by either interface, use the Python plotting workflow described in [Python Getting Started](python/getting-started.md#plot-the-results).
 
 ## Core Example Structure
 
 The two implementations follow the same steps:
 
-1. define the model dimensions
-2. choose a parameterization
-3. construct `CondensedMPC`
-4. set model, limits, weights, and references
-5. call `initializeSolver()`
-6. solve in a loop
-7. retrieve the next input and propagate the plant
-8. log the results
+1. Define the model dimensions
+1. Choose a `Parameterization` and `Options`
+1. Construct `CondensedMPC`
+1. Set model, limits, weights, and references
+1. Call `initializeSolver()`
+1. Solve in a loop
+1. Retrieve the next input and propagate the system
+1. Log the results
 
 ## What the Example Produces
 
 The example writes output into the system temp directory under `ampc_example`.
 
-Typical outputs are:
+The two outputs are:
 
 - `log.npz`
 - `params.yaml`
 
-Expected outcome:
-
-- the controller tracks a constant position target for the mass-spring-damper system
-- the logger records both the realized trajectory and selected predictions
-- the plotting script visualizes tracking error, control effort, predictions, and solve times
-
-These files can be plotted from Python with:
-
-```sh
-python examples/plot_sim.py
-```
+The controller tracks a constant position target for the mass-spring-damper system.
+The logger records both the realized trajectory and selected predictions.
+Logs produced by either interface can be visualized with the Python plotting workflow described in [Python Getting Started](python/getting-started.md).
 
 The plot shows:
 
-- actual state history
-- reference state history
-- applied input
-- optional input reference if input cost is enabled
-- selected prediction rollouts over time
-- solve times
+- Actual state history
+- Reference state history
+- Applied input
+- Optional input reference if input cost is enabled
+- Selected prediction rollouts over time
+- Solve times
 
 ## Suggested First Modifications
 
 If you are new to the library, try changing:
 
-- prediction horizon `T`
-- number of control points
-- state weights `Q_diag`
-- input cost weight `R_diag`
-- input or state limits
+- Prediction horizon `T`
+- Number of control points
+- State weights `Q_diag`
+- Input cost weight `R_diag`
+- Input or state limits
 
 This is the fastest way to build intuition for how the parameterization and optional constraints affect behavior.
 
 ## Relationship to Tests
 
-Many tests use the same small mass-spring-damper system because it is easy to understand and fast to run. The example therefore reflects the same style of problem setup exercised in the unit tests.
+Many tests use the same small mass-spring-damper system because it is easy to understand and fast to run.
+The example therefore reflects the same style of problem setup exercised in the unit tests.

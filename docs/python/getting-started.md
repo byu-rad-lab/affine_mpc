@@ -36,72 +36,57 @@ Or if you want to also install the plotting dependencies for the examples:
 python -m pip install ".[examples]"
 ```
 
-## Minimal Example
+The main reasons to build from source are if you make any modifications to the package, or if you want to link to system libs rather than compile them into the Python bindings.
+This will link to system shared libs if they are available, otherwise it will copy the shared libs into the Python environment:
 
-```python
-import numpy as np
-import affine_mpc as ampc
-
-n = 2
-m = 1
-T = 10
-nc = 3
-dt = 0.1
-
-param = ampc.Parameterization.linearInterp(horizon_steps=T, num_control_points=nc)
-mpc = ampc.CondensedMPC(state_dim=n, input_dim=m, param=param)
-
-A = np.array([[0.0, 1.0], [-0.6, -0.1]])
-B = np.array([0.0, 0.2])
-w = np.zeros(n)
-
-mpc.setModelContinuous2Discrete(A, B, w, dt)
-mpc.setInputLimits(np.zeros(m), np.array([3.0]))
-mpc.setStateWeights(np.array([1.0, 0.1]))
-mpc.setReferenceState(np.array([1.0, 0.0]))
-
-if not mpc.initializeSolver():
-    raise RuntimeError("Failed to initialize solver")
-
-xk = np.zeros(n)
-status = mpc.solve(xk)
-if status != ampc.SolveStatus.Success:
-    raise RuntimeError(f"Solve failed with status {status}")
-
-uk = mpc.getNextInput()
-print("next input:", uk)
+```sh
+python -m pip install . --config-settings=cmake.define.BUILD_SHARED_LIBS=ON
 ```
 
-## Run the Example Script
+!!! warning
 
-If you installed with `pip` then you will have 2 scripts in your Python environment:
+    Using shared libs may not work on Windows as it handles runtime paths differently.
 
-- `affine-mpc-example-sim`
-- `affine-mpc-example-plot`
+## Run the Example Application
 
-The repository ships with `examples/sim.py`, which runs a mass-spring-damper example and logs the results.
+### Use Installed Scripts (fastest start)
 
-If you installed from this repository, run:
+Installing with `pip`, as shown above, installs the python examples into your Python environment along with these 3 scripts:
+
+- `affine-mpc-example-sim` (runs sim and logs only)
+- `affine-mpc-example-plot` (plots only)
+- `affine-mpc-example` (runs sim, logs, and plots)
+
+So, to run the sim and visualize the results:
+
+```sh
+affine-mpc-example
+```
+
+OR the same result with 2 commands:
+
+```sh
+affine-mpc-example-sim
+affine-mpc-example-plot
+```
+
+### Run Sim File Directly
+
+This is useful if you wish to modify the example sim or just want to run it directly.
 
 ```sh
 python examples/sim.py
 ```
 
-If you installed the package entry points, you can also run:
-
-```sh
-affine-mpc-example-sim
-```
-
-The example writes output to the system temporary directory under `ampc_example`, typically `/tmp/ampc_example` on Linux.
-
 Expected outcome:
 
-- the script solves a tracking problem for a mass-spring-damper system
-- `log.npz` is written under the `ampc_example` temp directory
-- the plotting helper opens figures showing state tracking, inputs, predictions, and solve times
+- The example runs successfully, printing the log path to the console.
+- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory.
+- The plotting helper opens figures if the visualization dependencies are installed.
 
-## Plot the Results
+For more detail on what the example demonstrates and how to interpret the outputs, see [Examples](../examples.md).
+
+### Plot the Results
 
 After running the example, plot the log with:
 
@@ -109,11 +94,19 @@ After running the example, plot the log with:
 python examples/plot_sim.py
 ```
 
-Or, if the package entry point is available:
+#### Visualization Dependencies
+
+If you did not install the Python package with the `[examples]` optional dependencies, as shown above, you can install the visualization dependencies with:
 
 ```sh
-affine-mpc-example-plot
+python -m pip install -r requirements/examples.txt
 ```
+
+OR install the following manually:
+
+- `abracatabra`
+- `matplotlib`
+- `PySide6` OR `PyQt6`
 
 ## Array Conventions
 

@@ -42,7 +42,13 @@ opts = ampc.Options(
 mpc = ampc.CondensedMPC(state_dim=n, input_dim=m, param=param, opts=opts)
 ```
 
-Start with `CondensedMPC` unless you have a concrete reason to use the sparse formulation.
+Or:
+
+```python
+mpc = ampc.SparseMPC(state_dim=n, input_dim=m, param=param, opts=opts)
+```
+
+May want to try `CondensedMPC` and `SparseMPC` to see which is faster for your problem.
 
 ### 4. Set the model
 
@@ -65,44 +71,76 @@ mpc.setInputLimits(u_min, u_max)
 
 if opts.slew_initial_input:
     mpc.setSlewRateInitial(u0_slew)
+    mpc.setPreviousInput(u_prev)  # defaults to zeros
 if opts.slew_control_points:
     mpc.setSlewRate(u_slew)
 if opts.saturate_states:
     mpc.setStateLimits(x_min, x_max)
 ```
 
-### 6. Set weights and references
+### 6. Set weights
 
 Without input cost:
 
 ```python
-mpc.setStateWeights(Q_diag)
-mpc.setReferenceState(x_ref)
+mpc.setStateWeights(Q_diag, Qf_diag)
+mpc.setStateWeights(Q_diag)  # Qf = Q
 ```
 
 With input cost:
 
 ```python
-mpc.setWeights(Q_diag, R_diag)
-mpc.setReferenceState(x_ref)
-mpc.setReferenceInput(u_ref)
+# set together
+mpc.setWeights(Q_diag, Qf_diag, R_diag)
+mpc.setWeights(Q_diag, R_diag)  # Qf = Q
+
+# OR set individually
+mpc.setStateWeights(Q_diag, Qf_diag)
+mpc.setInputWeights(R_diag)
 ```
 
-You can also provide terminal state weights explicitly with `setStateWeights(Q_diag, Qf_diag)` or `setWeights(Q_diag, Qf_diag, R_diag)`.
+### 7. Set references
 
-### 7. Initialize the solver
+State step reference:
+
+```python
+mpc.setReferenceState(x_step)
+```
+
+State trajectory reference:
+
+```python
+mpc.setReferenceStateTrajectory(x_traj)
+```
+
+If input cost is enabled, input references can also be configured:
+
+```python
+mpc.setReferenceInput(u_step)
+mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts)
+```
+
+### 8. Initialize the solver
 
 ```python
 if not mpc.initializeSolver():
     raise RuntimeError("Failed to initialize solver")
 ```
 
-### 8. Solve in a loop
+### 9. Solve in the control loop
 
 ```python
 status = mpc.solve(xk)
-if status == ampc.SolveStatus.Success:
-    uk = mpc.getNextInput()
+if status != ampc.SolveStatus.Success:
+    # handle how you want
+```
+
+### 10. Retrieve results in the control loop
+
+```python
+uk = mpc.getNextInput()
+u_traj = mpc.getInputTrajectory()
+x_traj = mpc.getPredictedStateTrajectory()
 ```
 
 ## Getter Patterns
@@ -112,8 +150,9 @@ Many getters support two styles.
 Return a new array:
 
 ```python
-uk = mpc.getNextInput()
+uk = mpc.getNextInput()  # most common
 u_traj = mpc.getInputTrajectory()
+u_traj_ctrl_pts = mpc.getParameterizedInputTrajectory()
 x_pred = mpc.getPredictedStateTrajectory()
 ```
 
@@ -121,17 +160,43 @@ Or write into an existing array:
 
 ```python
 uk = np.empty(m)
-mpc.getNextInput(uk)
+mpc.getNextInput(uk)  # uk is also returned
 ```
 
-The in-place form can be useful if you want to reuse arrays in tight loops.
+The in-place form can be useful if you want to reuse arrays in tight loops for extra performance.
 
-Other common methods include:
+## Constructor Variants
 
-- `getParameterizedInputTrajectory()`
-- `getInputTrajectory()`
-- `getPredictedStateTrajectory()`
-- `propagateModel(x, u)`
+Both `CondensedMPC` and `SparseMPC` support:
+
+- an explicit `Parameterization` constructor
+- a horizon-only constructor that defaults to one control point per step (same as no parameterization)
+
+Example:
+
+```python
+mpc = affine_mpc.CondensedMPC(state_dim, input_dim, horizon_steps, opts)
+```
+
+## Solve Status
+
+`solve()` returns `affine_mpc.SolveStatus` for normal solver outcomes rather than throwing.
+
+Common cases include:
+
+- `Success`
+- `NotInitialized`
+- OSQP-derived failure conditions
+
+Configuration misuse tends to throw exceptions, while runtime solver outcomes use return values.
+
+## Model Propagation Helper
+
+You can propagate the internal model one step with:
+
+```python
+x_next = mpc.propagateModel(xk, uk, x_next)  # can pass in output arg to avoid memory copies
+```
 
 ## Logging
 
@@ -139,7 +204,6 @@ Create a logger bound to one MPC object:
 
 ```python
 logger = ampc.MPCLogger(mpc, save_dir, ts, prediction_stride=1)
-logger.addMetadata("example_name", "mass_spring_damper")
 ```
 
 Inside the control loop:
@@ -148,20 +212,23 @@ Inside the control loop:
 logger.logStep(t, xk, solve_time)
 ```
 
-See [Logging](../logging.md) for output details.
+See [Logging](../logging.md) for output format and workflow details.
 
 ## Common Pitfalls
 
-- Do not call `solve()` before `initializeSolver()`
-- If an option enables a constraint, call the corresponding setter before initialization
-- OSQP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure
-- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern
-- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present
-- If you enable `slew_initial_input`, also provide the previous input before solving
+- Do not call `solve()` before `initializeSolver()`.
+- If an option enables a constraint, call the corresponding setter before initialization.
+- Fully configure the model, limits, weights, and references before calling `initializeSolver()`.
+- QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
+- Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
+- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present.
+- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve it is automatically set from previous solve.
 
 ## Choosing Between Condensed and Sparse
 
 - `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
 - `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
+
+The only way to know which is faster for your problem is to try them both!
 
 For the shared mathematical background, see [Concepts](../concepts.md).
