@@ -1,9 +1,12 @@
 import argparse
 from pathlib import Path
-import re
 import pybind11_stubgen
-
+import re
 import sys
+import shutil
+import tempfile
+
+sys.path = sys.path[1:]
 
 debug = False
 
@@ -12,20 +15,45 @@ if debug:
     print("path:", sys.path)
     print()
 
-## This can test if stubgen will be able to find the package
-# import affine_mpc as ampc
-
-
 parser = argparse.ArgumentParser(description="")
 parser.add_argument(
-    "dir",
+    "--pkg-dir",
     type=str,
     help="Directory in which to load affine_mpc",
 )
 args = parser.parse_args()
 
+if args.pkg_dir is not None:
+    pkg_dir = Path(args.pkg_dir).resolve()
+    if not pkg_dir.exists():
+        print("Could not find ", pkg_dir)
+    else:
+        print(pkg_dir)
+        sys.path.insert(0, str(pkg_dir))
+
+try:
+    import affine_mpc as ampc
+except ImportError:
+    print(
+        "Could not find `affine_mpc`.",
+        "Make sure it is installed and that --pkg-dir is correct.\n",
+    )
+    print(
+        "Before trying to generate the stub file either:",
+        '    pip install ".[dev]"',
+        "    python python/custom_stubgen.py",
+        "  OR:",
+        "    pip install -r requirements/build.txt",
+        "    cmake -S . -B build -AFFINE_MPC_BUILD_BINDINGS=ON",
+        "    cmake --build build --config Release --parallel",
+        "    cmake --install build --prefix install --component python_bindings",
+        "    python python/custom_stubgen.py --pkg-dir=install",
+        sep="\n",
+    )
+    exit(1)
+
 pkg = "affine_mpc"
-out_dir = Path(args.dir).resolve()
+out_dir = Path(tempfile.gettempdir()).resolve()
 stub_dir = out_dir / "stubs"
 
 
@@ -103,3 +131,6 @@ except ImportError:
 ## put stub file in repo and commit it
 with open(repo_stub_file, "w", encoding="utf-8") as f:
     f.write(formatted)
+print("Stub file written to:", repo_stub_file)
+
+shutil.rmtree(stub_dir)

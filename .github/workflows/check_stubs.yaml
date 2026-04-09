@@ -33,13 +33,12 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential zlib1g-dev
-          python -m pip install -r requirements/build.txt
+          sudo apt-get install -y cmake build-essential libeigen3-dev zlib1g-dev
 
       - name: Install package and regenerate stubs
         run: |
-          cmake -S . -B build -DAFFINE_MPC_BUILD_BINDINGS=ON -DAFFINE_MPC_PY_GENERATE_STUBS=ON
-          cmake --build build --config Release --parallel
+          python -m pip install ".[dev]"
+          python python/custom_stubgen.py
 
       - name: Check committed stub file is up to date
         run: |

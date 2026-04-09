@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(affine_mpc_py LANGUAGES CXX)
 
-# Stub files provide IDE support (signature help) for compiled bindings
-option(AFFINE_MPC_PY_GENERATE_STUBS
-  "Generate stub files for compiled bindings" OFF)
-
 # -----------------------------------------
 # Dependencies
 # -----------------------------------------
@@ -43,61 +39,6 @@ set_target_properties(_bindings PROPERTIES
 
 # Link to the affine_mpc library
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
-
-# -----------------------------------------
-# Stub generation
-# -----------------------------------------
-if(AFFINE_MPC_PY_GENERATE_STUBS)
-  message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
-  # Locate build environment dependencies
-  set(get_stubgen_path
-    "import os"
-    "import pybind11_stubgen"
-    "print(os.path.dirname(os.path.dirname(pybind11_stubgen.__file__)))"
-  )
-  execute_process(
-    COMMAND "${Python_EXECUTABLE}" -c "${get_stubgen_path}"
-    OUTPUT_VARIABLE build_env_path
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _pystub_found
-  )
-
-  # Ensure build environment dependencies were found
-  if(NOT _pystub_found EQUAL 0)
-    message(WARNING "Could not locate pybind11-stubgen in build environment."
-      " Stub generation may fail."
-    )
-  endif()
-
-  # Allow PYTHONPATH to find both build environment and built module
-  if(WIN32)
-    set(pypath_separator ";")
-  else()
-    set(pypath_separator ":")
-  endif()
-  set(py_paths
-    "${build_env_path}${pypath_separator}${CMAKE_CURRENT_BINARY_DIR}"
-  )
-
-  # Path to custom stub generation script
-  set(gen_stubs "${CMAKE_CURRENT_SOURCE_DIR}/custom_stubgen.py")
-
-  # Collect package Python files explicitly since wildcard expansion in
-  # add_custom_command COMMAND arguments is not portable, especially on Windows.
-  file(GLOB affine_mpc_py_files "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
-
-  # Post-build commands to copy package files and generate stubs.
-  add_custom_command(TARGET _bindings POST_BUILD
-    # Need __init__.py for package recognition and anything it references.
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${affine_mpc_py_files}
-      ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc/.
-
-    # Generate stubs.
-    COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${py_paths}"
-      "${Python_EXECUTABLE}" "${gen_stubs}" "${CMAKE_CURRENT_BINARY_DIR}"
-  )
-endif()
 
 # -----------------------------------------
 # Installation
@@ -154,17 +95,6 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Using OSQP shared lib found from system.")
   endif()
 endif()
-
-## Use this if stub file should be installed by build
-## (if _bindings.pyi is removed from the repo)
-# if(AFFINE_MPC_PY_GENERATE_STUBS)
-#   # Install generated stub file for the bindings module (IDE support)
-#   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stubs/affine_mpc/_bindings.pyi
-#     DESTINATION affine_mpc
-#     COMPONENT python_bindings
-#     OPTIONAL
-#   )
-# endif()
 
 # Install package Python and stub files
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc

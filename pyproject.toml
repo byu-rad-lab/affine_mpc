@@ -3,8 +3,6 @@ requires = [
     "scikit-build-core",
     "pybind11",
     "numpy",
-    # "pybind11-stubgen",
-    # "black",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -32,7 +30,6 @@ keywords = ["affine mpc", "mpc", "model predictive control"]
 [project.optional-dependencies]
 # Install these with `pip install ".[dev]"`
 dev = [
-    "pybind11[global]",
     "pybind11-stubgen",
     "black",
     "pytest",
