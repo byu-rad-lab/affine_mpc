@@ -1,6 +1,7 @@
 #include "affine_mpc/parameterization.hpp"
 
-#include <Eigen/Core>
+// #include <Eigen/Core>    // revert back to this once Eigen 3.5 is required
+#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 #include <sstream>
 #include <stdexcept>
 #include <unsupported/Eigen/Splines>
@@ -8,7 +9,8 @@
 namespace affine_mpc {
 
 using namespace Eigen;
-namespace ph = Eigen::placeholders;
+// revert back to this once Eigen 3.5 is required
+// namespace ph = Eigen::placeholders;
 
 namespace { // utilities for this file
 
