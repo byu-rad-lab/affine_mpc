@@ -19,10 +19,10 @@ It is people like you that make open-source research software better.
 ### Pull Requests
 
 1.  Fork the repo and create your branch from `main`.
-2.  Ensure your code follows the existing style (we use `.clang-format`).
-3.  **Tests are required.** Any new feature or bug fix must include corresponding unit tests in the `test/` directory.
-4.  Update the relevant documentation (`README.md`, files under `docs/`, and public API comments or stubs when needed).
-5.  Issue your pull request!
+1.  Ensure your code follows the existing style (we use `.clang-format`).
+1.  **Tests are required.** Any new feature or bug fix must include corresponding unit tests in the `test/` directory.
+1.  Update the relevant documentation (`README.md`, files under `docs/`, and public API comments or stubs when needed).
+1.  Issue your pull request!
 
 ## Development Environment
 
