@@ -1,0 +1,65 @@
+name: Build and Test
+
+on:
+  pull_request:
+    paths:
+      - CMakeLists.txt
+      - cmake/**
+      - include/**
+      - src/**
+      - test/**
+      - python/CMakeLists.txt
+      - python/affine_mpc/**
+      - python/bindings/**
+      - requirements/build.txt
+      - .github/workflows/build_test.yaml
+  push:
+    branches: [main]
+    paths:
+      - CMakeLists.txt
+      - cmake/**
+      - include/**
+      - src/**
+      - test/**
+      - python/CMakeLists.txt
+      - python/affine_mpc/**
+      - python/bindings/**
+      - requirements/build.txt
+      - .github/workflows/build_test.yaml
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libeigen3-dev zlib1g-dev
+
+      - name: Install Python build dependencies
+        run: python -m pip install -r requirements/build.txt
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -DAFFINE_MPC_BUILD_EXAMPLES=ON \
+            -DAFFINE_MPC_BUILD_TESTS=ON \
+            -DAFFINE_MPC_BUILD_BINDINGS=ON
+
+      - name: Build project
+        run: cmake --build build --config Release --parallel
+
+      - name: Run examples
+        run: ./build/example_sim
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
