@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(affine_mpc_py LANGUAGES CXX)
 
+option(AFFINE_MPC_PY_ADD_TESTS "Register Python binding tests" OFF)
+
 # -----------------------------------------
 # Dependencies
 # -----------------------------------------
@@ -39,6 +41,39 @@ set_target_properties(_bindings PROPERTIES
 
 # Link to the affine_mpc library
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
+
+if(AFFINE_MPC_PY_ADD_TESTS)
+  include(CTest)
+  enable_testing()
+
+  # Copy the Python package into the build tree so the built extension is
+  # importable for local testing.
+  file(GLOB affine_mpc_py_files "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
+  add_custom_command(TARGET _bindings POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${affine_mpc_py_files}
+      ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
+  )
+
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m pytest --version
+    RESULT_VARIABLE pytest_found
+    OUTPUT_QUIET
+    ERROR_QUIET
+  )
+  if(NOT pytest_found EQUAL 0)
+    message(FATAL_ERROR "pytest is required to register Python binding tests")
+  endif()
+
+  add_test(
+    NAME python_bindings_tests
+    COMMAND "${Python_EXECUTABLE}" -m pytest
+      "${CMAKE_CURRENT_SOURCE_DIR}/../test/bindings"
+  )
+  set_tests_properties(python_bindings_tests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
 
 # -----------------------------------------
 # Installation

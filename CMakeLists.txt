@@ -82,6 +82,10 @@ endif()
 # Python Bindings
 # --------------------------------------------------
 if(AFFINE_MPC_BUILD_BINDINGS)
+  if(AFFINE_MPC_BUILD_TESTS)
+    set(AFFINE_MPC_PY_ADD_TESTS ON)
+  endif()
+
   add_subdirectory(python)
 endif()
 

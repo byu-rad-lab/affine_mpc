@@ -2,3 +2,4 @@ numpy
 pybind11[global]
 pybind11-stubgen
 black
+pytest
