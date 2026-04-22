@@ -3,19 +3,21 @@ name: Check Stubs
 on:
   pull_request:
     paths:
-      - "python/**"
-      - "pyproject.toml"
-      - ".github/workflows/check_stubs.yaml"
-      - "CMakeLists.txt"
-      - "cmake/**"
+      - python/bindings/**
+      - python/CMakeLists.txt
+      - python/custom_stubgen.py
+      - python/affine_mpc/_bindings.pyi
+      - pyproject.toml
+      - .github/workflows/check_stubs.yaml
   push:
     branches: [main]
     paths:
-      - "python/**"
-      - "pyproject.toml"
-      - ".github/workflows/check_stubs.yaml"
-      - "CMakeLists.txt"
-      - "cmake/**"
+      - python/bindings/**
+      - python/CMakeLists.txt
+      - python/custom_stubgen.py
+      - python/affine_mpc/_bindings.pyi
+      - pyproject.toml
+      - .github/workflows/check_stubs.yaml
 
 jobs:
   check-stubs:
