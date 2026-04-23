@@ -7,7 +7,7 @@ It is intended for rapid experimentation, analysis, teaching, and research workf
 
 - Installation and first example: [Getting Started](getting-started.md)
 - Recommended workflow and core classes: [Usage](usage.md)
-- Shared concepts and terminology: [Concepts](../concepts.md)
+- Shared concepts and terminology: [Concepts](../concepts/index.md)
 - End-to-end example: [Examples](../examples.md)
 
 ## What the Python Interface Includes

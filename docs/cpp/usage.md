@@ -218,4 +218,6 @@ See [Logging](../logging.md) for output format and workflow details.
 
 The only way to know which is faster for your problem is to try them both!
 
+For the shared mathematical background, see [Concepts](../concepts/index.md).
+
 For the shared mathematical background, see [Concepts](../concepts.md).

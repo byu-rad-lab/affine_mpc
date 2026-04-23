@@ -14,7 +14,7 @@ It is intended to lower the barrier to developing MPC controllers for discrete-t
 
 If you are new to the project, the shortest path is:
 
-1. Read [Concepts](concepts.md) for the supported problem class.
+1. Read [Concepts](concepts/index.md) for the supported problem class.
 1. Choose [Python](python/index.md) or [C++](cpp/index.md).
 1. Run the mass-spring-damper walkthrough in [Examples](examples.md).
 1. Inspect the generated outputs in [Logging](logging.md).

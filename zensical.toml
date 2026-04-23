@@ -10,7 +10,13 @@ repo_name = "byu-rad-lab/affine_mpc"
 
 nav = [
     {"Home" = "index.md"},
-    {"Concepts" = "concepts.md"},
+    {"Concepts" = [
+        "concepts/index.md",
+        "concepts/problem-formulation.md",
+        "concepts/input-parameterization.md",
+        "concepts/qp-formulation.md",
+        "concepts/runtime-updates.md",
+    ]},
     {"Python" = [
         "python/index.md",
         "python/getting-started.md",
@@ -40,7 +46,10 @@ extra_javascript = [
 pallete.primary = "blue grey"
 pallete.accent = "blue"
 features = [
-    "navigation.sections",
+    # "navigation.tabs",
+    # "navigation.sections",
+    "navigation.expand",
+    "navigation.path",
     "navigation.indexes",
     "navigation.top",
     "search.suggest",

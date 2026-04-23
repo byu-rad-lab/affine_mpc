@@ -7,7 +7,7 @@ It provides the public MPC API, the OSQP-backed solver integration, and the logg
 
 - Build and run your first example: [Getting Started](getting-started.md)
 - Recommended workflow and main classes: [Usage](usage.md)
-- Shared concepts and terminology: [Concepts](../concepts.md)
+- Shared concepts and terminology: [Concepts](../concepts/index.md)
 - End-to-end example: [Examples](../examples.md)
 
 ## Main Public Types
