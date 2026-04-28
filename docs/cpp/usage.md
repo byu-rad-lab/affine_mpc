@@ -72,7 +72,7 @@ if (opts.slew_initial_input) {
     mpc.setSlewRateInitial(u0_slew);
     mpc.setPreviousInput(u_prev); // defaults to zeros
 }
-if (opts.slew_control_points) mpc.setSlewRate(u_slew);
+if (opts.slew_control_points) mpc.setSlewRate(control_point_slew);
 if (opts.saturate_states) mpc.setStateLimits(x_min, x_max);
 ```
 
@@ -115,7 +115,7 @@ If input cost is enabled, input references can also be configured:
 
 ```cpp
 mpc.setReferenceInput(u_step)
-mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts)
+mpc.setReferenceInputControlPoints(control_points)
 ```
 
 ### 8. Initialize the solver
@@ -144,8 +144,8 @@ mpc.getNextInput(uk); // most common
 Eigen::VectorXd u_traj(input_dim * horizon_steps);
 mpc.getInputTrajectory(u_traj);
 
-Eigen::VectorXd u_traj_ctrl_pts(input_dim * num_control_points);
-mpc.getParameterizedInputTrajectory(u_traj_ctrl_pts);
+Eigen::VectorXd control_points(input_dim * num_control_points);
+mpc.getInputControlPoints(control_points);
 
 Eigen::VectorXd x_pred(state_dim * horizon_steps);
 mpc.getPredictedStateTrajectory(x_pred);

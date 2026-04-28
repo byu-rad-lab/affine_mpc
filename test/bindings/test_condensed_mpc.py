@@ -40,7 +40,7 @@ def test_implicit_mpc_interface():
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
         mpc.setStateLimits(x_min=-np.ones(n), x_max=np.ones(n))
-        mpc.setSlewRate(u_slew=np.ones(m))
+        mpc.setSlewRate(control_point_slew=np.ones(m))
         mpc.setSlewRateInitial(u0_slew=np.ones(m))
         mpc.setPreviousInput(u_prev=np.zeros(m))
 
@@ -53,7 +53,7 @@ def test_implicit_mpc_interface():
         mpc.setReferenceState(x_step=np.ones(n))
         mpc.setReferenceInput(u_step=np.ones(m))
         mpc.setReferenceStateTrajectory(x_traj=np.ones(T * n))
-        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(m * nc))
+        mpc.setReferenceInputControlPoints(control_points=np.ones(m * nc))
 
         mpc.initializeSolver()
         mpc.initializeSolver(solver_settings=ampc.OSQPSettings())
@@ -67,9 +67,9 @@ def test_implicit_mpc_interface():
         # can't test address of out, it is a different reference to same data
         verify_same_data(out, u)
 
-        u_ctrl_pts = mpc.getParameterizedInputTrajectory()
+        u_ctrl_pts = mpc.getInputControlPoints()
         address = id(u_ctrl_pts)
-        out = mpc.getParameterizedInputTrajectory(u_traj_ctrl_pts=u_ctrl_pts)
+        out = mpc.getInputControlPoints(control_points=u_ctrl_pts)
         assert address == id(u_ctrl_pts)
         verify_same_data(out, u_ctrl_pts)
 

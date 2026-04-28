@@ -40,11 +40,11 @@ def test_mpc_base_interface():
         mpc.setReferenceState(x_step=np.ones(n))
         mpc.setReferenceInput(u_step=np.ones(m))
         mpc.setReferenceStateTrajectory(x_traj=np.ones(T * n))
-        mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts=np.ones(nc))
+        mpc.setReferenceInputControlPoints(control_points=np.ones(nc))
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
         mpc.setStateLimits(x_min=-np.ones(n), x_max=np.ones(n))
-        mpc.setSlewRate(u_slew=np.ones(m))
+        mpc.setSlewRate(control_point_slew=np.ones(m))
         mpc.setSlewRateInitial(u0_slew=np.ones(m))
         mpc.setPreviousInput(u_prev=np.zeros(m))
 
@@ -60,7 +60,7 @@ def test_mpc_base_interface():
 
     assert hasattr(mpc, "initializeSolver")
     assert hasattr(mpc, "getNextInput")
-    assert hasattr(mpc, "getParameterizedInputTrajectory")
+    assert hasattr(mpc, "getInputControlPoints")
     assert hasattr(mpc, "getInputTrajectory")
     assert hasattr(mpc, "getPredictedStateTrajectory")
 
@@ -68,7 +68,7 @@ def test_mpc_base_interface():
     assert function_fails(mpc.initializeSolver, solver_settings=ampc.OSQPSettings())
 
     assert function_fails(mpc.getNextInput, u0=None)
-    assert function_fails(mpc.getParameterizedInputTrajectory, u_traj_ctrl_pts=None)
+    assert function_fails(mpc.getInputControlPoints, control_points=None)
     assert function_fails(mpc.getInputTrajectory, u_traj=None)
     assert function_fails(mpc.getPredictedStateTrajectory, x_traj=None)
 

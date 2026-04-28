@@ -307,8 +307,8 @@ TEST(ConsistencyTester, givenSlewControlPoints_CondensedAndSparseMPCAgree)
 
   // Verify slew constraint is respected in both
   VectorXd u_traj_condensed{m * nc}, u_traj_sparse{m * nc};
-  tester.condensed.getParameterizedInputTrajectory(u_traj_condensed);
-  tester.sparse.getParameterizedInputTrajectory(u_traj_sparse);
+  tester.condensed.getInputControlPoints(u_traj_condensed);
+  tester.sparse.getInputControlPoints(u_traj_sparse);
 
   for (int i{0}; i < nc - 1; ++i) {
     EXPECT_LE(std::abs(u_traj_condensed(i + 1) - u_traj_condensed(i)),

@@ -73,7 +73,7 @@ if opts.slew_initial_input:
     mpc.setSlewRateInitial(u0_slew)
     mpc.setPreviousInput(u_prev)  # defaults to zeros
 if opts.slew_control_points:
-    mpc.setSlewRate(u_slew)
+    mpc.setSlewRate(control_point_slew)
 if opts.saturate_states:
     mpc.setStateLimits(x_min, x_max)
 ```
@@ -117,7 +117,7 @@ If input cost is enabled, input references can also be configured:
 
 ```python
 mpc.setReferenceInput(u_step)
-mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts)
+mpc.setReferenceInputControlPoints(control_points)
 ```
 
 ### 8. Initialize the solver
@@ -152,7 +152,7 @@ Return a new array:
 ```python
 uk = mpc.getNextInput()  # most common
 u_traj = mpc.getInputTrajectory()
-u_traj_ctrl_pts = mpc.getParameterizedInputTrajectory()
+control_points = mpc.getInputControlPoints()
 x_pred = mpc.getPredictedStateTrajectory()
 ```
 

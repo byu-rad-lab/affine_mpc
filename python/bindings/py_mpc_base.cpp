@@ -98,7 +98,7 @@ Returns:
 Solve optimization problem for the given initial state.
 
 Must have previously called initializeSolver() prior to calling this. Call
-getNextInput(), getParameterizedInputTrajectory(), getInputTrajectory(), or
+getNextInput(), getInputControlPoints(), getInputTrajectory(), or
 getPredictedStateTrajectory() after calling this function to access the results.
 
 Args:
@@ -144,34 +144,37 @@ returns:
       )doc");
 
   base.def(
-      "getParameterizedInputTrajectory",
-      [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) {
-        self.getParameterizedInputTrajectory(u_traj_ctrl_pts);
-        return u_traj_ctrl_pts;
+      "getInputControlPoints",
+      [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> control_points) {
+        self.getInputControlPoints(control_points);
+        return control_points;
       },
       R"doc(
-Get the parameterized input trajectory (control points) from the previous solve.
+Get the control points that parameterize the input trajectory from the previous
+solve.
 
 Args:
-    u_traj_ctrl_pts (vector): Result will be stored here (equivalent to return value).
+    control_points (vector): Result will be stored here (equivalent to return
+        value).
 
-returns:
-    u_traj_ctrl_pts (vector): The parameterized input trajectory.
+Returns:
+    control_points (vector): The stacked control points.
       )doc",
-      py::arg("u_traj_ctrl_pts"));
+      py::arg("control_points"));
   base.def(
-      "getParameterizedInputTrajectory",
+      "getInputControlPoints",
       [](ampc::MPCBase& self) {
-        Eigen::VectorXd u_traj_ctrl_pts{self.getInputDim()
-                                        * self.getNumControlPoints()};
-        self.getParameterizedInputTrajectory(u_traj_ctrl_pts);
-        return u_traj_ctrl_pts;
+        Eigen::VectorXd control_points{self.getInputDim()
+                                       * self.getNumControlPoints()};
+        self.getInputControlPoints(control_points);
+        return control_points;
       },
       R"doc(
-Get the parameterized input trajectory (control points) from the previous solve.
+Get the control points that parameterize the input trajectory from the previous
+solve.
 
-returns:
-    u_traj_ctrl_pts (vector): The parameterized input trajectory.
+Returns:
+    control_points (vector): The stacked control points.
       )doc");
 
   base.def(
@@ -436,23 +439,23 @@ Returns:
            )doc",
            py::arg("u_step"));
 
-  base.def("setReferenceParameterizedInputTrajectory",
-           &ampc::MPCBase::setReferenceParameterizedInputTrajectory,
+  base.def("setReferenceInputControlPoints",
+           &ampc::MPCBase::setReferenceInputControlPoints,
            R"doc(
-Set reference control points for the input trajectory.
+Set reference control points that parameterize the reference input trajectory.
 
 This method can only be called if `use_input_cost` is enabled.
 
 Args:
-    u_traj_ctrl_pts (vector): Reference control points as a vector of stacked
-        inputs. Should have length of input_dim * num_control_points. If you
-        have a matrix where each row is a control point, then you can pass
-        in `u_traj_ctrl_pts.ravel()` to convert it to a vector.
+    control_points (vector): Reference input control points as a stacked vector.
+        Should have length of input_dim * num_control_points. If you have a
+        matrix where each row is a control point, then you can pass in
+        `control_points.ravel()` to convert it to a vector.
 
 Returns:
     success: True if the internal QP was updated properly. Unlikely to be False.
-           )doc",
-           py::arg("u_traj_ctrl_pts"));
+            )doc",
+           py::arg("control_points"));
 
   base.def("setInputLimits", &ampc::MPCBase::setInputLimits,
            R"doc(
@@ -495,12 +498,12 @@ called prior to `initializeSolver()`, but can also be called after if limits
 change between solves.
 
 Args:
-    u_slew: Slew-rate vector. All values must be positive.
+    control_point_slew: Slew-rate vector. All values must be positive.
 
 Returns:
     success: True if the internal QP was updated properly. Unlikely to be False.
            )doc",
-           py::arg("u_slew"));
+           py::arg("control_point_slew"));
 
   base.def("setSlewRateInitial", &ampc::MPCBase::setSlewRateInitial,
            R"doc(

@@ -67,7 +67,7 @@ MPCBase::MPCBase(const int state_dim,
     x_sat_idx_{slew_idx_ + slew_dim_},
     model_set_{false},
     u_lims_set_{false},
-    slew_rate_set_{false},
+    ctrls_slew_rate_set_{false},
     x_lims_set_{false},
     solver_initialized_{false},
     weights_changed_{false},
@@ -123,7 +123,7 @@ MPCBase::MPCBase(const int state_dim,
   // allocate memory needed based on options
   if (opts_.use_input_cost) {
     R_big_.setIdentity(ctrls_dim_);
-    u_ref_.setZero(ctrls_dim_);
+    ctrls_ref_.setZero(ctrls_dim_);
   }
   if (opts.slew_initial_input) {
     for (int i{0}, col{0}; i < spline_degree_ + 1; ++i, col += input_dim_) {
@@ -139,8 +139,8 @@ MPCBase::MPCBase(const int state_dim,
     const int slew_cp_dim{input_dim * (param.num_control_points - 1)};
     A_.middleRows(slew_idx_, slew_cp_dim).diagonal().setConstant(-1.0);
     A_.middleRows(slew_idx_, slew_cp_dim).diagonal(input_dim).setOnes();
-    u_slew_.resize(input_dim);
-    u_slew_.setConstant(std::numeric_limits<double>::infinity());
+    ctrls_slew_.resize(input_dim);
+    ctrls_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
   if (opts_.saturate_states) {
     x_min_.resize(state_dim);
@@ -160,7 +160,7 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
     throw std::logic_error(
         "[MPCBase::initializeSolver] Input limits must be set before "
         "initializing solver.");
-  if (opts_.slew_control_points && !slew_rate_set_)
+  if (opts_.slew_control_points && !ctrls_slew_rate_set_)
     throw std::logic_error(
         "[MPCBase::initializeSolver] Slew rate must be set before initializing "
         "solver (slew_control_points is enabled).");
@@ -220,12 +220,11 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
   getInput(0, solution_map_, u0);
 }
 
-void MPCBase::getParameterizedInputTrajectory(
-    Ref<VectorXd> u_traj_ctrl_pts) const noexcept
+void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const noexcept
 {
-  assert(u_traj_ctrl_pts.size() == ctrls_dim_);
+  assert(control_points.size() == ctrls_dim_);
   // Assumes that the control points are first elements of solution
-  u_traj_ctrl_pts = solution_map_.head(ctrls_dim_);
+  control_points = solution_map_.head(ctrls_dim_);
 }
 
 void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
@@ -372,19 +371,18 @@ bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
     throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   assert(u_step.size() == input_dim_);
-  u_ref_ = u_step.replicate(num_ctrl_pts_, 1);
+  ctrls_ref_ = u_step.replicate(num_ctrl_pts_, 1);
   return qpUpdateReferences();
 }
 
-bool MPCBase::setReferenceParameterizedInputTrajectory(
-    const Ref<const VectorXd>& u_traj_ctrl_pts)
+bool MPCBase::setReferenceInputControlPoints(
+    const Ref<const VectorXd>& control_points)
 {
   if (!opts_.use_input_cost)
-    throw std::logic_error(
-        "[MPCBase::setReferenceParameterizedInputTrajectory] "
-        "Input cost is not enabled.");
-  assert(u_traj_ctrl_pts.size() == ctrls_dim_);
-  u_ref_ = u_traj_ctrl_pts;
+    throw std::logic_error("[MPCBase::setReferenceInputControlPoints] "
+                           "Input cost is not enabled.");
+  assert(control_points.size() == ctrls_dim_);
+  ctrls_ref_ = control_points;
   return qpUpdateReferences();
 }
 
@@ -423,18 +421,19 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   return qpUpdateStateLimits();
 }
 
-bool MPCBase::setSlewRate(const Ref<const VectorXd>& u_slew)
+bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
     throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
-  if (u_slew.minCoeff() < 0.0)
+  if (control_point_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setSlewRate] Slew rate must be non-negative.");
-  assert(u_slew.size() == input_dim_);
-  u_slew_ = u_slew;
-  slew_rate_set_ = true;
+  assert(control_point_slew.size() == input_dim_);
+  ctrls_slew_ = control_point_slew;
+  ctrls_slew_rate_set_ = true;
 
-  u_.segment(slew_idx_, slew_dim_) = u_slew_.replicate(num_ctrl_pts_ - 1, 1);
+  u_.segment(slew_idx_, slew_dim_) =
+      ctrls_slew_.replicate(num_ctrl_pts_ - 1, 1);
   l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
   return qpUpdateSlewRate();
 }

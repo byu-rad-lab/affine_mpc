@@ -142,7 +142,7 @@ void MPCLogger::captureMPCSnapshot()
   if (mpc_->opts_.use_input_cost)
     addMetadata("R_diag", mpc_->R_big_.diagonal().head(input_dim_));
   if (mpc_->opts_.slew_control_points)
-    addMetadata("u_slew", mpc_->u_slew_);
+    addMetadata("control_point_slew", mpc_->ctrls_slew_);
   if (mpc_->opts_.saturate_states) {
     addMetadata("x_min", mpc_->x_min_);
     addMetadata("x_max", mpc_->x_max_);
@@ -169,9 +169,9 @@ void MPCLogger::logStep(double t,
   const bool has_input_ref{mpc_->opts_.use_input_cost};
 
   if (log_control_points_) {
-    mpc_->getParameterizedInputTrajectory(inputs_out_buf_);
+    mpc_->getInputControlPoints(inputs_out_buf_);
     if (has_input_ref)
-      ref_inputs_out_buf_ = mpc_->u_ref_;
+      ref_inputs_out_buf_ = mpc_->ctrls_ref_;
   } else {
     mpc_->getInputTrajectory(u_traj_buf_);
   }
@@ -203,7 +203,7 @@ void MPCLogger::logStep(double t,
 
       if (has_input_ref) {
         // Evaluate spline for reference input at step u_idx
-        mpc_->getInput(u_idx, mpc_->u_ref_,
+        mpc_->getInput(u_idx, mpc_->ctrls_ref_,
                        ref_inputs_out_buf_.segment(i * input_dim_, input_dim_));
       }
     }

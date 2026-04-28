@@ -168,12 +168,12 @@ TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
 
   // test values of l_ and u_ for slew rate constraints
   const VectorXd l_slew = mpc.getL().tail(slew_rows);
-  const VectorXd u_slew = mpc.getU().tail(slew_rows);
-  VectorXd l_slew_test{slew_rows}, u_slew_test{slew_rows};
+  const VectorXd ctrls_slew = mpc.getU().tail(slew_rows);
+  VectorXd l_slew_test{slew_rows}, ctrls_slew_test{slew_rows};
   l_slew_test << -slew, -slew;
-  u_slew_test << slew, slew;
+  ctrls_slew_test << slew, slew;
   ASSERT_TRUE(expectEigenNear(l_slew, l_slew_test, 1e-15));
-  ASSERT_TRUE(expectEigenNear(u_slew, u_slew_test, 1e-15));
+  ASSERT_TRUE(expectEigenNear(ctrls_slew, ctrls_slew_test, 1e-15));
 }
 
 TEST(SparseMPCProtectedTester,
@@ -267,12 +267,12 @@ TEST(SparseMPCProtectedTester,
 
   // test values of l_ and u_ for slew rate constraints
   const VectorXd l_slew = mpc.getL().segment(slew_start, slew_rows);
-  const VectorXd u_slew = mpc.getU().segment(slew_start, slew_rows);
-  VectorXd l_slew_test{slew_rows}, u_slew_test{slew_rows};
+  const VectorXd ctrls_slew = mpc.getU().segment(slew_start, slew_rows);
+  VectorXd l_slew_test{slew_rows}, ctrls_slew_test{slew_rows};
   l_slew_test << -slew, -slew;
-  u_slew_test << slew, slew;
+  ctrls_slew_test << slew, slew;
   ASSERT_TRUE(expectEigenNear(l_slew, l_slew_test, 1e-15));
-  ASSERT_TRUE(expectEigenNear(u_slew, u_slew_test, 1e-15));
+  ASSERT_TRUE(expectEigenNear(ctrls_slew, ctrls_slew_test, 1e-15));
 }
 
 // ---- Cost matrix (P_) and cost vector (q_) tests ---------------------------
@@ -432,7 +432,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 
   // verify input bounds were respected in the trajectory
   VectorXd u_traj{m * nc};
-  mpc.getParameterizedInputTrajectory(u_traj);
+  mpc.getInputControlPoints(u_traj);
 
   for (int i = 0; i < nc; ++i) {
     EXPECT_LE(u_traj(i), u_max(0) + 1e-5);
@@ -457,11 +457,11 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
 
   VectorXd u_min = VectorXd::Constant(m, 0.0);
   VectorXd u_max = VectorXd::Constant(m, 3.0);
-  VectorXd u_slew = VectorXd::Constant(m, 1.0);
+  VectorXd ctrls_slew = VectorXd::Constant(m, 1.0);
   VectorXd u_goal = VectorXd::Zero(m);
   mpc.setInputLimits(u_min, u_max);
   mpc.setReferenceInput(u_goal);
-  mpc.setSlewRate(u_slew);
+  mpc.setSlewRate(ctrls_slew);
 
   OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings(true)};
   ASSERT_TRUE(mpc.initializeSolver(settings));
@@ -471,11 +471,12 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
 
   // verify slew rate was respected in the trajectory
   VectorXd u_traj{m * nc};
-  mpc.getParameterizedInputTrajectory(u_traj);
+  mpc.getInputControlPoints(u_traj);
 
   int slew_violations{0};
   for (int i = 0; i < nc - 1; ++i)
-    slew_violations += std::abs(u_traj(i + 1) - u_traj(i)) > u_slew(0) + 1e-5;
+    slew_violations +=
+        std::abs(u_traj(i + 1) - u_traj(i)) > ctrls_slew(0) + 1e-5;
   ASSERT_EQ(slew_violations, 0);
 }
 
