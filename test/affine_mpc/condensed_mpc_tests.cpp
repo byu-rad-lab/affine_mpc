@@ -184,7 +184,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   status = msd_mpc.solve(x0);
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
-  msd_mpc.getParameterizedInputTrajectory(u_traj);
+  msd_mpc.getInputControlPoints(u_traj);
   int slew_errors{0};
   for (int i{0}; i < nc - 1; ++i) {
     slew_errors += abs(u_traj(i + 1) - u_traj(i)) > slew(0) + 1e-6;

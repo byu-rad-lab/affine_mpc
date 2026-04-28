@@ -22,7 +22,7 @@ Attributes:
     slew_initial_input: Slew-rate constraint on initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Enables slew-rate constraints on parameterization
-        control points (|v_{i+1} - v_i| <= u_slew).
+        control points (|v_{i+1} - v_i| <= control_point_slew).
     saturate_states: Enables state saturation constraints.
     saturate_input_trajectory: Enables saturation of each input in the
         trajectory rather than just the control points. Only applicable for
@@ -52,7 +52,7 @@ Args:
     slew_initial_input: Slew-rate constraint on initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Enables slew-rate constraints on parameterization
-        control points (|v_{i+1} - v_i| <= u_slew).
+        control points (|v_{i+1} - v_i| <= control_point_slew).
     saturate_states: Enables state saturation constraints.
     saturate_input_trajectory: Enables saturation of each input in the
         trajectory rather than just the control points. Only applicable for

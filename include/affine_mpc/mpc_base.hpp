@@ -72,9 +72,9 @@ public:
    * @brief Solve the optimization problem for the given initial state.
    *
    *   Must have previously called initializeSolver() prior to calling this.
-   *   Call getNextInput(), getParameterizedInputTrajectory(),
-   *   getInputTrajectory(), or getPredictedStateTrajectory() after calling this
-   *   function to access the results.
+   *   Call getNextInput(), getInputControlPoints(), getInputTrajectory(), or
+   *   getPredictedStateTrajectory() after calling this function to access the
+   *   results.
    * @param x0 Initial (current) state vector.
    * @return SolveStatus Result indication. Generally expected to be `Success`
    *   unless the solver has not been initialized, then `NotInitialized`. Verify
@@ -90,12 +90,12 @@ public:
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
 
   /**
-   * @brief Get the parameterized input trajectory (control points) from the
-   *   previous solve.
-   * @param u_traj_ctrl_pts Output vector for control points.
+   * @brief Get the control points that parameterize the input trajectory from
+   *   the previous solve.
+   * @param control_points Output vector for stacked control points.
    */
-  void getParameterizedInputTrajectory(
-      Eigen::Ref<Eigen::VectorXd> u_traj_ctrl_pts) const noexcept;
+  void getInputControlPoints(
+      Eigen::Ref<Eigen::VectorXd> control_points) const noexcept;
 
   /**
    * @brief Get the full input trajectory from the previous solve.
@@ -235,17 +235,18 @@ public:
   bool setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
 
   /**
-   * @brief Set reference control points for the input trajectory.
+   * @brief Set reference control points that parameterize the reference input
+   *   trajectory.
    *
    *   This method can only be called if `use_input_cost` is enabled.
-   * @param u_traj_ctrl_pts Reference control points as a vector of stacked
-   *   inputs. Should have length of input_dim * num_control_points. If you have
-   *   a matrix where each column is a control point, then you can pass in
-   *   `u_traj_ctrl_pts.reshaped()` to convert it to a vector.
+   * @param control_points Reference input control points as a stacked vector.
+   *   Should have length of input_dim * num_control_points. If you have a
+   *   matrix where each column is a control point, then you can pass in
+   *   `control_points.reshaped()` to convert it to a vector.
    * @return True if internal QP was updated properly. Unlikely to be false.
    */
-  bool setReferenceParameterizedInputTrajectory(
-      const Eigen::Ref<const Eigen::VectorXd>& u_traj_ctrl_pts);
+  bool setReferenceInputControlPoints(
+      const Eigen::Ref<const Eigen::VectorXd>& control_points);
 
   /**
    * @brief Set input saturation limits.
@@ -279,10 +280,10 @@ public:
    *   This function can only be called if `slew_control_points` is enabled.
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
-   * @param u_slew Slew-rate vector.
+   * @param control_point_slew Slew-rate vector.
    * @return True if internal QP was updated properly. Unlikely to be false.
    */
-  bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& u_slew);
+  bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& control_point_slew);
 
   /**
    * @brief Set initial slew-rate constraint limits for control points. Initial
@@ -330,7 +331,8 @@ protected:
   const Options opts_;
   const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
   const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;
-  bool model_set_, u_lims_set_, slew0_rate_set_, slew_rate_set_, x_lims_set_;
+  bool model_set_, u_lims_set_, x_lims_set_;
+  bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
   bool weights_changed_;
 
@@ -342,8 +344,8 @@ protected:
   Eigen::MatrixXd G_, At_, At_pow_;
 
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_, R_big_;
-  Eigen::VectorXd x_ref_, u_ref_, u_min_, u_max_, x_min_, x_max_;
-  Eigen::VectorXd u_slew_, u0_slew_, u_prev_;
+  Eigen::VectorXd x_ref_, ctrls_ref_, u_min_, u_max_, x_min_, x_max_;
+  Eigen::VectorXd ctrls_slew_, u0_slew_, u_prev_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html

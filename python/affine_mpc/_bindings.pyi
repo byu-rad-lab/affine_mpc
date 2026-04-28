@@ -103,6 +103,39 @@ class MPCBase:
         """
 
     @typing.overload
+    def getInputControlPoints(
+        self,
+        control_points: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+        ],
+    ) -> typing.Annotated[
+        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+    ]:
+        """
+        Get the control points that parameterize the input trajectory from the previous
+        solve.
+
+        Args:
+            control_points (vector): Result will be stored here (equivalent to return
+                value).
+
+        Returns:
+            control_points (vector): The stacked control points.
+        """
+
+    @typing.overload
+    def getInputControlPoints(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the control points that parameterize the input trajectory from the previous
+        solve.
+
+        Returns:
+            control_points (vector): The stacked control points.
+        """
+
+    @typing.overload
     def getInputTrajectory(
         self,
         u_traj: typing.Annotated[
@@ -162,36 +195,6 @@ class MPCBase:
 
         returns:
             u0: Initial input from optimized trajectory (next to apply).
-        """
-
-    @typing.overload
-    def getParameterizedInputTrajectory(
-        self,
-        u_traj_ctrl_pts: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
-        """
-        Get the parameterized input trajectory (control points) from the previous solve.
-
-        Args:
-            u_traj_ctrl_pts (vector): Result will be stored here (equivalent to return value).
-
-        returns:
-            u_traj_ctrl_pts (vector): The parameterized input trajectory.
-        """
-
-    @typing.overload
-    def getParameterizedInputTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
-        """
-        Get the parameterized input trajectory (control points) from the previous solve.
-
-        returns:
-            u_traj_ctrl_pts (vector): The parameterized input trajectory.
         """
 
     @typing.overload
@@ -414,22 +417,20 @@ class MPCBase:
             success: True if the internal QP was updated properly. Unlikely to be False.
         """
 
-    def setReferenceParameterizedInputTrajectory(
+    def setReferenceInputControlPoints(
         self,
-        u_traj_ctrl_pts: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]"
-        ],
+        control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
     ) -> bool:
         """
-        Set reference control points for the input trajectory.
+        Set reference control points that parameterize the reference input trajectory.
 
         This method can only be called if `use_input_cost` is enabled.
 
         Args:
-            u_traj_ctrl_pts (vector): Reference control points as a vector of stacked
-                inputs. Should have length of input_dim * num_control_points. If you
-                have a matrix where each row is a control point, then you can pass
-                in `u_traj_ctrl_pts.ravel()` to convert it to a vector.
+            control_points (vector): Reference input control points as a stacked vector.
+                Should have length of input_dim * num_control_points. If you have a
+                matrix where each row is a control point, then you can pass in
+                `control_points.ravel()` to convert it to a vector.
 
         Returns:
             success: True if the internal QP was updated properly. Unlikely to be False.
@@ -465,7 +466,10 @@ class MPCBase:
         """
 
     def setSlewRate(
-        self, u_slew: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+        self,
+        control_point_slew: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, 1]"
+        ],
     ) -> bool:
         """
         Set slew-rate constraint limits for control points. Control points can vary by
@@ -476,7 +480,7 @@ class MPCBase:
         change between solves.
 
         Args:
-            u_slew: Slew-rate vector. All values must be positive.
+            control_point_slew: Slew-rate vector. All values must be positive.
 
         Returns:
             success: True if the internal QP was updated properly. Unlikely to be False.
@@ -586,7 +590,7 @@ class MPCBase:
         Solve optimization problem for the given initial state.
 
         Must have previously called initializeSolver() prior to calling this. Call
-        getNextInput(), getParameterizedInputTrajectory(), getInputTrajectory(), or
+        getNextInput(), getInputControlPoints(), getInputTrajectory(), or
         getPredictedStateTrajectory() after calling this function to access the results.
 
         Args:
@@ -922,7 +926,7 @@ class Options:
         slew_initial_input: Slew-rate constraint on initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Enables slew-rate constraints on parameterization
-            control points (|v_{i+1} - v_i| <= u_slew).
+            control points (|v_{i+1} - v_i| <= control_point_slew).
         saturate_states: Enables state saturation constraints.
         saturate_input_trajectory: Enables saturation of each input in the
             trajectory rather than just the control points. Only applicable for
@@ -954,7 +958,7 @@ class Options:
             slew_initial_input: Slew-rate constraint on initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Enables slew-rate constraints on parameterization
-                control points (|v_{i+1} - v_i| <= u_slew).
+                control points (|v_{i+1} - v_i| <= control_point_slew).
             saturate_states: Enables state saturation constraints.
             saturate_input_trajectory: Enables saturation of each input in the
                 trajectory rather than just the control points. Only applicable for
