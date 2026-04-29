@@ -31,6 +31,12 @@ nav = [
         # {"Getting Started" = "cpp/getting-started.md"},
         # {"Usage" = "cpp/usage.md"},
     ]},
+    {"Getting Started" = [
+        "getting_started/index.md",
+        {"C++" = "getting_started/cpp.md"},
+        {"Python" = "getting_started/python.md"},
+    ]},
+    {"Usage" = "usage.md"},
     {"Examples" = "examples.md"},
     {"Logging" = "logging.md"},
     {"Development" = "development.md"},

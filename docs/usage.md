@@ -1,3 +1,7 @@
+---
+title: Usage
+---
+
 # Usage
 
 This page shows the intended workflow for both the C++ and Python interfaces.
