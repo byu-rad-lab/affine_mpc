@@ -1,10 +1,13 @@
 #include "affine_mpc/mpc_logger.hpp"
 
-#include <cnpy.h>
+#include <cstdint>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <type_traits>
+
+#include "npz_writer.hpp"
 
 namespace affine_mpc {
 
@@ -227,40 +230,42 @@ void MPCLogger::finalize()
   const std::string npz_path = (save_dir_ / (save_name_ + ".npz")).string();
   const size_t N{static_cast<size_t>(num_logged_steps_)};
 
+  NpzWriter writer(npz_path);
+
   auto pack_clean = [&](const std::string& name,
-                        const std::vector<size_t>& shape, bool append) {
+                        const std::vector<size_t>& shape) {
     auto path = save_dir_ / (save_name_ + "_" + name + ".tmp");
     auto data = loadBinary(path);
     if (!data.empty())
-      cnpy::npz_save(npz_path, name, data.data(), shape, append ? "a" : "w");
+      writer.addArray(name, data.data(), shape);
     std::filesystem::remove(path);
   };
 
-  pack_clean("time", {N}, false);
-  pack_clean("solve_times", {N, 2}, true);
+  pack_clean("time", {N});
+  pack_clean("solve_times", {N, 2});
 
   const size_t K{strided_k_.size()};
   const size_t n{static_cast<size_t>(state_dim_)};
   const size_t m{static_cast<size_t>(input_dim_)};
   const size_t nc{static_cast<size_t>(num_ctrls_)};
   if (K == 1) {
-    pack_clean("states", {N, n}, true);
-    pack_clean("ref_states", {N, n}, true);
+    pack_clean("states", {N, n});
+    pack_clean("ref_states", {N, n});
   } else {
-    pack_clean("states", {N, K, n}, true);
-    pack_clean("ref_states", {N, K, n}, true);
+    pack_clean("states", {N, K, n});
+    pack_clean("ref_states", {N, K, n});
   }
 
   if (log_control_points_) {
-    pack_clean("inputs", {N, nc, m}, true);
-    pack_clean("ref_inputs", {N, nc, m}, true);
+    pack_clean("inputs", {N, nc, m});
+    pack_clean("ref_inputs", {N, nc, m});
   } else {
     if (K == 1) {
-      pack_clean("inputs", {N, m}, true);
-      pack_clean("ref_inputs", {N, m}, true);
+      pack_clean("inputs", {N, m});
+      pack_clean("ref_inputs", {N, m});
     } else {
-      pack_clean("inputs", {N, K, m}, true);
-      pack_clean("ref_inputs", {N, K, m}, true);
+      pack_clean("inputs", {N, K, m});
+      pack_clean("ref_inputs", {N, K, m});
     }
   }
 
@@ -270,21 +275,20 @@ void MPCLogger::finalize()
         [&](auto&& arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, int>) {
-            int val = arg;
-            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
+            writer.addScalar("meta_" + key, static_cast<std::int32_t>(arg));
           } else if constexpr (std::is_same_v<T, double>) {
-            double val = arg;
-            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
+            writer.addScalar("meta_" + key, arg);
           } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-            cnpy::npz_save(npz_path, "meta_" + key, arg.data(),
-                           {(size_t)arg.size()}, "a");
+            writer.addArray("meta_" + key, arg.data(),
+                            {static_cast<size_t>(arg.size())});
           } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-            cnpy::npz_save(npz_path, "meta_" + key, arg.data(), {arg.size()},
-                           "a");
+            writer.addArray("meta_" + key, arg.data(), {arg.size()});
           }
         },
         entry.value);
   }
+
+  writer.finalize();
 
   writeParamFile();
   is_finalized_ = true;

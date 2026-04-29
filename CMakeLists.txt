@@ -26,7 +26,7 @@ endif()
 # --------------------------------------------------
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
-include(cmake/extern_cnpy.cmake)
+find_package(ZLIB QUIET)
 
 # --------------------------------------------------
 # Main library
@@ -38,6 +38,7 @@ add_library(${PROJECT_NAME}
   src/sparse_mpc.cpp
   src/parameterization.cpp
   src/mpc_logger.cpp
+  src/npz_writer.cpp
 )
 
 # Namespaced alias
@@ -60,12 +61,22 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 # Link dependencies
 target_link_libraries(${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
   PUBLIC osqp::osqp
-  PRIVATE $<BUILD_INTERFACE:cnpy::cnpy>
 )
+
+if(ZLIB_FOUND)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE AFFINE_MPC_HAS_ZLIB=1)
+else()
+  target_compile_definitions(${PROJECT_NAME} PRIVATE AFFINE_MPC_HAS_ZLIB=0)
+endif()
 
 # C++ standard
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
@@ -96,6 +107,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   include(cmake/extern_gtest.cmake)
+  include(cmake/extern_cnpy.cmake)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
@@ -104,6 +116,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
+    test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
   )
 
@@ -114,8 +127,14 @@ if(AFFINE_MPC_BUILD_TESTS)
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
-      cnpy::cnpy
     )
+    if(TEST_NAME STREQUAL "mpc_logger_tests")
+      target_link_libraries(${TEST_NAME} PRIVATE cnpy::cnpy)
+    endif()
+    if(TEST_NAME STREQUAL "npz_writer_tests")
+      target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+      target_link_libraries(${TEST_NAME} PRIVATE cnpy::cnpy)
+    endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
 endif()
