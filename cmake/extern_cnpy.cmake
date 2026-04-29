@@ -1,11 +1,7 @@
-# cnpy set's a minimum policy version that is too old, overwrite it here
-set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+# Test-only helper for loading NPZ files with cnpy without importing cnpy's
+# own install rules into this project.
 
-# cnpy requires zlib
 find_package(ZLIB REQUIRED)
-
-# Force cnpy to build statically, even if the parent project uses BUILD_SHARED_LIBS
-set(ENABLE_STATIC ON CACHE BOOL "Enable cnpy static library" FORCE)
 
 include(FetchContent)
 
@@ -14,25 +10,27 @@ FetchContent_Declare(cnpy_extern
   GIT_TAG 4e8810b
 )
 
-FetchContent_MakeAvailable(cnpy_extern)
 FetchContent_GetProperties(cnpy_extern)
-
-# Verify the static target was created
-if(TARGET cnpy-static)
-  # CRITICAL: Must be compiled with -fPIC to be linked into our shared library
-  set_target_properties(cnpy-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-  # Ensure the target propagates the include path
-  target_include_directories(cnpy-static INTERFACE ${cnpy_extern_SOURCE_DIR})
-
-  # Link ZLIB. We use PUBLIC so affine_mpc transitively gets the ZLIB link
-  # needed to resolve the static symbols inside cnpy-static.
-  target_link_libraries(cnpy-static PUBLIC ZLIB::ZLIB)
-
-  # Create our standard namespaced alias
-  if(NOT TARGET cnpy::cnpy)
-    add_library(cnpy::cnpy ALIAS cnpy-static)
+if(NOT cnpy_extern_POPULATED)
+  if(POLICY CMP0169)
+    cmake_policy(PUSH)
+    cmake_policy(SET CMP0169 OLD)
   endif()
-else()
-  message(FATAL_ERROR "cnpy-static target not found!")
+  FetchContent_Populate(cnpy_extern)
+  if(POLICY CMP0169)
+    cmake_policy(POP)
+  endif()
+endif()
+
+if(NOT TARGET cnpy_test)
+  add_library(cnpy_test STATIC
+    ${cnpy_extern_SOURCE_DIR}/cnpy.cpp
+  )
+  target_include_directories(cnpy_test PUBLIC ${cnpy_extern_SOURCE_DIR})
+  target_link_libraries(cnpy_test PUBLIC ZLIB::ZLIB)
+  set_target_properties(cnpy_test PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+if(NOT TARGET cnpy::cnpy)
+  add_library(cnpy::cnpy ALIAS cnpy_test)
 endif()
