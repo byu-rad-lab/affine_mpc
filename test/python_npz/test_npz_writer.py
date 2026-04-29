@@ -38,7 +38,9 @@ def test_npz_writer_basic_roundtrip():
 
             np.testing.assert_equal(data["float_data"].shape, (3,))
             np.testing.assert_equal(data["float_data"].dtype, np.dtype(np.float32))
-            np.testing.assert_allclose(data["float_data"], np.array([1.5, -2.0, 3.25], dtype=np.float32))
+            np.testing.assert_allclose(
+                data["float_data"], np.array([1.5, -2.0, 3.25], dtype=np.float32)
+            )
 
             np.testing.assert_equal(data["double_data"].shape, (2, 2))
             np.testing.assert_equal(data["double_data"].dtype, np.dtype(np.float64))

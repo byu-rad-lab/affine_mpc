@@ -71,7 +71,16 @@ if(AFFINE_MPC_PY_ADD_TESTS)
       "${CMAKE_CURRENT_SOURCE_DIR}/../test/bindings"
   )
   set_tests_properties(python_bindings_tests PROPERTIES
-    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR};AFFINE_MPC_NPZ_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/npz_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR};AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+  )
+
+  add_test(
+    NAME python_npz_tests
+    COMMAND "${Python_EXECUTABLE}" -m pytest
+      "${CMAKE_CURRENT_SOURCE_DIR}/../test/python_npz"
+  )
+  set_tests_properties(python_npz_tests PROPERTIES
+    ENVIRONMENT "AFFINE_MPC_NPZ_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/npz_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
   )
 endif()
 
