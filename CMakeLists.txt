@@ -71,7 +71,7 @@ target_link_libraries(${PROJECT_NAME}
   PUBLIC osqp::osqp
 )
 
-if(ZLIB_FOUND)
+if(TARGET ZLIB::ZLIB)
   target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)
   target_compile_definitions(${PROJECT_NAME} PRIVATE AFFINE_MPC_HAS_ZLIB=1)
 else()
@@ -107,7 +107,6 @@ if(AFFINE_MPC_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   include(cmake/extern_gtest.cmake)
-  include(cmake/extern_cnpy.cmake)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
@@ -120,6 +119,11 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/mpc_logger_tests.cpp
   )
 
+  add_executable(npz_writer_fixture test/affine_mpc/npz_writer_fixture.cpp)
+  set_target_properties(npz_writer_fixture PROPERTIES FOLDER tests)
+  target_link_libraries(npz_writer_fixture PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+  target_include_directories(npz_writer_fixture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
   foreach(TEST_SRC IN LISTS TEST_SOURCES)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
     add_executable(${TEST_NAME} ${TEST_SRC})
@@ -128,12 +132,8 @@ if(AFFINE_MPC_BUILD_TESTS)
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
-    if(TEST_NAME STREQUAL "mpc_logger_tests")
-      target_link_libraries(${TEST_NAME} PRIVATE cnpy::cnpy)
-    endif()
     if(TEST_NAME STREQUAL "npz_writer_tests")
       target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-      target_link_libraries(${TEST_NAME} PRIVATE cnpy::cnpy)
     endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
