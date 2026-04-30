@@ -21,6 +21,15 @@ def _run_fixture(case_name: str, output_path: Path) -> None:
     subprocess.run([_fixture_binary(), case_name, str(output_path)], check=True)
 
 
+def _run_fixture_expect_failure(case_name: str, output_path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [_fixture_binary(), case_name, str(output_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_npz_writer_basic_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         npz_path = Path(tmpdir) / "writer_test.npz"
@@ -78,6 +87,40 @@ def test_npz_writer_compression_mode():
             np.testing.assert_equal(data["payload"].shape, (1024,))
             np.testing.assert_equal(data["payload"].dtype, np.dtype(np.float64))
             np.testing.assert_allclose(data["payload"][512], 1.2345)
+
+
+def test_npz_writer_file_backed_roundtrip():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path = Path(tmpdir) / "file_backed_test.npz"
+        _run_fixture("npz_file_basic", npz_path)
+
+        with np.load(npz_path, allow_pickle=False) as data:
+            assert set(data.files) == {"file_data"}
+            np.testing.assert_equal(data["file_data"].shape, (2, 2))
+            np.testing.assert_equal(data["file_data"].dtype, np.dtype(np.float64))
+            np.testing.assert_allclose(
+                data["file_data"], np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64)
+            )
+
+
+def test_npz_writer_file_backed_empty_roundtrip():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path = Path(tmpdir) / "file_backed_empty_test.npz"
+        _run_fixture("npz_file_empty", npz_path)
+
+        with np.load(npz_path, allow_pickle=False) as data:
+            assert set(data.files) == {"empty_file_data"}
+            np.testing.assert_equal(data["empty_file_data"].shape, (0,))
+            np.testing.assert_equal(data["empty_file_data"].dtype, np.dtype(np.float64))
+
+
+def test_npz_writer_file_backed_size_mismatch_fails():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path = Path(tmpdir) / "file_backed_bad_test.npz"
+        result = _run_fixture_expect_failure("npz_file_size_mismatch", npz_path)
+
+        assert result.returncode != 0
+        assert "expected NPZ array shape" in result.stderr
 
 
 def test_npz_writer_empty_array_roundtrip():

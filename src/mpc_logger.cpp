@@ -47,7 +47,6 @@ std::vector<double> loadBinary(const std::filesystem::path& path)
   fin.read(reinterpret_cast<char*>(data.data()), size);
   return data;
 }
-
 } // namespace
 
 MPCLogger::MPCLogger(const MPCBase* const mpc,
@@ -340,8 +339,8 @@ void MPCLogger::writeNpzFromPayloads(
 {
   NpzWriter writer(npz_path);
   for (const auto& payload : payloads) {
-    auto data = loadBinary(payload.temp_path);
-    writer.addArray(payload.name, data.data(), payload.shape);
+    writer.addDoubleArrayFromFile(payload.name, payload.temp_path,
+                                  payload.shape);
   }
 
   for (const auto& key : metadata_keys_) {

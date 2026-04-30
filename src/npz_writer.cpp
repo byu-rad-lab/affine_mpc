@@ -7,6 +7,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -46,6 +47,13 @@ template <> struct DTypeTraits<std::int64_t>
 {
   static constexpr const char* descr = "<i8";
 };
+
+template <typename T>
+constexpr bool kSupportedNpyType =
+    std::is_same_v<T, float> || std::is_same_v<T, double>
+    || std::is_same_v<T, std::int32_t> || std::is_same_v<T, std::int64_t>;
+
+std::uint32_t toUint32Size(std::uint64_t value, const char* const context);
 
 void appendLittleEndian16(std::vector<std::uint8_t>& out, std::uint16_t value)
 {
@@ -87,20 +95,9 @@ std::string makeShapeString(const std::vector<size_t>& shape)
 }
 
 template <typename T>
-std::vector<std::uint8_t> makeNpyPayload(const T* data,
-                                         const std::vector<size_t>& shape)
+std::vector<std::uint8_t> makeNpyHeader(const std::vector<size_t>& shape)
 {
-  static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>
-                    || std::is_same_v<T, std::int32_t>
-                    || std::is_same_v<T, std::int64_t>,
-                "Unsupported npy dtype");
-
-  size_t num_elements{1};
-  for (const size_t dim : shape) {
-    if (dim > 0 && num_elements > std::numeric_limits<size_t>::max() / dim)
-      throw std::overflow_error("[NpzWriter] NPY payload size overflow.");
-    num_elements *= dim;
-  }
+  static_assert(kSupportedNpyType<T>, "Unsupported npy dtype");
 
   std::ostringstream header;
   header << "{'descr': '" << DTypeTraits<T>::descr
@@ -119,12 +116,44 @@ std::vector<std::uint8_t> makeNpyPayload(const T* data,
         "[NpzWriter] NPY header too large for v1.0 format.");
 
   std::vector<std::uint8_t> payload;
-  payload.reserve(preamble_size + header_str.size() + num_elements * sizeof(T));
+  payload.reserve(preamble_size + header_str.size());
   appendBytes(payload, "\x93NUMPY", 6);
   payload.push_back(1);
   payload.push_back(0);
   appendLittleEndian16(payload, static_cast<std::uint16_t>(header_str.size()));
   appendBytes(payload, header_str.data(), header_str.size());
+  return payload;
+}
+
+size_t countShapeElements(const std::vector<size_t>& shape)
+{
+  size_t num_elements{1};
+  for (const size_t dim : shape) {
+    if (dim > 0 && num_elements > std::numeric_limits<size_t>::max() / dim)
+      throw std::overflow_error("[NpzWriter] NPY payload size overflow.");
+    num_elements *= dim;
+  }
+  return num_elements;
+}
+
+template <typename T>
+std::uint32_t computePayloadSize(const std::vector<size_t>& shape)
+{
+  static_assert(kSupportedNpyType<T>, "Unsupported npy dtype");
+  const size_t num_elements = countShapeElements(shape);
+  const size_t num_bytes = num_elements * sizeof(T);
+  return toUint32Size(num_bytes, "NPY payload size");
+}
+
+template <typename T>
+std::vector<std::uint8_t> makeNpyPayload(const T* data,
+                                         const std::vector<size_t>& shape)
+{
+  static_assert(kSupportedNpyType<T>, "Unsupported npy dtype");
+
+  const size_t num_elements = countShapeElements(shape);
+  std::vector<std::uint8_t> payload = makeNpyHeader<T>(shape);
+  payload.reserve(payload.size() + num_elements * sizeof(T));
   appendBytes(payload, data, num_elements * sizeof(T));
   return payload;
 }
@@ -149,6 +178,27 @@ std::uint32_t crc32Fallback(const std::uint8_t* data, size_t size)
   return crc ^ 0xffffffffu;
 }
 
+std::uint32_t
+crc32FallbackUpdate(std::uint32_t crc, const std::uint8_t* data, size_t size)
+{
+  static std::array<std::uint32_t, 256> table{};
+  static bool initialized{false};
+  if (!initialized) {
+    for (std::uint32_t i{0}; i < table.size(); ++i) {
+      std::uint32_t value{i};
+      for (int bit{0}; bit < 8; ++bit)
+        value = (value & 1u) ? (0xedb88320u ^ (value >> 1)) : (value >> 1);
+      table[i] = value;
+    }
+    initialized = true;
+  }
+
+  crc ^= 0xffffffffu;
+  for (size_t i{0}; i < size; ++i)
+    crc = table[(crc ^ data[i]) & 0xffu] ^ (crc >> 8);
+  return crc ^ 0xffffffffu;
+}
+
 std::uint32_t computeCrc32(const std::vector<std::uint8_t>& bytes)
 {
 #if AFFINE_MPC_HAS_ZLIB
@@ -159,7 +209,18 @@ std::uint32_t computeCrc32(const std::vector<std::uint8_t>& bytes)
 #endif
 }
 
-std::uint32_t toUint32Size(size_t value, const char* const context)
+std::uint32_t
+updateCrc32(std::uint32_t crc, const std::uint8_t* data, size_t size)
+{
+#if AFFINE_MPC_HAS_ZLIB
+  return static_cast<std::uint32_t>(
+      ::crc32(crc, data, static_cast<uInt>(size)));
+#else
+  return crc32FallbackUpdate(crc, data, size);
+#endif
+}
+
+std::uint32_t toUint32Size(std::uint64_t value, const char* const context)
 {
   if (value > std::numeric_limits<std::uint32_t>::max()) {
     throw std::overflow_error(std::string{"[NpzWriter] "} + context
@@ -217,6 +278,202 @@ std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
   compression_method = kZipMethodStored;
   return bytes;
 #endif
+}
+
+struct FilePayloadInfo
+{
+  std::uint32_t crc32;
+  std::uint32_t compressed_size;
+  std::uint32_t uncompressed_size;
+  std::uint16_t compression_method;
+};
+
+std::ifstream openRawFile(const std::filesystem::path& raw_path,
+                          std::ios::openmode mode = std::ios::binary)
+{
+  std::ifstream fin{raw_path, mode};
+  if (!fin.is_open()) {
+    throw std::runtime_error("[NpzWriter] Failed to open raw payload file: "
+                             + raw_path.string());
+  }
+  return fin;
+}
+
+std::uintmax_t getRawFileSize(const std::filesystem::path& raw_path)
+{
+  std::ifstream fin = openRawFile(raw_path, std::ios::binary | std::ios::ate);
+  const auto size = fin.tellg();
+  if (size < std::streamoff{0}) {
+    throw std::runtime_error("[NpzWriter] Failed to query raw payload size: "
+                             + raw_path.string());
+  }
+  return static_cast<std::uintmax_t>(size);
+}
+
+#if AFFINE_MPC_HAS_ZLIB
+template <typename Emit>
+std::uint64_t deflateBuffer(z_stream& stream,
+                            const std::uint8_t* data,
+                            size_t size,
+                            int flush,
+                            Emit&& emit)
+{
+  std::array<std::uint8_t, 1 << 16> out_buffer{};
+  std::uint64_t total_out{0};
+  stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
+  stream.avail_in = static_cast<uInt>(size);
+
+  do {
+    stream.next_out = reinterpret_cast<Bytef*>(out_buffer.data());
+    stream.avail_out = static_cast<uInt>(out_buffer.size());
+
+    const int status = deflate(&stream, flush);
+    if (status != Z_OK && status != Z_STREAM_END) {
+      throw std::runtime_error("[NpzWriter] Failed to compress npz entry.");
+    }
+
+    const size_t produced = out_buffer.size() - stream.avail_out;
+    if (produced > 0) {
+      emit(out_buffer.data(), produced);
+      total_out += produced;
+    }
+
+    if (flush == Z_FINISH && status == Z_STREAM_END)
+      break;
+  } while (stream.avail_in > 0 || stream.avail_out == 0 || flush == Z_FINISH);
+
+  return total_out;
+}
+
+template <typename Emit>
+std::uint64_t
+streamCompressedFilePayload(const std::vector<std::uint8_t>& header,
+                            const std::filesystem::path& raw_path,
+                            Emit&& emit)
+{
+  z_stream stream{};
+  if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8,
+                   Z_DEFAULT_STRATEGY)
+      != Z_OK) {
+    throw std::runtime_error("[NpzWriter] Failed to initialize zlib deflater.");
+  }
+
+  std::uint64_t total_out{0};
+  try {
+    total_out +=
+        deflateBuffer(stream, header.data(), header.size(), Z_NO_FLUSH, emit);
+
+    std::ifstream fin = openRawFile(raw_path);
+    std::array<char, 1 << 16> in_buffer{};
+    while (fin) {
+      fin.read(in_buffer.data(),
+               static_cast<std::streamsize>(in_buffer.size()));
+      const auto count = fin.gcount();
+      if (count > 0) {
+        total_out += deflateBuffer(
+            stream, reinterpret_cast<const std::uint8_t*>(in_buffer.data()),
+            static_cast<size_t>(count), Z_NO_FLUSH, emit);
+      }
+    }
+
+    total_out += deflateBuffer(stream, nullptr, 0, Z_FINISH, emit);
+  } catch (...) {
+    deflateEnd(&stream);
+    throw;
+  }
+
+  deflateEnd(&stream);
+  return total_out;
+}
+#endif
+
+FilePayloadInfo analyzeDoubleFilePayload(const std::filesystem::path& raw_path,
+                                         const std::vector<size_t>& shape)
+{
+  const std::vector<std::uint8_t> header = makeNpyHeader<double>(shape);
+  const std::uint32_t body_size = computePayloadSize<double>(shape);
+  const std::uint64_t expected_size = body_size;
+  const std::uintmax_t raw_size = getRawFileSize(raw_path);
+  if (raw_size != expected_size) {
+    throw std::runtime_error("[NpzWriter] Raw payload size does not match the "
+                             "expected NPZ array shape for: "
+                             + raw_path.string());
+  }
+
+  std::uint32_t crc{0};
+  crc = updateCrc32(crc, header.data(), header.size());
+
+  std::ifstream fin = openRawFile(raw_path);
+  std::array<char, 1 << 16> buffer{};
+  while (fin) {
+    fin.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto count = fin.gcount();
+    if (count > 0) {
+      crc =
+          updateCrc32(crc, reinterpret_cast<const std::uint8_t*>(buffer.data()),
+                      static_cast<size_t>(count));
+    }
+  }
+
+  FilePayloadInfo info{};
+  info.crc32 = crc;
+  info.uncompressed_size =
+      toUint32Size(static_cast<std::uint64_t>(header.size()) + raw_size,
+                   "NPZ entry uncompressed size");
+#if AFFINE_MPC_HAS_ZLIB
+  info.compression_method = kZipMethodDeflated;
+  info.compressed_size =
+      toUint32Size(streamCompressedFilePayload(
+                       header, raw_path, [](const std::uint8_t*, size_t) {}),
+                   "NPZ entry compressed size");
+#else
+  info.compression_method = kZipMethodStored;
+  info.compressed_size = info.uncompressed_size;
+#endif
+  return info;
+}
+
+void streamStoredFilePayload(std::ofstream& out,
+                             const std::vector<std::uint8_t>& header,
+                             const std::filesystem::path& raw_path)
+{
+  out.write(reinterpret_cast<const char*>(header.data()),
+            static_cast<std::streamsize>(header.size()));
+  if (!out)
+    throw std::runtime_error("[NpzWriter] Failed to write npz data.");
+
+  std::ifstream fin = openRawFile(raw_path);
+  std::array<char, 1 << 16> buffer{};
+  while (fin) {
+    fin.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto count = fin.gcount();
+    if (count > 0) {
+      out.write(buffer.data(), count);
+      if (!out)
+        throw std::runtime_error("[NpzWriter] Failed to write npz data.");
+    }
+  }
+}
+
+void streamFilePayloadToArchive(std::ofstream& out,
+                                const std::vector<std::uint8_t>& header,
+                                const std::filesystem::path& raw_path,
+                                std::uint16_t compression_method)
+{
+#if AFFINE_MPC_HAS_ZLIB
+  if (compression_method == kZipMethodDeflated) {
+    streamCompressedFilePayload(
+        header, raw_path, [&](const std::uint8_t* data, size_t size) {
+          out.write(reinterpret_cast<const char*>(data),
+                    static_cast<std::streamsize>(size));
+          if (!out)
+            throw std::runtime_error("[NpzWriter] Failed to write npz data.");
+        });
+    return;
+  }
+#endif
+
+  streamStoredFilePayload(out, header, raw_path);
 }
 
 } // namespace
@@ -342,6 +599,30 @@ void NpzWriter::addArrayImpl(const std::string& name,
       toUint32Size(payload.size(), "NPZ entry compressed size");
   impl_->writeLocalHeader(entry);
   impl_->writeBytes(payload);
+  impl_->entries.push_back(std::move(entry));
+}
+
+void NpzWriter::addDoubleArrayFromFile(const std::string& name,
+                                       const std::filesystem::path& raw_path,
+                                       const std::vector<size_t>& shape)
+{
+  ensureNotFinalized();
+
+  const std::vector<std::uint8_t> header = makeNpyHeader<double>(shape);
+  const FilePayloadInfo info = analyzeDoubleFilePayload(raw_path, shape);
+
+  Impl::Entry entry{};
+  entry.filename = name + ".npy";
+  entry.compression_method = info.compression_method;
+  entry.crc32 = info.crc32;
+  entry.compressed_size = info.compressed_size;
+  entry.uncompressed_size = info.uncompressed_size;
+  entry.local_header_offset =
+      toUint32Offset(impl_->out.tellp(), "NPZ entry local header offset");
+
+  impl_->writeLocalHeader(entry);
+  streamFilePayloadToArchive(impl_->out, header, raw_path,
+                             entry.compression_method);
   impl_->entries.push_back(std::move(entry));
 }
 

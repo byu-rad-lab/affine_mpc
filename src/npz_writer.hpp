@@ -35,6 +35,9 @@ public:
   void addArray(const std::string& name,
                 const std::int64_t* data,
                 const std::vector<size_t>& shape);
+  void addDoubleArrayFromFile(const std::string& name,
+                              const std::filesystem::path& raw_path,
+                              const std::vector<size_t>& shape);
 
   void addScalar(const std::string& name, float value);
   void addScalar(const std::string& name, double value);

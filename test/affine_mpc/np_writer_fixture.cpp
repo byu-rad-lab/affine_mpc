@@ -47,6 +47,44 @@ int main(int argc, char** argv)
       const std::vector<double> payload(1024, 1.2345);
       writer.addArray("payload", payload.data(), {payload.size()});
       writer.finalize();
+    } else if (case_name == "npz_file_basic") {
+      const fs::path raw_path =
+          output_path.parent_path() / "npz_file_basic.raw";
+      const std::vector<double> data{0.5, 1.5, 2.5, 3.5};
+      {
+        std::ofstream fout(raw_path, std::ios::binary | std::ios::out);
+        fout.write(reinterpret_cast<const char*>(data.data()),
+                   static_cast<std::streamsize>(data.size() * sizeof(double)));
+      }
+
+      ampc::NpzWriter writer(output_path);
+      writer.addDoubleArrayFromFile("file_data", raw_path, {2, 2});
+      writer.finalize();
+      fs::remove(raw_path);
+    } else if (case_name == "npz_file_empty") {
+      const fs::path raw_path =
+          output_path.parent_path() / "npz_file_empty.raw";
+      {
+        std::ofstream fout(raw_path, std::ios::binary | std::ios::out);
+      }
+
+      ampc::NpzWriter writer(output_path);
+      writer.addDoubleArrayFromFile("empty_file_data", raw_path, {0});
+      writer.finalize();
+      fs::remove(raw_path);
+    } else if (case_name == "npz_file_size_mismatch") {
+      const fs::path raw_path =
+          output_path.parent_path() / "npz_file_size_mismatch.raw";
+      const std::vector<double> data{0.5, 1.5, 2.5};
+      {
+        std::ofstream fout(raw_path, std::ios::binary | std::ios::out);
+        fout.write(reinterpret_cast<const char*>(data.data()),
+                   static_cast<std::streamsize>(data.size() * sizeof(double)));
+      }
+
+      ampc::NpzWriter writer(output_path);
+      writer.addDoubleArrayFromFile("bad_file_data", raw_path, {2, 2});
+      writer.finalize();
     } else if (case_name == "npy_basic") {
       const fs::path raw_path = output_path.parent_path() / "npy_basic.raw";
       const std::vector<double> data{0.5, 1.5, 2.5, 3.5};
