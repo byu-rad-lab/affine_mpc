@@ -15,18 +15,18 @@ def _candidate_build_dirs(root: Path) -> list[Path]:
 
 def _fixture_names() -> list[str]:
     if os.name == "nt":
-        return ["npz_writer_fixture.exe"]
-    return ["npz_writer_fixture"]
+        return ["np_writer_fixture.exe"]
+    return ["np_writer_fixture"]
 
 
 def _find_fixture(root: Path) -> Path:
-    override = os.environ.get("AFFINE_MPC_NPZ_WRITER_FIXTURE")
+    override = os.environ.get("AFFINE_MPC_NP_WRITER_FIXTURE")
     if override:
         path = Path(override)
         if path.exists():
             return path
         raise RuntimeError(
-            f"AFFINE_MPC_NPZ_WRITER_FIXTURE is set but does not exist: {path}"
+            f"AFFINE_MPC_NP_WRITER_FIXTURE is set but does not exist: {path}"
         )
 
     for build_dir in _candidate_build_dirs(root):
@@ -36,7 +36,7 @@ def _find_fixture(root: Path) -> Path:
                 return candidate
 
     raise RuntimeError(
-        "Could not locate npz_writer_fixture. Build tests first so it exists under build/ or out/Debug/."
+        "Could not locate np_writer_fixture. Build tests first so it exists under build/ or out/Debug/."
     )
 
 
@@ -61,5 +61,5 @@ def _infer_has_zlib(root: Path) -> str:
 
 
 root = _repo_root()
-os.environ.setdefault("AFFINE_MPC_NPZ_WRITER_FIXTURE", str(_find_fixture(root)))
+os.environ.setdefault("AFFINE_MPC_NP_WRITER_FIXTURE", str(_find_fixture(root)))
 os.environ.setdefault("AFFINE_MPC_HAS_ZLIB", _infer_has_zlib(root))

@@ -121,10 +121,10 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/mpc_logger_tests.cpp
   )
 
-  add_executable(npz_writer_fixture test/affine_mpc/npz_writer_fixture.cpp)
-  set_target_properties(npz_writer_fixture PROPERTIES FOLDER tests)
-  target_link_libraries(npz_writer_fixture PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
-  target_include_directories(npz_writer_fixture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
+  set_target_properties(np_writer_fixture PROPERTIES FOLDER tests)
+  target_link_libraries(np_writer_fixture PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+  target_include_directories(np_writer_fixture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   if(Python_Interpreter_FOUND)
     execute_process(
@@ -140,7 +140,7 @@ if(AFFINE_MPC_BUILD_TESTS)
           "${CMAKE_CURRENT_SOURCE_DIR}/test/python_npz"
       )
       set_tests_properties(python_npz_tests PROPERTIES
-        ENVIRONMENT "AFFINE_MPC_NPZ_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/npz_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+        ENVIRONMENT "AFFINE_MPC_NP_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/np_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
       )
     else()
       message(FATAL_ERROR "pytest is required to register Python NPZ tests")

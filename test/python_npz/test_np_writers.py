@@ -8,8 +8,8 @@ import numpy as np
 
 
 def _fixture_binary() -> str:
-    path = os.environ.get("AFFINE_MPC_NPZ_WRITER_FIXTURE")
-    assert path, "AFFINE_MPC_NPZ_WRITER_FIXTURE is not set"
+    path = os.environ.get("AFFINE_MPC_NP_WRITER_FIXTURE")
+    assert path, "AFFINE_MPC_NP_WRITER_FIXTURE is not set"
     return path
 
 
@@ -24,7 +24,7 @@ def _run_fixture(case_name: str, output_path: Path) -> None:
 def test_npz_writer_basic_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         npz_path = Path(tmpdir) / "writer_test.npz"
-        _run_fixture("basic", npz_path)
+        _run_fixture("npz_basic", npz_path)
 
         with np.load(npz_path, allow_pickle=False) as data:
             assert set(data.files) == {
@@ -67,7 +67,7 @@ def test_npz_writer_basic_roundtrip():
 def test_npz_writer_compression_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
         npz_path = Path(tmpdir) / "compression_test.npz"
-        _run_fixture("compression", npz_path)
+        _run_fixture("npz_compression", npz_path)
 
         with zipfile.ZipFile(npz_path) as archive:
             info = archive.getinfo("payload.npy")
@@ -83,9 +83,30 @@ def test_npz_writer_compression_mode():
 def test_npz_writer_empty_array_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         npz_path = Path(tmpdir) / "empty_test.npz"
-        _run_fixture("empty", npz_path)
+        _run_fixture("npz_empty", npz_path)
 
         with np.load(npz_path, allow_pickle=False) as data:
             assert set(data.files) == {"empty_data"}
             np.testing.assert_equal(data["empty_data"].shape, (0,))
             np.testing.assert_equal(data["empty_data"].dtype, np.dtype(np.float64))
+
+
+def test_npy_writer_basic_roundtrip():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npy_path = Path(tmpdir) / "basic.npy"
+        _run_fixture("npy_basic", npy_path)
+
+        data = np.load(npy_path, allow_pickle=False)
+        np.testing.assert_equal(data.shape, (2, 2))
+        np.testing.assert_equal(data.dtype, np.dtype(np.float64))
+        np.testing.assert_allclose(data, np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64))
+
+
+def test_npy_writer_empty_array_roundtrip():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npy_path = Path(tmpdir) / "empty.npy"
+        _run_fixture("npy_empty", npy_path)
+
+        data = np.load(npy_path, allow_pickle=False)
+        np.testing.assert_equal(data.shape, (0,))
+        np.testing.assert_equal(data.dtype, np.dtype(np.float64))
