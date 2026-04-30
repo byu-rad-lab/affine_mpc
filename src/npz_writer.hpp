@@ -45,6 +45,10 @@ public:
 
 private:
   struct Impl;
+  template <typename T>
+  void addArrayImpl(const std::string& name,
+                    const T* data,
+                    const std::vector<size_t>& shape);
   std::unique_ptr<Impl> impl_;
 };
 

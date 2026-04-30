@@ -291,6 +291,28 @@ struct NpzWriter::Impl
   }
 };
 
+template <typename T>
+void NpzWriter::addArrayImpl(const std::string& name,
+                             const T* data,
+                             const std::vector<size_t>& shape)
+{
+  if (impl_->finalized)
+    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
+
+  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
+  Impl::Entry entry{};
+  entry.filename = name + ".npy";
+  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
+  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
+  entry.crc32 = computeCrc32(npy_bytes);
+  std::vector<std::uint8_t> payload =
+      maybeCompress(npy_bytes, entry.compression_method);
+  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
+  impl_->writeLocalHeader(entry);
+  impl_->writeBytes(payload);
+  impl_->entries.push_back(std::move(entry));
+}
+
 NpzWriter::NpzWriter(const std::filesystem::path& path) :
     impl_(std::make_unique<Impl>(path))
 {}
@@ -312,80 +334,28 @@ void NpzWriter::addArray(const std::string& name,
                          const float* data,
                          const std::vector<size_t>& shape)
 {
-  if (impl_->finalized)
-    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
-  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
-  Impl::Entry entry{};
-  entry.filename = name + ".npy";
-  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
-  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
-  entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload =
-      maybeCompress(npy_bytes, entry.compression_method);
-  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
-  impl_->writeLocalHeader(entry);
-  impl_->writeBytes(payload);
-  impl_->entries.push_back(std::move(entry));
+  addArrayImpl(name, data, shape);
 }
 
 void NpzWriter::addArray(const std::string& name,
                          const double* data,
                          const std::vector<size_t>& shape)
 {
-  if (impl_->finalized)
-    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
-  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
-  Impl::Entry entry{};
-  entry.filename = name + ".npy";
-  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
-  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
-  entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload =
-      maybeCompress(npy_bytes, entry.compression_method);
-  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
-  impl_->writeLocalHeader(entry);
-  impl_->writeBytes(payload);
-  impl_->entries.push_back(std::move(entry));
+  addArrayImpl(name, data, shape);
 }
 
 void NpzWriter::addArray(const std::string& name,
                          const std::int32_t* data,
                          const std::vector<size_t>& shape)
 {
-  if (impl_->finalized)
-    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
-  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
-  Impl::Entry entry{};
-  entry.filename = name + ".npy";
-  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
-  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
-  entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload =
-      maybeCompress(npy_bytes, entry.compression_method);
-  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
-  impl_->writeLocalHeader(entry);
-  impl_->writeBytes(payload);
-  impl_->entries.push_back(std::move(entry));
+  addArrayImpl(name, data, shape);
 }
 
 void NpzWriter::addArray(const std::string& name,
                          const std::int64_t* data,
                          const std::vector<size_t>& shape)
 {
-  if (impl_->finalized)
-    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
-  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
-  Impl::Entry entry{};
-  entry.filename = name + ".npy";
-  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
-  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
-  entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload =
-      maybeCompress(npy_bytes, entry.compression_method);
-  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
-  impl_->writeLocalHeader(entry);
-  impl_->writeBytes(payload);
-  impl_->entries.push_back(std::move(entry));
+  addArrayImpl(name, data, shape);
 }
 
 void NpzWriter::addScalar(const std::string& name, const float value)
