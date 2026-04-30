@@ -38,6 +38,7 @@ add_library(${PROJECT_NAME}
   src/sparse_mpc.cpp
   src/parameterization.cpp
   src/mpc_logger.cpp
+  src/npy_writer.cpp
   src/npz_writer.cpp
 )
 
