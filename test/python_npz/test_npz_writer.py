@@ -78,3 +78,14 @@ def test_npz_writer_compression_mode():
             np.testing.assert_equal(data["payload"].shape, (1024,))
             np.testing.assert_equal(data["payload"].dtype, np.dtype(np.float64))
             np.testing.assert_allclose(data["payload"][512], 1.2345)
+
+
+def test_npz_writer_empty_array_roundtrip():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path = Path(tmpdir) / "empty_test.npz"
+        _run_fixture("empty", npz_path)
+
+        with np.load(npz_path, allow_pickle=False) as data:
+            assert set(data.files) == {"empty_data"}
+            np.testing.assert_equal(data["empty_data"].shape, (0,))
+            np.testing.assert_equal(data["empty_data"].dtype, np.dtype(np.float64))

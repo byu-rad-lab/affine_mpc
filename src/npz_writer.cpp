@@ -23,6 +23,9 @@ namespace affine_mpc {
 
 namespace {
 
+constexpr std::uint16_t kZipMethodStored = 0;
+constexpr std::uint16_t kZipMethodDeflated = 8;
+
 template <typename T> struct DTypeTraits;
 
 template <> struct DTypeTraits<float>
@@ -63,6 +66,8 @@ void appendBytes(std::vector<std::uint8_t>& out,
                  const void* data,
                  const size_t num_bytes)
 {
+  if (num_bytes == 0)
+    return;
   const auto* bytes = static_cast<const std::uint8_t*>(data);
   out.insert(out.end(), bytes, bytes + num_bytes);
 }
@@ -207,10 +212,10 @@ std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
   }
   compressed.resize(stream.total_out);
   deflateEnd(&stream);
-  compression_method = 8;
+  compression_method = kZipMethodDeflated;
   return compressed;
 #else
-  compression_method = 0;
+  compression_method = kZipMethodStored;
   return bytes;
 #endif
 }
@@ -322,8 +327,7 @@ void NpzWriter::addArrayImpl(const std::string& name,
                              const T* data,
                              const std::vector<size_t>& shape)
 {
-  if (impl_->finalized)
-    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
+  ensureNotFinalized();
 
   const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
   Impl::Entry entry{};
@@ -345,6 +349,12 @@ void NpzWriter::addArrayImpl(const std::string& name,
 NpzWriter::NpzWriter(const std::filesystem::path& path) :
     impl_(std::make_unique<Impl>(path))
 {}
+
+void NpzWriter::ensureNotFinalized() const
+{
+  if (impl_->finalized)
+    throw std::logic_error("[NpzWriter] Cannot add entries after finalize().");
+}
 
 NpzWriter::~NpzWriter() noexcept
 {

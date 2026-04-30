@@ -413,8 +413,7 @@ void MPCLogger::finalize()
     NpzWriter writer(npz_path);
     for (const auto& payload : payloads) {
       auto data = loadBinary(payload.temp_path);
-      if (!data.empty())
-        writer.addArray(payload.name, data.data(), payload.shape);
+      writer.addArray(payload.name, data.data(), payload.shape);
     }
 
     for (const auto& key : metadata_keys_) {

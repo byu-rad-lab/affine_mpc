@@ -45,6 +45,7 @@ public:
 
 private:
   struct Impl;
+  void ensureNotFinalized() const;
   template <typename T>
   void addArrayImpl(const std::string& name,
                     const T* data,

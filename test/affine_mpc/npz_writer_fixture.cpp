@@ -35,6 +35,9 @@ int main(int argc, char** argv)
       writer.addArray("int64_data", int64_data.data(), {3});
       writer.addScalar("scalar_double", 4.5);
       writer.addScalar("scalar_int", static_cast<std::int32_t>(6));
+    } else if (case_name == "empty") {
+      const std::vector<double> empty_data{};
+      writer.addArray("empty_data", empty_data.data(), {0});
     } else if (case_name == "compression") {
       const std::vector<double> payload(1024, 1.2345);
       writer.addArray("payload", payload.data(), {payload.size()});
