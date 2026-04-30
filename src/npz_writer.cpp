@@ -166,6 +166,8 @@ std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
 
   std::vector<std::uint8_t> compressed;
   compressed.resize(deflateBound(&stream, static_cast<uLong>(bytes.size())));
+  // zlib's streaming API is not const-correct here; the input buffer is not
+  // modified.
   stream.next_in =
       const_cast<Bytef*>(reinterpret_cast<const Bytef*>(bytes.data()));
   stream.avail_in = static_cast<uInt>(bytes.size());
@@ -185,13 +187,6 @@ std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
   compression_method = 0;
   return bytes;
 #endif
-}
-
-template <typename T> std::vector<std::uint8_t> scalarToBytes(const T value)
-{
-  std::vector<std::uint8_t> bytes(sizeof(T));
-  std::memcpy(bytes.data(), &value, sizeof(T));
-  return bytes;
 }
 
 } // namespace
@@ -307,6 +302,7 @@ NpzWriter::~NpzWriter() noexcept
       try {
         finalize();
       } catch (...) {
+        // Destructors must not throw; finalization is best-effort only.
       }
     }
   }

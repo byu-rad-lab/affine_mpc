@@ -9,6 +9,9 @@
 
 namespace affine_mpc {
 
+/**
+ * @brief Internal write-only NPZ utility used by MPCLogger.
+ */
 class NpzWriter
 {
 public:
