@@ -9,7 +9,6 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
-// #include <streambuf>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -107,7 +106,7 @@ std::vector<std::uint8_t> makeNpyPayload(const T* data,
   header << "{'descr': '" << DTypeTraits<T>::descr
          << "', 'fortran_order': False, 'shape': " << makeShapeString(shape)
          << ", }";
-  std::string header_str = header.str();
+  std::string header_str{header.str()};
 
   constexpr size_t preamble_size{10};
   size_t header_len{header_str.size() + 1};
@@ -177,7 +176,7 @@ std::uint32_t toUint32Offset(const std::streampos position,
                              + context + ".");
   }
 
-  const auto offset = static_cast<std::uint64_t>(position);
+  const auto offset{static_cast<std::uint64_t>(position)};
   if (offset > std::numeric_limits<std::uint32_t>::max()) {
     throw std::overflow_error(std::string{"[NpzWriter] "} + context
                               + " exceeds ZIP32 offset limits.");
@@ -234,7 +233,7 @@ struct NpzWriter::Impl
     std::uint32_t local_header_offset;
   };
 
-  explicit Impl(const std::filesystem::path& path) : out(path, std::ios::binary)
+  explicit Impl(const std::filesystem::path& path) : out{path, std::ios::binary}
   {
     if (!out.is_open())
       throw std::runtime_error("[NpzWriter] Failed to open npz output file.");
@@ -337,8 +336,8 @@ void NpzWriter::addArrayImpl(const std::string& name,
   entry.local_header_offset =
       toUint32Offset(impl_->out.tellp(), "NPZ entry local header offset");
   entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload =
-      maybeCompress(npy_bytes, entry.compression_method);
+  std::vector<std::uint8_t> payload{
+      maybeCompress(npy_bytes, entry.compression_method)};
   entry.compressed_size =
       toUint32Size(payload.size(), "NPZ entry compressed size");
   impl_->writeLocalHeader(entry);

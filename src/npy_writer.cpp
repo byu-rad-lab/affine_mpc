@@ -32,7 +32,7 @@ void writeNpyHeaderV2(std::ofstream& fout, const std::vector<size_t>& shape)
   std::ostringstream header;
   header << "{'descr': '<f8', 'fortran_order': False, 'shape': "
          << makeShapeString(shape) << ", }";
-  std::string header_str = header.str();
+  std::string header_str{header.str()};
 
   constexpr size_t preamble_size{12};
   const size_t padding =
@@ -67,7 +67,7 @@ void NpyWriter::writeDoubleArrayFromFile(const std::filesystem::path& npy_path,
                                          const std::filesystem::path& raw_path,
                                          const std::vector<size_t>& shape)
 {
-  std::ifstream fin(raw_path, std::ios::binary | std::ios::ate);
+  std::ifstream fin{raw_path, std::ios::binary | std::ios::ate};
   if (!fin.is_open()) {
     throw std::runtime_error("[NpyWriter] Failed to open raw payload file: "
                              + raw_path.string());
@@ -96,7 +96,7 @@ void NpyWriter::writeDoubleArrayFromFile(const std::filesystem::path& npy_path,
   }
 
   fin.seekg(0, std::ios::beg);
-  std::ofstream fout(npy_path, std::ios::binary | std::ios::out);
+  std::ofstream fout{npy_path, std::ios::binary | std::ios::out};
   if (!fout.is_open()) {
     throw std::runtime_error("[NpyWriter] Failed to open output NPY file: "
                              + npy_path.string());

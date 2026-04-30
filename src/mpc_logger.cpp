@@ -38,12 +38,12 @@ void writeBinary(std::ofstream& fout,
 
 std::vector<double> loadBinary(const std::filesystem::path& path)
 {
-  std::ifstream fin(path, std::ios::binary | std::ios::ate);
+  std::ifstream fin{path, std::ios::binary | std::ios::ate};
   if (!fin.is_open())
     return {};
-  auto size = fin.tellg();
+  auto size{fin.tellg()};
   fin.seekg(0, std::ios::beg);
-  std::vector<double> data(size / sizeof(double));
+  std::vector<double> data(static_cast<size_t>(size / sizeof(double)));
   fin.read(reinterpret_cast<char*>(data.data()), size);
   return data;
 }
@@ -381,7 +381,7 @@ void MPCLogger::writeNpyFallback(const std::vector<PayloadEntry>& payloads,
 
 void MPCLogger::writeParamFile(const std::filesystem::path& filename)
 {
-  std::ofstream fout(save_dir_ / filename);
+  std::ofstream fout{save_dir_ / filename};
   fout << std::boolalpha;
   for (const auto& key : metadata_keys_) {
     const auto& entry = metadata_registry_[key];
