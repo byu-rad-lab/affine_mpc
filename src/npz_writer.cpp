@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -295,10 +296,11 @@ struct NpzWriter::Impl
   }
 };
 
-NpzWriter::NpzWriter(const std::filesystem::path& path) : impl_(new Impl(path))
+NpzWriter::NpzWriter(const std::filesystem::path& path) :
+    impl_(std::make_unique<Impl>(path))
 {}
 
-NpzWriter::~NpzWriter()
+NpzWriter::~NpzWriter() noexcept
 {
   if (impl_ != nullptr) {
     if (!impl_->finalized) {
@@ -307,7 +309,6 @@ NpzWriter::~NpzWriter()
       } catch (...) {
       }
     }
-    delete impl_;
   }
 }
 

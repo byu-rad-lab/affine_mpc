@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,10 +13,12 @@ class NpzWriter
 {
 public:
   explicit NpzWriter(const std::filesystem::path& path);
-  ~NpzWriter();
+  ~NpzWriter() noexcept;
 
   NpzWriter(const NpzWriter&) = delete;
   NpzWriter& operator=(const NpzWriter&) = delete;
+  NpzWriter(NpzWriter&&) noexcept = default;
+  NpzWriter& operator=(NpzWriter&&) noexcept = default;
 
   void addArray(const std::string& name,
                 const float* data,
@@ -39,7 +42,7 @@ public:
 
 private:
   struct Impl;
-  Impl* impl_;
+  std::unique_ptr<Impl> impl_;
 };
 
 } // namespace affine_mpc
