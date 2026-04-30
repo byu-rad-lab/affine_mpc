@@ -35,8 +35,8 @@ public:
    *
    * Piecewise constant inputs set from previous change point.
    */
-  static Parameterization moveBlocking(const int horizon_steps,
-                                       const int num_control_points);
+  static Parameterization moveBlocking(int horizon_steps,
+                                       int num_control_points);
 
   /**
    * @brief Factory method for move-blocking parameterization with custom change
@@ -46,7 +46,7 @@ public:
    * @return Parameterization instance.
    */
   static Parameterization
-  moveBlocking(const int horizon_steps,
+  moveBlocking(int horizon_steps,
                const Eigen::Ref<const Eigen::VectorXd>& change_points);
 
   /**
@@ -58,8 +58,8 @@ public:
    *
    * Change points are evenly spaced between 0 and horizon_steps - 1.
    */
-  static Parameterization linearInterp(const int horizon_steps,
-                                       const int num_control_points);
+  static Parameterization linearInterp(int horizon_steps,
+                                       int num_control_points);
 
   /**
    * @brief Factory method for linear interpolation parameterization with custom
@@ -70,7 +70,7 @@ public:
    * @return Parameterization instance.
    */
   static Parameterization
-  linearInterp(const int horizon_steps,
+  linearInterp(int horizon_steps,
                const Eigen::Ref<const Eigen::VectorXd>& endpoints);
 
   /**
@@ -82,9 +82,8 @@ public:
    *   greater than horizon_steps.
    * @return Parameterization instance.
    */
-  static Parameterization bspline(const int horizon_steps,
-                                  const int degree,
-                                  const int num_control_points);
+  static Parameterization
+  bspline(int horizon_steps, int degree, int num_control_points);
 
   /**
    * @brief Factory method for clamped B-spline parameterization with custom
@@ -96,8 +95,8 @@ public:
    * @return Parameterization instance.
    */
   static Parameterization
-  bspline(const int horizon_steps,
-          const int degree,
+  bspline(int horizon_steps,
+          int degree,
           const Eigen::Ref<const Eigen::VectorXd>& active_knots);
 
   /**
@@ -110,9 +109,7 @@ public:
    *
    * For common cases, prefer the named factory methods.
    */
-  Parameterization(const int horizon_steps,
-                   const int degree,
-                   const int num_control_points);
+  Parameterization(int horizon_steps, int degree, int num_control_points);
 
   /**
    * @brief Direct constructor for advanced use cases with custom knot vector
@@ -124,8 +121,8 @@ public:
    *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
    *   last knot must be horizon_steps-1.
    */
-  Parameterization(const int horizon_steps,
-                   const int degree,
+  Parameterization(int horizon_steps,
+                   int degree,
                    const Eigen::Ref<const Eigen::VectorXd>& knots);
 
   ~Parameterization() = default;
@@ -152,9 +149,9 @@ public:
    *   greater than horizon_steps.
    * @return knots The uniform clamped knot vector.
    */
-  static Eigen::VectorXd makeUniformClampedKnots(const int horizon_steps,
-                                                 const int degree,
-                                                 const int num_control_points);
+  static Eigen::VectorXd makeUniformClampedKnots(int horizon_steps,
+                                                 int degree,
+                                                 int num_control_points);
 
   /// Number of discrete time steps in the horizon.
   const int horizon_steps;

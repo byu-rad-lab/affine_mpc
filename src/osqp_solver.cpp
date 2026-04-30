@@ -9,7 +9,7 @@
 
 namespace affine_mpc {
 
-OSQPSolver::OSQPSolver(const int num_variables, const int num_constraints) :
+OSQPSolver::OSQPSolver(int num_variables, int num_constraints) :
     solver_{nullptr, osqp_cleanup},
     P_{nullptr, OSQPCscMatrix_free},
     A_{nullptr, OSQPCscMatrix_free},
@@ -32,7 +32,7 @@ OSQPSettings OSQPSolver::getDefaultSettings() noexcept
 }
 
 OSQPSettings
-OSQPSolver::getRecommendedSettings(const bool polish_near_boundaries) noexcept
+OSQPSolver::getRecommendedSettings(bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
   osqp_set_default_settings(&settings);

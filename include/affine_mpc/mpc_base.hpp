@@ -42,12 +42,12 @@ protected:
    * @param num_custom_constraints Number of custom constraints (other than
    *   input saturation, slew rate constraints, and state saturation).
    */
-  MPCBase(const int state_dim,
-          const int input_dim,
+  MPCBase(int state_dim,
+          int input_dim,
           const Parameterization& parameterization,
           const Options& opts,
-          const int num_design_vars,
-          const int num_custom_constraints);
+          int num_design_vars,
+          int num_custom_constraints);
 
 public:
   virtual ~MPCBase() = default;
@@ -157,8 +157,8 @@ public:
   bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
-                                   const double dt,
-                                   const double tol = 1e-6);
+                                   double dt,
+                                   double tol = 1e-6);
 
   /**
    * @brief Set state and input weights for the cost function.

@@ -37,7 +37,7 @@ Static Methods:
 
   param.def_static(
       "moveBlocking",
-      [](const int horizon_steps, const int num_control_points) {
+      [](int horizon_steps, int num_control_points) {
         return ampc::Parameterization::moveBlocking(horizon_steps,
                                                     num_control_points);
       },
@@ -56,7 +56,7 @@ returns:
 
   param.def_static(
       "moveBlocking",
-      [](const int horizon_steps,
+      [](int horizon_steps,
          const Eigen::Ref<const Eigen::VectorXd>& change_points) {
         return ampc::Parameterization::moveBlocking(horizon_steps,
                                                     change_points);
@@ -75,7 +75,7 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](const int horizon_steps, const int num_control_points) {
+      [](int horizon_steps, int num_control_points) {
         return ampc::Parameterization::linearInterp(horizon_steps,
                                                     num_control_points);
       },
@@ -94,7 +94,7 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](const int horizon_steps,
+      [](int horizon_steps,
          const Eigen::Ref<const Eigen::VectorXd>& endpoints) {
         return ampc::Parameterization::linearInterp(horizon_steps, endpoints);
       },
@@ -113,8 +113,7 @@ returns:
 
   param.def_static(
       "bspline",
-      [](const int horizon_steps, const int degree,
-         const int num_control_points) {
+      [](int horizon_steps, int degree, int num_control_points) {
         return ampc::Parameterization::bspline(horizon_steps, degree,
                                                num_control_points);
       },
@@ -135,7 +134,7 @@ returns:
 
   param.def_static(
       "bspline",
-      [](const int horizon_steps, const int degree,
+      [](int horizon_steps, int degree,
          const Eigen::Ref<const Eigen::VectorXd>& active_knots) {
         return ampc::Parameterization::bspline(horizon_steps, degree,
                                                active_knots);

@@ -18,7 +18,7 @@ namespace affine_mpc {
 
 namespace { // utilities for this file
 
-constexpr int validateStateDim(const int state_dim)
+constexpr int validateStateDim(int state_dim)
 {
   if (state_dim <= 0)
     throw std::invalid_argument(
@@ -26,7 +26,7 @@ constexpr int validateStateDim(const int state_dim)
   return state_dim;
 }
 
-constexpr int validateInputDim(const int input_dim)
+constexpr int validateInputDim(int input_dim)
 {
   if (input_dim <= 0)
     throw std::invalid_argument(
@@ -41,12 +41,12 @@ constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
 
 } // namespace
 
-MPCBase::MPCBase(const int state_dim,
-                 const int input_dim,
+MPCBase::MPCBase(int state_dim,
+                 int input_dim,
                  const Parameterization& param,
                  const Options& opts,
-                 const int num_design_vars,
-                 const int num_custom_constraints) :
+                 int num_design_vars,
+                 int num_custom_constraints) :
     state_dim_{validateStateDim(state_dim)},
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
@@ -270,8 +270,8 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
 bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
-                                          const double dt,
-                                          const double tol)
+                                          double dt,
+                                          double tol)
 {
   assert(Ac.rows() == state_dim_ && Ac.cols() == state_dim_);
   assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);

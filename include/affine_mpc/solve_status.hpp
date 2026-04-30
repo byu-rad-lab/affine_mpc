@@ -35,7 +35,7 @@ enum class SolveStatus
  * @param osqp_status Integer status code from OSQP.
  * @return Corresponding SolveStatus value.
  */
-inline SolveStatus osqpStatusToSolveStatus(const int osqp_status)
+inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
 {
   switch (osqp_status) {
   case osqp_status_type::OSQP_SOLVED:

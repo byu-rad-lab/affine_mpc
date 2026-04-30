@@ -40,7 +40,7 @@ public:
    * @param num_variables Number of QP decision variables.
    * @param num_constraints Number of QP constraints.
    */
-  OSQPSolver(const int num_variables, const int num_constraints);
+  OSQPSolver(int num_variables, int num_constraints);
 
   virtual ~OSQPSolver() = default;
 

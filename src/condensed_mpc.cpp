@@ -14,8 +14,8 @@ using namespace Eigen;
 namespace affine_mpc {
 
 
-CondensedMPC::CondensedMPC(const int state_dim,
-                           const int input_dim,
+CondensedMPC::CondensedMPC(int state_dim,
+                           int input_dim,
                            const Parameterization& param,
                            const Options& opts) :
     MPCBase(state_dim,
@@ -34,9 +34,9 @@ CondensedMPC::CondensedMPC(const int state_dim,
   S_.topRows(state_dim).setZero();
 }
 
-CondensedMPC::CondensedMPC(const int state_dim,
-                           const int input_dim,
-                           const int horizon_steps,
+CondensedMPC::CondensedMPC(int state_dim,
+                           int input_dim,
+                           int horizon_steps,
                            const Options& opts) :
     CondensedMPC(state_dim,
                  input_dim,

@@ -15,8 +15,8 @@ using namespace Eigen;
 namespace affine_mpc {
 
 
-SparseMPC::SparseMPC(const int state_dim,
-                     const int input_dim,
+SparseMPC::SparseMPC(int state_dim,
+                     int input_dim,
                      const Parameterization& param,
                      const Options& opts) :
     MPCBase(state_dim,
@@ -48,9 +48,9 @@ SparseMPC::SparseMPC(const int state_dim,
     A_(x_traj_seq, x_traj_seq).setIdentity();
 }
 
-SparseMPC::SparseMPC(const int state_dim,
-                     const int input_dim,
-                     const int horizon_steps,
+SparseMPC::SparseMPC(int state_dim,
+                     int input_dim,
+                     int horizon_steps,
                      const Options& opts) :
     SparseMPC(state_dim,
               input_dim,

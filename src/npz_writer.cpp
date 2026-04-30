@@ -63,7 +63,7 @@ void appendLittleEndian32(std::vector<std::uint8_t>& out, std::uint32_t value)
 
 void appendBytes(std::vector<std::uint8_t>& out,
                  const void* data,
-                 const size_t num_bytes)
+                 size_t num_bytes)
 {
   if (num_bytes == 0)
     return;
@@ -129,7 +129,7 @@ std::vector<std::uint8_t> makeNpyPayload(const T* data,
   return payload;
 }
 
-std::uint32_t crc32Fallback(const std::uint8_t* data, const size_t size)
+std::uint32_t crc32Fallback(const std::uint8_t* data, size_t size)
 {
   static std::array<std::uint32_t, 256> table{};
   static bool initialized{false};
@@ -159,7 +159,7 @@ std::uint32_t computeCrc32(const std::vector<std::uint8_t>& bytes)
 #endif
 }
 
-std::uint32_t toUint32Size(const size_t value, const char* const context)
+std::uint32_t toUint32Size(size_t value, const char* const context)
 {
   if (value > std::numeric_limits<std::uint32_t>::max()) {
     throw std::overflow_error(std::string{"[NpzWriter] "} + context
@@ -396,22 +396,22 @@ void NpzWriter::addArray(const std::string& name,
   addArrayImpl(name, data, shape);
 }
 
-void NpzWriter::addScalar(const std::string& name, const float value)
+void NpzWriter::addScalar(const std::string& name, float value)
 {
   addArray(name, &value, {1});
 }
 
-void NpzWriter::addScalar(const std::string& name, const double value)
+void NpzWriter::addScalar(const std::string& name, double value)
 {
   addArray(name, &value, {1});
 }
 
-void NpzWriter::addScalar(const std::string& name, const std::int32_t value)
+void NpzWriter::addScalar(const std::string& name, std::int32_t value)
 {
   addArray(name, &value, {1});
 }
 
-void NpzWriter::addScalar(const std::string& name, const std::int64_t value)
+void NpzWriter::addScalar(const std::string& name, std::int64_t value)
 {
   addArray(name, &value, {1});
 }

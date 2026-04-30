@@ -33,8 +33,8 @@ public:
    * @param param Input trajectory parameterization.
    * @param opts Optional MPC configuration features to enable.
    */
-  CondensedMPC(const int state_dim,
-               const int input_dim,
+  CondensedMPC(int state_dim,
+               int input_dim,
                const Parameterization& param,
                const Options& opts = Options{});
 
@@ -46,9 +46,9 @@ public:
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param opts Optional MPC configuration features to enable.
    */
-  CondensedMPC(const int state_dim,
-               const int input_dim,
-               const int horizon_steps,
+  CondensedMPC(int state_dim,
+               int input_dim,
+               int horizon_steps,
                const Options& opts = Options{});
 
   virtual ~CondensedMPC() = default;
