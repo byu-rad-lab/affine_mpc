@@ -9,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <streambuf>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -154,6 +155,31 @@ std::uint32_t computeCrc32(const std::vector<std::uint8_t>& bytes)
 #endif
 }
 
+std::uint32_t toUint32Size(const size_t value, const char* const context)
+{
+  if (value > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::overflow_error(std::string{"[NpzWriter] "} + context
+                              + " exceeds ZIP32 size limits.");
+  }
+  return static_cast<std::uint32_t>(value);
+}
+
+std::uint32_t toUint32Offset(const std::streampos position,
+                             const char* const context)
+{
+  if (position < std::streampos{0}) {
+    throw std::runtime_error(std::string{"[NpzWriter] Failed to query "}
+                             + context + ".");
+  }
+
+  const auto offset = static_cast<std::uint64_t>(position);
+  if (offset > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::overflow_error(std::string{"[NpzWriter] "} + context
+                              + " exceeds ZIP32 offset limits.");
+  }
+  return static_cast<std::uint32_t>(offset);
+}
+
 std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
                                         std::uint16_t& compression_method)
 {
@@ -244,7 +270,7 @@ struct NpzWriter::Impl
   void writeCentralDirectory()
   {
     const std::uint32_t central_dir_offset =
-        static_cast<std::uint32_t>(out.tellp());
+        toUint32Offset(out.tellp(), "central directory offset");
 
     for (const Entry& entry : entries) {
       std::vector<std::uint8_t> header;
@@ -272,7 +298,7 @@ struct NpzWriter::Impl
     }
 
     const std::uint32_t central_dir_end =
-        static_cast<std::uint32_t>(out.tellp());
+        toUint32Offset(out.tellp(), "central directory end offset");
     const std::uint32_t central_dir_size = central_dir_end - central_dir_offset;
 
     std::vector<std::uint8_t> end_record;
@@ -302,12 +328,15 @@ void NpzWriter::addArrayImpl(const std::string& name,
   const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
   Impl::Entry entry{};
   entry.filename = name + ".npy";
-  entry.uncompressed_size = static_cast<std::uint32_t>(npy_bytes.size());
-  entry.local_header_offset = static_cast<std::uint32_t>(impl_->out.tellp());
+  entry.uncompressed_size =
+      toUint32Size(npy_bytes.size(), "NPZ entry uncompressed size");
+  entry.local_header_offset =
+      toUint32Offset(impl_->out.tellp(), "NPZ entry local header offset");
   entry.crc32 = computeCrc32(npy_bytes);
   std::vector<std::uint8_t> payload =
       maybeCompress(npy_bytes, entry.compression_method);
-  entry.compressed_size = static_cast<std::uint32_t>(payload.size());
+  entry.compressed_size =
+      toUint32Size(payload.size(), "NPZ entry compressed size");
   impl_->writeLocalHeader(entry);
   impl_->writeBytes(payload);
   impl_->entries.push_back(std::move(entry));
