@@ -107,6 +107,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   include(cmake/extern_gtest.cmake)
+  find_package(Python COMPONENTS Interpreter QUIET)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
@@ -123,6 +124,29 @@ if(AFFINE_MPC_BUILD_TESTS)
   set_target_properties(npz_writer_fixture PROPERTIES FOLDER tests)
   target_link_libraries(npz_writer_fixture PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
   target_include_directories(npz_writer_fixture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+  if(Python_Interpreter_FOUND)
+    execute_process(
+      COMMAND "${Python_EXECUTABLE}" -m pytest --version
+      RESULT_VARIABLE pytest_found
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
+    if(pytest_found EQUAL 0)
+      add_test(
+        NAME python_npz_tests
+        COMMAND "${Python_EXECUTABLE}" -m pytest
+          "${CMAKE_CURRENT_SOURCE_DIR}/test/python_npz"
+      )
+      set_tests_properties(python_npz_tests PROPERTIES
+        ENVIRONMENT "AFFINE_MPC_NPZ_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/npz_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+      )
+    else()
+      message(FATAL_ERROR "pytest is required to register Python NPZ tests")
+    endif()
+  else()
+    message(FATAL_ERROR "Python interpreter is required to register Python NPZ tests")
+  endif()
 
   foreach(TEST_SRC IN LISTS TEST_SOURCES)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
