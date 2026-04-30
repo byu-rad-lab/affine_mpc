@@ -136,10 +136,44 @@ private:
     int precision = -1; ///< -1 for default.
   };
 
+  struct PayloadEntry
+  {
+    std::string name;
+    std::filesystem::path temp_path;
+    std::vector<size_t> shape;
+  };
+
   /**
    * @brief Opens the temporary binary files for writing.
    */
   void initTempFiles();
+
+  /**
+   * @brief Closes the temporary binary output streams before packaging.
+   */
+  void closeTempFiles();
+
+  /**
+   * @brief Builds the payload descriptors for temporary binary log files.
+   */
+  std::vector<PayloadEntry> buildPayloadEntries() const;
+
+  /**
+   * @brief Deletes temporary payload files after successful output generation.
+   */
+  void cleanupTempPayloads(const std::vector<PayloadEntry>& payloads) const;
+
+  /**
+   * @brief Writes the payload and metadata entries into the final NPZ archive.
+   */
+  void writeNpzFromPayloads(const std::vector<PayloadEntry>& payloads,
+                            const std::filesystem::path& npz_path) const;
+
+  /**
+   * @brief Writes standalone NPY fallback files for each payload entry.
+   */
+  void writeNpyFallback(const std::vector<PayloadEntry>& payloads,
+                        const std::filesystem::path& npy_dir) const;
 
   /**
    * @brief Internal raw logger: writes strided arrays directly to binary

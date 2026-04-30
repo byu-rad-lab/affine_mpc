@@ -221,6 +221,47 @@ void MPCLogger::finalize()
   if (is_finalized_)
     return;
 
+  closeTempFiles();
+
+  const std::filesystem::path npz_path = save_dir_ / (save_name_ + ".npz");
+  const std::filesystem::path npy_dir = save_dir_ / (save_name_ + "_npy");
+  const std::vector<PayloadEntry> payloads = buildPayloadEntries();
+
+  try {
+    writeNpzFromPayloads(payloads, npz_path);
+    writeParamFile();
+    cleanupTempPayloads(payloads);
+    is_finalized_ = true;
+    return;
+  } catch (const std::overflow_error& exc) {
+    if (std::filesystem::exists(npz_path))
+      std::filesystem::remove(npz_path);
+
+    try {
+      writeNpyFallback(payloads, npy_dir);
+      writeParamFile();
+      cleanupTempPayloads(payloads);
+      is_finalized_ = true;
+    } catch (...) {
+      if (std::filesystem::exists(npy_dir))
+        std::filesystem::remove_all(npy_dir);
+      throw;
+    }
+
+    throw std::runtime_error(
+        std::string{
+            "[MPCLogger::finalize] NPZ packaging exceeded ZIP32 limits: "}
+        + exc.what() + ". Wrote fallback NPY files to " + npy_dir.string()
+        + " and removed temporary payload files.");
+  } catch (...) {
+    if (std::filesystem::exists(npz_path))
+      std::filesystem::remove(npz_path);
+    throw;
+  }
+}
+
+void MPCLogger::closeTempFiles()
+{
   time_bin_.close();
   solve_times_bin_.close();
   states_bin_.close();
@@ -228,16 +269,10 @@ void MPCLogger::finalize()
   ref_states_bin_.close();
   if (ref_inputs_bin_.is_open())
     ref_inputs_bin_.close();
+}
 
-  struct PayloadEntry
-  {
-    std::string name;
-    std::filesystem::path temp_path;
-    std::vector<size_t> shape;
-  };
-
-  const std::filesystem::path npz_path = save_dir_ / (save_name_ + ".npz");
-  const std::filesystem::path npy_dir = save_dir_ / (save_name_ + "_npy");
+std::vector<MPCLogger::PayloadEntry> MPCLogger::buildPayloadEntries() const
+{
   const size_t N{static_cast<size_t>(num_logged_steps_)};
   const size_t K{strided_k_.size()};
   const size_t n{static_cast<size_t>(state_dim_)};
@@ -287,79 +322,60 @@ void MPCLogger::finalize()
     }
   }
 
-  const auto cleanupTemps = [&]() {
-    for (const auto& payload : payloads) {
-      if (std::filesystem::exists(payload.temp_path))
-        std::filesystem::remove(payload.temp_path);
-    }
-  };
+  return payloads;
+}
 
-  const auto writeFallbackNpy = [&]() {
-    if (std::filesystem::exists(npy_dir))
-      std::filesystem::remove_all(npy_dir);
-    std::filesystem::create_directories(npy_dir);
+void MPCLogger::cleanupTempPayloads(
+    const std::vector<PayloadEntry>& payloads) const
+{
+  for (const auto& payload : payloads) {
+    if (std::filesystem::exists(payload.temp_path))
+      std::filesystem::remove(payload.temp_path);
+  }
+}
 
-    for (const auto& payload : payloads) {
-      NpyWriter::writeDoubleArrayFromFile(npy_dir / (payload.name + ".npy"),
-                                          payload.temp_path, payload.shape);
-    }
-  };
+void MPCLogger::writeNpzFromPayloads(
+    const std::vector<PayloadEntry>& payloads,
+    const std::filesystem::path& npz_path) const
+{
+  NpzWriter writer(npz_path);
+  for (const auto& payload : payloads) {
+    auto data = loadBinary(payload.temp_path);
+    writer.addArray(payload.name, data.data(), payload.shape);
+  }
 
-  try {
-    NpzWriter writer(npz_path);
-    for (const auto& payload : payloads) {
-      auto data = loadBinary(payload.temp_path);
-      writer.addArray(payload.name, data.data(), payload.shape);
-    }
+  for (const auto& key : metadata_keys_) {
+    const auto& entry = metadata_registry_.at(key);
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, int>) {
+            writer.addScalar("meta_" + key, static_cast<std::int32_t>(arg));
+          } else if constexpr (std::is_same_v<T, double>) {
+            writer.addScalar("meta_" + key, arg);
+          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
+            writer.addArray("meta_" + key, arg.data(),
+                            {static_cast<size_t>(arg.size())});
+          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+            writer.addArray("meta_" + key, arg.data(), {arg.size()});
+          }
+        },
+        entry.value);
+  }
 
-    for (const auto& key : metadata_keys_) {
-      const auto& entry = metadata_registry_[key];
-      std::visit(
-          [&](auto&& arg) {
-            using T = std::decay_t<decltype(arg)>;
-            if constexpr (std::is_same_v<T, int>) {
-              writer.addScalar("meta_" + key, static_cast<std::int32_t>(arg));
-            } else if constexpr (std::is_same_v<T, double>) {
-              writer.addScalar("meta_" + key, arg);
-            } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-              writer.addArray("meta_" + key, arg.data(),
-                              {static_cast<size_t>(arg.size())});
-            } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-              writer.addArray("meta_" + key, arg.data(), {arg.size()});
-            }
-          },
-          entry.value);
-    }
+  writer.finalize();
+}
 
-    writer.finalize();
-    writeParamFile();
-    cleanupTemps();
-    is_finalized_ = true;
-    return;
-  } catch (const std::overflow_error& exc) {
-    if (std::filesystem::exists(npz_path))
-      std::filesystem::remove(npz_path);
+void MPCLogger::writeNpyFallback(const std::vector<PayloadEntry>& payloads,
+                                 const std::filesystem::path& npy_dir) const
+{
+  if (std::filesystem::exists(npy_dir))
+    std::filesystem::remove_all(npy_dir);
+  std::filesystem::create_directories(npy_dir);
 
-    try {
-      writeFallbackNpy();
-      writeParamFile();
-      cleanupTemps();
-      is_finalized_ = true;
-    } catch (...) {
-      if (std::filesystem::exists(npy_dir))
-        std::filesystem::remove_all(npy_dir);
-      throw;
-    }
-
-    throw std::runtime_error(
-        std::string{
-            "[MPCLogger::finalize] NPZ packaging exceeded ZIP32 limits: "}
-        + exc.what() + ". Wrote fallback NPY files to " + npy_dir.string()
-        + " and removed temporary payload files.");
-  } catch (...) {
-    if (std::filesystem::exists(npz_path))
-      std::filesystem::remove(npz_path);
-    throw;
+  for (const auto& payload : payloads) {
+    NpyWriter::writeDoubleArrayFromFile(npy_dir / (payload.name + ".npy"),
+                                        payload.temp_path, payload.shape);
   }
 }
 
