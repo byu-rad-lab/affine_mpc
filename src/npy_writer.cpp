@@ -63,6 +63,25 @@ void writeNpyHeaderV2(std::ofstream& fout, const std::vector<size_t>& shape)
 
 } // namespace
 
+void NpyWriter::writeDoubleHeader(const std::filesystem::path& header_path,
+                                  const std::vector<size_t>& shape)
+{
+  std::ofstream fout{header_path, std::ios::binary | std::ios::out};
+  if (!fout.is_open()) {
+    throw std::runtime_error(
+        "[NpyWriter] Failed to open output NPY header file: "
+        + header_path.string());
+  }
+
+  writeNpyHeaderV2(fout, shape);
+
+  if (!fout) {
+    throw std::runtime_error(
+        "[NpyWriter] Failed while writing output NPY header file: "
+        + header_path.string());
+  }
+}
+
 void NpyWriter::writeDoubleArrayFromFile(const std::filesystem::path& npy_path,
                                          const std::filesystem::path& raw_path,
                                          const std::vector<size_t>& shape)

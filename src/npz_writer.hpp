@@ -15,7 +15,15 @@ namespace affine_mpc {
 class NpzWriter
 {
 public:
-  explicit NpzWriter(const std::filesystem::path& path);
+  enum class CompressionMode
+  {
+    Stored,
+    Deflated,
+  };
+
+  explicit NpzWriter(
+      const std::filesystem::path& path,
+      CompressionMode compression_mode = CompressionMode::Deflated);
   ~NpzWriter() noexcept;
 
   NpzWriter(const NpzWriter&) = delete;

@@ -7,7 +7,6 @@
 #include <fstream>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -246,8 +245,14 @@ std::uint32_t toUint32Offset(const std::streampos position,
 }
 
 std::vector<std::uint8_t> maybeCompress(const std::vector<std::uint8_t>& bytes,
-                                        std::uint16_t& compression_method)
+                                        std::uint16_t& compression_method,
+                                        NpzWriter::CompressionMode mode)
 {
+  if (mode == NpzWriter::CompressionMode::Stored) {
+    compression_method = kZipMethodStored;
+    return bytes;
+  }
+
 #if AFFINE_MPC_HAS_ZLIB
   z_stream stream{};
   if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8,
@@ -388,7 +393,8 @@ streamCompressedFilePayload(const std::vector<std::uint8_t>& header,
 #endif
 
 FilePayloadInfo analyzeDoubleFilePayload(const std::filesystem::path& raw_path,
-                                         const std::vector<size_t>& shape)
+                                         const std::vector<size_t>& shape,
+                                         NpzWriter::CompressionMode mode)
 {
   const std::vector<std::uint8_t> header = makeNpyHeader<double>(shape);
   const std::uint32_t body_size = computePayloadSize<double>(shape);
@@ -421,11 +427,16 @@ FilePayloadInfo analyzeDoubleFilePayload(const std::filesystem::path& raw_path,
       toUint32Size(static_cast<std::uint64_t>(header.size()) + raw_size,
                    "NPZ entry uncompressed size");
 #if AFFINE_MPC_HAS_ZLIB
-  info.compression_method = kZipMethodDeflated;
-  info.compressed_size =
-      toUint32Size(streamCompressedFilePayload(
-                       header, raw_path, [](const std::uint8_t*, size_t) {}),
-                   "NPZ entry compressed size");
+  if (mode == NpzWriter::CompressionMode::Deflated) {
+    info.compression_method = kZipMethodDeflated;
+    info.compressed_size =
+        toUint32Size(streamCompressedFilePayload(
+                         header, raw_path, [](const std::uint8_t*, size_t) {}),
+                     "NPZ entry compressed size");
+  } else {
+    info.compression_method = kZipMethodStored;
+    info.compressed_size = info.uncompressed_size;
+  }
 #else
   info.compression_method = kZipMethodStored;
   info.compressed_size = info.uncompressed_size;
@@ -490,7 +501,9 @@ struct NpzWriter::Impl
     std::uint32_t local_header_offset;
   };
 
-  explicit Impl(const std::filesystem::path& path) : out{path, std::ios::binary}
+  explicit Impl(const std::filesystem::path& path,
+                NpzWriter::CompressionMode compression_mode) :
+      out{path, std::ios::binary}, compression_mode{compression_mode}
   {
     if (!out.is_open())
       throw std::runtime_error("[NpzWriter] Failed to open npz output file.");
@@ -499,6 +512,7 @@ struct NpzWriter::Impl
   std::ofstream out;
   std::vector<Entry> entries;
   bool finalized{false};
+  NpzWriter::CompressionMode compression_mode;
 
   void writeBytes(const std::vector<std::uint8_t>& bytes)
   {
@@ -593,8 +607,8 @@ void NpzWriter::addArrayImpl(const std::string& name,
   entry.local_header_offset =
       toUint32Offset(impl_->out.tellp(), "NPZ entry local header offset");
   entry.crc32 = computeCrc32(npy_bytes);
-  std::vector<std::uint8_t> payload{
-      maybeCompress(npy_bytes, entry.compression_method)};
+  std::vector<std::uint8_t> payload{maybeCompress(
+      npy_bytes, entry.compression_method, impl_->compression_mode)};
   entry.compressed_size =
       toUint32Size(payload.size(), "NPZ entry compressed size");
   impl_->writeLocalHeader(entry);
@@ -609,7 +623,8 @@ void NpzWriter::addDoubleArrayFromFile(const std::string& name,
   ensureNotFinalized();
 
   const std::vector<std::uint8_t> header = makeNpyHeader<double>(shape);
-  const FilePayloadInfo info = analyzeDoubleFilePayload(raw_path, shape);
+  const FilePayloadInfo info =
+      analyzeDoubleFilePayload(raw_path, shape, impl_->compression_mode);
 
   Impl::Entry entry{};
   entry.filename = name + ".npy";
@@ -626,8 +641,9 @@ void NpzWriter::addDoubleArrayFromFile(const std::string& name,
   impl_->entries.push_back(std::move(entry));
 }
 
-NpzWriter::NpzWriter(const std::filesystem::path& path) :
-    impl_(std::make_unique<Impl>(path))
+NpzWriter::NpzWriter(const std::filesystem::path& path,
+                     CompressionMode compression_mode) :
+    impl_(std::make_unique<Impl>(path, compression_mode))
 {}
 
 void NpzWriter::ensureNotFinalized() const

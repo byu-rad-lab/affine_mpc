@@ -12,6 +12,8 @@ namespace affine_mpc {
 class NpyWriter
 {
 public:
+  static void writeDoubleHeader(const std::filesystem::path& header_path,
+                                const std::vector<size_t>& shape);
   static void writeDoubleArrayFromFile(const std::filesystem::path& npy_path,
                                        const std::filesystem::path& raw_path,
                                        const std::vector<size_t>& shape);

@@ -89,6 +89,16 @@ def test_npz_writer_compression_mode():
             np.testing.assert_allclose(data["payload"][512], 1.2345)
 
 
+def test_npz_writer_stored_mode():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path = Path(tmpdir) / "stored_test.npz"
+        _run_fixture("npz_stored", npz_path)
+
+        with zipfile.ZipFile(npz_path) as archive:
+            info = archive.getinfo("payload.npy")
+            assert info.compress_type == zipfile.ZIP_STORED
+
+
 def test_npz_writer_file_backed_roundtrip():
     with tempfile.TemporaryDirectory() as tmpdir:
         npz_path = Path(tmpdir) / "file_backed_test.npz"

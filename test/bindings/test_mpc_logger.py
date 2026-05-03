@@ -38,6 +38,7 @@ def _log_single_step(
     prediction_stride: int,
     log_control_points: bool,
     use_input_cost: bool = True,
+    mode: ampc.MPCLogger.Mode = ampc.MPCLogger.Mode.NpzCompressed,
 ):
     mpc = _make_mpc(use_input_cost=use_input_cost)
     logger = ampc.MPCLogger(
@@ -47,6 +48,7 @@ def _log_single_step(
         prediction_stride=prediction_stride,
         log_control_points=log_control_points,
         save_name=save_name,
+        mode=mode,
     )
 
     x0 = np.array([1.0, 0.5])
@@ -54,13 +56,13 @@ def _log_single_step(
     logger.logStep(t=0.0, x0=x0, solve_time=0.001)
     logger.finalize()
 
-    return save_dir / f"{save_name}.npz", save_dir / "params.yaml"
+    return save_dir / f"{save_name}.npz", save_dir / "params.yaml", save_dir / f"{save_name}_raw", save_dir / f"{save_name}_npy"
 
 
 def test_mpc_logger_interface():
     with tempfile.TemporaryDirectory() as tmpdir:
         folder = Path(tmpdir)
-        npz_path, param_path = _log_single_step(
+        npz_path, param_path, _, _ = _log_single_step(
             folder,
             "log",
             prediction_stride=1,
@@ -74,7 +76,7 @@ def test_mpc_logger_interface():
 
 def test_mpc_logger_npz_contents_default_stride():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, param_path = _log_single_step(
+        npz_path, param_path, _, _ = _log_single_step(
             Path(tmpdir),
             "conv_log",
             prediction_stride=1,
@@ -91,7 +93,7 @@ def test_mpc_logger_npz_contents_default_stride():
 
 def test_mpc_logger_stride_behavior():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, _ = _log_single_step(
+        npz_path, _, _, _ = _log_single_step(
             Path(tmpdir),
             "stride_log",
             prediction_stride=2,
@@ -106,7 +108,7 @@ def test_mpc_logger_stride_behavior():
 
 def test_mpc_logger_control_points_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, _ = _log_single_step(
+        npz_path, _, _, _ = _log_single_step(
             Path(tmpdir),
             "ctrl_log",
             prediction_stride=1,
@@ -120,7 +122,7 @@ def test_mpc_logger_control_points_mode():
 
 def test_mpc_logger_zero_stride_squeezes_arrays():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, _ = _log_single_step(
+        npz_path, _, _, _ = _log_single_step(
             Path(tmpdir),
             "squeeze_log",
             prediction_stride=0,
@@ -134,7 +136,7 @@ def test_mpc_logger_zero_stride_squeezes_arrays():
 
 def test_mpc_logger_without_input_cost():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, _ = _log_single_step(
+        npz_path, _, _, _ = _log_single_step(
             Path(tmpdir),
             "no_input_cost",
             prediction_stride=1,
@@ -149,7 +151,7 @@ def test_mpc_logger_without_input_cost():
 
 def test_mpc_logger_npz_compression_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
-        npz_path, _ = _log_single_step(
+        npz_path, _, _, _ = _log_single_step(
             Path(tmpdir),
             "compression_log",
             prediction_stride=1,
@@ -160,3 +162,58 @@ def test_mpc_logger_npz_compression_mode():
             info = archive.getinfo("states.npy")
             expected = zipfile.ZIP_DEFLATED if _has_zlib() else zipfile.ZIP_STORED
             assert info.compress_type == expected
+
+
+def test_mpc_logger_npz_uncompressed_mode():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        npz_path, param_path, raw_dir, _ = _log_single_step(
+            Path(tmpdir),
+            "stored_log",
+            prediction_stride=1,
+            log_control_points=False,
+            mode=ampc.MPCLogger.Mode.NpzUncompressed,
+        )
+
+        assert param_path.exists()
+        assert npz_path.exists()
+        assert not raw_dir.exists()
+
+        with zipfile.ZipFile(npz_path) as archive:
+            info = archive.getinfo("states.npy")
+            assert info.compress_type == zipfile.ZIP_STORED
+
+
+def test_mpc_logger_npy_mode_outputs_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _, param_path, raw_dir, npy_dir = _log_single_step(
+            Path(tmpdir),
+            "npy_log",
+            prediction_stride=1,
+            log_control_points=False,
+            mode=ampc.MPCLogger.Mode.Npy,
+        )
+
+        assert param_path.exists()
+        assert npy_dir.exists()
+        assert not raw_dir.exists()
+
+        states = np.load(npy_dir / "states.npy", allow_pickle=False)
+        np.testing.assert_equal(states.shape, (1, 6, 2))
+
+
+def test_mpc_logger_raw_recoverable_mode_outputs_sidecars():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _, _, raw_dir, npy_dir = _log_single_step(
+            Path(tmpdir),
+            "raw_log",
+            prediction_stride=1,
+            log_control_points=False,
+            mode=ampc.MPCLogger.Mode.RawRecoverable,
+        )
+
+        assert raw_dir.exists()
+        assert not npy_dir.exists()
+        assert (raw_dir / "params.yaml").exists()
+        assert (raw_dir / "data_info.yaml").exists()
+        assert (raw_dir / "states.bin").exists()
+        assert (raw_dir / "states.npyh").exists()

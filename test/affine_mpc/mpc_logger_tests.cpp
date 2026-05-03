@@ -53,10 +53,12 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
   EXPECT_TRUE(fs::exists(test_dir_));
   EXPECT_TRUE(fs::is_directory(test_dir_));
 
-  EXPECT_TRUE(fs::exists(test_dir_ / "test_log_time.tmp"));
-  EXPECT_TRUE(fs::exists(test_dir_ / "test_log_states.tmp"));
-  EXPECT_TRUE(fs::exists(test_dir_ / "test_log_inputs.tmp"));
-  EXPECT_TRUE(fs::exists(test_dir_ / "test_log_solve_times.tmp"));
+  const fs::path raw_dir = test_dir_ / "test_log_raw";
+  EXPECT_TRUE(fs::exists(raw_dir));
+  EXPECT_TRUE(fs::exists(raw_dir / "time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "states.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "inputs.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "solve_times.bin"));
 }
 
 TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
@@ -69,6 +71,54 @@ TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
   logger.finalize();
 
   EXPECT_TRUE(fs::exists(test_dir_ / "conv_log.npz"));
+  EXPECT_FALSE(fs::exists(test_dir_ / "conv_log_raw"));
+}
+
+TEST_F(MPCLoggerTest, RawRecoverableModeWritesRecoverableOutputs)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "raw_log",
+                         ampc::MPCLogger::Mode::RawRecoverable);
+
+  Eigen::Vector2d x0{1.0, 0.5};
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
+  logger.logStep(0.0, x0, 0.001);
+  logger.finalize();
+
+  const fs::path raw_dir = test_dir_ / "raw_log_raw";
+  EXPECT_TRUE(fs::exists(raw_dir / "states.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "states.npyh"));
+  EXPECT_TRUE(fs::exists(raw_dir / "params.yaml"));
+  EXPECT_TRUE(fs::exists(raw_dir / "data_info.yaml"));
+  EXPECT_FALSE(fs::exists(test_dir_ / "raw_log.npz"));
+}
+
+TEST_F(MPCLoggerTest, NpyModeWritesNpyDirectory)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "npy_log",
+                         ampc::MPCLogger::Mode::Npy);
+
+  Eigen::Vector2d x0{1.0, 0.5};
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
+  logger.logStep(0.0, x0, 0.001);
+  logger.finalize();
+
+  EXPECT_TRUE(fs::exists(test_dir_ / "npy_log_npy" / "states.npy"));
+  EXPECT_TRUE(fs::exists(test_dir_ / "params.yaml"));
+  EXPECT_FALSE(fs::exists(test_dir_ / "npy_log_raw"));
+}
+
+TEST_F(MPCLoggerTest, NpzUncompressedModeWritesArchive)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "stored_log",
+                         ampc::MPCLogger::Mode::NpzUncompressed);
+
+  Eigen::Vector2d x0{1.0, 0.5};
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
+  logger.logStep(0.0, x0, 0.001);
+  logger.finalize();
+
+  EXPECT_TRUE(fs::exists(test_dir_ / "stored_log.npz"));
+  EXPECT_FALSE(fs::exists(test_dir_ / "stored_log_raw"));
 }
 
 TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)

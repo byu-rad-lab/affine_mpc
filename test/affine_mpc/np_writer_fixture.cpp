@@ -47,6 +47,12 @@ int main(int argc, char** argv)
       const std::vector<double> payload(1024, 1.2345);
       writer.addArray("payload", payload.data(), {payload.size()});
       writer.finalize();
+    } else if (case_name == "npz_stored") {
+      ampc::NpzWriter writer(output_path,
+                             ampc::NpzWriter::CompressionMode::Stored);
+      const std::vector<double> payload(1024, 1.2345);
+      writer.addArray("payload", payload.data(), {payload.size()});
+      writer.finalize();
     } else if (case_name == "npz_file_basic") {
       const fs::path raw_path =
           output_path.parent_path() / "npz_file_basic.raw";
