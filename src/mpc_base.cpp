@@ -1,14 +1,14 @@
 #include "affine_mpc/mpc_base.hpp"
 
-#include <cassert>   // for assert
-#include <stdexcept> // for exceptions
+#include <Eigen/Core>
+#include <cassert>
+#include <osqp.h>
+#include <stdexcept>
+#include <unsupported/Eigen/Splines>
 
-// #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-#include "eigen_compat.hpp"          // revmove this once Eigen 3.5 is required
-#include <osqp.h>                    // for OSQPSettings
-#include <unsupported/Eigen/Splines> // for B-spline support
+#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required
@@ -524,20 +524,19 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 
   const IOFormat fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
-  os << "\n  Q=" << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
-     << "\n  Qf=" << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
+  os << "\n  Q = " << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
+     << "\n  Qf = " << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
   if (mpc.opts_.use_input_cost)
-    os << "\n  R=" << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
-  os << "\n  u_min=" << mpc.u_min_.format(fmt)
-     << "\n  u_max=" << mpc.u_max_.format(fmt);
+    os << "\n  R = " << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
+  os << "\n  u_min = " << mpc.u_min_.format(fmt)
+     << "\n  u_max = " << mpc.u_max_.format(fmt);
   if (mpc.opts_.saturate_states)
-    os << "\n  x_min=" << mpc.x_min_.format(fmt)
-       << "\n  x_max=" << mpc.x_max_.format(fmt);
+    os << "\n  x_min = " << mpc.x_min_.format(fmt)
+       << "\n  x_max = " << mpc.x_max_.format(fmt);
   if (mpc.opts_.slew_initial_input)
-    os << "\n  u0_slew=" << mpc.u0_slew_.format(fmt);
+    os << "\n  u0_slew = " << mpc.u0_slew_.format(fmt);
   if (mpc.opts_.slew_control_points)
-    os << "\n  control_point_slew=" << mpc.ctrls_slew_.format(fmt);
-  os << ')';
+    os << "\n  control_point_slew = " << mpc.ctrls_slew_.format(fmt);
   return os;
 }
 
@@ -551,7 +550,7 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
      << ", input_dim=" << mpc.input_dim_ << ", parameterization=" << param
      << ", options=";
   print(os, mpc.opts_, capitalize_bools);
-  os << ", solver_initialized = ";
+  os << ", solver_initialized=";
   if (capitalize_bools)
     os << (mpc.solver_initialized_ ? "True" : "False");
   else

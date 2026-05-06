@@ -1,6 +1,11 @@
 #ifndef AFFINE_MPC_MPC_BASE_HPP
 #define AFFINE_MPC_MPC_BASE_HPP
 
+/**
+ * @file mpc_base.hpp
+ * @brief Defines the abstract MPCBase class.
+ */
+
 #include <Eigen/Core>
 #include <iosfwd>
 #include <memory>
@@ -9,11 +14,6 @@
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-
-/**
- * @file mpc_base.hpp
- * @brief Defines the abstract MPCBase class.
- */
 
 namespace affine_mpc {
 

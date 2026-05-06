@@ -1,17 +1,17 @@
 #ifndef AFFINE_MPC_OSQP_SOLVER_HPP
 #define AFFINE_MPC_OSQP_SOLVER_HPP
 
+/**
+ * @file osqp_solver.hpp
+ * @brief Defines the OSQPSolver class (a wrapper for OSQP c code).
+ */
+
 #include <Eigen/Core>
 #include <iosfwd>
 #include <memory>
 #include <osqp.h>
 
 #include "affine_mpc/solve_status.hpp"
-
-/**
- * @file osqp_solver.hpp
- * @brief Defines the OSQPSolver class (a wrapper for OSQP c code).
- */
 
 namespace affine_mpc {
 

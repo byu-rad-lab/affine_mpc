@@ -1,16 +1,16 @@
 #ifndef AFFINE_MPC_SPARSE_MPC_HPP
 #define AFFINE_MPC_SPARSE_MPC_HPP
 
+/**
+ * @file sparse_mpc.hpp
+ * @brief Defines the SparseMPC class (sparse MPC formulation).
+ */
+
 #include <Eigen/Core>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-
-/**
- * @file sparse_mpc.hpp
- * @brief Defines the SparseMPC class (sparse MPC formulation).
- */
 
 namespace affine_mpc {
 

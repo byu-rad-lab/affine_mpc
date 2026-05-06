@@ -1,6 +1,15 @@
 #ifndef AFFINE_MPC_MPC_LOGGER_HPP
 #define AFFINE_MPC_MPC_LOGGER_HPP
 
+/**
+ * @file mpc_logger.hpp
+ * @brief Defines the MPCLogger class for logging MPC data.
+ *
+ * The logger is designed to be flexible in how it captures and finalizes data,
+ * allowing users to choose between raw recoverable payloads, standalone NPY
+ * files, or single NPZ archives based on their needs and constraints.
+ */
+
 #include <Eigen/Core>
 #include <filesystem>
 #include <fstream>
@@ -81,7 +90,7 @@ public:
    *   under `<save_name>_raw/` during logging.
    *   - RawRecoverable: saves data `*.bin`, NPY header info `*.npyh`, and
    *     readable header info `data_info.yaml` all to `<save_name>_raw/`.
-   *   - NPY: saves data arrays to `<save_name>_npy/*.npy`.
+   *   - NPY: saves `*.npy` data arrays to `<save_name>_npy/`.
    *   - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
    *   - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
    *

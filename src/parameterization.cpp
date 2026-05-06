@@ -1,11 +1,11 @@
 #include "affine_mpc/parameterization.hpp"
 
-// #include <Eigen/Core>    // revert back to this once Eigen 3.5 is required
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
-#include <sstream>
+#include <Eigen/Core>
 #include <ostream>
 #include <stdexcept>
 #include <unsupported/Eigen/Splines>
+
+#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 
 namespace affine_mpc {
 

@@ -1,11 +1,11 @@
 #include "affine_mpc/condensed_mpc.hpp"
 
-// #include <Eigen/Core> // revert back to this once Eigen 3.5 is required
-#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
+#include <Eigen/Core>
 #include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/osqp_solver.hpp"
+#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required

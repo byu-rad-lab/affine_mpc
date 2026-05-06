@@ -1,14 +1,14 @@
 #ifndef AFFINE_MPC_CONDENSED_MPC_HPP
 #define AFFINE_MPC_CONDENSED_MPC_HPP
 
-#include <Eigen/Core>
-
-#include "affine_mpc/mpc_base.hpp"
-
 /**
  * @file condensed_mpc.hpp
  * @brief Defines the CondensedMPC class (condensed MPC formulation).
  */
+
+#include <Eigen/Core>
+
+#include "affine_mpc/mpc_base.hpp"
 
 namespace affine_mpc {
 
