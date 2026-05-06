@@ -203,7 +203,13 @@ x_next = mpc.propagateModel(xk, uk, x_next)  # can pass in output arg to avoid m
 Create a logger bound to one MPC object:
 
 ```python
-logger = ampc.MPCLogger(mpc, save_dir, ts, prediction_stride=1)
+logger = ampc.MPCLogger(
+    mpc,
+    save_dir,
+    ts,
+    prediction_stride=1,
+    mode=ampc.MPCLogger.Mode.NpzCompressed,
+)
 ```
 
 Inside the control loop:

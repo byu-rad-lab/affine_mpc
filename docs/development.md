@@ -10,6 +10,7 @@ This guide summarizes the repository layout, formatting and testing workflow, an
 - `python/bindings/` - pybind11 binding implementation
 - `test/affine_mpc/` - unit tests
 - `test/bindings/` - Python binding tests
+- `test/python_npz/` - Python/NumPy tests for NPZ fixtures and archive compatibility
 - `examples/` - example simulation and plotting scripts
 - `docs/` - user-facing documentation and Zensical source
 - `cmake/` - dependency and package configuration helpers
@@ -36,6 +37,18 @@ Run all tests:
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+Run the Python test groups directly after building:
+
+```sh
+pytest test/bindings
+pytest test/python_npz
+```
+
+Notes:
+
+- `test/bindings/` prefers a repo-local Python package in `install/`, then `build/python/`, then `out/Debug/python/`
+- `test/python_npz/` uses the `np_writer_fixture` helper executable from the build tree and does not import the `affine_mpc` Python package
 
 Run a single executable:
 
@@ -98,6 +111,7 @@ This makes diffs and review comments more localized without affecting rendered o
 - add or update tests for solver logic, indexing, references, constraints, and API behavior
 - use `test/affine_mpc/utils.hpp` helpers such as `expectEigenNear(...)`
 - it is normal for tests to derive helper classes from production classes to expose protected behavior
+- NPZ output compatibility is validated from Python with `numpy.load(...)` and `zipfile`, not from a C++ archive reader
 
 ## Documentation Expectations
 
