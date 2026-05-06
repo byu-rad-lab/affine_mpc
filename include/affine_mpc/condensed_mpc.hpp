@@ -1,14 +1,14 @@
 #ifndef AFFINE_MPC_CONDENSED_MPC_HPP
 #define AFFINE_MPC_CONDENSED_MPC_HPP
 
-#include <Eigen/Core>
-
-#include "affine_mpc/mpc_base.hpp"
-
 /**
  * @file condensed_mpc.hpp
  * @brief Defines the CondensedMPC class (condensed MPC formulation).
  */
+
+#include <Eigen/Core>
+
+#include "affine_mpc/mpc_base.hpp"
 
 namespace affine_mpc {
 
@@ -33,8 +33,8 @@ public:
    * @param param Input trajectory parameterization.
    * @param opts Optional MPC configuration features to enable.
    */
-  CondensedMPC(const int state_dim,
-               const int input_dim,
+  CondensedMPC(int state_dim,
+               int input_dim,
                const Parameterization& param,
                const Options& opts = Options{});
 
@@ -46,9 +46,9 @@ public:
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param opts Optional MPC configuration features to enable.
    */
-  CondensedMPC(const int state_dim,
-               const int input_dim,
-               const int horizon_steps,
+  CondensedMPC(int state_dim,
+               int input_dim,
+               int horizon_steps,
                const Options& opts = Options{});
 
   virtual ~CondensedMPC() = default;
@@ -61,6 +61,7 @@ public:
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
 protected: // for testing
+  const char* getClassName() const noexcept override { return "CondensedMPC"; }
   void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
   void updateS();

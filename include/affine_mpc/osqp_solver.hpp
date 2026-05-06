@@ -1,16 +1,17 @@
 #ifndef AFFINE_MPC_OSQP_SOLVER_HPP
 #define AFFINE_MPC_OSQP_SOLVER_HPP
 
-#include <Eigen/Core>
-#include <memory>
-#include <osqp.h>
-
-#include "affine_mpc/solve_status.hpp"
-
 /**
  * @file osqp_solver.hpp
  * @brief Defines the OSQPSolver class (a wrapper for OSQP c code).
  */
+
+#include <Eigen/Core>
+#include <iosfwd>
+#include <memory>
+#include <osqp.h>
+
+#include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
 
@@ -40,7 +41,7 @@ public:
    * @param num_variables Number of QP decision variables.
    * @param num_constraints Number of QP constraints.
    */
-  OSQPSolver(const int num_variables, const int num_constraints);
+  OSQPSolver(int num_variables, int num_constraints);
 
   virtual ~OSQPSolver() = default;
 
@@ -184,6 +185,14 @@ protected:          // Not private for unit tests
   VectorXI P_p_;    ///< Column pointers for P.
   VectorXI A_p_;    ///< Column pointers for A.
 };
+
+/**
+ * @brief Stream a detailed multiline summary of OSQP solver settings.
+ * @param os Output stream.
+ * @param settings OSQP settings to print.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings);
 
 } // namespace affine_mpc
 

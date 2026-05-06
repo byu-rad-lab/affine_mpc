@@ -403,13 +403,21 @@ Create a logger bound to one MPC object:
 === "Python"
 
     ```python
-    logger = ampc.MPCLogger(mpc, save_dir, ts, prediction_stride=1)
+    logger = ampc.MPCLogger(
+        mpc,
+        save_dir,
+        ts,
+        prediction_stride=1,
+        mode=ampc.MPCLogger.Mode.NpzCompressed,
+    )
     ```
 
 === "C++"
 
     ```cpp
-    affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt};
+    affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt, 1, false,
+                                 "log",
+                                 affine_mpc::MPCLogger::Mode::NpzCompressed};
     ```
 
 Inside the control loop:

@@ -64,6 +64,12 @@ def test_mpc_base_interface():
     assert hasattr(mpc, "getInputTrajectory")
     assert hasattr(mpc, "getPredictedStateTrajectory")
 
+    assert (
+        repr(mpc)
+        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+    )
+    assert str(mpc).startswith("MPCBase:\n  state_dim = 2\n  input_dim = 1\n")
+
     assert function_fails(mpc.initializeSolver, solver_settings=None)
     assert function_fails(mpc.initializeSolver, solver_settings=ampc.OSQPSettings())
 

@@ -1,13 +1,13 @@
 #ifndef AFFINE_MPC_SOLVE_STATUS_HPP
 #define AFFINE_MPC_SOLVE_STATUS_HPP
 
-#include <osqp_api_constants.h>
-#include <ostream>
-
 /**
  * @file solve_status.hpp
  * @brief Defines SolveStatus enum and related helpers for OSQP solve results.
  */
+
+#include <iosfwd>
+#include <osqp_api_constants.h>
 
 namespace affine_mpc {
 
@@ -35,7 +35,7 @@ enum class SolveStatus
  * @param osqp_status Integer status code from OSQP.
  * @return Corresponding SolveStatus value.
  */
-inline SolveStatus osqpStatusToSolveStatus(const int osqp_status)
+inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
 {
   switch (osqp_status) {
   case osqp_status_type::OSQP_SOLVED:
@@ -61,45 +61,12 @@ inline SolveStatus osqpStatusToSolveStatus(const int osqp_status)
 }
 
 /**
- * @brief Converts a SolveStatus value to a human-readable string.
- * @param status SolveStatus value.
- * @return String representation of the status.
- */
-inline const char* toString(const SolveStatus status)
-{
-  switch (status) {
-  case SolveStatus::Success:
-    return "Success";
-  case SolveStatus::NotInitialized:
-    return "NotInitialized";
-  case SolveStatus::SolvedInaccurate:
-    return "SolvedInaccurate";
-  case SolveStatus::PrimalInfeasible:
-    return "PrimalInfeasible";
-  case SolveStatus::DualInfeasible:
-    return "DualInfeasible";
-  case SolveStatus::MaxIterReached:
-    return "MaxIterReached";
-  case SolveStatus::TimeLimitReached:
-    return "TimeLimitReached";
-  case SolveStatus::OtherFailure:
-    return "OtherFailure";
-  default:
-    return "Unknown";
-  }
-}
-
-/**
  * @brief Stream output operator for SolveStatus.
  * @param os Output stream.
  * @param status SolveStatus value.
  * @return Reference to the output stream.
  */
-inline std::ostream& operator<<(std::ostream& os, const SolveStatus status)
-{
-  os << toString(status);
-  return os;
-}
+std::ostream& operator<<(std::ostream& os, const SolveStatus status);
 
 } // namespace affine_mpc
 

@@ -26,18 +26,22 @@ endif()
 # --------------------------------------------------
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
-include(cmake/extern_cnpy.cmake)
+find_package(ZLIB QUIET)
 
 # --------------------------------------------------
 # Main library
 # --------------------------------------------------
 add_library(${PROJECT_NAME}
-  src/mpc_base.cpp
+  src/options.cpp
+  src/parameterization.cpp
+  src/solve_status.cpp
   src/osqp_solver.cpp
+  src/mpc_base.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
-  src/parameterization.cpp
   src/mpc_logger.cpp
+  src/npy_writer.cpp
+  src/npz_writer.cpp
 )
 
 # Namespaced alias
@@ -60,12 +64,22 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 # Link dependencies
 target_link_libraries(${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
   PUBLIC osqp::osqp
-  PRIVATE $<BUILD_INTERFACE:cnpy::cnpy>
 )
+
+if(TARGET ZLIB::ZLIB)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE AFFINE_MPC_HAS_ZLIB=1)
+else()
+  target_compile_definitions(${PROJECT_NAME} PRIVATE AFFINE_MPC_HAS_ZLIB=0)
+endif()
 
 # C++ standard
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
@@ -96,6 +110,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   include(cmake/extern_gtest.cmake)
+  find_package(Python COMPONENTS Interpreter QUIET)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
@@ -104,8 +119,37 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
+    test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
   )
+
+  add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
+  set_target_properties(np_writer_fixture PROPERTIES FOLDER tests)
+  target_link_libraries(np_writer_fixture PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+  target_include_directories(np_writer_fixture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+  if(Python_Interpreter_FOUND)
+    execute_process(
+      COMMAND "${Python_EXECUTABLE}" -m pytest --version
+      RESULT_VARIABLE pytest_found
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
+    if(pytest_found EQUAL 0)
+      add_test(
+        NAME python_npz_tests
+        COMMAND "${Python_EXECUTABLE}" -m pytest
+          "${CMAKE_CURRENT_SOURCE_DIR}/test/python_npz"
+      )
+      set_tests_properties(python_npz_tests PROPERTIES
+        ENVIRONMENT "AFFINE_MPC_NP_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/np_writer_fixture;AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+      )
+    else()
+      message(FATAL_ERROR "pytest is required to register Python NPZ tests")
+    endif()
+  else()
+    message(FATAL_ERROR "Python interpreter is required to register Python NPZ tests")
+  endif()
 
   foreach(TEST_SRC IN LISTS TEST_SOURCES)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
@@ -114,8 +158,10 @@ if(AFFINE_MPC_BUILD_TESTS)
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
-      cnpy::cnpy
     )
+    if(TEST_NAME STREQUAL "npz_writer_tests")
+      target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
 endif()

@@ -1,14 +1,19 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
+
+#include <sstream>
 #include <unsupported/Eigen/Splines>
 
+#include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/sparse_mpc.hpp"
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
 using namespace Eigen;
+using ampc::operator<<;
 
 // Tests use varying parameters for the MPCBase class, so a GTest fixture is not
 // used
@@ -192,6 +197,101 @@ TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
                               base.getQbig().diagonal(), 1e-6));
   ASSERT_TRUE(expectEigenNear(Rbig_expected.diagonal(),
                               base.getRbig().diagonal(), 1e-6));
+}
+
+TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
+{
+  const ampc::Parameterization param{5, 1, 3};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .slew_control_points = true,
+                           .saturate_states = true};
+  ampc::CondensedMPC condensed{2, 1, param, opts};
+  ampc::SparseMPC sparse{2, 1, param, opts};
+
+  condensed.setStateWeights(Vector2d{1.0, 2.0}, Vector2d{3.0, 4.0});
+  condensed.setInputWeights(Vector<double, 1>{5.0});
+  condensed.setInputLimits(Vector<double, 1>{-6.0}, Vector<double, 1>{7.0});
+  condensed.setStateLimits(Vector2d{-8.0, -9.0}, Vector2d{10.0, 11.0});
+  condensed.setSlewRateInitial(Vector<double, 1>{12.0});
+  condensed.setSlewRate(Vector<double, 1>{13.0});
+
+  sparse.setStateWeights(Vector2d{1.0, 2.0}, Vector2d{3.0, 4.0});
+  sparse.setInputWeights(Vector<double, 1>{5.0});
+  sparse.setInputLimits(Vector<double, 1>{-6.0}, Vector<double, 1>{7.0});
+  sparse.setStateLimits(Vector2d{-8.0, -9.0}, Vector2d{10.0, 11.0});
+  sparse.setSlewRateInitial(Vector<double, 1>{12.0});
+  sparse.setSlewRate(Vector<double, 1>{13.0});
+
+  std::ostringstream condensed_ss;
+  condensed_ss << condensed;
+  EXPECT_EQ(condensed_ss.str(),
+            "CondensedMPC:\n"
+            "  state_dim = 2\n"
+            "  input_dim = 1\n"
+            "  parameterization = Parameterization(horizon_steps=5, degree=1, "
+            "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
+            "  options = Options(use_input_cost=true, slew_initial_input=true, "
+            "slew_control_points=true, saturate_states=true, "
+            "saturate_input_trajectory=false)\n"
+            "  solver_initialized = false\n"
+            "  Q = [1, 2]\n"
+            "  Qf = [3, 4]\n"
+            "  R = [5]\n"
+            "  u_min = [-6]\n"
+            "  u_max = [7]\n"
+            "  x_min = [-8, -9]\n"
+            "  x_max = [10, 11]\n"
+            "  u0_slew = [12]\n"
+            "  control_point_slew = [13]");
+
+  std::ostringstream condensed_summary_ss;
+  ampc::printInline(condensed_summary_ss, condensed);
+  EXPECT_EQ(condensed_summary_ss.str(),
+            "CondensedMPC(state_dim=2, input_dim=1, "
+            "parameterization=Parameterization(horizon_steps=5, degree=1, "
+            "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
+            "options=Options(use_input_cost=true, slew_initial_input=true, "
+            "slew_control_points=true, saturate_states=true, "
+            "saturate_input_trajectory=false), solver_initialized=false, "
+            "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
+            "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
+            "control_point_slew=[13])");
+
+  std::ostringstream sparse_ss;
+  sparse_ss << sparse;
+  EXPECT_EQ(sparse_ss.str(),
+            "SparseMPC:\n"
+            "  state_dim = 2\n"
+            "  input_dim = 1\n"
+            "  parameterization = Parameterization(horizon_steps=5, degree=1, "
+            "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
+            "  options = Options(use_input_cost=true, slew_initial_input=true, "
+            "slew_control_points=true, saturate_states=true, "
+            "saturate_input_trajectory=false)\n"
+            "  solver_initialized = false\n"
+            "  Q = [1, 2]\n"
+            "  Qf = [3, 4]\n"
+            "  R = [5]\n"
+            "  u_min = [-6]\n"
+            "  u_max = [7]\n"
+            "  x_min = [-8, -9]\n"
+            "  x_max = [10, 11]\n"
+            "  u0_slew = [12]\n"
+            "  control_point_slew = [13]");
+
+  std::ostringstream sparse_summary_ss;
+  ampc::printInline(sparse_summary_ss, sparse);
+  EXPECT_EQ(sparse_summary_ss.str(),
+            "SparseMPC(state_dim=2, input_dim=1, "
+            "parameterization=Parameterization(horizon_steps=5, degree=1, "
+            "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
+            "options=Options(use_input_cost=true, slew_initial_input=true, "
+            "slew_control_points=true, saturate_states=true, "
+            "saturate_input_trajectory=false), solver_initialized=false, "
+            "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
+            "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
+            "control_point_slew=[13])");
 }
 
 TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)

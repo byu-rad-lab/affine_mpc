@@ -1,6 +1,8 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 
+#include <sstream>
+
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
 
@@ -8,6 +10,7 @@
 
 using namespace Eigen;
 namespace ampc = affine_mpc;
+using ampc::operator<<;
 
 
 // ---- static unform clamped knots -------------------------------------------
@@ -208,6 +211,17 @@ TEST(ParameterizationDirectConstructor, givenNcEqualsT_deg1_FormsKnotsCorrectly)
   VectorXd knots_expected{7};
   knots_expected << 0, 0, 1, 2, 3, 4, 4;
   ASSERT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-15));
+}
+
+TEST(ParameterizationStreamOperator, givenParameterization_FormatsSummary)
+{
+  const ampc::Parameterization p{5, 1, 3};
+  std::ostringstream oss;
+  oss << p;
+
+  EXPECT_EQ(oss.str(),
+            "Parameterization(horizon_steps=5, degree=1, num_control_points=3, "
+            "knots=[0, 0, 2, 4, 4])");
 }
 
 // ---- Methods ---------------------------------------------------------------

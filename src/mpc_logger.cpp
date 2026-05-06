@@ -1,14 +1,18 @@
 #include "affine_mpc/mpc_logger.hpp"
 
-#include <cnpy.h>
-#include <cstdlib>
+#include <Eigen/Core>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <type_traits>
+
+#include "npy_writer.hpp"
+#include "npz_writer.hpp"
 
 namespace affine_mpc {
 
-namespace { // utilities for this file
+namespace {
 
 const Eigen::IOFormat kVectorFormat(
     Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ", "", "", "[", "]");
@@ -27,30 +31,49 @@ std::string vec2Str(const Eigen::VectorXd& vec, int precision)
 void writeBinary(std::ofstream& fout,
                  const Eigen::Ref<const Eigen::VectorXd>& vec)
 {
-  if (vec.size() > 0)
+  if (vec.size() > 0) {
     fout.write(reinterpret_cast<const char*>(vec.data()),
-               vec.size() * sizeof(double));
+               static_cast<std::streamsize>(vec.size() * sizeof(double)));
+  }
 }
 
-std::vector<double> loadBinary(const std::filesystem::path& path)
+std::string loggingModeToString(affine_mpc::MPCLogger::Mode mode)
 {
-  std::ifstream fin(path, std::ios::binary | std::ios::ate);
-  if (!fin.is_open())
-    return {};
-  auto size = fin.tellg();
-  fin.seekg(0, std::ios::beg);
-  std::vector<double> data(size / sizeof(double));
-  fin.read(reinterpret_cast<char*>(data.data()), size);
-  return data;
+  switch (mode) {
+  case MPCLogger::Mode::RawRecoverable:
+    return "RawRecoverable";
+  case MPCLogger::Mode::Npy:
+    return "Npy";
+  case MPCLogger::Mode::NpzUncompressed:
+    return "NpzUncompressed";
+  case MPCLogger::Mode::NpzCompressed:
+    return "NpzCompressed";
+  }
+  return "Unknown";
 }
+
+std::string makeShapeString(const std::vector<size_t>& shape)
+{
+  std::ostringstream oss;
+  oss << "[";
+  for (size_t i{0}; i < shape.size(); ++i) {
+    if (i > 0)
+      oss << ", ";
+    oss << shape[i];
+  }
+  oss << "]";
+  return oss.str();
+}
+
 } // namespace
 
 MPCLogger::MPCLogger(const MPCBase* const mpc,
                      const std::filesystem::path& save_dir,
-                     const double ts,
-                     const int prediction_stride,
-                     const bool log_control_points,
-                     const std::string& save_name) :
+                     double ts,
+                     int prediction_stride,
+                     bool log_control_points,
+                     const std::string& save_name,
+                     MPCLogger::Mode mode) :
     mpc_{mpc},
     state_dim_{mpc_->state_dim_},
     input_dim_{mpc_->input_dim_},
@@ -60,6 +83,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
+    logging_mode_{mode},
     save_dir_{save_dir.lexically_normal()},
     save_name_{save_name},
     is_finalized_{false},
@@ -74,9 +98,8 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     for (int k = 0; k <= horizon_steps_; k += prediction_stride_) {
       strided_k_.push_back(k);
     }
-    if (strided_k_.back() != horizon_steps_) {
+    if (strided_k_.back() != horizon_steps_)
       strided_k_.push_back(horizon_steps_);
-    }
   }
 
   logged_x_dim_ = state_dim_ * strided_k_.size();
@@ -91,15 +114,16 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
   captureMPCSnapshot();
 
   std::vector<double> t_pred(strided_k_.size());
-  for (size_t i = 0; i < strided_k_.size(); ++i) {
+  for (size_t i = 0; i < strided_k_.size(); ++i)
     t_pred[i] = strided_k_[i] * ts_;
-  }
+
   addMetadata("t_pred", t_pred);
   addMetadata("ts", ts_);
   addMetadata("prediction_stride", prediction_stride_);
   addMetadata("log_control_points", int{log_control_points_});
+  addMetadata("logging_mode", loggingModeToString(logging_mode_));
 
-  initTempFiles();
+  initRawFiles();
 }
 
 MPCLogger::~MPCLogger()
@@ -153,9 +177,8 @@ void MPCLogger::addMetadata(const std::string& key,
                             const MetadataValue& value,
                             int precision)
 {
-  if (metadata_registry_.find(key) == metadata_registry_.end()) {
+  if (metadata_registry_.find(key) == metadata_registry_.end())
     metadata_keys_.push_back(key);
-  }
   metadata_registry_[key] = {value, precision};
 }
 
@@ -176,38 +199,33 @@ void MPCLogger::logStep(double t,
     mpc_->getInputTrajectory(u_traj_buf_);
   }
 
-  // Handle Input References Evaluation if not logging control points
-  const int order{mpc_->spline_degree_ + 1};
-
   for (size_t i = 0; i < strided_k_.size(); ++i) {
     const int k{strided_k_[i]};
+    const auto i_idx{static_cast<Eigen::Index>(i)};
 
-    // 1. States
     if (k == 0) {
       states_out_buf_.head(state_dim_) = x0;
-      // add 1st ref state for x0 to match size of states & ref_states
       ref_states_out_buf_.head(state_dim_) = mpc_->x_ref_.head(state_dim_);
     } else {
-      states_out_buf_.segment(i * state_dim_, state_dim_) =
+      states_out_buf_.segment(i_idx * state_dim_, state_dim_) =
           x_traj_buf_.segment((k - 1) * state_dim_, state_dim_);
-      ref_states_out_buf_.segment(i * state_dim_, state_dim_) =
+      ref_states_out_buf_.segment(i_idx * state_dim_, state_dim_) =
           mpc_->x_ref_.segment((k - 1) * state_dim_, state_dim_);
     }
 
-    // 2. Inputs
     if (!log_control_points_) {
-      // repeats final input
-      const int u_idx{std::min(k, horizon_steps_ - 1)};
-      inputs_out_buf_.segment(i * input_dim_, input_dim_) =
+      const Eigen::Index u_idx{std::min(k, horizon_steps_ - 1)};
+      inputs_out_buf_.segment(i_idx * input_dim_, input_dim_) =
           u_traj_buf_.segment(u_idx * input_dim_, input_dim_);
 
       if (has_input_ref) {
-        // Evaluate spline for reference input at step u_idx
-        mpc_->getInput(u_idx, mpc_->ctrls_ref_,
-                       ref_inputs_out_buf_.segment(i * input_dim_, input_dim_));
+        mpc_->getInput(
+            u_idx, mpc_->ctrls_ref_,
+            ref_inputs_out_buf_.segment(i_idx * input_dim_, input_dim_));
       }
     }
   }
+
   writeStep(t);
 }
 
@@ -216,117 +234,40 @@ void MPCLogger::finalize()
   if (is_finalized_)
     return;
 
-  time_bin_.close();
-  solve_times_bin_.close();
-  states_bin_.close();
-  inputs_bin_.close();
-  ref_states_bin_.close();
-  if (ref_inputs_bin_.is_open())
-    ref_inputs_bin_.close();
+  closeRawFiles();
+  const std::vector<PayloadEntry> payloads = buildPayloadEntries();
 
-  const std::string npz_path = (save_dir_ / (save_name_ + ".npz")).string();
-  const size_t N{static_cast<size_t>(num_logged_steps_)};
-
-  auto pack_clean = [&](const std::string& name,
-                        const std::vector<size_t>& shape, bool append) {
-    auto path = save_dir_ / (save_name_ + "_" + name + ".tmp");
-    auto data = loadBinary(path);
-    if (!data.empty())
-      cnpy::npz_save(npz_path, name, data.data(), shape, append ? "a" : "w");
-    std::filesystem::remove(path);
-  };
-
-  pack_clean("time", {N}, false);
-  pack_clean("solve_times", {N, 2}, true);
-
-  const size_t K{strided_k_.size()};
-  const size_t n{static_cast<size_t>(state_dim_)};
-  const size_t m{static_cast<size_t>(input_dim_)};
-  const size_t nc{static_cast<size_t>(num_ctrls_)};
-  if (K == 1) {
-    pack_clean("states", {N, n}, true);
-    pack_clean("ref_states", {N, n}, true);
-  } else {
-    pack_clean("states", {N, K, n}, true);
-    pack_clean("ref_states", {N, K, n}, true);
-  }
-
-  if (log_control_points_) {
-    pack_clean("inputs", {N, nc, m}, true);
-    pack_clean("ref_inputs", {N, nc, m}, true);
-  } else {
-    if (K == 1) {
-      pack_clean("inputs", {N, m}, true);
-      pack_clean("ref_inputs", {N, m}, true);
-    } else {
-      pack_clean("inputs", {N, K, m}, true);
-      pack_clean("ref_inputs", {N, K, m}, true);
-    }
-  }
-
-  for (const auto& key : metadata_keys_) {
-    const auto& entry = metadata_registry_[key];
-    std::visit(
-        [&](auto&& arg) {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, int>) {
-            int val = arg;
-            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
-          } else if constexpr (std::is_same_v<T, double>) {
-            double val = arg;
-            cnpy::npz_save(npz_path, "meta_" + key, &val, {1}, "a");
-          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-            cnpy::npz_save(npz_path, "meta_" + key, arg.data(),
-                           {(size_t)arg.size()}, "a");
-          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-            cnpy::npz_save(npz_path, "meta_" + key, arg.data(), {arg.size()},
-                           "a");
-          }
-        },
-        entry.value);
-  }
-
-  writeParamFile();
-  is_finalized_ = true;
-}
-
-void MPCLogger::writeParamFile(const std::filesystem::path& filename)
-{
-  std::ofstream fout(save_dir_ / filename);
-  fout << std::boolalpha;
-  for (const auto& key : metadata_keys_) {
-    const auto& entry = metadata_registry_[key];
-    fout << key << ": ";
-    std::visit(
-        [&](auto&& arg) {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double>
-                        || std::is_same_v<T, std::string>) {
-            if (entry.precision >= 0 && std::is_same_v<T, double>)
-              fout << std::fixed << std::setprecision(entry.precision) << arg
-                   << "\n";
-            else
-              fout << arg << "\n";
-          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
-            fout << vec2Str(arg, entry.precision) << "\n";
-          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-            Eigen::VectorXd v =
-                Eigen::Map<const Eigen::VectorXd>(arg.data(), arg.size());
-            fout << vec2Str(v, entry.precision) << "\n";
-          }
-        },
-        entry.value);
+  switch (logging_mode_) {
+  case MPCLogger::Mode::RawRecoverable:
+    finalizeRawRecoverable(payloads);
+    return;
+  case MPCLogger::Mode::Npy:
+    finalizeNpy(payloads);
+    return;
+  case MPCLogger::Mode::NpzUncompressed:
+    finalizeNpz(payloads, false);
+    return;
+  case MPCLogger::Mode::NpzCompressed:
+    finalizeNpz(payloads, true);
+    return;
   }
 }
 
-void MPCLogger::initTempFiles()
+void MPCLogger::initRawFiles()
 {
-  if (!std::filesystem::exists(save_dir_))
-    std::filesystem::create_directories(save_dir_);
+  std::filesystem::create_directories(save_dir_);
+
+  const std::filesystem::path raw_dir = rawDirPath();
+  if (std::filesystem::exists(raw_dir))
+    std::filesystem::remove_all(raw_dir);
+  std::filesystem::create_directories(raw_dir);
 
   auto open_bin = [&](std::ofstream& fout, const std::string& name) {
-    fout.open(save_dir_ / (save_name_ + "_" + name + ".tmp"),
-              std::ios::binary | std::ios::out);
+    fout.open(rawDataPath(name), std::ios::binary | std::ios::out);
+    if (!fout.is_open()) {
+      throw std::runtime_error("[MPCLogger] Failed to open raw payload file: "
+                               + rawDataPath(name).string());
+    }
   };
 
   open_bin(time_bin_, "time");
@@ -336,6 +277,274 @@ void MPCLogger::initTempFiles()
   open_bin(ref_states_bin_, "ref_states");
   if (mpc_->opts_.use_input_cost)
     open_bin(ref_inputs_bin_, "ref_inputs");
+}
+
+void MPCLogger::closeRawFiles()
+{
+  time_bin_.close();
+  solve_times_bin_.close();
+  states_bin_.close();
+  inputs_bin_.close();
+  ref_states_bin_.close();
+  if (ref_inputs_bin_.is_open())
+    ref_inputs_bin_.close();
+}
+
+std::vector<MPCLogger::PayloadEntry> MPCLogger::buildPayloadEntries() const
+{
+  const size_t N{num_logged_steps_};
+  const size_t K{strided_k_.size()};
+  const size_t n{static_cast<size_t>(state_dim_)};
+  const size_t m{static_cast<size_t>(input_dim_)};
+  const size_t nc{static_cast<size_t>(num_ctrls_)};
+
+  std::vector<PayloadEntry> payloads;
+  payloads.push_back({"time", rawDataPath("time"), rawHeaderPath("time"), {N}});
+  payloads.push_back({"solve_times",
+                      rawDataPath("solve_times"),
+                      rawHeaderPath("solve_times"),
+                      {N, 2}});
+
+  if (K == 1) {
+    payloads.push_back(
+        {"states", rawDataPath("states"), rawHeaderPath("states"), {N, n}});
+    payloads.push_back({"ref_states",
+                        rawDataPath("ref_states"),
+                        rawHeaderPath("ref_states"),
+                        {N, n}});
+  } else {
+    payloads.push_back(
+        {"states", rawDataPath("states"), rawHeaderPath("states"), {N, K, n}});
+    payloads.push_back({"ref_states",
+                        rawDataPath("ref_states"),
+                        rawHeaderPath("ref_states"),
+                        {N, K, n}});
+  }
+
+  if (log_control_points_) {
+    payloads.push_back(
+        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, nc, m}});
+    if (mpc_->opts_.use_input_cost) {
+      payloads.push_back({"ref_inputs",
+                          rawDataPath("ref_inputs"),
+                          rawHeaderPath("ref_inputs"),
+                          {N, nc, m}});
+    }
+  } else if (K == 1) {
+    payloads.push_back(
+        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, m}});
+    if (mpc_->opts_.use_input_cost) {
+      payloads.push_back({"ref_inputs",
+                          rawDataPath("ref_inputs"),
+                          rawHeaderPath("ref_inputs"),
+                          {N, m}});
+    }
+  } else {
+    payloads.push_back(
+        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, K, m}});
+    if (mpc_->opts_.use_input_cost) {
+      payloads.push_back({"ref_inputs",
+                          rawDataPath("ref_inputs"),
+                          rawHeaderPath("ref_inputs"),
+                          {N, K, m}});
+    }
+  }
+
+  return payloads;
+}
+
+void MPCLogger::cleanupRawDirectory() const
+{
+  const std::filesystem::path raw_dir = rawDirPath();
+  if (std::filesystem::exists(raw_dir))
+    std::filesystem::remove_all(raw_dir);
+}
+
+void MPCLogger::finalizeRawRecoverable(
+    const std::vector<PayloadEntry>& payloads)
+{
+  const std::filesystem::path raw_dir = rawDirPath();
+  for (const auto& payload : payloads)
+    NpyWriter::writeDoubleHeader(payload.header_path, payload.shape);
+
+  writeParamFileToPath(raw_dir / "params.yaml");
+  writeDataInfoFile(payloads, raw_dir / "data_info.yaml");
+  is_finalized_ = true;
+}
+
+void MPCLogger::finalizeNpy(const std::vector<PayloadEntry>& payloads)
+{
+  const std::filesystem::path npy_dir = npyDirPath();
+  try {
+    writeNpyOutputs(payloads, npy_dir);
+    writeParamFileToPath(save_dir_ / "params.yaml");
+    cleanupRawDirectory();
+    is_finalized_ = true;
+  } catch (...) {
+    if (std::filesystem::exists(npy_dir))
+      std::filesystem::remove_all(npy_dir);
+    throw;
+  }
+}
+
+void MPCLogger::finalizeNpz(const std::vector<PayloadEntry>& payloads,
+                            bool compress)
+{
+  const std::filesystem::path archive_path = npzPath();
+  const std::filesystem::path npy_dir = npyDirPath();
+
+  try {
+    writeNpzFromPayloads(payloads, archive_path, compress);
+    writeParamFileToPath(save_dir_ / "params.yaml");
+    cleanupRawDirectory();
+    is_finalized_ = true;
+    return;
+  } catch (const std::overflow_error& exc) {
+    if (std::filesystem::exists(archive_path))
+      std::filesystem::remove(archive_path);
+
+    try {
+      writeNpyOutputs(payloads, npy_dir);
+      writeParamFileToPath(save_dir_ / "params.yaml");
+      cleanupRawDirectory();
+      is_finalized_ = true;
+    } catch (...) {
+      if (std::filesystem::exists(npy_dir))
+        std::filesystem::remove_all(npy_dir);
+      throw;
+    }
+
+    throw std::runtime_error(
+        std::string{
+            "[MPCLogger::finalize] NPZ packaging exceeded ZIP32 limits: "}
+        + exc.what() + ". Wrote fallback NPY files to " + npy_dir.string()
+        + " and removed staged raw payload files.");
+  } catch (...) {
+    if (std::filesystem::exists(archive_path))
+      std::filesystem::remove(archive_path);
+    throw;
+  }
+}
+
+void MPCLogger::writeNpzFromPayloads(const std::vector<PayloadEntry>& payloads,
+                                     const std::filesystem::path& npz_path,
+                                     bool compress) const
+{
+  NpzWriter writer(npz_path, compress ? NpzWriter::CompressionMode::Deflated
+                                      : NpzWriter::CompressionMode::Stored);
+  for (const auto& payload : payloads)
+    writer.addDoubleArrayFromFile(payload.name, payload.data_path,
+                                  payload.shape);
+
+  for (const auto& key : metadata_keys_) {
+    const auto& entry = metadata_registry_.at(key);
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, int>) {
+            writer.addScalar("meta_" + key, static_cast<std::int32_t>(arg));
+          } else if constexpr (std::is_same_v<T, double>) {
+            writer.addScalar("meta_" + key, arg);
+          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
+            writer.addArray("meta_" + key, arg.data(),
+                            {static_cast<size_t>(arg.size())});
+          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+            writer.addArray("meta_" + key, arg.data(), {arg.size()});
+          }
+        },
+        entry.value);
+  }
+
+  writer.finalize();
+}
+
+void MPCLogger::writeNpyOutputs(const std::vector<PayloadEntry>& payloads,
+                                const std::filesystem::path& npy_dir) const
+{
+  if (std::filesystem::exists(npy_dir))
+    std::filesystem::remove_all(npy_dir);
+  std::filesystem::create_directories(npy_dir);
+
+  for (const auto& payload : payloads) {
+    NpyWriter::writeDoubleArrayFromFile(npy_dir / (payload.name + ".npy"),
+                                        payload.data_path, payload.shape);
+  }
+}
+
+void MPCLogger::writeDataInfoFile(
+    const std::vector<PayloadEntry>& payloads,
+    const std::filesystem::path& data_info_path) const
+{
+  const std::filesystem::path tmp_path = data_info_path.string() + ".tmp";
+  std::ofstream fout{tmp_path};
+  if (!fout.is_open()) {
+    throw std::runtime_error("[MPCLogger] Failed to open data info file: "
+                             + tmp_path.string());
+  }
+
+  fout << "format_version: 1\n";
+  fout << "mode: " << loggingModeToString(logging_mode_) << "\n";
+  fout << "save_name: " << save_name_ << "\n";
+  fout << "num_logged_steps: " << num_logged_steps_ << "\n";
+  fout << "payloads:\n";
+  for (const auto& payload : payloads) {
+    fout << "  - name: " << payload.name << "\n";
+    fout << "    data_file: " << payload.data_path.filename().string() << "\n";
+    fout << "    header_file: " << payload.header_path.filename().string()
+         << "\n";
+    fout << "    dtype: float64\n";
+    fout << "    shape: " << makeShapeString(payload.shape) << "\n";
+    fout << "    endianness: little\n";
+    fout << "    fortran_order: false\n";
+  }
+
+  fout.close();
+  if (!fout) {
+    throw std::runtime_error("[MPCLogger] Failed while writing data info file: "
+                             + tmp_path.string());
+  }
+
+  if (std::filesystem::exists(data_info_path))
+    std::filesystem::remove(data_info_path);
+  std::filesystem::rename(tmp_path, data_info_path);
+}
+
+void MPCLogger::writeParamFile(const std::filesystem::path& filename)
+{
+  writeParamFileToPath(save_dir_ / filename);
+}
+
+void MPCLogger::writeParamFileToPath(const std::filesystem::path& path) const
+{
+  if (path.has_parent_path())
+    std::filesystem::create_directories(path.parent_path());
+
+  std::ofstream fout{path};
+  fout << std::boolalpha;
+  for (const auto& key : metadata_keys_) {
+    const auto& entry = metadata_registry_.at(key);
+    fout << key << ": ";
+    std::visit(
+        [&](auto&& arg) {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double>
+                        || std::is_same_v<T, std::string>) {
+            if (entry.precision >= 0 && std::is_same_v<T, double>) {
+              fout << std::fixed << std::setprecision(entry.precision) << arg
+                   << "\n";
+            } else {
+              fout << arg << "\n";
+            }
+          } else if constexpr (std::is_same_v<T, Eigen::VectorXd>) {
+            fout << vec2Str(arg, entry.precision) << "\n";
+          } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+            const Eigen::VectorXd v =
+                Eigen::Map<const Eigen::VectorXd>(arg.data(), arg.size());
+            fout << vec2Str(v, entry.precision) << "\n";
+          }
+        },
+        entry.value);
+  }
 }
 
 void MPCLogger::writeStep(double t)
@@ -348,6 +557,31 @@ void MPCLogger::writeStep(double t)
   if (mpc_->opts_.use_input_cost)
     writeBinary(ref_inputs_bin_, ref_inputs_out_buf_);
   ++num_logged_steps_;
+}
+
+std::filesystem::path MPCLogger::rawDirPath() const
+{
+  return save_dir_ / (save_name_ + "_raw");
+}
+
+std::filesystem::path MPCLogger::rawDataPath(const std::string& name) const
+{
+  return rawDirPath() / (name + ".bin");
+}
+
+std::filesystem::path MPCLogger::rawHeaderPath(const std::string& name) const
+{
+  return rawDirPath() / (name + ".npyh");
+}
+
+std::filesystem::path MPCLogger::npyDirPath() const
+{
+  return save_dir_ / (save_name_ + "_npy");
+}
+
+std::filesystem::path MPCLogger::npzPath() const
+{
+  return save_dir_ / (save_name_ + ".npz");
 }
 
 } // namespace affine_mpc

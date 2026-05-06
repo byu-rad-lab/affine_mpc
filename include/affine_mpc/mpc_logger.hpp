@@ -1,6 +1,15 @@
 #ifndef AFFINE_MPC_MPC_LOGGER_HPP
 #define AFFINE_MPC_MPC_LOGGER_HPP
 
+/**
+ * @file mpc_logger.hpp
+ * @brief Defines the MPCLogger class for logging MPC data.
+ *
+ * The logger is designed to be flexible in how it captures and finalizes data,
+ * allowing users to choose between raw recoverable payloads, standalone NPY
+ * files, or single NPZ archives based on their needs and constraints.
+ */
+
 #include <Eigen/Core>
 #include <filesystem>
 #include <fstream>
@@ -17,19 +26,40 @@ namespace affine_mpc {
  * @class MPCLogger
  * @brief High-performance binary logger for MPC data and metadata.
  *
- * Uses a "write-raw, pack-later" strategy to support high logging frequencies.
- * Per-step data is temporarily stored in binary files and then packed into a
- * single .npz file during finalization. Metadata is stored in a .yaml file.
- * Everything in the YAML file is also contained in the NPZ file, but the YAML
- * provides a quick and easy way to see parameters from a simulation.
+ *   Uses a "write-raw, pack-later" strategy to support high logging
+ *   frequencies. Per-step data is always written to raw binary payload files
+ *   during logging. Finalization then either keeps those raw payloads with
+ *   recovery metadata, converts them to standalone `.npy` files, or packages
+ *   them into a single `.npz` archive. Simulation metadata is stored in a YAML
+ *   file.
  *
- * The logger is designed to be used within a simulation or control loop. It
- * provides a convenience method to automatically extract and stride
- * trajectories from an MPC object.
+ *   The logger is designed to be used within a simulation or control loop. It
+ *   provides a convenience method to automatically extract and stride
+ *   trajectories from an MPC object.
  */
 class MPCLogger
 {
 public:
+  /**
+   * @brief Controls how logged payloads are finalized after raw binary capture.
+   *
+   *   - RawRecoverable: Write each data array to 2 files: a NPY header
+   *     (`.npyh`) + binary (`.bin`). Also write a `data_info.yaml` with
+   *     readable header information.
+   *   - Npy: Write each data array to a NPY (`.npy`) file.
+   *   - NpzUncompressed: Write all data arrays into a single uncompressed NPZ
+   *     (`.npz`) file.
+   *   - NpzCompressed: Write all data arrays into a single compressed NPZ
+   *     (`.npz`) file.
+   */
+  enum class Mode
+  {
+    RawRecoverable,  ///< Writes `*.bin`, `*.npyh`, and `data_info.yaml`
+    Npy,             ///< Writes `*.npy`
+    NpzUncompressed, ///< Writes uncompressed `.npz`
+    NpzCompressed,   ///< Writes compressed `.npz`
+  };
+
   using MetadataValue = std::
       variant<int, double, std::string, Eigen::VectorXd, std::vector<double>>;
 
@@ -55,14 +85,26 @@ public:
    *   Note: The terminal state (T) is always included if prediction_stride > 0.
    * @param log_control_points If true, logs control points of the parameterized
    *   input trajectory instead of the evaluated dense input trajectory.
-   * @param save_name Base name for the .npz output file (default: "log").
+   * @param save_name Base name for the output artifact(s) (default: "log").
+   * @param mode Finalization output mode. Raw payload files are always staged
+   *   under `<save_name>_raw/` during logging.
+   *   - RawRecoverable: saves data `*.bin`, NPY header info `*.npyh`, and
+   *     readable header info `data_info.yaml` all to `<save_name>_raw/`.
+   *   - NPY: saves `*.npy` data arrays to `<save_name>_npy/`.
+   *   - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
+   *   - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+   *
+   *   NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
+   *   finalization exceeds those limits, the logger falls back to NPY output
+   *   and preserves raw recoverable payloads on failure.
    */
   MPCLogger(const MPCBase* const mpc,
             const std::filesystem::path& save_dir,
             double ts,
             int prediction_stride = 1,
             bool log_control_points = false,
-            const std::string& save_name = "log");
+            const std::string& save_name = "log",
+            Mode mode = Mode::NpzCompressed);
 
   /**
    * @brief Destructor. Calls finalize() if the logger has not been finalized
@@ -85,7 +127,8 @@ public:
                double solve_time = -1.0);
 
   /**
-   * @brief Add or overwrite custom metadata to be saved in both NPZ and YAML.
+   * @brief Add or overwrite custom metadata to be saved in both the main output
+   *   artifact and YAML metadata when supported.
    *
    *   User-added metadata is preserved in the order it was added and appears
    *   after the automatic MPC snapshot in the output files.
@@ -104,73 +147,85 @@ public:
    *
    *   This is called automatically in the constructor, but can be re-called if
    *   weights or limits are updated during the simulation.
-   *
-   * @param mpc The MPC object to snapshot.
    */
   void captureMPCSnapshot();
 
   /**
-   * @brief Pack all temporary binary data into the final .npz file and write
-   *   the parameter YAML file.
+   * @brief Finalize the logger output according to the configured logging mode.
    *
    *   This operation involves file I/O and should be called after the
-   *   simulation loop ends. Temporary files are deleted upon successful
-   *   completion.
+   *   simulation loop ends. Raw payloads are preserved on failure to support
+   *   recovery.
    */
   void finalize();
 
   /**
-   * @brief Write the internal metadata map to a YAML file.
+   * @brief Write the internal metadata map to a YAML file within `save_dir`.
    * @param filename Output filename (should end with .yaml or .yml).
    */
   void writeParamFile(const std::filesystem::path& filename = "params.yaml");
 
 private:
-  /**
-   * @struct MetadataEntry
-   * @brief Internal storage for metadata values and their formatting options.
-   */
   struct MetadataEntry
   {
     MetadataValue value;
-    int precision = -1; ///< -1 for default.
+    int precision = -1;
   };
 
-  /**
-   * @brief Opens the temporary binary files for writing.
-   */
-  void initTempFiles();
+  struct PayloadEntry
+  {
+    std::string name;
+    std::filesystem::path data_path;
+    std::filesystem::path header_path;
+    std::vector<size_t> shape;
+  };
 
-  /**
-   * @brief Internal raw logger: writes strided arrays directly to binary
-   *   streams.
-   */
+  void initRawFiles();
+  void closeRawFiles();
+  std::vector<PayloadEntry> buildPayloadEntries() const;
+  void cleanupRawDirectory() const;
+  void finalizeRawRecoverable(const std::vector<PayloadEntry>& payloads);
+  void finalizeNpy(const std::vector<PayloadEntry>& payloads);
+  void finalizeNpz(const std::vector<PayloadEntry>& payloads, bool compress);
+  void writeNpzFromPayloads(const std::vector<PayloadEntry>& payloads,
+                            const std::filesystem::path& npz_path,
+                            bool compress) const;
+  void writeNpyOutputs(const std::vector<PayloadEntry>& payloads,
+                       const std::filesystem::path& npy_dir) const;
+  void writeDataInfoFile(const std::vector<PayloadEntry>& payloads,
+                         const std::filesystem::path& data_info_path) const;
+  void writeParamFileToPath(const std::filesystem::path& path) const;
   void writeStep(double t);
+
+  std::filesystem::path rawDirPath() const;
+  std::filesystem::path rawDataPath(const std::string& name) const;
+  std::filesystem::path rawHeaderPath(const std::string& name) const;
+  std::filesystem::path npyDirPath() const;
+  std::filesystem::path npzPath() const;
 
   const MPCBase* const mpc_;
   const int state_dim_, input_dim_, horizon_steps_, num_ctrls_, spline_degree_;
   const double ts_;
   const int prediction_stride_;
   const bool log_control_points_;
+  const Mode logging_mode_;
 
-  std::vector<int> strided_k_; ///< Pre-computed indices for strided logging.
-  int logged_x_dim_, logged_u_dim_;
+  std::vector<int> strided_k_;
+  Eigen::Index logged_x_dim_, logged_u_dim_;
 
   std::filesystem::path save_dir_;
   std::string save_name_;
   bool is_finalized_;
   size_t num_logged_steps_;
 
-  std::vector<std::string> metadata_keys_; ///< Preserves insertion order.
+  std::vector<std::string> metadata_keys_;
   std::map<std::string, MetadataEntry> metadata_registry_;
 
-  // Internal buffers to avoid re-allocation during high-frequency logging.
   Eigen::Vector2d solve_times_buf_;
   Eigen::VectorXd x_traj_buf_, u_traj_buf_;
   Eigen::VectorXd states_out_buf_, inputs_out_buf_;
   Eigen::VectorXd ref_states_out_buf_, ref_inputs_out_buf_;
 
-  // Temp binary output streams for raw data.
   std::ofstream time_bin_;
   std::ofstream solve_times_bin_;
   std::ofstream states_bin_;

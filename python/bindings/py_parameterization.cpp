@@ -1,7 +1,9 @@
 #include "affine_mpc_py_module.hpp"
 
+#include <Eigen/Core>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <sstream>
 
 #include "affine_mpc/parameterization.hpp"
 
@@ -37,7 +39,7 @@ Static Methods:
 
   param.def_static(
       "moveBlocking",
-      [](const int horizon_steps, const int num_control_points) {
+      [](int horizon_steps, int num_control_points) {
         return ampc::Parameterization::moveBlocking(horizon_steps,
                                                     num_control_points);
       },
@@ -56,7 +58,7 @@ returns:
 
   param.def_static(
       "moveBlocking",
-      [](const int horizon_steps,
+      [](int horizon_steps,
          const Eigen::Ref<const Eigen::VectorXd>& change_points) {
         return ampc::Parameterization::moveBlocking(horizon_steps,
                                                     change_points);
@@ -75,7 +77,7 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](const int horizon_steps, const int num_control_points) {
+      [](int horizon_steps, int num_control_points) {
         return ampc::Parameterization::linearInterp(horizon_steps,
                                                     num_control_points);
       },
@@ -94,7 +96,7 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](const int horizon_steps,
+      [](int horizon_steps,
          const Eigen::Ref<const Eigen::VectorXd>& endpoints) {
         return ampc::Parameterization::linearInterp(horizon_steps, endpoints);
       },
@@ -113,8 +115,7 @@ returns:
 
   param.def_static(
       "bspline",
-      [](const int horizon_steps, const int degree,
-         const int num_control_points) {
+      [](int horizon_steps, int degree, int num_control_points) {
         return ampc::Parameterization::bspline(horizon_steps, degree,
                                                num_control_points);
       },
@@ -135,7 +136,7 @@ returns:
 
   param.def_static(
       "bspline",
-      [](const int horizon_steps, const int degree,
+      [](int horizon_steps, int degree,
          const Eigen::Ref<const Eigen::VectorXd>& active_knots) {
         return ampc::Parameterization::bspline(horizon_steps, degree,
                                                active_knots);
@@ -218,6 +219,31 @@ Returns:
   param.def_readonly("num_control_points",
                      &ampc::Parameterization::num_control_points);
   param.def_readonly("knots", &ampc::Parameterization::knots);
+
+  param.def("__str__", [](const ampc::Parameterization& self) {
+    std::ostringstream os;
+    os << self;
+    return os.str();
+  });
+
+  param.def("__repr__", [](const ampc::Parameterization& self) {
+    const Eigen::VectorXd uniform_knots{
+        ampc::Parameterization::makeUniformClampedKnots(
+            self.horizon_steps, self.degree, self.num_control_points)};
+    std::ostringstream oss;
+    oss << "Parameterization(horizon_steps=" << self.horizon_steps
+        << ", degree=" << self.degree;
+
+    if (self.knots.isApprox(uniform_knots))
+      oss << ", num_control_points=" << self.num_control_points;
+    else {
+      const Eigen::IOFormat fmt{
+          Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ", "[", "]"};
+      oss << ", knots=" << self.knots.transpose().format(fmt);
+    }
+    oss << ')';
+    return oss.str();
+  });
 }
 
 } // namespace affine_mpc_py

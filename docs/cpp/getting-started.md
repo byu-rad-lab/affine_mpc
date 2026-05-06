@@ -18,38 +18,46 @@ If you prefer to use system libraries, the expected dependencies are listed belo
 
 ## Dependencies
 
-The project targets:
+### Prerequisites
 
-- C++17
-- CMake 3.15+
+- C++17 compatible compiler (e.g. [GCC] 8+, [Clang] 5+, [MSVC] 2017+)
+- [CMake] 3.15+
 
-Required dependencies:
+!!! note
+
+    Windows users may find the [VS Code guide] helpful for setting up their environment.
+
+[GCC]: https://gcc.gnu.org/
+[Clang]: https://clang.llvm.org/
+[MSVC]: https://visualstudio.microsoft.com/
+[VS Code guide]: https://code.visualstudio.com/docs/cpp/config-msvc
+[CMake]: https://cmake.org/
+
+### Required
 
 - [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) 3.4+ (fetched if not on system)
 - [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system)
-- [cnpy](https://github.com/rogersce/cnpy.git) (always fetched)
-- [ZLIB](https://zlib.net/) (must be on system - commonly is for Linux/MacOS)
 
 All of these can be installed from source (see their docs), but here are installation instructions for some common operating systems:
 
 === "Arch"
 
     ```sh
-    sudo pacman -S --asdeps eigen osqp zlib
+    sudo pacman -S --asdeps eigen osqp
     ```
 
-=== "Ubuntu/Debian"
+=== "Debian/Ubuntu"
 
     ```sh
-    sudo apt install libeigen3-dev zlib1g-dev
+    sudo apt install libeigen3-dev
     ```
 
-    !!! note
+    ??? note "Note - OSQP Installation"
 
         OSQP is not currently provided by `apt`.
         You will have to install OSQP from [source](https://github.com/osqp/osqp) to use a system library, or let this project fetch OSQP locally.
 
-    !!! note
+    ??? note "Note - Eigen Version"
 
         Ubuntu 22.04 is the oldest version that satisfies the Eigen version requirement.
         If you are using an older version then you will have to build from [source](https://gitlab.com/), or let this project fetch Eigen locally.
@@ -57,52 +65,53 @@ All of these can be installed from source (see their docs), but here are install
 === "MacOS"
 
     ```sh
-    brew install eigen osqp zlib
+    brew install eigen osqp
     ```
 
 === "Windows"
 
-    There are likely many ways to install dependencies; using `vcpkg` is shown here:
-
-    If `vcpkg` is not installed (you can install it where you want - this will use `C:\vcpkg`)
-
     ```pwsh
-    git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-    C:\vcpkg\bootstrap-vcpkg.bat
+    C:\vcpkg\vcpkg install eigen3:x64-windows osqp:x64-windows
     ```
 
-    Install dependencies (use path to your `vcpkg` installation):
+    ??? note "Note - vcpkg Installation"
 
-    ```pwsh
-    C:\vcpkg\vcpkg install eigen3:x64-windows osqp:x64-windows zlib:x64-windows
-    ```
+        You can use other tools, but `vcpkg` is shown here since it is the
+        official Microsoft package manager.
+        To install `vcpkg` to `C:\vcpkg`:
 
-Optional dependency:
+        ```pwsh
+        git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+        C:\vcpkg\bootstrap-vcpkg.bat
+        ```
 
+### Optional
+
+- [ZLIB](https://zlib.net/) (used for compressed NPZ logging when available)
 - [GTest](https://google.github.io/googletest/) for unit tests (fetched if not on system)
 
 === "Arch"
 
     ```sh
-    sudo pacman -S --asdeps gtest
+    sudo pacman -S --asdeps zlib gtest
     ```
 
-=== "Ubuntu/Debian"
+=== "Debian/Ubuntu"
 
     ```sh
-    sudo apt install libgtest-dev
+    sudo apt install zlib1g-dev libgtest-dev
     ```
 
 === "MacOS"
 
     ```sh
-    brew install googletest
+    brew install zlib googletest
     ```
 
 === "Windows"
 
     ```pwsh
-    C:\vcpkg\vcpkg install gtest:x64-windows
+    C:\vcpkg\vcpkg install zlib:x64-windows gtest:x64-windows
     ```
 
 ## Expected Results

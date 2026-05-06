@@ -1,10 +1,11 @@
 #include "affine_mpc/parameterization.hpp"
 
-// #include <Eigen/Core>    // revert back to this once Eigen 3.5 is required
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
-#include <sstream>
+#include <Eigen/Core>
+#include <ostream>
 #include <stdexcept>
 #include <unsupported/Eigen/Splines>
+
+#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 
 namespace affine_mpc {
 
@@ -14,14 +15,14 @@ using namespace Eigen;
 
 namespace { // utilities for this file
 
-void validateHorizonSteps(const int horizon_steps)
+void validateHorizonSteps(int horizon_steps)
 {
   if (horizon_steps < 1)
     throw std::invalid_argument("[Parameterization::validateHorizonSteps] "
                                 "horizon_steps must be positive.\n");
 }
 
-void validateDegree(const int degree, const int horizon_steps)
+void validateDegree(int degree, int horizon_steps)
 {
   static const std::string prefix{"[Parameterization::validateDegree] "};
   if (degree < 0)
@@ -31,9 +32,7 @@ void validateDegree(const int degree, const int horizon_steps)
                                 + "degree must be less than horizon_steps.\n");
 }
 
-void validateNumControls(const int num_control_points,
-                         const int horizon_steps,
-                         const int degree)
+void validateNumControls(int num_control_points, int horizon_steps, int degree)
 {
   static const std::string prefix{"[Parameterization::validateNumControls] "};
   if (num_control_points < degree + 1)
@@ -45,8 +44,8 @@ void validateNumControls(const int num_control_points,
 }
 
 void validateKnots(const Ref<const VectorXd>& knots,
-                   const int horizon_steps,
-                   const int degree)
+                   int horizon_steps,
+                   int degree)
 {
   static const std::string prefix{"[Parameterization::validateKnots] "};
   const int num_knots = knots.size();
@@ -92,8 +91,8 @@ void validateKnots(const Ref<const VectorXd>& knots,
 
 } // namespace
 
-Parameterization Parameterization::moveBlocking(const int horizon_steps,
-                                                const int num_control_points)
+Parameterization Parameterization::moveBlocking(int horizon_steps,
+                                                int num_control_points)
 {
   const int deg{0};
   const auto knots{
@@ -102,7 +101,7 @@ Parameterization Parameterization::moveBlocking(const int horizon_steps,
 }
 
 Parameterization
-Parameterization::moveBlocking(const int horizon_steps,
+Parameterization::moveBlocking(int horizon_steps,
                                const Ref<const VectorXd>& change_points)
 {
   if (change_points.size() > horizon_steps) {
@@ -122,8 +121,8 @@ Parameterization::moveBlocking(const int horizon_steps,
   return Parameterization{horizon_steps, deg, knots};
 }
 
-Parameterization Parameterization::linearInterp(const int horizon_steps,
-                                                const int num_control_points)
+Parameterization Parameterization::linearInterp(int horizon_steps,
+                                                int num_control_points)
 {
   const int deg{1};
   const auto knots{
@@ -132,7 +131,7 @@ Parameterization Parameterization::linearInterp(const int horizon_steps,
 }
 
 Parameterization
-Parameterization::linearInterp(const int horizon_steps,
+Parameterization::linearInterp(int horizon_steps,
                                const Ref<const VectorXd>& endpoints)
 {
   // static const std::string prefix{""};
@@ -151,19 +150,16 @@ Parameterization::linearInterp(const int horizon_steps,
   return Parameterization{horizon_steps, deg, knots};
 }
 
-Parameterization Parameterization::bspline(const int horizon_steps,
-                                           const int degree,
-                                           const int num_control_points)
+Parameterization
+Parameterization::bspline(int horizon_steps, int degree, int num_control_points)
 {
   const auto knots{
       makeUniformClampedKnots(horizon_steps, degree, num_control_points)};
   return Parameterization{horizon_steps, degree, knots};
 }
 
-Parameterization
-Parameterization::bspline(const int horizon_steps,
-                          const int degree,
-                          const Ref<const VectorXd>& active_knots)
+Parameterization Parameterization::bspline(
+    int horizon_steps, int degree, const Ref<const VectorXd>& active_knots)
 {
   if (active_knots.size() < 2) {
     throw std::invalid_argument("[Parameterization::bspline] "
@@ -178,17 +174,17 @@ Parameterization::bspline(const int horizon_steps,
   return Parameterization{horizon_steps, degree, knots};
 }
 
-Parameterization::Parameterization(const int horizon_steps,
-                                   const int degree,
-                                   const int num_control_points) :
+Parameterization::Parameterization(int horizon_steps,
+                                   int degree,
+                                   int num_control_points) :
     horizon_steps{horizon_steps},
     degree{degree},
     num_control_points{num_control_points},
     knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)}
 {}
 
-Parameterization::Parameterization(const int horizon_steps,
-                                   const int degree,
+Parameterization::Parameterization(int horizon_steps,
+                                   int degree,
                                    const Ref<const VectorXd>& knots) :
     horizon_steps{horizon_steps},
     degree{degree},
@@ -233,7 +229,7 @@ VectorXd Parameterization::evaluate(
 }
 
 Eigen::VectorXd Parameterization::makeUniformClampedKnots(
-    const int horizon_steps, const int degree, const int num_control_points)
+    int horizon_steps, int degree, int num_control_points)
 {
   validateHorizonSteps(horizon_steps);
   validateDegree(degree, horizon_steps);
@@ -249,6 +245,25 @@ Eigen::VectorXd Parameterization::makeUniformClampedKnots(
   knots(seq(degree, ph::last - degree)) =
       ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps - 1);
   return knots;
+}
+
+std::ostream& operator<<(std::ostream& os, const Parameterization& param)
+{
+  os << "Parameterization(horizon_steps=" << param.horizon_steps
+     << ", degree=" << param.degree
+     << ", num_control_points=" << param.num_control_points << ", knots=[";
+
+  const IOFormat fmt{StreamPrecision, DontAlignCols, ", ", ", ", "", ""};
+  const Index knots_size{param.knots.size()};
+  if (knots_size > 12) {
+    os << param.knots.head(5).format(fmt);
+    os << ", ..., ";
+    os << param.knots.tail(5).format(fmt);
+  } else {
+    os << param.knots.format(fmt);
+  }
+  os << "])";
+  return os;
 }
 
 } // namespace affine_mpc

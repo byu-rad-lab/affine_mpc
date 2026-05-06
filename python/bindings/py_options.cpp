@@ -1,6 +1,7 @@
 #include "affine_mpc_py_module.hpp"
 
 #include <pybind11/pybind11.h>
+#include <sstream>
 
 #include "affine_mpc/options.hpp"
 
@@ -71,6 +72,32 @@ Args:
   opt.def_readwrite("saturate_states", &ampc::Options::saturate_states);
   opt.def_readwrite("saturate_input_trajectory",
                     &ampc::Options::saturate_input_trajectory);
+
+  opt.def("__str__", [](const affine_mpc::Options& opts) {
+    std::ostringstream oss;
+    const bool capitalize_bools{true};
+    print(oss, opts, capitalize_bools);
+    return oss.str();
+  });
+
+  opt.def("__repr__", [](const affine_mpc::Options& opts) {
+    std::ostringstream oss;
+    oss << "Options(";
+    bool prev{false};
+    auto addField = [&](bool field, const std::string& name) {
+      if (field) {
+        oss << (prev ? ", " : "") << name << "=True";
+        prev = true;
+      }
+    };
+    addField(opts.use_input_cost, "use_input_cost");
+    addField(opts.slew_initial_input, "slew_initial_input");
+    addField(opts.slew_control_points, "slew_control_points");
+    addField(opts.saturate_states, "saturate_states");
+    addField(opts.saturate_input_trajectory, "saturate_input_trajectory");
+    oss << ")";
+    return oss.str();
+  });
 }
 
 } // namespace affine_mpc_py

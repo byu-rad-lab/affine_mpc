@@ -1,14 +1,14 @@
 #include "affine_mpc/mpc_base.hpp"
 
-#include <cassert>   // for assert
-#include <stdexcept> // for exceptions
+#include <Eigen/Core>
+#include <cassert>
+#include <osqp.h>
+#include <stdexcept>
+#include <unsupported/Eigen/Splines>
 
-// #include <Eigen/Core>  // revert back to this once Eigen 3.5 is required
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-#include "eigen_compat.hpp"          // revmove this once Eigen 3.5 is required
-#include <osqp.h>                    // for OSQPSettings
-#include <unsupported/Eigen/Splines> // for B-spline support
+#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required
@@ -18,7 +18,7 @@ namespace affine_mpc {
 
 namespace { // utilities for this file
 
-constexpr int validateStateDim(const int state_dim)
+constexpr int validateStateDim(int state_dim)
 {
   if (state_dim <= 0)
     throw std::invalid_argument(
@@ -26,7 +26,7 @@ constexpr int validateStateDim(const int state_dim)
   return state_dim;
 }
 
-constexpr int validateInputDim(const int input_dim)
+constexpr int validateInputDim(int input_dim)
 {
   if (input_dim <= 0)
     throw std::invalid_argument(
@@ -41,12 +41,12 @@ constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
 
 } // namespace
 
-MPCBase::MPCBase(const int state_dim,
-                 const int input_dim,
+MPCBase::MPCBase(int state_dim,
+                 int input_dim,
                  const Parameterization& param,
                  const Options& opts,
-                 const int num_design_vars,
-                 const int num_custom_constraints) :
+                 int num_design_vars,
+                 int num_custom_constraints) :
     state_dim_{validateStateDim(state_dim)},
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
@@ -67,15 +67,11 @@ MPCBase::MPCBase(const int state_dim,
     x_sat_idx_{slew_idx_ + slew_dim_},
     model_set_{false},
     u_lims_set_{false},
-    ctrls_slew_rate_set_{false},
     x_lims_set_{false},
+    slew0_rate_set_{false},
+    ctrls_slew_rate_set_{false},
     solver_initialized_{false},
     weights_changed_{false},
-    solver_{nullptr},
-    spline_segment_idxs_{param.horizon_steps},
-    // spline_knots_{param.num_control_points + param.degree + 1},
-    spline_knots_{param.knots},
-    spline_weights_{param.degree + 1, param.horizon_steps},
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
@@ -83,7 +79,12 @@ MPCBase::MPCBase(const int state_dim,
     x_ref_{state_dim * param.horizon_steps},
     u_min_{input_dim},
     u_max_{input_dim},
-    solution_map_{nullptr, 0}
+    solution_map_{nullptr, 0},
+    solver_{nullptr},
+    spline_segment_idxs_{param.horizon_steps},
+    // spline_knots_{param.num_control_points + param.degree + 1},
+    spline_knots_{param.knots},
+    spline_weights_{param.degree + 1, param.horizon_steps}
 {
   // allocate QP memory
   const int slew0_dim{input_dim * opts.slew_initial_input};
@@ -270,8 +271,8 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
 bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
-                                          const double dt,
-                                          const double tol)
+                                          double dt,
+                                          double tol)
 {
   assert(Ac.rows() == state_dim_ && Ac.cols() == state_dim_);
   assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);
@@ -504,6 +505,79 @@ void MPCBase::getInput(const int k,
   const int order{spline_degree_ + 1};
   const int seg{spline_segment_idxs_(k)};
   uk.noalias() = ctrls.middleCols(seg, order) * spline_weights_.col(k);
+}
+
+std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
+{
+  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
+                               mpc.spline_knots_};
+
+  os << mpc.getClassName() << ":\n  state_dim = " << mpc.state_dim_
+     << "\n  input_dim = " << mpc.input_dim_
+     << "\n  parameterization = " << param << "\n  options = ";
+  print(os, mpc.opts_, capitalize_bools);
+  os << "\n  solver_initialized = ";
+  if (capitalize_bools)
+    os << (mpc.solver_initialized_ ? "True" : "False");
+  else
+    os << (mpc.solver_initialized_ ? "true" : "false");
+
+  const IOFormat fmt{
+      StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
+  os << "\n  Q = " << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
+     << "\n  Qf = " << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
+  if (mpc.opts_.use_input_cost)
+    os << "\n  R = " << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
+  os << "\n  u_min = " << mpc.u_min_.format(fmt)
+     << "\n  u_max = " << mpc.u_max_.format(fmt);
+  if (mpc.opts_.saturate_states)
+    os << "\n  x_min = " << mpc.x_min_.format(fmt)
+       << "\n  x_max = " << mpc.x_max_.format(fmt);
+  if (mpc.opts_.slew_initial_input)
+    os << "\n  u0_slew = " << mpc.u0_slew_.format(fmt);
+  if (mpc.opts_.slew_control_points)
+    os << "\n  control_point_slew = " << mpc.ctrls_slew_.format(fmt);
+  return os;
+}
+
+std::ostream&
+printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
+{
+  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
+                               mpc.spline_knots_};
+
+  os << mpc.getClassName() << "(state_dim=" << mpc.state_dim_
+     << ", input_dim=" << mpc.input_dim_ << ", parameterization=" << param
+     << ", options=";
+  print(os, mpc.opts_, capitalize_bools);
+  os << ", solver_initialized=";
+  if (capitalize_bools)
+    os << (mpc.solver_initialized_ ? "True" : "False");
+  else
+    os << (mpc.solver_initialized_ ? "true" : "false");
+
+  const IOFormat fmt{
+      StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
+  os << ", Q=" << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
+     << ", Qf=" << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
+  if (mpc.opts_.use_input_cost)
+    os << ", R=" << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
+  os << ", u_min=" << mpc.u_min_.format(fmt)
+     << ", u_max=" << mpc.u_max_.format(fmt);
+  if (mpc.opts_.saturate_states)
+    os << ", x_min=" << mpc.x_min_.format(fmt)
+       << ", x_max=" << mpc.x_max_.format(fmt);
+  if (mpc.opts_.slew_initial_input)
+    os << ", u0_slew=" << mpc.u0_slew_.format(fmt);
+  if (mpc.opts_.slew_control_points)
+    os << ", control_point_slew=" << mpc.ctrls_slew_.format(fmt);
+  os << ')';
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const MPCBase& mpc)
+{
+  return print(os, mpc);
 }
 
 } // namespace affine_mpc

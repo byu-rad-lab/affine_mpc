@@ -1,6 +1,7 @@
 #include "affine_mpc_py_module.hpp"
 
 #include <pybind11/eigen.h>
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl/filesystem.h>
@@ -19,19 +20,37 @@ void moduleAddMpcLogger(py::module& m)
 High-performance binary logger for MPC data and metadata.
 
 Uses a "write-raw, pack-later" strategy to support high logging frequencies.
-Per-step data is temporarily stored in binary files and then packed into a
-single .npz file during finalization. Metadata is stored in a .yaml file.
-Everything in the YAML file is also contained in the NPZ file, but the YAML
-provides a quick and easy way to see parameters from a simulation.
+Per-step data is always written to raw binary payload files during logging.
+Finalization then either keeps those raw payloads with recovery metadata,
+converts them to standalone `.npy` files, or packages them into a single `.npz`
+archive. Metadata is stored in a YAML file.
 
 The logger is designed to be used within a simulation or control loop. It
-provides a convenience method to automatically extract and stride
-trajectories from an MPC object.
-                                  )doc");
+provides a convenience method to automatically extract and stride trajectories
+from an MPC object.
+                                   )doc");
 
-  log.def(py::init<const ampc::MPCBase* const, const std::filesystem::path&,
-                   double, int, bool, const std::string&>(),
-          R"doc(
+  py::native_enum<ampc::MPCLogger::Mode>(
+      log, "Mode", "enum.Enum",
+      "Controls how logged payloads are finalized after raw binary capture.")
+      .value("RawRecoverable", ampc::MPCLogger::Mode::RawRecoverable,
+             "Write each data array into 2 files: a NPY header (`.npyh`) + "
+             "binary (`.bin`). Also write a `data_info.yaml` with readable "
+             "header information.")
+      .value("Npy", ampc::MPCLogger::Mode::Npy,
+             "Write each data array to a NPY (`.npy`) file.")
+      .value(
+          "NpzUncompressed", ampc::MPCLogger::Mode::NpzUncompressed,
+          "Write all data arrays into a single uncompressed NPZ (`.npz`) file.")
+      .value(
+          "NpzCompressed", ampc::MPCLogger::Mode::NpzCompressed,
+          "Write all data arrays into a single compressed NPZ (`.npz`) file.")
+      .finalize();
+
+  log.def(
+      py::init<const ampc::MPCBase* const, const std::filesystem::path&, double,
+               int, bool, const std::string&, ampc::MPCLogger::Mode>(),
+      R"doc(
 Construct an MPCLogger for a given MPC instance; the logger is linked to this
 single MPC instance.
 
@@ -55,12 +74,24 @@ Args:
         Note: The terminal state (T) is always included if prediction_stride > 0.
     log_control_points: If true, logs control points of the parameterized input
         trajectory instead of the evaluated dense input trajectory.
-    save_name: Base name for the .npz output file (default: "log").
+    save_name: Base name for the output artifact(s) (default: "log").
+    mode: Finalization output mode. Raw payload files are always staged under
+        `<save_name>_raw/` during logging.
+        - RawRecoverable: saves data arrays as `*.npyh` + `*.bin` plus
+          `data_info.yaml` to `<save_name>_raw/`.
+        - Npy: saves data arrays to `<save_name>_npy/*.npy`.
+        - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
+        - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+
+        NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
+        finalization exceeds those limits, the logger falls back to NPY output
+        and preserves raw recoverable payloads on failure.
           )doc",
-          py::arg("mpc"), py::arg("save_dir"), py::arg("ts"),
-          py::arg("prediction_stride") = 1,
-          py::arg("log_control_points") = false, py::arg("save_name") = "log",
-          py::keep_alive<1, 2>());
+      py::arg("mpc"), py::arg("save_dir"), py::arg("ts"),
+      py::arg("prediction_stride") = 1, py::arg("log_control_points") = false,
+      py::arg("save_name") = "log",
+      py::arg("mode") = ampc::MPCLogger::Mode::NpzCompressed,
+      py::keep_alive<1, 2>());
 
   log.def("logStep", &ampc::MPCLogger::logStep,
           R"doc(
@@ -102,7 +133,8 @@ Args:
         }
       },
       R"doc(
-Add or overwrite custom metadata to be saved in both NPZ and YAML.
+Add or overwrite custom metadata to be saved in both the main output artifact
+and YAML metadata when supported.
 
 User-added metadata is preserved in the order it was added and appears after the
 automatic MPC snapshot in the output files.
@@ -125,11 +157,10 @@ weights or limits are updated during the simulation.
 
   log.def("finalize", &ampc::MPCLogger::finalize,
           R"doc(
-Pack all temporary binary data into the final .npz file and write the parameter
-YAML file.
+Finalize the logger output according to the configured logging mode.
 
 This operation involves file I/O and should be called after the simulation
-loop ends. Temporary files are deleted upon successful completion.
+loop ends. Raw payloads are preserved on failure to support recovery.
           )doc");
 
   log.def("writeParamFile", &ampc::MPCLogger::writeParamFile,

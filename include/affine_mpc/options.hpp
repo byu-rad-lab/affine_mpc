@@ -6,6 +6,8 @@
  * @brief Defines the Options struct for configuring the MPC problem.
  */
 
+#include <iosfwd>
+
 namespace affine_mpc {
 
 /**
@@ -47,6 +49,17 @@ struct Options
   /// control points (unused if degree <= 1)
   bool saturate_input_trajectory = false;
 };
+
+std::ostream&
+print(std::ostream& os, const Options& opts, bool capitalize_bools);
+
+/**
+ * @brief Stream a human-readable one-line summary of the enabled options.
+ * @param os Output stream.
+ * @param opts Options to print.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const Options& opts);
 
 } // namespace affine_mpc
 

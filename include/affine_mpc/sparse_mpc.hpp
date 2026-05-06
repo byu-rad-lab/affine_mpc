@@ -1,16 +1,16 @@
 #ifndef AFFINE_MPC_SPARSE_MPC_HPP
 #define AFFINE_MPC_SPARSE_MPC_HPP
 
+/**
+ * @file sparse_mpc.hpp
+ * @brief Defines the SparseMPC class (sparse MPC formulation).
+ */
+
 #include <Eigen/Core>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-
-/**
- * @file sparse_mpc.hpp
- * @brief Defines the SparseMPC class (sparse MPC formulation).
- */
 
 namespace affine_mpc {
 
@@ -36,8 +36,8 @@ public:
    * @param param Input trajectory parameterization.
    * @param opts Optional MPC configuration features to enable.
    */
-  SparseMPC(const int state_dim,
-            const int input_dim,
+  SparseMPC(int state_dim,
+            int input_dim,
             const Parameterization& param,
             const Options& opts = Options{});
 
@@ -49,9 +49,9 @@ public:
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param opts Optional MPC configuration features to enable.
    */
-  SparseMPC(const int state_dim,
-            const int input_dim,
-            const int horizon_steps,
+  SparseMPC(int state_dim,
+            int input_dim,
+            int horizon_steps,
             const Options& opts = Options{});
 
   virtual ~SparseMPC() = default;
@@ -64,6 +64,7 @@ public:
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
 protected: // for testing
+  const char* getClassName() const noexcept override { return "SparseMPC"; }
   void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
 private:
