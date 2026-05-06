@@ -32,11 +32,13 @@ find_package(ZLIB QUIET)
 # Main library
 # --------------------------------------------------
 add_library(${PROJECT_NAME}
-  src/mpc_base.cpp
+  src/options.cpp
+  src/parameterization.cpp
+  src/solve_status.cpp
   src/osqp_solver.cpp
+  src/mpc_base.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
-  src/parameterization.cpp
   src/mpc_logger.cpp
   src/npy_writer.cpp
   src/npz_writer.cpp

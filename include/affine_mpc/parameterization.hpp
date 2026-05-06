@@ -1,14 +1,15 @@
 #ifndef AFFINE_MPC_PARAMETERIZATION_HPP
 #define AFFINE_MPC_PARAMETERIZATION_HPP
 
-#include <Eigen/Core>
-
 /**
  * @file parameterization.hpp
  * @brief Defines the Parameterization class for parameterizing the MPC input
  *   trajectory with a B-spline to reduce the number of design variables in the
  *   optimization and smooth the input trajectory.
  */
+
+#include <Eigen/Core>
+#include <iosfwd>
 
 namespace affine_mpc {
 
@@ -165,6 +166,16 @@ public:
   /// Full knot vector of size num_control_points + degree + 1.
   const Eigen::VectorXd knots;
 };
+
+/**
+ * @brief Stream a human-readable one-line summary of the parameterization.
+ *
+ * Long knot vectors are abbreviated in the middle with `...`.
+ * @param os Output stream.
+ * @param param Parameterization to print.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const Parameterization& param);
 
 } // namespace affine_mpc
 

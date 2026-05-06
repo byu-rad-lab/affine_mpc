@@ -2,6 +2,7 @@
 Affine MPC module
 """
 
+import enum
 import numpy
 import numpy.typing
 import typing
@@ -102,6 +103,8 @@ class MPCBase:
                 rates, and input trajectory saturation).
         """
 
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
     @typing.overload
     def getInputControlPoints(
         self,
@@ -617,16 +620,32 @@ class MPCLogger:
     High-performance binary logger for MPC data and metadata.
 
     Uses a "write-raw, pack-later" strategy to support high logging frequencies.
-    Per-step data is temporarily stored in binary files and then packed into a
-    single .npz file during finalization. Metadata is stored in a .yaml file.
-    Everything in the YAML file is also contained in the NPZ file, but the YAML
-    provides a quick and easy way to see parameters from a simulation.
+    Per-step data is always written to raw binary payload files during logging.
+    Finalization then either keeps those raw payloads with recovery metadata,
+    converts them to standalone `.npy` files, or packages them into a single `.npz`
+    archive. Metadata is stored in a YAML file.
 
     The logger is designed to be used within a simulation or control loop. It
-    provides a convenience method to automatically extract and stride
-    trajectories from an MPC object.
+    provides a convenience method to automatically extract and stride trajectories
+    from an MPC object.
 
     """
+
+    class Mode(enum.Enum):
+        """
+        Controls how logged payloads are finalized after raw binary capture.
+        """
+
+        Npy: typing.ClassVar[MPCLogger.Mode]  # value = <Mode.Npy: 1>
+        NpzCompressed: typing.ClassVar[
+            MPCLogger.Mode
+        ]  # value = <Mode.NpzCompressed: 3>
+        NpzUncompressed: typing.ClassVar[
+            MPCLogger.Mode
+        ]  # value = <Mode.NpzUncompressed: 2>
+        RawRecoverable: typing.ClassVar[
+            MPCLogger.Mode
+        ]  # value = <Mode.RawRecoverable: 0>
 
     def __init__(
         self,
@@ -636,6 +655,7 @@ class MPCLogger:
         prediction_stride: int = 1,
         log_control_points: bool = False,
         save_name: str = "log",
+        mode: MPCLogger.Mode = MPCLogger.Mode.NpzCompressed,
     ) -> None:
         """
         Construct an MPCLogger for a given MPC instance; the logger is linked to this
@@ -661,12 +681,24 @@ class MPCLogger:
                 Note: The terminal state (T) is always included if prediction_stride > 0.
             log_control_points: If true, logs control points of the parameterized input
                 trajectory instead of the evaluated dense input trajectory.
-            save_name: Base name for the .npz output file (default: "log").
+            save_name: Base name for the output artifact(s) (default: "log").
+            mode: Finalization output mode. Raw payload files are always staged under
+                `<save_name>_raw/` during logging.
+                - RawRecoverable: saves data arrays as `*.npyh` + `*.bin` plus
+                  `data_info.yaml` to `<save_name>_raw/`.
+                - Npy: saves data arrays to `<save_name>_npy/*.npy`.
+                - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
+                - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+
+                NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
+                finalization exceeds those limits, the logger falls back to NPY output
+                and preserves raw recoverable payloads on failure.
         """
 
     def addMetadata(self, key: str, value: typing.Any, precision: int = -1) -> None:
         """
-        Add or overwrite custom metadata to be saved in both NPZ and YAML.
+        Add or overwrite custom metadata to be saved in both the main output artifact
+        and YAML metadata when supported.
 
         User-added metadata is preserved in the order it was added and appears after the
         automatic MPC snapshot in the output files.
@@ -688,11 +720,10 @@ class MPCLogger:
 
     def finalize(self) -> None:
         """
-        Pack all temporary binary data into the final .npz file and write the parameter
-        YAML file.
+        Finalize the logger output according to the configured logging mode.
 
         This operation involves file I/O and should be called after the simulation
-        loop ends. Temporary files are deleted upon successful completion.
+        loop ends. Raw payloads are preserved on failure to support recovery.
         """
 
     def logStep(
@@ -730,7 +761,7 @@ class OSQPSettings:
 
     Most users will likely not need to modify the default settings, but they are
     exposed here for advanced use cases. See OSQP documentation for details on each
-    setting.
+    setting: https://osqp.org/docs/interfaces/solver_settings.html.
 
     Note: `eps_abs` and `eps_rel` are the main tolerances for convergence.
     Tightening these can improve solution accuracy but may increase solve time.
@@ -750,7 +781,12 @@ class OSQPSettings:
             If iters is high, consider increasing to 1.6-1.8. If oscillations occur,
             consider decreasing to 1.4-1.5. Can also try 1.0 for standard ADMM if
             convergence is an issue.
-        check_termination: Check termination conditions at each iteration.
+        cg_max_iter: Maximum iterations for conjugate gradient linear system solver.
+        cg_precond: Preconditioner type for conjugate gradient solver.
+        cg_tol_fraction: Conjugate gradient tolerance as fraction of initial residual.
+        cg_tol_reduction: Number of conjugate gradient iterations before tol is halved.
+        check_dualgap: Check duality gap at each iteration for termination.
+        check_termination: Check termination interval.
         delta: Regularization parameter for linear system solver.
         eps_abs: Absolute tolerance for termination.
         eps_dual_inf: Dual infeasibility tolerance for termination.
@@ -766,7 +802,9 @@ class OSQPSettings:
             ensure the final solution respects the limits more accurately.
             An alternative to polishing is to saturate the solution after solving.
         polish_refine_iter: Number of refinement iterations for polishing.
+        profiler_level: Level of detail for profiler annotations.
         rho: ADMM step size.
+        rho_is_vec: Whether rho is a scalar or vector.
         scaled_termination: Check termination conditions on scaled residuals.
         scaling: Enable problem data scaling.
         sigma: ADMM regularization parameter.
@@ -777,15 +815,9 @@ class OSQPSettings:
 
     """
 
-    class LinsysSolverType:
+    class LinsysSolverType(enum.Enum):
         """
-        Members:
-
-          DirectSolver
-
-          IndirectSolver
-
-          UnknownSolver
+        Enum for linear system solver type.
         """
 
         DirectSolver: typing.ClassVar[
@@ -797,24 +829,20 @@ class OSQPSettings:
         UnknownSolver: typing.ClassVar[
             OSQPSettings.LinsysSolverType
         ]  # value = <LinsysSolverType.UnknownSolver: 0>
-        __members__: typing.ClassVar[
-            dict[str, OSQPSettings.LinsysSolverType]
-        ]  # value = {'DirectSolver': <LinsysSolverType.DirectSolver: 1>, 'IndirectSolver': <LinsysSolverType.IndirectSolver: 2>, 'UnknownSolver': <LinsysSolverType.UnknownSolver: 0>}
-        def __eq__(self, other: typing.Any) -> bool: ...
-        def __getstate__(self) -> int: ...
-        def __hash__(self) -> int: ...
-        def __index__(self) -> int: ...
-        def __init__(self, value: int) -> None: ...
-        def __int__(self) -> int: ...
-        def __ne__(self, other: typing.Any) -> bool: ...
-        def __repr__(self) -> str: ...
-        def __setstate__(self, state: int) -> None: ...
-        def __str__(self) -> str: ...
-        @property
-        def name(self) -> str: ...
-        @property
-        def value(self) -> int: ...
 
+    class PreconditionerType(enum.Enum):
+        """
+        Enum for preconditioner type.
+        """
+
+        DiagonalPreconditioner: typing.ClassVar[
+            OSQPSettings.PreconditionerType
+        ]  # value = <PreconditionerType.DiagonalPreconditioner: 1>
+        NoPreconditioner: typing.ClassVar[
+            OSQPSettings.PreconditionerType
+        ]  # value = <PreconditionerType.NoPreconditioner: 0>
+
+    cg_precond: OSQPSettings.PreconditionerType
     linsys_solver: OSQPSettings.LinsysSolverType
     @staticmethod
     def fromOSQPDefaults() -> OSQPSettings:
@@ -827,6 +855,8 @@ class OSQPSettings:
         Constructor sets affine_mpc recommended values.
         """
 
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
     @property
     def adaptive_rho(self) -> int: ...
     @adaptive_rho.setter
@@ -847,6 +877,22 @@ class OSQPSettings:
     def alpha(self) -> float: ...
     @alpha.setter
     def alpha(self, arg0: float) -> None: ...
+    @property
+    def cg_max_iter(self) -> int: ...
+    @cg_max_iter.setter
+    def cg_max_iter(self, arg0: int) -> None: ...
+    @property
+    def cg_tol_fraction(self) -> float: ...
+    @cg_tol_fraction.setter
+    def cg_tol_fraction(self, arg0: float) -> None: ...
+    @property
+    def cg_tol_reduction(self) -> int: ...
+    @cg_tol_reduction.setter
+    def cg_tol_reduction(self, arg0: int) -> None: ...
+    @property
+    def check_dualgap(self) -> int: ...
+    @check_dualgap.setter
+    def check_dualgap(self, arg0: int) -> None: ...
     @property
     def check_termination(self) -> int: ...
     @check_termination.setter
@@ -884,9 +930,17 @@ class OSQPSettings:
     @polishing.setter
     def polishing(self, arg0: int) -> None: ...
     @property
+    def profiler_level(self) -> int: ...
+    @profiler_level.setter
+    def profiler_level(self, arg0: int) -> None: ...
+    @property
     def rho(self) -> float: ...
     @rho.setter
     def rho(self, arg0: float) -> None: ...
+    @property
+    def rho_is_vec(self) -> int: ...
+    @rho_is_vec.setter
+    def rho_is_vec(self, arg0: int) -> None: ...
     @property
     def scaled_termination(self) -> int: ...
     @scaled_termination.setter
@@ -966,6 +1020,9 @@ class Options:
                 optimiztion, but can allow control points to be outside of input limits
                 while keeping inputs within limits.
         """
+
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
 
 class Parameterization:
     """
@@ -1146,6 +1203,8 @@ class Parameterization:
                 and last knot must be horizon_steps-1.
         """
 
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
     def evaluate(
         self,
         input_dim: int,
@@ -1174,25 +1233,9 @@ class Parameterization:
     @property
     def num_control_points(self) -> int: ...
 
-class SolveStatus:
+class SolveStatus(enum.Enum):
     """
-    Members:
-
-      Success
-
-      NotInitialized
-
-      SolvedInaccurate
-
-      PrimalInfeasible
-
-      DualInfeasible
-
-      MaxIterReached
-
-      TimeLimitReached
-
-      OtherFailure
+    Enum for reporting the status of an MPC solve.
     """
 
     DualInfeasible: typing.ClassVar[
@@ -1215,23 +1258,6 @@ class SolveStatus:
     TimeLimitReached: typing.ClassVar[
         SolveStatus
     ]  # value = <SolveStatus.TimeLimitReached: 6>
-    __members__: typing.ClassVar[
-        dict[str, SolveStatus]
-    ]  # value = {'Success': <SolveStatus.Success: 0>, 'NotInitialized': <SolveStatus.NotInitialized: 1>, 'SolvedInaccurate': <SolveStatus.SolvedInaccurate: 2>, 'PrimalInfeasible': <SolveStatus.PrimalInfeasible: 3>, 'DualInfeasible': <SolveStatus.DualInfeasible: 4>, 'MaxIterReached': <SolveStatus.MaxIterReached: 5>, 'TimeLimitReached': <SolveStatus.TimeLimitReached: 6>, 'OtherFailure': <SolveStatus.OtherFailure: 7>}
-    def __eq__(self, other: typing.Any) -> bool: ...
-    def __getstate__(self) -> int: ...
-    def __hash__(self) -> int: ...
-    def __index__(self) -> int: ...
-    def __init__(self, value: int) -> None: ...
-    def __int__(self) -> int: ...
-    def __ne__(self, other: typing.Any) -> bool: ...
-    def __repr__(self) -> str: ...
-    def __setstate__(self, state: int) -> None: ...
-    def __str__(self) -> str: ...
-    @property
-    def name(self) -> str: ...
-    @property
-    def value(self) -> int: ...
 
 class SparseMPC(MPCBase):
     """

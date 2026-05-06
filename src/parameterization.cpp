@@ -3,6 +3,7 @@
 // #include <Eigen/Core>    // revert back to this once Eigen 3.5 is required
 #include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
 #include <sstream>
+#include <ostream>
 #include <stdexcept>
 #include <unsupported/Eigen/Splines>
 
@@ -244,6 +245,25 @@ Eigen::VectorXd Parameterization::makeUniformClampedKnots(
   knots(seq(degree, ph::last - degree)) =
       ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps - 1);
   return knots;
+}
+
+std::ostream& operator<<(std::ostream& os, const Parameterization& param)
+{
+  os << "Parameterization(horizon_steps=" << param.horizon_steps
+     << ", degree=" << param.degree
+     << ", num_control_points=" << param.num_control_points << ", knots=[";
+
+  const IOFormat fmt{StreamPrecision, DontAlignCols, ", ", ", ", "", ""};
+  const Index knots_size{param.knots.size()};
+  if (knots_size > 12) {
+    os << param.knots.head(5).format(fmt);
+    os << ", ..., ";
+    os << param.knots.tail(5).format(fmt);
+  } else {
+    os << param.knots.format(fmt);
+  }
+  os << "])";
+  return os;
 }
 
 } // namespace affine_mpc

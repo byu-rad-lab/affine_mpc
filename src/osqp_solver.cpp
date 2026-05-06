@@ -1,11 +1,13 @@
 #include "affine_mpc/osqp_solver.hpp"
-#include "affine_mpc/solve_status.hpp"
-#include "osqp_api_functions.h"
-#include "osqp_api_types.h"
 
 #include <Eigen/Core>
 #include <cassert>
 #include <memory>
+#include <osqp_api_functions.h>
+#include <osqp_api_types.h>
+#include <ostream>
+
+#include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
 
@@ -245,6 +247,65 @@ void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
   A_.reset(
       OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
   A_is_set_ = true;
+}
+
+std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings)
+{
+  const auto flags{os.flags()};
+  os << std::boolalpha;
+
+  auto linsysSolverStr = [](const osqp_linsys_solver_type solver) {
+    switch (solver) {
+    case OSQP_DIRECT_SOLVER:
+      return "DirectSolver";
+    case OSQP_INDIRECT_SOLVER:
+      return "IndirectSolver";
+    default:
+      return "UnknownSolver";
+    }
+  };
+  auto precondStr = [](const osqp_precond_type precond) {
+    switch (precond) {
+    case OSQP_NO_PRECONDITIONER:
+      return "NoPreconditioner";
+    default:
+      return "DiagonalPreconditioner";
+    }
+  };
+
+  os << "OSQP Solver Settings:\n"
+     << "  adaptive_rho = " << bool(settings.adaptive_rho) << "\n"
+     << "  adaptive_rho_fraction = " << settings.adaptive_rho_fraction << "\n"
+     << "  adaptive_rho_interval = " << settings.adaptive_rho_interval << "\n"
+     << "  adaptive_rho_tolerance = " << settings.adaptive_rho_tolerance << "\n"
+     << "  alpha = " << settings.alpha << "\n"
+     << "  cg_max_iter = " << settings.cg_max_iter << "\n"
+     << "  cg_precond = " << precondStr(settings.cg_precond) << "\n"
+     << "  cg_tol_fraction = " << settings.cg_tol_fraction << "\n"
+     << "  cg_tol_reduction = " << settings.cg_tol_reduction << "\n"
+     << "  check_dualgap = " << bool(settings.check_dualgap) << "\n"
+     << "  check_termination = " << settings.check_termination << "\n"
+     << "  delta = " << settings.delta << "\n"
+     << "  device = " << settings.device << "\n"
+     << "  eps_abs = " << settings.eps_abs << "\n"
+     << "  eps_dual_inf = " << settings.eps_dual_inf << "\n"
+     << "  eps_prim_inf = " << settings.eps_prim_inf << "\n"
+     << "  eps_rel = " << settings.eps_rel << "\n"
+     << "  linsys_solver = " << linsysSolverStr(settings.linsys_solver) << "\n"
+     << "  max_iter = " << settings.max_iter << "\n"
+     << "  polishing = " << bool(settings.polishing) << "\n"
+     << "  polish_refine_iter = " << settings.polish_refine_iter << "\n"
+     << "  profiler_level = " << settings.profiler_level << "\n"
+     << "  rho = " << settings.rho << "\n"
+     << "  rho_is_vec = " << bool(settings.rho_is_vec) << "\n"
+     << "  scaled_termination = " << bool(settings.scaled_termination) << "\n"
+     << "  scaling = " << settings.scaling << "\n"
+     << "  sigma = " << settings.sigma << "\n"
+     << "  time_limit = " << settings.time_limit << "\n"
+     << "  verbose = " << bool(settings.verbose) << "\n"
+     << "  warm_starting = " << bool(settings.warm_starting);
+  os.flags(flags);
+  return os;
 }
 
 } // namespace affine_mpc

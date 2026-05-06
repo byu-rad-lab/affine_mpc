@@ -38,6 +38,18 @@ def test_osqp_settings_interface():
         assert False
 
 
+def test_osqp_settings_repr_uses_recommended_defaults():
+    settings = ampc.OSQPSettings()
+    assert repr(settings) == "OSQPSettings()"
+
+    settings.verbose = 1
+    settings.eps_abs = 1e-4
+    assert (
+        repr(settings)
+        == "OSQPSettings(eps_abs=0.0001, verbose=True)"
+    )
+
+
 if __name__ == "__main__":
     test_osqp_settings_interface()
     print("All tests passed!")

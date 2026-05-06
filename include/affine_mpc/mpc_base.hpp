@@ -2,6 +2,7 @@
 #define AFFINE_MPC_MPC_BASE_HPP
 
 #include <Eigen/Core>
+#include <iosfwd>
 #include <memory>
 
 #include "affine_mpc/options.hpp"
@@ -30,6 +31,12 @@ namespace affine_mpc {
 class MPCBase
 {
   friend class MPCLogger; // allow access to member variables for logging
+  friend std::ostream& operator<<(std::ostream& os, const MPCBase& mpc);
+  friend std::ostream&
+  print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools);
+  friend std::ostream&
+  printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools);
+
 protected:
   /**
    * @brief Construct MPCBase with dimensions, parameterization, options, and
@@ -325,6 +332,8 @@ public:
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
 protected:
+  virtual const char* getClassName() const noexcept { return "MPCBase"; }
+
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
@@ -378,6 +387,35 @@ private:
   virtual bool qpUpdateStateLimits() = 0;
   virtual bool qpUpdateSlewRate() = 0;
 };
+
+/**
+ * @brief Stream a detailed multiline summary of the MPC configuration.
+ * @param os Output stream.
+ * @param mpc MPC object to print.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const MPCBase& mpc);
+
+/**
+ * @brief Stream a detailed multiline summary of the MPC configuration.
+ * @param os Output stream.
+ * @param mpc MPC object to print.
+ * @param capitalize_bools If true, print booleans as `True`/`False`.
+ * @return Reference to the output stream.
+ */
+std::ostream&
+print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools = false);
+
+/**
+ * @brief Stream a compact one-line summary of the MPC configuration.
+ * @param os Output stream.
+ * @param mpc MPC object to print.
+ * @param capitalize_bools If true, print booleans as `True`/`False`.
+ * @return Reference to the output stream.
+ */
+std::ostream& printInline(std::ostream& os,
+                          const MPCBase& mpc,
+                          bool capitalize_bools = false);
 
 } // namespace affine_mpc
 

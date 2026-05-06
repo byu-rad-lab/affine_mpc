@@ -64,6 +64,8 @@ pybind11_stubgen.main(
         pkg,
         "--numpy-array-use-type-var",
         # "--numpy-array-wrap-with-annotated",
+        "--enum-class-locations",
+        "Mode:MPCLogger",
     ]
 )
 
@@ -111,6 +113,7 @@ content = re.sub(
 )
 # content = re.sub(r"numpy\.ndarray", "NDArray", content)
 # content = re.sub(r" = \.\.\.", " = numpy.empty(0)", content)
+content = re.sub(r"import affine_mpc\n", "", content)
 content = re.sub(r"Options = \.\.\.", "Options = Options()", content)
 content = re.sub(r"OSQPSettings = \.\.\.", "OSQPSettings = OSQPSettings()", content)
 

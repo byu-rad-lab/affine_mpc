@@ -49,6 +49,22 @@ def test_parameterization_interface():
         assert False
 
 
+def test_parameterization_str_and_repr():
+    param = ampc.Parameterization(horizon_steps=5, degree=1, num_control_points=3)
+    assert (
+        str(param)
+        == "Parameterization(horizon_steps=5, degree=1, num_control_points=3, knots=[0, 0, 2, 4, 4])"
+    )
+    assert repr(param) == "Parameterization(horizon_steps=5, degree=1, num_control_points=3)"
+
+    custom = ampc.Parameterization(
+        horizon_steps=5,
+        degree=1,
+        knots=np.array([0, 0, 1, 4, 4]),
+    )
+    assert repr(custom) == "Parameterization(horizon_steps=5, degree=1, knots=[0, 0, 1, 4, 4])"
+
+
 if __name__ == "__main__":
     test_parameterization_interface()
     print("All tests passed!")

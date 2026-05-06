@@ -2,6 +2,7 @@
 #define AFFINE_MPC_OSQP_SOLVER_HPP
 
 #include <Eigen/Core>
+#include <iosfwd>
 #include <memory>
 #include <osqp.h>
 
@@ -184,6 +185,14 @@ protected:          // Not private for unit tests
   VectorXI P_p_;    ///< Column pointers for P.
   VectorXI A_p_;    ///< Column pointers for A.
 };
+
+/**
+ * @brief Stream a detailed multiline summary of OSQP solver settings.
+ * @param os Output stream.
+ * @param settings OSQP settings to print.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings);
 
 } // namespace affine_mpc
 

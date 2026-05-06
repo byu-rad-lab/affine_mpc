@@ -64,6 +64,7 @@ public:
       Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
 
 protected: // for testing
+  const char* getClassName() const noexcept override { return "SparseMPC"; }
   void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
 private:

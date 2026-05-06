@@ -2,6 +2,7 @@
 
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <sstream>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/options.hpp"
@@ -560,6 +561,20 @@ Returns:
   // Eigen::Ref<const Eigen::VectorXd>&)>(&PyMPCBase::qpUpdateX0),
   //   "PRIVATE - do not call manually! Defines how to convert MPC problem to a
   //   QP problem", py::arg("x0"));
+
+  base.def("__str__", [](const ampc::MPCBase& self) {
+    std::ostringstream oss;
+    const bool capitalize_bools{true};
+    ampc::print(oss, self, capitalize_bools);
+    return oss.str();
+  });
+
+  base.def("__repr__", [](const ampc::MPCBase& self) {
+    std::ostringstream oss;
+    const bool capitalize_bools{true};
+    ampc::printInline(oss, self, capitalize_bools);
+    return oss.str();
+  });
 }
 
 } // namespace affine_mpc_py
