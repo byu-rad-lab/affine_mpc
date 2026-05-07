@@ -6,13 +6,13 @@ option(AFFINE_MPC_PY_ADD_TESTS "Register Python binding tests" OFF)
 # -----------------------------------------
 # Dependencies
 # -----------------------------------------
-# Use the vcpkg toolchain file if defined (for the Github workflow)
+# Use the vcpkg toolchain file if defined (for the Github Windows workflow)
 if(DEFINED ENV{VCPKG_TOOLCHAIN_FILE})
   set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_TOOLCHAIN_FILE} CACHE STRING "")
 endif()
 
 set(PYBIND11_FINDPYTHON ON)
-find_package(pybind11 2.11.1 CONFIG REQUIRED)
+find_package(pybind11 3 CONFIG REQUIRED)
 
 if(NOT TARGET affine_mpc::affine_mpc)
   find_package(affine_mpc CONFIG REQUIRED)
@@ -33,27 +33,38 @@ pybind11_add_module(_bindings MODULE
   bindings/py_mpc_logger.cpp
 )
 
-# Set output directory to match package structure
 set_target_properties(_bindings PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/affine_mpc"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/affine_mpc"
 )
 
-# Link to the affine_mpc library
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
+
+# Copy the Python package into the build tree so the built extension is
+# importable for local testing and stub generation.
+file(GLOB affine_mpc_py_files
+  CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py"
+)
+add_custom_command(TARGET _bindings POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${affine_mpc_py_files}
+    ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
+)
+
+message(STATUS "python exe: ${Python_EXECUTABLE}")
+
+add_custom_target(python_stubgen
+  COMMAND ${CMAKE_COMMAND} -E env
+    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
+    -- "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/custom_stubgen.py"
+  DEPENDS _bindings
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Generating Python stubs from built bindings"
+)
 
 if(AFFINE_MPC_PY_ADD_TESTS)
   include(CTest)
   enable_testing()
-
-  # Copy the Python package into the build tree so the built extension is
-  # importable for local testing.
-  file(GLOB affine_mpc_py_files "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
-  add_custom_command(TARGET _bindings POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      ${affine_mpc_py_files}
-      ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
-  )
 
   execute_process(
     COMMAND "${Python_EXECUTABLE}" -m pytest --version
@@ -70,8 +81,13 @@ if(AFFINE_MPC_PY_ADD_TESTS)
     COMMAND "${Python_EXECUTABLE}" -m pytest
       "${CMAKE_CURRENT_SOURCE_DIR}/../test/bindings"
   )
+
+  set(python_bindings_test_env
+    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
+    "AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+  )
   set_tests_properties(python_bindings_tests PROPERTIES
-    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR};AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+    ENVIRONMENT "${python_bindings_test_env}"
   )
 endif()
 
