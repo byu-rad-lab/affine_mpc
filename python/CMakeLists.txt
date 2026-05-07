@@ -51,8 +51,6 @@ add_custom_command(TARGET _bindings POST_BUILD
     ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
 )
 
-message(STATUS "python exe: ${Python_EXECUTABLE}")
-
 add_custom_target(python_stubgen
   COMMAND ${CMAKE_COMMAND} -E env
     "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
