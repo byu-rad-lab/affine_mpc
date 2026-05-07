@@ -12,7 +12,7 @@ if(DEFINED ENV{VCPKG_TOOLCHAIN_FILE})
 endif()
 
 set(PYBIND11_FINDPYTHON ON)
-find_package(pybind11 2.11.1 CONFIG REQUIRED)
+find_package(pybind11 3 CONFIG REQUIRED)
 
 if(NOT TARGET affine_mpc::affine_mpc)
   find_package(affine_mpc CONFIG REQUIRED)
