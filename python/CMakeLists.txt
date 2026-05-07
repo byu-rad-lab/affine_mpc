@@ -81,8 +81,13 @@ if(AFFINE_MPC_PY_ADD_TESTS)
     COMMAND "${Python_EXECUTABLE}" -m pytest
       "${CMAKE_CURRENT_SOURCE_DIR}/../test/bindings"
   )
+
+  set(python_bindings_test_env
+    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
+    "AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+  )
   set_tests_properties(python_bindings_tests PROPERTIES
-    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR};AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
+    ENVIRONMENT "${python_bindings_test_env}"
   )
 endif()
 
