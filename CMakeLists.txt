@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 project(affine_mpc
   LANGUAGES CXX C
-  VERSION 1.0.0
+  VERSION 0.1.0
 )
 
 # --------------------------------------------------
