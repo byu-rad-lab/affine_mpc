@@ -6,7 +6,7 @@ option(AFFINE_MPC_PY_ADD_TESTS "Register Python binding tests" OFF)
 # -----------------------------------------
 # Dependencies
 # -----------------------------------------
-# Use the vcpkg toolchain file if defined (for the Github workflow)
+# Use the vcpkg toolchain file if defined (for the Github Windows workflow)
 if(DEFINED ENV{VCPKG_TOOLCHAIN_FILE})
   set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_TOOLCHAIN_FILE} CACHE STRING "")
 endif()
@@ -33,27 +33,38 @@ pybind11_add_module(_bindings MODULE
   bindings/py_mpc_logger.cpp
 )
 
-# Set output directory to match package structure
 set_target_properties(_bindings PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/affine_mpc"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/affine_mpc"
 )
 
-# Link to the affine_mpc library
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
+
+# Copy the Python package into the build tree so the built extension is
+# importable for local testing and stub generation.
+file(GLOB affine_mpc_py_files
+  CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py"
+)
+add_custom_command(TARGET _bindings POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${affine_mpc_py_files}
+    ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
+)
+
+message(STATUS "python exe: ${Python_EXECUTABLE}")
+
+add_custom_target(python_stubgen
+  COMMAND ${CMAKE_COMMAND} -E env
+    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}"
+    -- "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/custom_stubgen.py"
+  DEPENDS _bindings
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Generating Python stubs from built bindings"
+)
 
 if(AFFINE_MPC_PY_ADD_TESTS)
   include(CTest)
   enable_testing()
-
-  # Copy the Python package into the build tree so the built extension is
-  # importable for local testing.
-  file(GLOB affine_mpc_py_files "${CMAKE_CURRENT_SOURCE_DIR}/affine_mpc/*.py")
-  add_custom_command(TARGET _bindings POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      ${affine_mpc_py_files}
-      ${CMAKE_CURRENT_BINARY_DIR}/affine_mpc
-  )
 
   execute_process(
     COMMAND "${Python_EXECUTABLE}" -m pytest --version
