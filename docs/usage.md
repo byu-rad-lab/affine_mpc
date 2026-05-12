@@ -7,7 +7,7 @@ title: Usage
 This page shows the intended workflow for both the C++ and Python interfaces.
 The solver concepts and setup order are the same in both languages; the tabs below only change the interface syntax.
 
-For the shared mathematical background, see [Concepts](concepts.md).
+For the shared mathematical background, see [Concepts](concepts/index.md).
 
 ## Main Types
 
@@ -27,41 +27,53 @@ For the shared mathematical background, see [Concepts](concepts.md).
 
     Public headers are in `include/affine_mpc/`.
 
-    The most important types are:
+    The most important types in the `affine_mpc` namespace are:
 
-    - `affine_mpc::Parameterization`
-    - `affine_mpc::Options`
-    - `affine_mpc::MPCBase`
-    - `affine_mpc::CondensedMPC`
-    - `affine_mpc::SparseMPC`
-    - `affine_mpc::MPCLogger`
-    - `affine_mpc::SolveStatus`
+    - `Parameterization`
+    - `Options`
+    - `MPCBase`
+    - `CondensedMPC`
+    - `SparseMPC`
+    - `MPCLogger`
+    - `SolveStatus`
+
+    For users wanting to modify default solver settings, `OSQPSettings` is defined in the global namespace from OSQP.
 
 ## Typical Workflow
 
 ### 1. Choose a parameterization
 
-Other common choices are `moveBlocking(...)` and `bspline(...)`.
+Factory methods are provided for
+
+- Move-blocking (`moveBlocking()`)
+- Linear interpolation (`linearInterp()`)
+- Clamped B-splines (`bspline()`)
+
+When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots are used) or you can supply a custom knot vector.
+For unclamped splines, you must use the regular constructor directly.
+
+If you are unsure what to use, linear interpolation is a good default:
 
 === "Python"
 
     ```python
-    param = ampc.Parameterization.linearInterp(horizon_steps=T, num_control_points=nc)
+    param = affine_mpc.Parameterization.linearInterp(horizon_steps, num_control_points)
     ```
 
 === "C++"
 
     ```cpp
-    auto param = affine_mpc::Parameterization::linearInterp(horizon_steps,
-                                                            num_control_points);
+    auto param = affine_mpc::Parameterization::linearInterp(horizon_steps, num_control_points);
     ```
+
+See [Input Parameterization](concepts/input-parameterization.md#provided-factory-methods) for more details.
 
 ### 2. Configure options if needed
 
 === "Python"
 
     ```python
-    opts = ampc.Options(
+    opts = affine_mpc.Options(
         use_input_cost=True,
         slew_initial_input=False,
         slew_control_points=True,
@@ -81,60 +93,102 @@ Other common choices are `moveBlocking(...)` and `bspline(...)`.
     opts.saturate_input_trajectory = false;
     ```
 
+See [Concepts](concepts/index.md) for more details on options.
+
 ### 3. Construct the MPC object
 
-`CondensedMPC` is usually the best starting point.
-`SparseMPC` can be worth trying for larger or more structured problems.
+Choose between `CondensedMPC` and `SparseMPC` (they have the same interfaces).
+
+- `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
+- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
+
+The best way to know which is faster for your problem is to try them both.
+
+**With Parameterization:**
 
 === "Python"
 
     ```python
-    mpc = ampc.CondensedMPC(state_dim=n, input_dim=m, param=param, opts=opts)
-    ```
-
-    Or:
-
-    ```python
-    mpc = ampc.SparseMPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    mpc = affine_mpc.CondensedMPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    # mpc = affine_mpc.SparseMPC(state_dim=n, input_dim=m, param=param, opts=opts)
     ```
 
 === "C++"
 
     ```cpp
     affine_mpc::CondensedMPC mpc(state_dim, input_dim, param, opts);
+    // affine_mpc::SparseMPC mpc(state_dim, input_dim, param, opts);
     ```
 
-    Or:
+**No Parameterization:**
+
+=== "Python"
+
+    ```python
+    mpc = affine_mpc.CondensedMPC(state_dim, input_dim, horizon_steps, opts)
+    # mpc = affine_mpc.SparseMPC(state_dim, input_dim, horizon_steps, opts)
+    ```
+
+=== "C++"
 
     ```cpp
-    affine_mpc::SparseMPC mpc(state_dim, input_dim, param, opts);
+    affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
+    // affine_mpc::SparseMPC mpc(state_dim, input_dim, horizon_steps, opts);
     ```
 
-### 4. Set the model
+### 4. Configure the MPC object
 
-Either provide a discrete model directly or discretize from continuous time.
+The order of these steps does not matter, but they all must happen before initializing the solver.
+
+#### Set the model
+
+**Discrete:**
 
 === "Python"
 
     ```python
     mpc.setModelDiscrete(Ad, Bd, wd)
-    mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt)
     ```
 
 === "C++"
 
     ```cpp
     mpc.setModelDiscrete(Ad, Bd, wd);
+    ```
+
+**Continuous:**
+
+=== "Python"
+
+    ```python
+    mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt)
+    ```
+
+=== "C++"
+
+    ```cpp
     mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt);
     ```
 
-### 5. Set limits and enabled optional constraints
+#### Set input limits
 
 === "Python"
 
     ```python
     mpc.setInputLimits(u_min, u_max)
+    ```
 
+=== "C++"
+
+    ```cpp
+    mpc.setInputLimits(u_min, u_max);
+    ```
+
+#### Set enabled optional parameters
+
+=== "Python"
+
+    ```python
     if opts.slew_initial_input:
         mpc.setSlewRateInitial(u0_slew)
         mpc.setPreviousInput(u_prev)  # defaults to zeros
@@ -147,7 +201,6 @@ Either provide a discrete model directly or discretize from continuous time.
 === "C++"
 
     ```cpp
-    mpc.setInputLimits(u_min, u_max);
     if (opts.slew_initial_input) {
       mpc.setSlewRateInitial(u0_slew);
       mpc.setPreviousInput(u_prev); // defaults to zeros
@@ -160,7 +213,7 @@ Either provide a discrete model directly or discretize from continuous time.
     }
     ```
 
-### 6. Set weights
+#### Set weights
 
 Without input cost:
 
@@ -204,7 +257,7 @@ With input cost:
     mpc.setInputWeights(R_diag);
     ```
 
-### 7. Set references
+#### Set references
 
 State step reference:
 
@@ -240,17 +293,19 @@ If input cost is enabled, input references can also be configured:
 
     ```python
     mpc.setReferenceInput(u_step)
-    mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts)
+    # OR
+    mpc.setReferenceInputControlPoints(control_points)
     ```
 
 === "C++"
 
     ```cpp
     mpc.setReferenceInput(u_step);
-    mpc.setReferenceParameterizedInputTrajectory(u_traj_ctrl_pts);
+    // OR
+    mpc.setReferenceInputControlPoints(control_points);
     ```
 
-### 8. Initialize the solver
+### 5. Initialize the solver
 
 === "Python"
 
@@ -267,13 +322,22 @@ If input cost is enabled, input references can also be configured:
     }
     ```
 
-### 9. Solve in the control loop
+You can pass in a `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+
+### 6. Solve in the control loop
+
+Configuration misuse tends to throw exceptions, but `solve()` returns a `SolveStatus` type rather than throwing since it
+is in the main runtime loop. Common cases include:
+
+- `Success`
+- `NotInitialized` (`solve()` was called prior to `initializeSolver()`)
+- OSQP-derived failure conditions (see [OSQP documentation](https://osqp.org/docs/interfaces/status_values.html#status-values))
 
 === "Python"
 
     ```python
     status = mpc.solve(xk)
-    if status != ampc.SolveStatus.Success:
+    if status != affine_mpc.SolveStatus.Success:
         # handle how you want
         pass
     ```
@@ -287,32 +351,85 @@ If input cost is enabled, input references can also be configured:
     }
     ```
 
-### 10. Retrieve results in the control loop
+### 7. Retrieve results in the control loop
+
+To get the first optimized input (the next to apply):
 
 === "Python"
 
     ```python
     uk = mpc.getNextInput()
-    u_traj = mpc.getInputTrajectory()
-    u_traj_ctrl_pts = mpc.getParameterizedInputTrajectory()
-    x_pred = mpc.getPredictedStateTrajectory()
     ```
 
 === "C++"
 
     ```cpp
     Eigen::VectorXd uk(input_dim);
-    mpc.getNextInput(uk); // most common
+    mpc.getNextInput(uk);
+    ```
 
+You can also access the full input and predicted state trajectories:
+
+=== "Python"
+
+    ```python
+    u_traj = mpc.getInputTrajectory()
+    u_control_points = mpc.getInputControlPoints()
+    x_pred = mpc.getPredictedStateTrajectory()
+    ```
+
+=== "C++"
+
+    ```cpp
     Eigen::VectorXd u_traj(input_dim * horizon_steps);
     mpc.getInputTrajectory(u_traj);
 
-    Eigen::VectorXd u_traj_ctrl_pts(input_dim * num_control_points);
-    mpc.getParameterizedInputTrajectory(u_traj_ctrl_pts);
+    Eigen::VectorXd u_control_points(input_dim * num_control_points);
+    mpc.getInputControlPoints(u_control_points);
 
     Eigen::VectorXd x_pred(state_dim * horizon_steps);
     mpc.getPredictedStateTrajectory(x_pred);
     ```
+
+### 8. (Optional) Logging
+
+Create a logger bound to one MPC object:
+
+=== "Python"
+
+    ```python
+    logger = affine_mpc.MPCLogger(
+        mpc,
+        save_dir,
+        ts,
+        prediction_stride=1,
+        mode=affine_mpc.MPCLogger.Mode.NpzCompressed,
+    )
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::MPCLogger logger{&mpc, "/tmp/affine_mpc_example", dt, 1, false,
+                                 "log",
+                                 affine_mpc::MPCLogger::Mode::NpzCompressed};
+    ```
+
+Inside the control loop:
+
+=== "Python"
+
+    ```python
+    logger.logStep(t, xk, solve_time)
+    ```
+
+=== "C++"
+
+    ```cpp
+    logger.logStep(t, xk, user_solve_time);
+    ```
+
+See [Logging](logging.md) for output format and workflow details.
 
 ## Interface Notes
 
@@ -349,37 +466,6 @@ If input cost is enabled, input references can also be configured:
 
     This is the natural pattern for tight loops where you want to avoid repeated allocations.
 
-## Constructor Variants
-
-Both `CondensedMPC` and `SparseMPC` support:
-
-- an explicit `Parameterization` constructor
-- a horizon-only constructor that defaults to one control point per step
-
-=== "Python"
-
-    ```python
-    mpc = ampc.CondensedMPC(state_dim, input_dim, horizon_steps, opts)
-    ```
-
-=== "C++"
-
-    ```cpp
-    affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
-    ```
-
-## Solve Status
-
-`solve()` returns `SolveStatus` for normal solver outcomes rather than throwing.
-
-Common cases include:
-
-- `Success`
-- `NotInitialized`
-- OSQP-derived failure conditions
-
-Configuration misuse tends to throw exceptions, while runtime solver outcomes use return values.
-
 ## Model Propagation Helper
 
 You can propagate the internal model one step with:
@@ -396,46 +482,6 @@ You can propagate the internal model one step with:
     mpc.propagateModel(xk, uk, x_next);
     ```
 
-## Logging
-
-Create a logger bound to one MPC object:
-
-=== "Python"
-
-    ```python
-    logger = ampc.MPCLogger(
-        mpc,
-        save_dir,
-        ts,
-        prediction_stride=1,
-        mode=ampc.MPCLogger.Mode.NpzCompressed,
-    )
-    ```
-
-=== "C++"
-
-    ```cpp
-    affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt, 1, false,
-                                 "log",
-                                 affine_mpc::MPCLogger::Mode::NpzCompressed};
-    ```
-
-Inside the control loop:
-
-=== "Python"
-
-    ```python
-    logger.logStep(t, xk, solve_time)
-    ```
-
-=== "C++"
-
-    ```cpp
-    logger.logStep(t, xk, user_solve_time);
-    ```
-
-See [Logging](logging.md) for output format and workflow details.
-
 ## Practical Guidance
 
 - Do not call `solve()` before `initializeSolver()`.
@@ -445,10 +491,3 @@ See [Logging](logging.md) for output format and workflow details.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
 - If a model coefficient or cost weight may become nonzero later, initialize with that structure already present.
 - If you enable `slew_initial_input`, provide the previous input before solving; after initial solve it is automatically set from the previous solve.
-
-## Choosing Between Condensed and Sparse
-
-- `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
-- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
-
-The only way to know which is faster for your problem is to try them both.
