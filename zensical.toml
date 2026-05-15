@@ -17,20 +17,6 @@ nav = [
         "concepts/qp-formulation.md",
         "concepts/runtime-updates.md",
     ]},
-    # {"Python" = [
-    #     "python/index.md",
-    #     "python/getting-started.md",
-    #     "python/usage.md",
-    #     # {"Getting Started" = "python/getting-started.md"},
-    #     # {"Usage" = "python/usage.md"},
-    # ]},
-    # {"C++" = [
-    #     "cpp/index.md",
-    #     "cpp/getting-started.md",
-    #     "cpp/usage.md",
-    #     # {"Getting Started" = "cpp/getting-started.md"},
-    #     # {"Usage" = "cpp/usage.md"},
-    # ]},
     {"Getting Started" = [
         "getting_started/index.md",
         {"C++" = "getting_started/cpp.md"},
@@ -55,7 +41,7 @@ features = [
     # "navigation.tabs",
     # "navigation.sections",
     "navigation.expand",
-    "navigation.path",
+    # "navigation.path",
     "navigation.indexes",
     "navigation.top",
     "search.suggest",
@@ -90,6 +76,7 @@ toggle.name = "Switch to light mode"
 [project.markdown_extensions.def_list]
 [project.markdown_extensions.footnotes]
 [project.markdown_extensions.tables]
+# [project.markdown_extensions.zensical.extensions.macros]
 
 # table of contents
 [project.markdown_extensions.toc]
@@ -118,3 +105,7 @@ generic = true
 # allows usage of content tabs
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
+
+# allows snippets (embedding other files)
+[project.markdown_extensions.pymdownx.snippets]
+base_path = "docs"
