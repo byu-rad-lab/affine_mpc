@@ -22,33 +22,7 @@ This page gives the mathematical definition of the parameterization,
 its sampled matrix form,
 and the API-level factory methods provided by `Parameterization`.
 
-## Nomenclature
-
-### System Quantities
-
-- $n$: state dimension
-- $m$: input dimension
-- $T$: number of steps in the prediction horizon
-- $\mathbf{x}_k \in \mathbb{R}^n$: state at horizon step $k$
-- $\mathbf{u}_k \in \mathbb{R}^m$: input applied at horizon step $k$
-- $\bar{\mathbf{x}}_k \in \mathbb{R}^n$: reference state at step $k$
-
-### Parameterization Quantities
-
-- $\eta$: number of control points
-- $d$: spline degree
-- $\mu$: number of knots
-- $\mathbf{c}_i \in \mathbb{R}^m$: control point at index $i$
-- $\bar{\mathbf{c}}_i \in \mathbb{R}^m$: reference control point at index $i$
-- $\boldsymbol{\tau} = [\tau_0, \dots, \tau_{\mu-1}]$: knot vector
-- $b_i^d(k, \boldsymbol{\tau})$: $i$th B-spline basis function of degree $d$, evaluated at horizon index $k$
-- $\Psi^d(\boldsymbol{\tau}) \in \mathbb{R}^{mT \times m\eta}$: sampled spline evaluation matrix mapping stacked control points to the stacked input trajectory
-
-### Stacked Trajectories
-
-- $X = [\mathbf{x}_1^\top \; \mathbf{x}_2^\top \; \cdots \; \mathbf{x}_T^\top]^\top \in \mathbb{R}^{nT}$: stacked predicted state trajectory
-- $U = [\mathbf{u}_0^\top \; \mathbf{u}_1^\top \; \cdots \; \mathbf{u}_{T-1}^\top]^\top \in \mathbb{R}^{mT}$: stacked input trajectory
-- $C = [\mathbf{c}_0^\top \; \mathbf{c}_1^\top \; \cdots \; \mathbf{c}_{\eta-1}^\top]^\top \in \mathbb{R}^{m\eta}$: stacked control-point vector
+--8<-- "concepts/nomenclature.md"
 
 ## B-Splines
 
@@ -57,7 +31,7 @@ We therefore define a spline over the interval $t \in [0, T-1]$ and evaluate it 
 The parameterized input trajectory is given by
 
 $$
-\mathbf{u}_k = \sum_{i=0}^{\eta-1}  \mathbf{c}_i \, b_i^d(k, \boldsymbol{\tau}),
+\mathbf{u}_k = \sum_{i=0}^{\eta-1}  \mathbf{c}_i \, b_i^p(k, \boldsymbol{\tau}),
 $$
 
 where $\boldsymbol{\tau}$ is a non-decreasing knot vector.
@@ -67,14 +41,14 @@ We refer to the set of boundary and interior knots as the active knots since the
 For MPC, we match the boundary knots with the boundary horizon indices so that the spline is defined at each horizon index $k$:
 
 $$
-\tau_d = 0,
+\tau_p = 0,
 \qquad
-\tau_{\mu-d-1} = T-1.
+\tau_{\mu-p-1} = T-1.
 $$
 
 The basis functions are defined by the Cox-de Boor recursion formula.
 
-For degree zero,
+For $p=0$
 
 $$
 b_i^0(k, \boldsymbol{\tau}) =
@@ -84,12 +58,12 @@ b_i^0(k, \boldsymbol{\tau}) =
 \end{cases}
 $$
 
-and for $d > 0$,
+and for $p>0$
 
 $$
-b_i^d(k, \boldsymbol{\tau}) =
-\frac{k - \tau_i}{\tau_{i+d} - \tau_i} b_i^{d-1}(k, \boldsymbol{\tau})
-+ \frac{\tau_{i+d+1} - k}{\tau_{i+d+1} - \tau_{i+1}} b_{i+1}^{d-1}(k, \boldsymbol{\tau}),
+b_i^p(k, \boldsymbol{\tau}) =
+\frac{k - \tau_i}{\tau_{i+p} - \tau_i} b_i^{p-1}(k, \boldsymbol{\tau})
++ \frac{\tau_{i+p+1} - k}{\tau_{i+p+1} - \tau_{i+1}} b_{i+1}^{p-1}(k, \boldsymbol{\tau}),
 $$
 
 with the convention that terms with zero denominators are treated as zero.
@@ -100,7 +74,7 @@ The B-spline basis functions can be represented as a matrix $\Psi$ to convenient
 control points to a stacked input trajectory:
 
 $$
-U = \Psi^d(\boldsymbol{\tau}) \, C.
+U = \Psi^p(\boldsymbol{\tau}) \, C.
 $$
 
 What is especially convenient about the matrix representation is that the matrix is constant for a given degree and knot vector.
