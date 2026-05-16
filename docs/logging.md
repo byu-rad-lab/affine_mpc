@@ -32,6 +32,7 @@ The logger is useful for:
     while t < tf:
         status = mpc.solve(xk)
         if status != ampc.SolveStatus.Success:
+            # handle how you wish
             break
 
         logger.logStep(t, xk, user_solve_time)

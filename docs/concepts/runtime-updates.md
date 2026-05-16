@@ -47,7 +47,7 @@ In practice this means:
 
 The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 
-- model terms: $A$, $B$, $w$
+- model terms: $A$, $B$, $\mathbf{w}$
 - weights: $Q$, $Q_f$, $R$
 - enabled options and constraint structure
 - parameterization structure through the chosen `Parameterization`
@@ -58,7 +58,7 @@ The runtime-updated inputs that can affect QP sparsity are the model terms and w
 To preserve sparsity structure,
 ensure that any model or weight updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
-For example, it is common to compute Jacobians of a nonlinear model for $A$, $B$, and $w$.
+For example, it is common to compute Jacobians of a nonlinear model for $A$, $B$, and $\mathbf{w}$.
 Often when evaluating those Jacobians at equilibrium points, many entries are exactly zero,
 but they may become nonzero when evaluated at other points.
 In that case,

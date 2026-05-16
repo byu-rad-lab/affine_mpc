@@ -51,7 +51,7 @@ python -m pip install . --config-settings=cmake.define.BUILD_SHARED_LIBS=ON
 
 ### Use Installed Scripts (fastest start)
 
-Installing with `pip`, as shown above, installs the python examples into your Python environment along with these 3 scripts:
+Installing with `pip`, as shown above, installs the Python examples into your Python environment along with these three scripts:
 
 - `affine-mpc-example-sim` (runs sim and logs only)
 - `affine-mpc-example-plot` (plots only)
@@ -114,4 +114,4 @@ OR install the following manually:
 - Vector arguments are typically one-dimensional arrays such as `np.zeros(n)`
 - Many getters support both styles: return a new NumPy array, or write into an array you provide and return that same array
 
-For the full workflow and class-level guidance, see [Usage](usage.md).
+For the full workflow and class-level guidance, see [Usage](../usage.md).

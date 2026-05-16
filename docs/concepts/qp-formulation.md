@@ -27,7 +27,7 @@ $$
 where $\mathbf{z}$ is the design variable,
 $P$ is the cost matrix,
 $\mathbf{q}$ is the cost vector,
-$A$ is the constraint matrix,
+$A_\mathrm{qp}$ is the constraint matrix,
 and $\boldsymbol{\ell}$ and $\boldsymbol{\upsilon}$ are the lower and upper bounds on the constraints,
 respectively.
 Some of the symbols collide with MPC symbols,
@@ -56,7 +56,7 @@ $$
     A_{\mathrm{slew0}} \\
     A_{\mathrm{slew}} \\
     A_{\mathrm{xsat}}
-\end{bmatrix}}_{A_\textrm{qp}} \mathbf{z}
+\end{bmatrix}}_{A_\mathrm{qp}} \mathbf{z}
     \leq
 \underbrace{\begin{bmatrix}
     \boldsymbol{\upsilon}_{\mathrm{model}} \\
@@ -70,7 +70,7 @@ $$
 The MPC problem has summation terms in the cost function and a list of various constraints,
 which both need to be converted into a matrix multiply.
 
-### Sparsed vs Condensed Design Variable
+### Sparse vs Condensed Design Variable
 
 The main difference between two formulations is the choice of design vector $\mathbf{z}$ used in the optimization.
 Sparse uses the control points and state trajectory while condensed only uses the control points:
@@ -155,7 +155,7 @@ Now we'll convert to matrix form:
 
 $$
 -\begin{bmatrix} \mathbf{w} \\ \vdots \\ \mathbf{w} \end{bmatrix}
--\begin{bmatrix} A x_0 \\ 0 \\ \vdots \end{bmatrix}
+-\begin{bmatrix} A \mathbf{x}_0 \\ 0 \\ \vdots \end{bmatrix}
     =
     \begin{bmatrix}
         -I         & 0      & \dots  & \mathbf{0}  \\
@@ -404,12 +404,12 @@ To convert the model prediction into a single matrix multiply, we'll start writi
 
 $$
 \begin{align}
-    \mathbf{x}_1 &= A \mathbf{x}_0 + B \mathbf{u}_0 + w \\
-    \mathbf{x}_2 &= A \mathbf{x}_1 + B \mathbf{u}_1 + w \\
-        &= A (A \mathbf{x}_0 + B \mathbf{u}_0 + w) + B \mathbf{u}_1 + w \\
-        &= A^2 \mathbf{x}_0 + A (B \mathbf{u}_0 + w) + (B \mathbf{u}_1 + w) \\
+    \mathbf{x}_1 &= A \mathbf{x}_0 + B \mathbf{u}_0 + \mathbf{w} \\
+    \mathbf{x}_2 &= A \mathbf{x}_1 + B \mathbf{u}_1 + \mathbf{w} \\
+        &= A (A \mathbf{x}_0 + B \mathbf{u}_0 + \mathbf{w}) + B \mathbf{u}_1 + \mathbf{w} \\
+        &= A^2 \mathbf{x}_0 + A (B \mathbf{u}_0 + \mathbf{w}) + (B \mathbf{u}_1 + \mathbf{w}) \\
         &\;\; \vdots \\
-    \mathbf{x}_k &= A^k x_0 + \sum_{i=1}^k A^{i-1} ( B \mathbf{u}_{k-i} + w ) \\
+    \mathbf{x}_k &= A^k \mathbf{x}_0 + \sum_{i=1}^k A^{i-1} ( B \mathbf{u}_{k-i} + \mathbf{w} ) \\
 \end{align}
 $$
 
@@ -575,7 +575,7 @@ J
     +
     (\underbrace{
         S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
-    }_{\mathbf{q}})^\top \mathbf{z}_s
+    }_{\mathbf{q}})^\top \mathbf{z}_c
 \end{align}
 $$
 

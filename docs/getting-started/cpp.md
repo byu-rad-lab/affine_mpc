@@ -52,7 +52,7 @@ All of these can be installed from source (see their docs), but here are install
     !!! note
 
         Ubuntu 22.04 is the oldest version that satisfies the Eigen version requirement.
-        If you are using an older version then you will have to build from [source](https://gitlab.com/), or let this project fetch Eigen locally.
+        If you are using an older version then you will have to build from [source](https://gitlab.com/libeigen/eigen), or let this project fetch Eigen locally.
 
 === "MacOS"
 
@@ -119,7 +119,7 @@ For more detail on what the example demonstrates and how to interpret the output
     The library does not provide visualization capabilities in C++.
     Python is intended to be used for plotting.
 
-To visualize the log from Python, see the plotting workflow in [Python Getting Started](../python/getting-started.md#plot-the-results).
+To visualize the log from Python, see the plotting workflow in [Python Getting Started](python.md#plot-the-results).
 
 ## How to Use in your Project
 
@@ -172,4 +172,4 @@ target_link_libraries(<your_target> PRIVATE affine_mpc::affine_mpc)
 
 ## Next Steps
 
-For the intended API workflow, see [Usage](usage.md).
+For the intended API workflow, see [Usage](../usage.md).

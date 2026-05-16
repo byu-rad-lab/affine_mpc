@@ -55,7 +55,7 @@ whereas MPC can also enforce hard input limits directly without an input regular
 !!! note
 
     `affine_mpc` currently only supports setting reference control points rather than a full reference input trajectory.
-    For all of our use cases thus far, regularizing the control points only has been sufficient.
+    For all of our use cases thus far, regularizing only the control points has been sufficient.
 
     If you need that functionality then please submit an issue or, better yet, a pull request!
 

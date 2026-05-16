@@ -322,7 +322,7 @@ If input cost is enabled, input references can also be configured:
     }
     ```
 
-You can pass in a `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
 
 ### 6. Solve in the control loop
 
@@ -490,4 +490,4 @@ You can propagate the internal model one step with:
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
 - If a model coefficient or cost weight may become nonzero later, initialize with that structure already present.
-- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve it is automatically set from the previous solve.
+- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve, it is automatically set from the previous solve.

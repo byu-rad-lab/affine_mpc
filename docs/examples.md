@@ -29,9 +29,9 @@ Since Python can natively plot the logged results, the only difference between t
 
 The simulation can be run from either interface, but visualization is currently supported from Python only.
 
-- To run the Python example, see [Python Getting Started](python/getting-started.md).
-- To build and run the C++ example, see [C++ Getting Started](cpp/getting-started.md).
-- To inspect logs produced by either interface, use the Python plotting workflow described in [Python Getting Started](python/getting-started.md#plot-the-results).
+- To run the Python example, see [Python Getting Started](getting-started/python.md).
+- To build and run the C++ example, see [C++ Getting Started](getting-started/cpp.md).
+- To inspect logs produced by either interface, use the Python plotting workflow described in [Python Getting Started](getting-started/python.md#plot-the-results).
 
 ## Core Example Structure
 
@@ -57,7 +57,7 @@ The two outputs are:
 
 The controller tracks a constant position target for the mass-spring-damper system.
 The logger records both the realized trajectory and selected predictions.
-Logs produced by either interface can be visualized with the Python plotting workflow described in [Python Getting Started](python/getting-started.md).
+Logs produced by either interface can be visualized with the Python plotting workflow described in [Python Getting Started](getting-started/python.md#plot-the-results).
 
 The plot shows:
 

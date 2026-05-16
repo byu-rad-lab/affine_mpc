@@ -35,8 +35,9 @@ $$
 $$
 
 where $\boldsymbol{\tau}$ is a non-decreasing knot vector.
-The spline is valid on the active interval $[\tau_d, \tau_{\mu-d-1}]$.
-These two knots are called the boundary knots, while everything between them (excluding them) are called interior knots.
+The spline is valid on the active interval $[\tau_p, \tau_{\mu-p-1}]$.
+These two knots are called the boundary knots,
+while the knots between them (excluding the boundary knots) are called interior knots.
 We refer to the set of boundary and interior knots as the active knots since the valid evaluation interval includes the boundaries.
 For MPC, we match the boundary knots with the boundary horizon indices so that the spline is defined at each horizon index $k$:
 
@@ -74,7 +75,7 @@ The B-spline basis functions can be represented as a matrix $\Psi$ to convenient
 control points to a stacked input trajectory:
 
 $$
-U = \Psi^p(\boldsymbol{\tau}) \, C.
+\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}.
 $$
 
 What is especially convenient about the matrix representation is that the matrix is constant for a given degree and knot vector.
@@ -149,7 +150,7 @@ The minimum number of endpoints is 2, being the boundaries of a single line segm
 ### Clamped B-Spline
 
 The general `bspline()` factory method creates clamped B-splines of the specified degree.
-In the full knot vector, the first and last knots have multiplicity $d+1$, so the trajectory starts at the first control point and ends at the last.
+In the full knot vector, the first and last knots have multiplicity $p+1$, so the trajectory starts at the first control point and ends at the last.
 
 The two overloads are:
 
@@ -178,12 +179,12 @@ The active knot vector must include at least the two boundary entries $0$ and $T
 - Smaller $\eta$ reduces the optimization dimension and can significantly improve solve time.
 - Larger $\eta$ gives the optimizer more freedom to shape the input trajectory.
 
-### Degree $d$
+### Degree $p$
 
 - Lower degree gives a more local and less smooth trajectory representation.
 - Higher degree gives smoother trajectories and broader basis support, but can somewhat flatten the input trajectory if
   the control points are saturated by the input limits since splines generally do not pass through control points.
-  This can be remedied by saturating the evaluated input trajectory instead (when $d>1$).
+  This can be remedied by saturating the evaluated input trajectory instead (when $p>1$).
 
 ### Knot Placement
 
