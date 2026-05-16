@@ -447,7 +447,8 @@ $$\Downarrow$$
 $$
 \mathbf{x}
     =
-    \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
+    \sum_{i=1}^{T}(A^i \mathbf{x}_0 \otimes \mathbf{e}_i)
     +
     \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right)
     \left( (B \otimes I_T) \mathbf{u} + \mathbf{w} \otimes \mathbf{1}_T \right)
@@ -461,8 +462,11 @@ $$
 
 $$
 \mathbf{v}
-    = \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
-    + \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right) (\mathbf{w} \otimes \mathbf{1}_T)
+    =
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
+    \sum_{i=1}^{T}(A^i \mathbf{x}_0 \otimes \mathbf{e}_i)
+    +
+    \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right) (\mathbf{w} \otimes \mathbf{1}_T)
 $$
 
 ??? info "Alternate Expanded Visual Form"
