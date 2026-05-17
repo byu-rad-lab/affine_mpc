@@ -28,7 +28,22 @@ It is people like you that make open-source research software better.
 
 - Target C++ standard: **C++17**.
 - Build system: **CMake**.
-- Dependency management: We try to use system packages and fallback to `FetchContent` for external dependencies (Eigen, OSQP, cnpy).
+- Dependency management: We try to use system packages and fallback to `FetchContent` for external dependencies (Eigen, OSQP).
+
+### Common Test Commands
+
+After configuring and building the project, the normal top-level test entry points are:
+
+```sh
+ctest --test-dir build --output-on-failure
+pytest test/bindings
+pytest test/python_npz
+```
+
+Notes:
+
+- `test/bindings/` exercises the built or locally installed `affine_mpc` Python package
+- `test/python_npz/` validates NPY and NPZ output directly with NumPy and uses the `np_writer_fixture` helper from the build tree
 
 ## Review Process
 
