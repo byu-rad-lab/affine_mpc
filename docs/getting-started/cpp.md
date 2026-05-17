@@ -6,11 +6,23 @@ This guide gets you to a first successful build and run with the C++ library.
 
 The fastest path is usually to try building first and let CMake fetch missing dependencies if needed:
 
-```sh
-cmake -S . -B build -DAFFINE_MPC_BUILD_EXAMPLES=ON
-cmake --build build --config Release --parallel
-./build/example_sim
-```
+1. CMake configuration
+
+    ```sh
+    cmake -S . -B build --DCMAKE_BUILD_TYPE=Release -DAFFINE_MPC_BUILD_EXAMPLES=ON
+    ```
+
+1. Build
+
+    ```sh
+    cmake --build build --parallel
+    ```
+
+1. Run the example
+
+    ```sh
+    ./build/example_sim
+    ```
 
 This should build and run the `example_sim` executable, see [Expected Results](#expected-results).
 
@@ -27,21 +39,19 @@ Required dependencies:
 
 - [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) 3.4+ (fetched if not on system)
 - [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system)
-- [cnpy](https://github.com/rogersce/cnpy.git) (always fetched)
-- [ZLIB](https://zlib.net/) (must be on system - commonly is for Linux/MacOS)
 
 All of these can be installed from source (see their docs), but here are installation instructions for some common operating systems:
 
 === "Arch"
 
     ```sh
-    sudo pacman -S --asdeps eigen osqp zlib
+    sudo pacman -S --asdeps eigen osqp
     ```
 
 === "Ubuntu/Debian"
 
     ```sh
-    sudo apt install libeigen3-dev zlib1g-dev
+    sudo apt install libeigen3-dev
     ```
 
     !!! note
@@ -57,52 +67,55 @@ All of these can be installed from source (see their docs), but here are install
 === "MacOS"
 
     ```sh
-    brew install eigen osqp zlib
+    brew install eigen osqp
     ```
 
 === "Windows"
 
-    There are likely many ways to install dependencies; using `vcpkg` is shown here:
-
-    If `vcpkg` is not installed (you can install it where you want - this will use `C:\vcpkg`)
-
     ```pwsh
-    git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-    C:\vcpkg\bootstrap-vcpkg.bat
+    C:\vcpkg\vcpkg install eigen3:x64-windows osqp:x64-windows
     ```
 
-    Install dependencies (use path to your `vcpkg` installation):
+    !!! note
 
-    ```pwsh
-    C:\vcpkg\vcpkg install eigen3:x64-windows osqp:x64-windows zlib:x64-windows
-    ```
+        [vcpkg](https://vcpkg.io/en/) is the C/C++ dependency manager officially supported by Microsoft.
+        You can install it with:
+
+        ```pwsh
+        git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+        C:\vcpkg\bootstrap-vcpkg.bat
+        ```
+
+        This installs it to `C:\vcpkg`, but you can choose a different location if desired.
+        If you choose a different location, make sure to update the path in the above install command.
 
 ### Optional dependencies:
 
+- [ZLIB](https://zlib.net/) for NPZ compression (must be on system - commonly is for Linux/MacOS)
 - [GTest](https://google.github.io/googletest/) for unit tests (fetched if not on system)
 
 === "Arch"
 
     ```sh
-    sudo pacman -S --asdeps gtest
+    sudo pacman -S --asdeps zlib gtest
     ```
 
 === "Ubuntu/Debian"
 
     ```sh
-    sudo apt install libgtest-dev
+    sudo apt install zlib1g-dev libgtest-dev
     ```
 
 === "MacOS"
 
     ```sh
-    brew install googletest
+    brew install zlib googletest
     ```
 
 === "Windows"
 
     ```pwsh
-    C:\vcpkg\vcpkg install gtest:x64-windows
+    C:\vcpkg\vcpkg install zlib:x64-windows gtest:x64-windows
     ```
 
 ## Expected Results
@@ -125,13 +138,22 @@ To visualize the log from Python, see the plotting workflow in [Python Getting S
 
 !!! info
 
-    While developing, you may want to compile in `Debug` mode (`cmake --build build --config Debug --parallel`).
+    While developing, you may want to compile in `Debug` mode (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug`).
     This library does some additional size checks on Eigen variables in `Debug` mode.
     Once developed though, `Release` mode is _much_ faster.
 
 ### Install to System
 
 This is useful if you want to reuse `affine_mpc` in multiple projects.
+
+!!! tip
+
+    If you install to your system, you should probably have OSQP and Eigen installed on your
+    system and use their shared libraries:
+
+    ```sh
+    cmake -S . -B build -DBUILD_SHARED_LIBS=ON --DCMAKE_BUILD_TYPE=Release
+    ```
 
 You can install `affine_mpc` to your system after it has been built (likely need admin privileges):
 

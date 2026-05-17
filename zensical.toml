@@ -10,17 +10,17 @@ repo_name = "byu-rad-lab/affine_mpc"
 
 nav = [
     {"Home" = "index.md"},
+    {"Getting Started" = [
+        "getting-started/index.md",
+        {"C++" = "getting-started/cpp.md"},
+        {"Python" = "getting-started/python.md"},
+    ]},
     {"Concepts" = [
         "concepts/index.md",
         "concepts/problem-formulation.md",
         "concepts/input-parameterization.md",
         "concepts/qp-formulation.md",
         "concepts/runtime-updates.md",
-    ]},
-    {"Getting Started" = [
-        "getting-started/index.md",
-        {"C++" = "getting-started/cpp.md"},
-        {"Python" = "getting-started/python.md"},
     ]},
     {"Usage" = "usage.md"},
     {"Examples" = "examples.md"},
@@ -40,7 +40,7 @@ pallete.accent = "blue"
 features = [
     # "navigation.tabs",
     # "navigation.sections",
-    "navigation.expand",
+    # "navigation.expand",
     # "navigation.path",
     "navigation.indexes",
     "navigation.top",
@@ -83,6 +83,11 @@ toggle.name = "Switch to light mode"
 permalink = true
 title = "On this page"
 permalink_title = "Anchor link to this section"
+
+# enable image zoom on click
+[project.markdown_extensions.zensical.extensions.glightbox]
+height = "auto"
+auto_caption = true
 
 # supercharge admonition ext, making call-outs collapsible
 [project.markdown_extensions.pymdownx.details]

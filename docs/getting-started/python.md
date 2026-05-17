@@ -1,6 +1,6 @@
 # Python Getting Started
 
-This guide gets you to a first successful solve with the Python package.
+This guide gets you to a first successful run with the Python package.
 
 ## Install
 
