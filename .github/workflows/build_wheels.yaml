@@ -12,10 +12,16 @@ env:
   CIBW_SKIP: "pp* cp3??t-* *-win32 *-manylinux_i686 *-musllinux_i686"
   CIBW_ARCHS_WINDOWS: AMD64
   CIBW_TEST_REQUIRES: pytest
+  CIBW_ENVIRONMENT: AFFINE_MPC_HAS_ZLIB=1
   CIBW_TEST_COMMAND: "python -m pytest {project}/test/bindings"
+  CIBW_BEFORE_ALL_LINUX: >-
+    bash -c 'if command -v dnf >/dev/null 2>&1; then dnf install -y zlib-devel;
+    elif command -v yum >/dev/null 2>&1; then yum install -y zlib-devel;
+    elif command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y zlib1g-dev;
+    else echo "No supported package manager found for installing zlib" >&2; exit 1; fi'
   CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
   CIBW_ENVIRONMENT_WINDOWS: >-
-    CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+    AFFINE_MPC_HAS_ZLIB=1 CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static
   CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
 
 jobs:
@@ -43,7 +49,7 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install zlib:x64-windows eigen3:x64-windows
+          C:\vcpkg\vcpkg install zlib:x64-windows-static eigen3:x64-windows-static
 
       # macOS step
       - name: Install dependencies (macOS)
