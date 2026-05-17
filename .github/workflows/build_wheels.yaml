@@ -21,7 +21,7 @@ env:
     else echo "No supported package manager found for installing zlib" >&2; exit 1; fi'
   CIBW_BEFORE_BUILD_WINDOWS: "pip install delvewheel"
   CIBW_ENVIRONMENT_WINDOWS: >-
-    AFFINE_MPC_HAS_ZLIB=1 CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static
+    AFFINE_MPC_HAS_ZLIB=1 CMAKE_ARGS='-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static'
   CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
 
 jobs:
