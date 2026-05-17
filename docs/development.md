@@ -59,6 +59,10 @@ cmake -S . -B build \
     -DAFFINE_MPC_BUILD_BINDINGS=ON
 ```
 
+!!! note
+
+    The Python venv with the installed build dependencies must be activated when you configure CMake.
+
 Build:
 
 ```sh
