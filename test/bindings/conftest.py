@@ -47,6 +47,15 @@ def _find_repo_local_package_root(root: Path) -> Path:
     )
 
 
+def _can_import_installed_package() -> bool:
+    try:
+        import affine_mpc  # noqa: F401
+    except ImportError:
+        return False
+
+    return True
+
+
 def _infer_has_zlib(root: Path) -> str:
     override = os.environ.get("AFFINE_MPC_HAS_ZLIB")
     if override in {"0", "1"}:
@@ -68,9 +77,11 @@ def _infer_has_zlib(root: Path) -> str:
 
 
 root = _repo_root()
-pkg_root = _find_repo_local_package_root(root)
 
-if str(pkg_root) not in sys.path:
-    sys.path.insert(0, str(pkg_root))
+if not _can_import_installed_package():
+    pkg_root = _find_repo_local_package_root(root)
+
+    if str(pkg_root) not in sys.path:
+        sys.path.insert(0, str(pkg_root))
 
 os.environ.setdefault("AFFINE_MPC_HAS_ZLIB", _infer_has_zlib(root))
