@@ -56,7 +56,6 @@ minimum-version = "0.8"
 
 [tool.scikit-build.cmake.define]
 AFFINE_MPC_BUILD_BINDINGS = "ON"
-AFFINE_MPC_PY_GENERATE_STUBS = "OFF"
 # BUILD_SHARED_LIBS = "OFF"
 
 [tool.setuptools_scm]
