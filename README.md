@@ -21,9 +21,10 @@ Researchers and engineers often need an MPC tool that sits between low-level QP 
 
 The primary documentation lives at <https://byu-rad-lab.github.io/affine_mpc/>.
 
+- [Getting Started](https://byu-rad-lab.github.io/affine_mpc/getting-started/)
+- [Python guide](https://byu-rad-lab.github.io/affine_mpc/getting-started/python/)
+- [C++ guide](https://byu-rad-lab.github.io/affine_mpc/getting-started/cpp/)
 - [Concepts and formulation](https://byu-rad-lab.github.io/affine_mpc/concepts/)
-- [Python guide](https://byu-rad-lab.github.io/affine_mpc/python/)
-- [C++ guide](https://byu-rad-lab.github.io/affine_mpc/cpp/)
 - [Example walkthrough](https://byu-rad-lab.github.io/affine_mpc/examples/)
 - [Development guide](https://byu-rad-lab.github.io/affine_mpc/development/)
 
