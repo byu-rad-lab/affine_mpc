@@ -35,6 +35,8 @@ extra_javascript = [
 
 [project.theme]
 # variant = "classic"
+logo = "assets/favicon.svg"
+favicon = "assets/favicon.svg"
 pallete.primary = "blue grey"
 pallete.accent = "blue"
 features = [
@@ -49,6 +51,17 @@ features = [
     "content.code.copy",
     "content.tabs.link",
 ]
+
+# Footer links
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/byu-rad-lab/affine_mpc"
+name = "GitHub"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://test.pypi.org/project/affine-mpc"
+name = "PyPI"
 
 # Palette toggle for automatic mode
 # [[project.theme.palette]]
