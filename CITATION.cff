@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Haskell"
+  given-names: "Mathew"
+  orcid: "https://orcid.org/0000-0003-3813-7312"
+- family-names: "Killpack"
+  given-names: "Marc"
+  orcid: "https://orcid.org/0000-0001-9372-104X"
+title: "affine_mpc: A library for affine model predictive control with C++ and Python interfaces"
+version: 0.1.0
+date-released: 2026-05-18
+url: "https://byu-rad-lab.github.io/affine_mpc"
+license: BSD-3-Clause
+repository-code: "https://github.com/byu-rad-lab/affine_mpc"
+keywords:
+  - model predictive control
+  - control
+  - robotics
+  - optimization
+  - b-spline
+  - quadratic-programming
