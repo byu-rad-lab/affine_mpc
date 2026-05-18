@@ -4,22 +4,16 @@ This guide gets you to a first successful run with the Python package.
 
 ## Install
 
-### From TestPyPI
+### From PyPI
 
 ```sh
-pip install \
-    --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    affine_mpc
+pip install affine_mpc
 ```
 
 Or if you want to also install the plotting dependencies for the examples:
 
 ```sh
-pip install \
-    --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    "affine_mpc[examples]"
+pip install "affine_mpc[examples]"
 ```
 
 ### From Source
