@@ -23,12 +23,20 @@ but you can also install them globally if you prefer.
 
 ```sh
 python -m venv .venv
-# Linux/macOS
-source .venv/bin/activate
-# Windows - use the script for your shell, e.g.:
-.venv\Scripts\activate.bat # for cmd.exe
-.venv\Scripts\Activate.ps1 # for PowerShell
 ```
+
+=== "Linux/macOS"
+
+     ```sh
+     source .venv/bin/activate
+     ```
+
+=== "Windows"
+
+     ```pwsh
+     .venv\Scripts\activate.bat # for cmd.exe
+     .venv\Scripts\Activate.ps1 # for PowerShell
+     ```
 
 !!! note
 
@@ -59,9 +67,9 @@ cmake -S . -B build \
     -DAFFINE_MPC_BUILD_BINDINGS=ON
 ```
 
-!!! note
+!!! tip
 
-    The Python venv with the installed build dependencies must be activated when you configure CMake.
+    Ensure the Python venv where you installed the build dependencies is activated when you configure CMake.
 
 Build:
 
