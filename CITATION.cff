@@ -8,7 +8,7 @@ authors:
   given-names: "Marc"
   orcid: "https://orcid.org/0000-0001-9372-104X"
 title: "affine_mpc: A library for affine model predictive control with C++ and Python interfaces"
-version: 0.1.0
+version: 0.1.1
 date-released: 2026-05-18
 url: "https://byu-rad-lab.github.io/affine_mpc"
 license: BSD-3-Clause
