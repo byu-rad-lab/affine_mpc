@@ -83,24 +83,50 @@ jobs:
           name: python-wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
 
+  build-sdist:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install build
+
+      - name: Build sdist
+        run: python -m build --sdist
+
+      - name: Upload sdist as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: dist/*.tar.gz
+
   publish-pypi:
-    needs: build-wheels
+    needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - name: Download wheel artifacts
+      - name: Download distribution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: python-wheels-*
+          pattern: python-*
           path: dist
           merge-multiple: true
 
-      - name: List downloaded wheels
+      - name: List downloaded distributions
         run: ls -l dist
 
-      - name: Publish wheels to PyPI
+      - name: Publish distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages_dir: dist
