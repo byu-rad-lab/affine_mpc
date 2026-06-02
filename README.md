@@ -1,4 +1,10 @@
-# affine_mpc
+# <img src="docs/assets/favicon.svg" alt="affine_mpc logo" width="32" height="32"> affine_mpc
+
+[![PyPI](https://img.shields.io/pypi/v/affine_mpc.svg)](https://pypi.org/project/affine-mpc/)
+[![Build and Test](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/build_test.yaml/badge.svg)](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/build_test.yaml)
+[![Check Stubs](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/check_stubs.yaml/badge.svg)](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/check_stubs.yaml)
+[![Deploy Docs](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/docs.yaml/badge.svg)](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/docs.yaml)
+[![Publish to PyPI](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/publish_pypi.yaml/badge.svg)](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/publish_pypi.yaml)
 
 `affine_mpc` is a library for model predictive control using discrete-time affine models, with C++ and Python interfaces.
 It is designed to support real-time control and rapid research prototyping with a focused set of common costs and constraints, along with live parameter updates.
