@@ -1,10 +1,8 @@
 name: Build Python Wheels
 
 on:
-  push:
-    tags:
-      - "*"
-  workflow_dispatch:
+  release:
+    types: [published]
 
 env:
   ## Manually specify versions if one ever fails
@@ -88,7 +86,6 @@ jobs:
   publish-pypi:
     needs: build-wheels
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     environment: pypi
     permissions:
       id-token: write
