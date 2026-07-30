@@ -66,7 +66,7 @@ affine-mpc-example-plot
 
 ### Run Sim File Directly
 
-This is useful if you wish to modify the example sim or just want to run it directly.
+This is useful if you wish to modify the example sim or just want to run it directly (assuming you cloned the repo).
 
 ```sh
 python examples/sim.py
@@ -80,15 +80,15 @@ Expected outcome:
 
 For more detail on what the example demonstrates and how to interpret the outputs, see [Examples](../examples.md).
 
-### Plot the Results
+## Plot the Results
 
-After running the example, plot the log with:
+After running the example, plot the log with (assuming you cloned the repo):
 
 ```sh
 python examples/plot_sim.py
 ```
 
-#### Visualization Dependencies
+### Visualization Dependencies
 
 If you did not install the Python package with the `[examples]` optional dependencies, as shown above, you can install the visualization dependencies with:
 
