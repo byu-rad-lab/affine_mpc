@@ -15,7 +15,7 @@ $$
 $$
 \begin{align}
 \min_{\mathbf{c}}
-    &\quad J_x = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_f}
+    &\quad J_x = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_\mathrm{f}}
     + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
     \\
 \text{s.t.}

@@ -95,7 +95,7 @@ The rest of this page describes how to convert the MPC optimization problem into
 The MPC cost is
 
 $$
-J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_f}
+J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_\mathrm{f}}
     + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
     + \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
 $$
@@ -107,7 +107,7 @@ but it can be done either way.
 First, we will create block diagonal matrices using the weights:
 
 $$
-\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_f)
+\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_\mathrm{f})
     \quad \quad \quad \bar{R} = R \otimes I_\eta
 $$
 

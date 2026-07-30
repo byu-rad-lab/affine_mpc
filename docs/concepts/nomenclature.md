@@ -16,7 +16,7 @@
     | $\bar{\mathbf{x}}_k \in \mathbb{R}^n$ | reference state at horizon step $k$ |
     | $\bar{\mathbf{c}}_i \in \mathbb{R}^m$ | reference control point at index $i$ |
     | $Q \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal state weights |
-    | $Q_f \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal terminal state weights |
+    | $Q_\mathrm{f} \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal terminal state weights |
     | $R \in \mathbb{R}^{m \times m} \succeq 0$ | diagonal input (control point) weights |
 
 <!-- --8<-- [end:mpc-terms] -->
