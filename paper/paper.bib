@@ -206,3 +206,43 @@
     keywords = {Model predictive and optimization-based control, Monte Carlo
                 methods, Predictive control},
 }
+
+@misc{hyatt_parameterized_2020,
+    title = {Parameterized and {GPU}-Parallelized Real-Time Model Predictive
+             Control for High Degree of Freedom Robots},
+    rights = {{arXiv}.org perpetual, non-exclusive license},
+    url = {https://arxiv.org/abs/2001.04931},
+    doi = {10.48550/ARXIV.2001.04931},
+    abstract = {This work presents and evaluates a novel input parameterization
+                method which improves the tractability of model predictive
+                control ({MPC}) for high degree of freedom ({DoF}) robots.
+                Experimental results demonstrate that by parameterizing the input
+                trajectory more than three quarters of the optimization variables
+                used in traditional {MPC} can be eliminated with practically no
+                effect on system performance. This parameterization also leads to
+                trajectories which are more conservative, producing less
+                overshoot in underdamped systems with modeling error. In this
+                paper we present two {MPC} solution methods that make use of this
+                parameterization. The first uses a convex solver, and the second
+                makes use of parallel computing on a graphics processing unit ({
+                GPU}). We show that both approaches drastically reduce solve
+                times for large {DoF}, long horizon {MPC} problems allowing
+                solutions at real-time rates. Through simulation and hardware
+                experiments, we show that the parameterized convex solver {MPC}
+                has faster solve times than traditional {MPC} for high {DoF}
+                cases while still achieving similar performance. For the {GPU}
+                -based {MPC} solution method, we use an evolutionary algorithm
+                and that we call Evolutionary {MPC} ({EMPC}). {EMPC} is shown to
+                have even faster solve times for high {DoF} systems. Solve times
+                for {EMPC} are shown to decrease even further through the use of
+                a more powerful {GPU}. This suggests that parallelized {MPC}
+                methods will become even more advantageous with the improvement
+                and prevalence of {GPU} technology.},
+    publisher = {{arXiv}},
+    author = {Hyatt, Phillip and Williams, Connor S. and Killpack, Marc D.},
+    urldate = {2026-06-03},
+    date = {2020-01-14},
+    keywords = {{FOS}: Computer and information sciences, {FOS}: Electrical
+                engineering, electronic engineering, information engineering,
+                Robotics (cs.{RO}), Systems and Control (eess.{SY})},
+}
