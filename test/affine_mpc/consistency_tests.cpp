@@ -434,3 +434,31 @@ TEST(ConsistencyTester, givenMultiInputSystem_CondensedAndSparseMPCAgree)
   tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }
+
+TEST(ConsistencyTester,
+     givenInputTrajectorySaturation_CondensedAndSparseMPCAgree)
+{
+  const int n{2}, m{1}, T{10}, nc{5}, deg{2};
+  const auto param{ampc::Parameterization::bspline(T, deg, nc)};
+  const ampc::Options opts{.saturate_input_trajectory = true};
+  ConsistencyTester tester{n, m, param, opts};
+  tester.setup(); // input limits are [0, 3]
+
+  const Vector2d x0{0, 0};
+  ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+  VectorXd u_traj_condensed{m * T}, u_traj_sparse{m * T};
+  tester.condensed.getInputTrajectory(u_traj_condensed);
+  tester.sparse.getInputTrajectory(u_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(u_traj_condensed, u_traj_sparse, 1e-4));
+
+  // reaching x_ref quickly requires u > u_max, so the upper limit is active
+  EXPECT_NEAR(u_traj_sparse.maxCoeff(), 3.0, 1e-4);
+  EXPECT_GE(u_traj_sparse.minCoeff(), -1e-4);
+
+  VectorXd x_traj_condensed{n * T}, x_traj_sparse{n * T};
+  tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
+  tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
+}

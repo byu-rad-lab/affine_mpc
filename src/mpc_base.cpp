@@ -109,7 +109,7 @@ MPCBase::MPCBase(int state_dim,
 
   if (satInputTraj(param, opts)) {
     const int num_weights{spline_degree_ + 1};
-    for (int k{0}, row{0}; k < horizon_steps_; ++k, row += input_dim_)
+    for (int k{0}, row{u_sat_idx_}; k < horizon_steps_; ++k, row += input_dim_)
       for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
            ++i, col += input_dim_) {
         A_.block(row, col, input_dim_, input_dim_)

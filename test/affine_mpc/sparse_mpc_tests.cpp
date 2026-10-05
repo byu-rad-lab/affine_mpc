@@ -137,6 +137,35 @@ TEST(SparseMPCProtectedTester,
   ASSERT_TRUE(expectEigenNear(u_sat, u_sat_test, 1e-15));
 }
 
+TEST(SparseMPCProtectedTester,
+     givenInputTrajSat_FormsInputSaturationConstraintsCorrectly)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{2};
+  const auto param{ampc::Parameterization::bspline(T, deg, nc)};
+  const ampc::Options opts{.saturate_input_trajectory = true};
+  SparseMPCProtectedTester mpc{n, m, param, opts};
+  SparseMPCProtectedTester mpc_no_sat{n, m, param};
+  mpc.setModel();
+  mpc_no_sat.setModel();
+
+  const int x_traj_dim{n * T}, ctrls_dim{m * nc};
+  const MatrixXd A = mpc.getA();
+  ASSERT_EQ(A.rows(), x_traj_dim + m * T);
+
+  // model constraint rows must be unaffected by input trajectory saturation
+  const MatrixXd A_model = A.topRows(x_traj_dim);
+  const MatrixXd A_model_expected = mpc_no_sat.getA().topRows(x_traj_dim);
+  ASSERT_TRUE(expectEigenNear(A_model, A_model_expected, 1e-15));
+
+  // this only works for m = 1 and nc = deg+1, otherwise each weight is
+  // multiplied by I(m,m) or 0(m,m)
+  const MatrixXd A_sat = A.bottomRows(m * T);
+  const MatrixXd A_sat_expected = mpc.getSplineWeights().transpose();
+  const MatrixXd A_sat_ctrls = A_sat.leftCols(ctrls_dim);
+  ASSERT_TRUE(expectEigenNear(A_sat_ctrls, A_sat_expected, 1e-15));
+  ASSERT_TRUE(A_sat.rightCols(x_traj_dim).isZero());
+}
+
 TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3};
