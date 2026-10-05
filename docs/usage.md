@@ -170,6 +170,12 @@ The order of these steps does not matter, but they all must happen before initia
     mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt);
     ```
 
+The continuous model is discretized exactly under a zero-order hold on the input (the input is constant over each step of length `dt`).
+The matrix exponential is computed with scaling and squaring, so the result stays accurate even when the dynamics are fast relative to `dt`.
+An optional fifth argument, `tol` (default `1e-10`), sets the truncation tolerance of the underlying Taylor series.
+The default gives results close to machine precision.
+If you relinearize and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
+
 #### Set input limits
 
 === "Python"

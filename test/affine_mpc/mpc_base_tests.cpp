@@ -1,5 +1,7 @@
 #include <Eigen/Core>
+#include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 
 #include <sstream>
 #include <unsupported/Eigen/Splines>
@@ -178,6 +180,110 @@ TEST(MPCBaseTester,
   ASSERT_TRUE(expectEigenNear(Ad_expected, base.getAd(), 1e-6));
   ASSERT_TRUE(expectEigenNear(Bd_expected, base.getBd(), 1e-6));
   ASSERT_TRUE(expectEigenNear(wd_expected, base.getWd(), 1e-6));
+}
+
+// ||A*dt|| = 10, outside the range where an unscaled Taylor series is reliable
+TEST(MPCBaseTester, givenStiffScalarSystem_DiscretizesCorrectly)
+{
+  const int n{1}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}};
+
+  const double a{-100}, b{3}, w{2}, dt{0.1};
+  base.setModelContinuous2Discrete(MatrixXd::Constant(1, 1, a),
+                                   MatrixXd::Constant(1, 1, b),
+                                   VectorXd::Constant(1, w), dt, 1e-12);
+
+  const double e{std::exp(a * dt)};
+  const double g{(e - 1) / a}; // integral_0^dt exp(a*s) ds
+  EXPECT_NEAR(base.getAd()(0, 0), e, 1e-12);
+  EXPECT_NEAR(base.getBd()(0, 0), g * b, 1e-12);
+  EXPECT_NEAR(base.getWd()(0), g * w, 1e-12);
+}
+
+// Singular A (integrator) with a fast pole: ||A*dt|| = 50
+TEST(MPCBaseTester, givenIntegratorWithFastPole_DiscretizesCorrectly)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}};
+
+  const double a{-500}, dt{0.1};
+  Matrix2d A;
+  A << 0, 1, 0, a;
+  const Vector2d B{0, 1}, w{0, 0.5};
+  base.setModelContinuous2Discrete(A, B, w, dt, 1e-12);
+
+  const double e{std::exp(a * dt)};
+  const double g{(e - 1) / a};   // integral_0^dt exp(a*s) ds
+  const double g2{(g - dt) / a}; // integral_0^dt (exp(a*s) - 1) / a ds
+  Matrix2d Ad_expected;
+  Ad_expected << 1, g, 0, e;
+  const Vector2d G_col2{g2, g}; // B and w only excite the second column of G
+
+  ASSERT_TRUE(expectEigenNear(base.getAd(), Ad_expected, 1e-12));
+  ASSERT_TRUE(expectEigenNear(base.getBd(), G_col2, 1e-12));
+  ASSERT_TRUE(expectEigenNear(base.getWd(), 0.5 * G_col2, 1e-12));
+}
+
+// Undamped oscillator with ||A*dt|| = 20 (does not decay, unlike stiff cases)
+TEST(MPCBaseTester, givenFastOscillator_DiscretizesCorrectly)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}};
+
+  const double omega{200}, dt{0.1};
+  Matrix2d A;
+  A << 0, omega, -omega, 0;
+  const Vector2d B{0, 1}, w{1, 0};
+  base.setModelContinuous2Discrete(A, B, w, dt, 1e-12);
+
+  const double c{std::cos(omega * dt)}, s{std::sin(omega * dt)};
+  Matrix2d Ad_expected, G_expected;
+  Ad_expected << c, s, -s, c;
+  G_expected << s / omega, (1 - c) / omega, -(1 - c) / omega, s / omega;
+  const Vector2d Bd_expected = G_expected * B;
+  const Vector2d wd_expected = G_expected * w;
+
+  ASSERT_TRUE(expectEigenNear(base.getAd(), Ad_expected, 1e-10));
+  ASSERT_TRUE(expectEigenNear(base.getBd(), Bd_expected, 1e-12));
+  ASSERT_TRUE(expectEigenNear(base.getWd(), wd_expected, 1e-12));
+}
+
+TEST(MPCBaseTester, givenZeroStateMatrix_DiscretizesCorrectly)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}};
+
+  const double dt{0.1};
+  const Vector2d B{1, 2}, w{3, 4};
+  base.setModelContinuous2Discrete(Matrix2d::Zero(), B, w, dt);
+
+  const Vector2d Bd_expected = dt * B;
+  const Vector2d wd_expected = dt * w;
+  ASSERT_TRUE(base.getAd().isIdentity());
+  ASSERT_TRUE(expectEigenNear(base.getBd(), Bd_expected, 1e-15));
+  ASSERT_TRUE(expectEigenNear(base.getWd(), wd_expected, 1e-15));
+}
+
+TEST(MPCBaseTester, givenInvalidDiscretizationArgs_Throws)
+{
+  const int n{2}, m{1}, T{5}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}};
+
+  Matrix2d A;
+  A << 0, 1, -0.6, -0.1;
+  const Vector2d B{0, 0.2}, w{0, 0};
+
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A, B, w, 0.0); },
+      "dt must be positive");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A, B, w, 0.1, 0.0); },
+      "tol must be positive");
+
+  A(0, 0) = std::numeric_limits<double>::quiet_NaN();
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A, B, w, 0.1); },
+      "Ac*dt must be finite");
 }
 
 TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)

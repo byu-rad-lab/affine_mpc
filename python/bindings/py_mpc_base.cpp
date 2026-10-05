@@ -304,25 +304,31 @@ discretized. The model being `x_next = Ax + Bu + w`.
 
 The discretization assumes the input u is constant over the time step (true for
 discrete controllers like MPC) and uses a matrix exponential, which is an exact
-discretization (theoretically). The matrix exponential involves a Taylor series
-expansion $\sum_{i=0}^\inf (A*dt)^i / i!$. Thus the scalar term is `dt^i / i!`.
-The infinite summation is stopped when this term becomes smaller than `tol`.
+discretization (theoretically).
+
+The matrix exponential is computed with scaling and squaring: the step is halved
+`s` times until `||A*h||_1 <= 0.5` (with `h = dt / 2^s`), a Taylor series is
+evaluated at `h`, and the result is squared `s` times to recover `dt`. When
+`||A*dt||_1 <= 0.5` no squaring is needed. The Taylor series stops once the bound
+on the next term, `||A*h||_1^i / i!`, is smaller than `tol`.
 
 Args:
     Ac: Continuous-time state matrix A.
     Bc: Continuous-time input matrix B.
     wc: Continuous-time affine/bias vector w.
-    dt (seconds): Discretization time step. Usually should be much smaller than
-        1s for numeric stability reasons. This usually matches the control rate,
-        and the input is held constant for this duration.
-    tol: Tolerance for the matrix exponential. Taylor series expansion stops
-        once scalar multiplier becomes smaller than this value.
+    dt (seconds): Discretization time step (positive). This usually matches the
+        control rate, and the input is held constant for this duration.
+    tol: Truncation tolerance for the Taylor series (positive). The actual error
+        in the discrete model is typically two to three orders of magnitude
+        smaller than `tol`. The default gives results close to machine
+        precision. Larger values (e.g., 1e-6) save a few matrix products, which
+        can help when the model is relinearized every time step.
 
 Returns:
     success: True if the internal QP was updated properly. Unlikely to be False.
            )doc",
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
-           py::arg("tol") = 1e-6);
+           py::arg("tol") = 1e-10);
 
   base.def(
       "setWeights",
