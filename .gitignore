@@ -9,6 +9,8 @@ RelWithDebInfo/
 Deployment/
 Development/
 
+notes/
+
 compile_commands.json
 .cache/
 
