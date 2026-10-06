@@ -121,6 +121,7 @@ public:
    *   MPCBase does not store this).
    * @param solve_time Optional user-calculated solve time (likely to include
    *   setup time). The solve time reported by OSQP is also logged separately.
+   * @throws std::logic_error if the MPC solver has not been initialized.
    */
   void logStep(double t,
                const Eigen::Ref<const Eigen::VectorXd>& x0,

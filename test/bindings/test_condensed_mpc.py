@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import affine_mpc as ampc
 
@@ -116,3 +117,22 @@ def test_qp_cost_matrix_is_copy():
 
     P[0, 0] = 1e6  # modifying the copy must not affect the MPC
     assert mpc.getQPCostMatrix()[0, 0] != 1e6
+
+
+@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_solution_getters_before_initialize_raise(mpc_type):
+    mpc = mpc_type(2, 1, 10)
+    assert not mpc.isSolverInitialized()
+
+    getters = [
+        mpc.getNextInput,
+        mpc.getInputControlPoints,
+        mpc.getInputTrajectory,
+        mpc.getPredictedStateTrajectory,
+    ]
+    for getter in getters:
+        with pytest.raises(RuntimeError, match="must be initialized"):
+            getter()
+
+    with pytest.raises(RuntimeError, match="must be initialized"):
+        mpc.getNextInput(np.zeros(1))

@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import affine_mpc as ampc
 
@@ -217,3 +218,12 @@ def test_mpc_logger_raw_recoverable_mode_outputs_sidecars():
         assert (raw_dir / "data_info.yaml").exists()
         assert (raw_dir / "states.bin").exists()
         assert (raw_dir / "states.npyh").exists()
+
+
+def test_log_step_before_initialize_raises():
+    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 2))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        logger = ampc.MPCLogger(mpc=mpc, save_dir=Path(tmpdir), ts=0.1)
+        with pytest.raises(RuntimeError, match="must be initialized"):
+            logger.logStep(t=0.0, x0=np.array([1.0, 0.5]))
+        logger.finalize()

@@ -104,6 +104,9 @@ Args:
         not store this).
     solve_time: Optional user-calculated solve time (likely to include setup
         time). The solve time reported by OSQP is also logged separately.
+
+Raises:
+    RuntimeError: If the MPC solver has not been initialized.
           )doc",
           py::arg("t"), py::arg("x0"), py::arg("solve_time") = -1.0);
 

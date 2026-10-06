@@ -519,3 +519,15 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_NE(oss.str().find("SolveInfo(status=Success, iterations="),
             std::string::npos);
 }
+
+TEST(OSQPSolverProtectedTester, askedBeforeInitialize_ReturnsSafeDefaults)
+{
+  const int n{2}, m{3};
+  OSQPSolverProtectedTester base{n, m};
+
+  EXPECT_EQ(base.getSolutionMap().size(), 0);
+
+  Eigen::Vector2d solution{1.0, 2.0};
+  EXPECT_EQ(base.solve(solution), affine_mpc::SolveStatus::NotInitialized);
+  EXPECT_EQ(solution, Eigen::Vector2d(1.0, 2.0));
+}

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 #include "affine_mpc/condensed_mpc.hpp"
 
@@ -155,4 +156,25 @@ TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
   if (fs::exists(test_dir)) {
     fs::remove_all(test_dir);
   }
+}
+
+TEST(MPCLoggerUninitializedTest, LogStepBeforeInitializeSolver_Throws)
+{
+  const fs::path test_dir =
+      fs::temp_directory_path() / "mpc_logger_uninitialized";
+  if (fs::exists(test_dir)) {
+    fs::remove_all(test_dir);
+  }
+
+  const int n{2}, m{1}, T{5}, p{2};
+  const auto param{ampc::Parameterization::linearInterp(T, p)};
+  ampc::CondensedMPC mpc{n, m, param};
+
+  {
+    ampc::MPCLogger logger{&mpc, test_dir, 0.1, 1, false, "uninitialized"};
+    EXPECT_THROW(logger.logStep(0.0, Eigen::Vector2d{1.0, 0.5}),
+                 std::logic_error);
+  }
+
+  fs::remove_all(test_dir);
 }

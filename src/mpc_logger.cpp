@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <type_traits>
 
 #include "npy_writer.hpp"
@@ -186,6 +187,9 @@ void MPCLogger::logStep(double t,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
                         double solve_time)
 {
+  if (!mpc_->solver_initialized_)
+    throw std::logic_error("[MPCLogger::logStep] MPC solver must be "
+                           "initialized before logging.");
   solve_times_buf_ << solve_time, mpc_->getSolveInfo().solve_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);

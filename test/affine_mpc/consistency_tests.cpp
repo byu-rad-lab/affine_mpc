@@ -285,6 +285,19 @@ TEST(ConsistencyTester, tryToSolveBeforeInitialingSolver_ReturnsNotInitialized)
             ampc::SolveStatus::NotInitialized);
 }
 
+TEST(ConsistencyTester, askedIfSolverInitialized_TracksInitializeSolver)
+{
+  const int n{2}, m{1}, T{5}, nc{3};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  ConsistencyTester tester{n, m, param};
+  EXPECT_FALSE(tester.condensed.isSolverInitialized());
+  EXPECT_FALSE(tester.sparse.isSolverInitialized());
+
+  tester.setup();
+  EXPECT_TRUE(tester.condensed.isSolverInitialized());
+  EXPECT_TRUE(tester.sparse.isSolverInitialized());
+}
+
 TEST(ConsistencyTester, givenSlewControlPoints_CondensedAndSparseMPCAgree)
 {
   const int n{2}, m{1}, T{10}, nc{10};

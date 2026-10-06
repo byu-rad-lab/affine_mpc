@@ -83,7 +83,8 @@ public:
 
   /**
    * @brief Solve the QP and write the solution to the provided vector.
-   * @param solution Output vector for the solution.
+   * @param solution Output vector for the solution. Left unchanged if the
+   *   solver is not initialized.
    * @return SolveStatus indicating result.
    */
   [[nodiscard]] SolveStatus solve(Eigen::Ref<VectorXF> solution);

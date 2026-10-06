@@ -224,6 +224,7 @@ bool MPCBase::isWithinSparsityPattern() const
 
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
+  assert(solver_initialized_);
   assert(u0.size() == input_dim_);
   // Assumes that the control points are first elements of solution
   getInput(0, solution_map_, u0);
@@ -231,6 +232,7 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 
 void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const noexcept
 {
+  assert(solver_initialized_);
   assert(control_points.size() == ctrls_dim_);
   // Assumes that the control points are first elements of solution
   control_points = solution_map_.head(ctrls_dim_);
@@ -238,6 +240,7 @@ void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const noexcept
 
 void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 {
+  assert(solver_initialized_);
   assert(u_traj.size() == u_traj_dim_);
   // Assumes that the control points are first elements of solution
   evaluateControlPoints(solution_map_, u_traj);
@@ -245,6 +248,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
 
 void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
 {
+  assert(solver_initialized_);
   assert(x_traj.size() == x_traj_dim_);
 }
 

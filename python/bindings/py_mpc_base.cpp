@@ -3,6 +3,8 @@
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/options.hpp"
@@ -46,6 +48,17 @@ public:
   bool qpUpdateStateLimits() override { return true; }
   bool qpUpdateSlewRate() override { return true; }
 };
+
+// The C++ solution getters do not check initialization (hot path), but reading
+// the solution before initializeSolver() dereferences a null pointer, so guard
+// them here to raise a Python exception instead of crashing the interpreter.
+static void requireSolverInitialized(const ampc::MPCBase& self,
+                                     const char* func_name)
+{
+  if (!self.isSolverInitialized())
+    throw std::logic_error(std::string{"[MPCBase::"} + func_name
+                           + "] Solver must be initialized first.");
+}
 
 void moduleAddMPCBase(py::module& m)
 {
@@ -115,6 +128,7 @@ Returns:
   base.def(
       "getNextInput",
       [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> u0) {
+        requireSolverInitialized(self, "getNextInput");
         self.getNextInput(u0);
         return u0;
       },
@@ -127,11 +141,15 @@ Args:
 
 Returns:
     u0: Initial input from optimized trajectory (next to apply).
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc",
       py::arg("u0"));
   base.def(
       "getNextInput",
       [](ampc::MPCBase& self) {
+        requireSolverInitialized(self, "getNextInput");
         Eigen::VectorXd u0{self.getInputDim()};
         self.getNextInput(u0);
         return u0;
@@ -142,11 +160,15 @@ previous solve.
 
 returns:
     u0: Initial input from optimized trajectory (next to apply).
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc");
 
   base.def(
       "getInputControlPoints",
       [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> control_points) {
+        requireSolverInitialized(self, "getInputControlPoints");
         self.getInputControlPoints(control_points);
         return control_points;
       },
@@ -160,11 +182,15 @@ Args:
 
 Returns:
     control_points (vector): The stacked control points.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc",
       py::arg("control_points"));
   base.def(
       "getInputControlPoints",
       [](ampc::MPCBase& self) {
+        requireSolverInitialized(self, "getInputControlPoints");
         Eigen::VectorXd control_points{self.getInputDim()
                                        * self.getNumControlPoints()};
         self.getInputControlPoints(control_points);
@@ -176,11 +202,15 @@ solve.
 
 Returns:
     control_points (vector): The stacked control points.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc");
 
   base.def(
       "getInputTrajectory",
       [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> u_traj) {
+        requireSolverInitialized(self, "getInputTrajectory");
         self.getInputTrajectory(u_traj);
         return u_traj;
       },
@@ -192,11 +222,15 @@ Args:
 
 returns:
     u_traj (vector): The input trajectory.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc",
       py::arg("u_traj"));
   base.def(
       "getInputTrajectory",
       [](ampc::MPCBase& self) {
+        requireSolverInitialized(self, "getInputTrajectory");
         Eigen::VectorXd u_traj{self.getInputDim() * self.getHorizonSteps()};
         self.getInputTrajectory(u_traj);
         return u_traj;
@@ -206,11 +240,15 @@ Get the full input trajectory from the previous solve.
 
 returns:
     u_traj (vector): The input trajectory.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc");
 
   base.def(
       "getPredictedStateTrajectory",
       [](ampc::MPCBase& self, Eigen::Ref<Eigen::VectorXd> x_traj) {
+        requireSolverInitialized(self, "getPredictedStateTrajectory");
         self.getPredictedStateTrajectory(x_traj);
         return x_traj;
       },
@@ -222,11 +260,15 @@ Args:
 
 returns:
     x_traj (vector): The predicted state trajectory.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc",
       py::arg("x_traj"));
   base.def(
       "getPredictedStateTrajectory",
       [](ampc::MPCBase& self) {
+        requireSolverInitialized(self, "getPredictedStateTrajectory");
         Eigen::VectorXd x_traj{self.getStateDim() * self.getHorizonSteps()};
         self.getPredictedStateTrajectory(x_traj);
         return x_traj;
@@ -236,6 +278,9 @@ Get the predicted state trajectory from the previous solve.
 
 returns:
     x_traj (vector): The predicted state trajectory.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
       )doc");
 
   base.def(
@@ -564,6 +609,9 @@ weights between initializeSolver() and the first solve.
 Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
            )doc");
+
+  base.def("isSolverInitialized", &ampc::MPCBase::isSolverInitialized,
+           "Whether initializeSolver() has succeeded.");
 
   base.def("getSolveInfo", &ampc::MPCBase::getSolveInfo,
            R"doc(

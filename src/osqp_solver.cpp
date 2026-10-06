@@ -89,8 +89,9 @@ SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
 {
   assert(solution.size() == n_);
   const SolveStatus status{solve()};
-  Eigen::Map<VectorXF> map_solution{solver_->solution->x, n_, 1};
-  solution = map_solution;
+  if (status == SolveStatus::NotInitialized)
+    return status;
+  solution = Eigen::Map<const VectorXF>{solver_->solution->x, n_, 1};
   return status;
 }
 

@@ -92,6 +92,8 @@ public:
   /**
    * @brief Get the next input to apply (initial input from optimized
    *   trajectory) from the previous solve.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param u0 Output vector for input.
    */
   void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
@@ -99,6 +101,8 @@ public:
   /**
    * @brief Get the control points that parameterize the input trajectory from
    *   the previous solve.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param control_points Output vector for stacked control points.
    */
   void getInputControlPoints(
@@ -106,12 +110,16 @@ public:
 
   /**
    * @brief Get the full input trajectory from the previous solve.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param u_traj Output vector for input trajectory.
    */
   void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
 
   /**
    * @brief Get the predicted state trajectory from the previous solve.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param x_traj Output vector for state trajectory.
    */
   virtual void getPredictedStateTrajectory(
@@ -337,6 +345,8 @@ public:
   constexpr int getHorizonSteps() const noexcept { return horizon_steps_; };
   /// @brief Get number of control points.
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
+  /// @brief Whether initializeSolver() has succeeded.
+  bool isSolverInitialized() const noexcept { return solver_initialized_; }
 
   /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,

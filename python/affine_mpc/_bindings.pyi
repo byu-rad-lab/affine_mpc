@@ -125,6 +125,9 @@ class MPCBase:
 
         Returns:
             control_points (vector): The stacked control points.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -137,6 +140,9 @@ class MPCBase:
 
         Returns:
             control_points (vector): The stacked control points.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -156,6 +162,9 @@ class MPCBase:
 
         returns:
             u_traj (vector): The input trajectory.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -167,6 +176,9 @@ class MPCBase:
 
         returns:
             u_traj (vector): The input trajectory.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -187,6 +199,9 @@ class MPCBase:
 
         Returns:
             u0: Initial input from optimized trajectory (next to apply).
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -199,6 +214,9 @@ class MPCBase:
 
         returns:
             u0: Initial input from optimized trajectory (next to apply).
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -218,6 +236,9 @@ class MPCBase:
 
         returns:
             x_traj (vector): The predicted state trajectory.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     @typing.overload
@@ -229,6 +250,9 @@ class MPCBase:
 
         returns:
             x_traj (vector): The predicted state trajectory.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     def getQPCostMatrix(
@@ -271,6 +295,11 @@ class MPCBase:
 
         Returns:
             success: True if initialization succeeds, false otherwise.
+        """
+
+    def isSolverInitialized(self) -> bool:
+        """
+        Whether initializeSolver() has succeeded.
         """
 
     def isWithinSparsityPattern(self) -> bool:
@@ -790,6 +819,9 @@ class MPCLogger:
                 not store this).
             solve_time: Optional user-calculated solve time (likely to include setup
                 time). The solve time reported by OSQP is also logged separately.
+
+        Raises:
+            RuntimeError: If the MPC solver has not been initialized.
         """
 
     def writeParamFile(
