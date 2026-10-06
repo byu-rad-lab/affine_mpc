@@ -97,3 +97,22 @@ def test_bspline_mpc_interface():
 if __name__ == "__main__":
     test_bspline_mpc_interface()
     print("All tests passed!")
+
+
+def test_is_within_sparsity_pattern():
+    n, m, T = 2, 1, 10
+    mpc = ampc.SparseMPC(state_dim=n, input_dim=m, horizon_steps=T)
+    mpc.setModelDiscrete(Ad=0.9 * np.eye(n), Bd=np.array([0.0, 0.1]), wd=np.zeros(n))
+    mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
+    mpc.setReferenceState(x_step=np.ones(n))
+    assert mpc.initializeSolver()
+
+    x0 = np.zeros(n)
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.isWithinSparsityPattern()
+
+    # off-diagonal Ad entries were zero at initialization
+    Ad = np.array([[1.0, 0.1], [-0.06, 0.99]])
+    mpc.setModelDiscrete(Ad=Ad, Bd=np.array([0.0, 0.1]), wd=np.zeros(n))
+    mpc.solve(x0)
+    assert not mpc.isWithinSparsityPattern()

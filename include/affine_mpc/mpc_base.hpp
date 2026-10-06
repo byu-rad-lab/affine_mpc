@@ -338,6 +338,20 @@ public:
   /// @brief Get number of control points.
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
+  /**
+   * @brief Debugging aid: check whether the current QP matrices fit the
+   *   sparsity pattern fixed by initializeSolver().
+   *
+   *   Model or weight updates that add nonzeros outside that pattern are
+   *   silently dropped by the solver, so the MPC solves a different problem
+   *   than the one you set. Call this after solve() (some updates are applied
+   *   to the QP at the next solve) to detect that. It scans every entry of the
+   *   QP matrices, so avoid calling it in time-critical loops.
+   * @return True if the QP matrices fit the pattern, or if the solver is not
+   *   initialized yet. False otherwise.
+   */
+  [[nodiscard]] bool isWithinSparsityPattern() const;
+
 protected:
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 

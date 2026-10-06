@@ -435,3 +435,45 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
 
   ASSERT_TRUE(success);
 }
+
+TEST(OSQPSolverProtectedTester,
+     givenMatricesOutsidePattern_IsWithinSparsityPatternReturnsFalse)
+{
+  const int n{3}, m{2};
+  OSQPSolverProtectedTester base{n, m};
+
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P.setIdentity();
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 0, 0, 0, 1, 0;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setZero();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l.setZero();
+  u.setOnes();
+
+  // no pattern exists before initialization
+  EXPECT_FALSE(base.isWithinSparsityPattern(P, A));
+
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+  EXPECT_TRUE(base.isWithinSparsityPattern(P, A));
+
+  // explicit zeros within the pattern are fine
+  P(1, 1) = 0;
+  A(0, 0) = 0;
+  EXPECT_TRUE(base.isWithinSparsityPattern(P, A));
+
+  // the lower triangle of P is not read
+  P(2, 0) = 0.5;
+  EXPECT_TRUE(base.isWithinSparsityPattern(P, A));
+
+  // upper triangle of P outside the pattern
+  P(0, 2) = 0.5;
+  EXPECT_FALSE(base.isWithinSparsityPattern(P, A));
+  P(0, 2) = 0;
+
+  // A outside the pattern
+  A(1, 2) = 1;
+  EXPECT_FALSE(base.isWithinSparsityPattern(P, A));
+}

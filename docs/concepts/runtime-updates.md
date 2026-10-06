@@ -64,6 +64,26 @@ but they may become nonzero when evaluated at other points.
 In that case,
 initialize the solver using a model whose sparsity pattern covers the operating conditions you expect,
 then update the model to the current operating point before the first call to `solve()`.
+Evaluating the Jacobians at a random state and input usually gives such a pattern
+(a point that is merely nonzero can still give exact zeros, such as $\sin(\pi) = 0$).
+If you switch between several models, such as piecewise or gain-scheduled models,
+initialize with a model whose nonzeros cover all of them.
+
+Weights in `SparseMPC` are the one exception:
+`SparseMPC` places $Q$, $Q_f$, and $R$ only on the diagonal of $P$,
+which OSQP always includes in its linear system,
+so `initializeSolver()` stores every weight position at no cost to solve time.
+Weights in `SparseMPC` may therefore change between zero and nonzero freely.
+In `CondensedMPC`, weights enter $P$ through matrix products,
+so they follow the same rule as the model.
+
+Updates that break these rules are not detected during normal operation,
+because checking would add work to every update.
+Values outside the initialized pattern are silently dropped,
+so the solver solves a different problem than the one you set.
+If you suspect this, call `isWithinSparsityPattern()` after `solve()`;
+it returns `false` when the current QP matrices have nonzeros outside the initialized pattern.
+It scans the full QP matrices, so use it for debugging rather than in a control loop.
 
 !!! note
 

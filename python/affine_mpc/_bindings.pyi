@@ -247,6 +247,22 @@ class MPCBase:
             success: True if initialization succeeds, false otherwise.
         """
 
+    def isWithinSparsityPattern(self) -> bool:
+        """
+        Debugging aid: check whether the current QP matrices fit the sparsity pattern
+        fixed by initializeSolver().
+
+        Model or weight updates that add nonzeros outside that pattern are silently
+        dropped by the solver, so the MPC solves a different problem than the one you
+        set. Call this after solve() (some updates are applied to the QP at the next
+        solve) to detect that. It scans every entry of the QP matrices, so avoid calling
+        it in time-critical loops.
+
+        Returns:
+            within_pattern (bool): True if the QP matrices fit the pattern, or if the
+                solver is not initialized yet. False otherwise.
+        """
+
     @typing.overload
     def propagateModel(
         self,

@@ -145,6 +145,21 @@ public:
   [[nodiscard]] bool updateBounds(const Eigen::Ref<const VectorXF>& l,
                                   const Eigen::Ref<const VectorXF>& u);
 
+  /**
+   * @brief Check whether P and A fit the sparsity pattern fixed at
+   *   initialization (no nonzeros where the initial matrices had zeros).
+   *
+   *   Intended for debugging: it scans every entry of both dense matrices.
+   *   The update functions silently skip entries outside the pattern.
+   * @param P Cost matrix (only the upper triangle is read).
+   * @param A Constraint matrix.
+   * @return True if both fit the pattern. False if either has a nonzero
+   *   outside it, or if the solver is not initialized.
+   */
+  [[nodiscard]] bool
+  isWithinSparsityPattern(const Eigen::Ref<const MatrixXF>& P,
+                          const Eigen::Ref<const MatrixXF>& A) const;
+
 private:
   /**
    * @brief Counts the number of non-zeros in the upper triangle of a matrix.

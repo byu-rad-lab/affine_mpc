@@ -462,3 +462,121 @@ TEST(ConsistencyTester,
   tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }
+
+// ---- Sparsity pattern fixed at initialization ------------------------------
+
+namespace {
+
+// mass-spring-damper discretized at 0.1 s (every entry of Ad and Bd nonzero)
+void setMsdModel(ampc::MPCBase& mpc)
+{
+  Matrix2d A;
+  A << 0, 1, -0.6, -0.1;
+  const Vector2d B{0, 0.2}, w{0, 0};
+  mpc.setModelContinuous2Discrete(A, B, w, 0.1);
+}
+
+void configureMsd(ampc::MPCBase& mpc, const ampc::Options& opts)
+{
+  setMsdModel(mpc);
+  mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  if (opts.use_input_cost)
+    mpc.setReferenceInput(VectorXd::Zero(1));
+  if (opts.saturate_states)
+    mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
+}
+
+} // namespace
+
+TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true};
+  const auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+
+  ampc::SparseMPC late{n, m, param, opts};
+  configureMsd(late, opts);
+  late.setWeights(Vector2d{1, 0}, VectorXd::Zero(m));
+  ASSERT_TRUE(late.initializeSolver(settings));
+
+  const Vector2d Q{1, 0.5};
+  const VectorXd R{VectorXd::Constant(m, 1e-2)};
+  late.setWeights(Q, R);
+
+  ampc::SparseMPC reference{n, m, param, opts};
+  configureMsd(reference, opts);
+  reference.setWeights(Q, R);
+  ASSERT_TRUE(reference.initializeSolver(settings));
+
+  const Vector2d x0{0.5, -0.2};
+  ASSERT_EQ(late.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+  EXPECT_TRUE(late.isWithinSparsityPattern());
+
+  VectorXd u_late{m * T}, u_reference{m * T};
+  late.getInputTrajectory(u_late);
+  reference.getInputTrajectory(u_reference);
+  ASSERT_TRUE(expectEigenNear(u_late, u_reference, 1e-4));
+}
+
+TEST(ConsistencyTester, givenModelOutsideInitPattern_IsWithinPatternIsFalse)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  // state saturation puts the condensed prediction matrix S into A
+  const ampc::Options opts{.saturate_states = true};
+
+  // Ad = 0.9 I and Bd = [0, 0.1] leave the first state uncoupled, so the
+  // initialized pattern has no entries for that coupling
+  const Matrix2d Ad_diag{Matrix2d::Identity() * 0.9};
+  const Vector2d Bd{0, 0.1}, wd{0, 0};
+  const Vector2d x0{0.5, -0.2};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setModelDiscrete(Ad_diag, Bd, wd);
+    EXPECT_TRUE(mpc.isWithinSparsityPattern()); // not initialized yet
+    ASSERT_TRUE(mpc.initializeSolver());
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    EXPECT_TRUE(mpc.isWithinSparsityPattern());
+
+    // the solver silently drops the new coupling terms
+    setMsdModel(mpc);
+    (void)mpc.solve(x0);
+    EXPECT_FALSE(mpc.isWithinSparsityPattern());
+
+    // back within the pattern (w never affects the pattern)
+    mpc.setModelDiscrete(Ad_diag * 0.5, Bd, Vector2d{0.1, 0.2});
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    EXPECT_TRUE(mpc.isWithinSparsityPattern());
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  check(condensed);
+
+  ampc::SparseMPC sparse{n, m, param, opts};
+  check(sparse);
+}
+
+TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
+{
+  // Without state saturation, A_qp has no model terms and P = S^T Q S is
+  // already dense, so a model zero becoming nonzero adds no QP nonzeros
+  const int n{2}, m{1}, T{10};
+  ampc::CondensedMPC mpc{n, m, T};
+
+  Matrix2d Ad;
+  Ad << 1, 0.1, 0, 0.99;
+  const Vector2d Bd{0, 0.2}, wd{0, 0};
+  mpc.setModelDiscrete(Ad, Bd, wd);
+  mpc.setInputLimits(VectorXd::Constant(m, -5.0), VectorXd::Constant(m, 5.0));
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  ASSERT_TRUE(mpc.initializeSolver());
+
+  Ad(1, 0) = -0.06;
+  mpc.setModelDiscrete(Ad, Bd, wd);
+  ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  EXPECT_TRUE(mpc.isWithinSparsityPattern());
+}

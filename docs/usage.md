@@ -495,5 +495,6 @@ You can propagate the internal model one step with:
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`.
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
-- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present.
+- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` weights are exempt; see [Runtime Updates](concepts/runtime-updates.md)).
+- To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()`.
 - If you enable `slew_initial_input`, provide the previous input before solving; after initial solve, it is automatically set from the previous solve.

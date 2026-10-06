@@ -215,6 +215,13 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   return status;
 }
 
+bool MPCBase::isWithinSparsityPattern() const
+{
+  if (!solver_initialized_)
+    return true;
+  return solver_->isWithinSparsityPattern(P_, A_);
+}
+
 void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
 {
   assert(u0.size() == input_dim_);

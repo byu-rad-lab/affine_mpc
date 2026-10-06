@@ -142,7 +142,6 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
   if (!initialized_)
     return false;
   assert(A.rows() == m_ && A.cols() == n_);
-  assert(A.count() <= A_nnz_ && "A cannot change structure once initialized");
 
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col) {
@@ -179,6 +178,35 @@ bool OSQPSolver::updateBounds(const Eigen::Ref<const VectorXF>& l,
   OSQPInt exit_status{
       osqp_update_data_vec(solver_.get(), OSQP_NULL, l.data(), u.data())};
   return exit_status == 0;
+}
+
+bool OSQPSolver::isWithinSparsityPattern(
+    const Eigen::Ref<const MatrixXF>& P,
+    const Eigen::Ref<const MatrixXF>& A) const
+{
+  if (!initialized_)
+    return false;
+  assert(P.rows() == n_ && P.cols() == n_);
+  assert(A.rows() == m_ && A.cols() == n_);
+
+  // walk each column alongside its stored row indices (sorted ascending)
+  for (OSQPInt col{0}; col < n_; ++col) {
+    OSQPInt idx{P_p_(col)};
+    for (OSQPInt row{0}; row <= col; ++row) {
+      if (idx < P_p_(col + 1) && P_i_(idx) == row)
+        ++idx;
+      else if (P(row, col) != 0.0)
+        return false;
+    }
+    idx = A_p_(col);
+    for (OSQPInt row{0}; row < m_; ++row) {
+      if (idx < A_p_(col + 1) && A_i_(idx) == row)
+        ++idx;
+      else if (A(row, col) != 0.0)
+        return false;
+    }
+  }
+  return true;
 }
 
 int OSQPSolver::countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat)

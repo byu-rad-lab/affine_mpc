@@ -74,8 +74,19 @@ void SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 
   if (weights_changed_) {
     refs_changed_ = false;
-    weights_changed_ = false;
     calcBothCostTerms();
+    if (!solver_initialized_) {
+      // Assembling for initializeSolver(): store every weight position on P's
+      // diagonal so a weight that is zero now can become nonzero later. This
+      // costs nothing in solves since OSQP's KKT system always includes P's
+      // diagonal. weights_changed_ stays set, so the first solve applies the
+      // actual weights.
+      P_.diagonal().tail(x_traj_dim_).setOnes();
+      if (opts_.use_input_cost)
+        P_.diagonal().head(ctrls_dim_).setOnes();
+      return;
+    }
+    weights_changed_ = false;
     success &= solver_->updateCostMatrix(P_);
     success &= solver_->updateCostVector(q_);
   } else if (refs_changed_) {
