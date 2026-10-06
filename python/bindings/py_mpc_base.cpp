@@ -551,6 +551,20 @@ Returns:
            )doc",
            py::arg("u_prev"));
 
+  base.def("getQPCostMatrix", &ampc::MPCBase::getQPCostMatrix,
+           py::return_value_policy::copy,
+           R"doc(
+Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
+analysis and debugging.
+
+Reflects the matrix used by the last solve(): CondensedMPC rebuilds P at the
+next solve after model or weight changes, and SparseMPC holds unit placeholder
+weights between initializeSolver() and the first solve.
+
+Returns:
+    P (matrix): Copy of the full symmetric QP cost matrix.
+           )doc");
+
   base.def("isWithinSparsityPattern", &ampc::MPCBase::isWithinSparsityPattern,
            R"doc(
 Debugging aid: check whether the current QP matrices fit the sparsity pattern

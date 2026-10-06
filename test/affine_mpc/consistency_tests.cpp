@@ -580,3 +580,51 @@ TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
   ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
   EXPECT_TRUE(mpc.isWithinSparsityPattern());
 }
+
+TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true};
+  const Vector2d Q{2.0, 0.0};
+  const VectorXd R{VectorXd::Constant(m, 0.5)};
+  const Vector2d x0{0.5, -0.2};
+
+  // SparseMPC: P is diagonal with R on the control points and Q on the states
+  ampc::SparseMPC sparse{n, m, param, opts};
+  configureMsd(sparse, opts);
+  sparse.setWeights(Q, R);
+  ASSERT_TRUE(sparse.initializeSolver());
+  // unit placeholder weights until the first solve
+  EXPECT_TRUE(sparse.getQPCostMatrix().isIdentity());
+  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
+
+  const int ctrls_dim{m * nc}, x_traj_dim{n * T};
+  MatrixXd P_expected{
+      MatrixXd::Zero(ctrls_dim + x_traj_dim, ctrls_dim + x_traj_dim)};
+  P_expected.diagonal().head(ctrls_dim) = R.replicate(nc, 1);
+  P_expected.diagonal().tail(x_traj_dim) = Q.replicate(T, 1);
+  EXPECT_TRUE(expectEigenNear(sparse.getQPCostMatrix(), P_expected, 1e-15));
+
+  // CondensedMPC: P is dense over the control points and updated at the next
+  // solve after a weight change
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  configureMsd(condensed, opts);
+  condensed.setWeights(Q, R);
+  ASSERT_TRUE(condensed.initializeSolver());
+  ASSERT_EQ(condensed.solve(x0), ampc::SolveStatus::Success);
+
+  const MatrixXd P_first{condensed.getQPCostMatrix()};
+  ASSERT_EQ(P_first.rows(), ctrls_dim);
+  ASSERT_EQ(P_first.cols(), ctrls_dim);
+  EXPECT_TRUE(P_first.isApprox(P_first.transpose()));
+
+  // R only adds to the diagonal of P = S^T Q S + R
+  condensed.setInputWeights(R * 3);
+  EXPECT_TRUE(expectEigenNear(condensed.getQPCostMatrix(), P_first, 1e-15));
+  ASSERT_EQ(condensed.solve(x0), ampc::SolveStatus::Success);
+  MatrixXd P_diff{condensed.getQPCostMatrix() - P_first};
+  MatrixXd P_diff_expected{MatrixXd::Zero(ctrls_dim, ctrls_dim)};
+  P_diff_expected.diagonal() = (2 * R).replicate(nc, 1);
+  EXPECT_TRUE(expectEigenNear(P_diff, P_diff_expected, 1e-12));
+}

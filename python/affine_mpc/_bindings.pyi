@@ -230,6 +230,21 @@ class MPCBase:
             x_traj (vector): The predicted state trajectory.
         """
 
+    def getQPCostMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
+        analysis and debugging.
+
+        Reflects the matrix used by the last solve(): CondensedMPC rebuilds P at the
+        next solve after model or weight changes, and SparseMPC holds unit placeholder
+        weights between initializeSolver() and the first solve.
+
+        Returns:
+            P (matrix): Copy of the full symmetric QP cost matrix.
+        """
+
     def initializeSolver(self, solver_settings: OSQPSettings = OSQPSettings()) -> bool:
         """
         Initialize OSQP solver after configuring MPC setup. Calling this method after

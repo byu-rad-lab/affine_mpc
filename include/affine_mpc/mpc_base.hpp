@@ -339,6 +339,19 @@ public:
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
   /**
+   * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
+   *   analysis and debugging.
+   *
+   *   Reflects the matrix used by the last solve(): CondensedMPC rebuilds P at
+   *   the next solve after model or weight changes, and SparseMPC holds unit
+   *   placeholder weights between initializeSolver() and the first solve. The
+   *   return type may change if the internal QP storage changes.
+   * @return Reference to the internal QP cost matrix (full symmetric matrix),
+   *   valid for the lifetime of this object.
+   */
+  const Eigen::MatrixXd& getQPCostMatrix() const noexcept { return P_; }
+
+  /**
    * @brief Debugging aid: check whether the current QP matrices fit the
    *   sparsity pattern fixed by initializeSolver().
    *

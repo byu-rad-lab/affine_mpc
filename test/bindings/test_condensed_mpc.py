@@ -97,3 +97,22 @@ def test_implicit_mpc_interface():
 if __name__ == "__main__":
     test_implicit_mpc_interface()
     print("All tests passed!")
+
+
+def test_qp_cost_matrix_is_copy():
+    nc = 5
+    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(10, nc))
+    mpc.setModelDiscrete(
+        np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
+    )
+    mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    assert mpc.initializeSolver()
+    assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success
+
+    P = mpc.getQPCostMatrix()
+    assert P.shape == (nc, nc)
+    assert np.allclose(P, P.T)
+
+    P[0, 0] = 1e6  # modifying the copy must not affect the MPC
+    assert mpc.getQPCostMatrix()[0, 0] != 1e6
