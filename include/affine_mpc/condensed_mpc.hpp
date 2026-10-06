@@ -58,7 +58,7 @@ public:
    * @param x_traj Output vector for state trajectory.
    */
   void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final;
+      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
 
 protected: // for testing
   const char* getClassName() const noexcept override { return "CondensedMPC"; }

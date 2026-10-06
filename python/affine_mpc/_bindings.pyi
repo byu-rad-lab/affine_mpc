@@ -128,6 +128,7 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+            ValueError: If control_points has the wrong size.
         """
 
     @typing.overload
@@ -165,6 +166,7 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+            ValueError: If u_traj has the wrong size.
         """
 
     @typing.overload
@@ -202,6 +204,7 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+            ValueError: If u0 has the wrong size.
         """
 
     @typing.overload
@@ -239,6 +242,7 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+            ValueError: If x_traj has the wrong size.
         """
 
     @typing.overload
@@ -680,6 +684,9 @@ class MPCBase:
             solve_status: Result indication. Generally expected to be `Success` unless
                 the solver has not been initialized, then `NotInitialized`. Verify your
                 problem setup and consult OSQP documentation for any other value.
+
+        Raises:
+            ValueError: If x0 does not have size state_dim.
         """
 
     @property
@@ -822,6 +829,7 @@ class MPCLogger:
 
         Raises:
             RuntimeError: If the MPC solver has not been initialized.
+            ValueError: If x0 does not have size state_dim.
         """
 
     def writeParamFile(

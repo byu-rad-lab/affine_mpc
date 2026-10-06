@@ -46,8 +46,7 @@ CondensedMPC::CondensedMPC(int state_dim,
   // nothing to do, delegating to main constructor with no parameterization
 }
 
-void CondensedMPC::getPredictedStateTrajectory(
-    Ref<VectorXd> x_traj) const noexcept
+void CondensedMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   MPCBase::getPredictedStateTrajectory(x_traj); // size checks
   x_traj.noalias() = S_ * solution_map_;

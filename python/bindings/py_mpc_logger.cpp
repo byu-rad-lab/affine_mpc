@@ -107,6 +107,7 @@ Args:
 
 Raises:
     RuntimeError: If the MPC solver has not been initialized.
+    ValueError: If x0 does not have size state_dim.
           )doc",
           py::arg("t"), py::arg("x0"), py::arg("solve_time") = -1.0);
 

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <osqp.h>
 #include <stdexcept>
+#include <string>
 #include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/parameterization.hpp"
@@ -38,6 +39,32 @@ constexpr int validateInputDim(int input_dim)
 constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
 {
   return opts.saturate_input_trajectory && param.degree > 1;
+}
+
+// Size checks for setters, which are not on the solve path. The message is
+// only built when the check fails.
+void validateSize(Index size,
+                  Index expected,
+                  const char* func,
+                  const char* name)
+{
+  if (size != expected)
+    throw std::invalid_argument(std::string{"[MPCBase::"} + func + "] " + name
+                                + " must have size " + std::to_string(expected)
+                                + ", got " + std::to_string(size) + ".");
+}
+
+void validateShape(const Ref<const MatrixXd>& mat,
+                   Index rows,
+                   Index cols,
+                   const char* func,
+                   const char* name)
+{
+  if (mat.rows() != rows || mat.cols() != cols)
+    throw std::invalid_argument(
+        std::string{"[MPCBase::"} + func + "] " + name + " must be "
+        + std::to_string(rows) + "x" + std::to_string(cols) + ", got "
+        + std::to_string(mat.rows()) + "x" + std::to_string(mat.cols()) + ".");
 }
 
 } // namespace
@@ -199,9 +226,9 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
 
 SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
 {
+  validateSize(x0.size(), state_dim_, "solve", "x0");
   if (!solver_initialized_)
     return SolveStatus::NotInitialized;
-  assert(x0.size() == state_dim_);
 
   qpUpdateX0(x0);
   const SolveStatus status{solver_->solve()};
@@ -222,34 +249,36 @@ bool MPCBase::isWithinSparsityPattern() const
   return solver_->isWithinSparsityPattern(P_, A_);
 }
 
-void MPCBase::getNextInput(Ref<VectorXd> u0) const noexcept
+void MPCBase::getNextInput(Ref<VectorXd> u0) const
 {
   assert(solver_initialized_);
-  assert(u0.size() == input_dim_);
+  validateSize(u0.size(), input_dim_, "getNextInput", "u0");
   // Assumes that the control points are first elements of solution
   getInput(0, solution_map_, u0);
 }
 
-void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const noexcept
+void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const
 {
   assert(solver_initialized_);
-  assert(control_points.size() == ctrls_dim_);
+  validateSize(control_points.size(), ctrls_dim_, "getInputControlPoints",
+               "control_points");
   // Assumes that the control points are first elements of solution
   control_points = solution_map_.head(ctrls_dim_);
 }
 
-void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const noexcept
+void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
 {
   assert(solver_initialized_);
-  assert(u_traj.size() == u_traj_dim_);
+  validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
   // Assumes that the control points are first elements of solution
   evaluateControlPoints(solution_map_, u_traj);
 }
 
-void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
+void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   assert(solver_initialized_);
-  assert(x_traj.size() == x_traj_dim_);
+  validateSize(x_traj.size(), x_traj_dim_, "getPredictedStateTrajectory",
+               "x_traj");
 }
 
 void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
@@ -259,8 +288,9 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
   if (!model_set_)
     throw std::logic_error(
         "[MPCBase::propagateModel] Model must be set before propagation");
-  assert(u.size() == input_dim_);
-  assert(x0.size() == state_dim_ && x_next.size() == state_dim_);
+  validateSize(x0.size(), state_dim_, "propagateModel", "x");
+  validateSize(u.size(), input_dim_, "propagateModel", "u");
+  validateSize(x_next.size(), state_dim_, "propagateModel", "x_next");
   // do not use noalias here since x_next could be an alias of x0
   x_next = Ad_ * x0 + Bd_ * u + wd_;
 }
@@ -269,9 +299,9 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
                                const Ref<const MatrixXd>& Bd,
                                const Ref<const VectorXd>& wd)
 {
-  assert(Ad.rows() == state_dim_ && Ad.cols() == state_dim_);
-  assert(Bd.rows() == state_dim_ && Bd.cols() == input_dim_);
-  assert(wd.size() == state_dim_);
+  validateShape(Ad, state_dim_, state_dim_, "setModelDiscrete", "Ad");
+  validateShape(Bd, state_dim_, input_dim_, "setModelDiscrete", "Bd");
+  validateSize(wd.size(), state_dim_, "setModelDiscrete", "wd");
 
   Ad_ = Ad;
   Bd_ = Bd;
@@ -286,9 +316,11 @@ bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           double dt,
                                           double tol)
 {
-  assert(Ac.rows() == state_dim_ && Ac.cols() == state_dim_);
-  assert(Bc.rows() == state_dim_ && Bc.cols() == input_dim_);
-  assert(wc.size() == state_dim_);
+  validateShape(Ac, state_dim_, state_dim_, "setModelContinuous2Discrete",
+                "Ac");
+  validateShape(Bc, state_dim_, input_dim_, "setModelContinuous2Discrete",
+                "Bc");
+  validateSize(wc.size(), state_dim_, "setModelContinuous2Discrete", "wc");
   if (!(dt > 0.0))
     throw std::invalid_argument(
         "[MPCBase::setModelContinuous2Discrete] dt must be positive.");
@@ -365,10 +397,10 @@ void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
 
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
 {
+  validateSize(Q_diag.size(), state_dim_, "setStateWeights", "Q_diag");
   if (Q_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
-  assert(Q_diag.size() == state_dim_);
   Q_big_.diagonal() = Q_diag.replicate(horizon_steps_, 1);
   weights_changed_ = true;
 }
@@ -376,10 +408,11 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
                               const Ref<const VectorXd>& Qf_diag)
 {
+  validateSize(Q_diag.size(), state_dim_, "setStateWeights", "Q_diag");
+  validateSize(Qf_diag.size(), state_dim_, "setStateWeights", "Qf_diag");
   if (Q_diag.minCoeff() < 0.0 || Qf_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
-  assert(Q_diag.size() == state_dim_ && Qf_diag.size() == state_dim_);
   Q_big_.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
       Q_diag.replicate(horizon_steps_ - 1, 1);
   Q_big_.diagonal().tail(state_dim_) = Qf_diag;
@@ -391,24 +424,25 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
   if (!opts_.use_input_cost)
     throw std::logic_error(
         "[MPCBase::setInputWeights] Input cost is not enabled.");
+  validateSize(R_diag.size(), input_dim_, "setInputWeights", "R_diag");
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setInputWeights] Input weights must be non-negative.");
-  assert(R_diag.size() == input_dim_);
   R_big_.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
   weights_changed_ = true;
 }
 
 bool MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
-  assert(x_step.size() == state_dim_);
+  validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
   x_ref_ = x_step.replicate(horizon_steps_, 1);
   return qpUpdateReferences();
 }
 
 bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
-  assert(x_traj.size() == x_traj_dim_);
+  validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
+               "x_traj");
   x_ref_ = x_traj;
   return qpUpdateReferences();
 }
@@ -418,7 +452,7 @@ bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
   if (!opts_.use_input_cost)
     throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
-  assert(u_step.size() == input_dim_);
+  validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
   ctrls_ref_ = u_step.replicate(num_ctrl_pts_, 1);
   return qpUpdateReferences();
 }
@@ -429,7 +463,8 @@ bool MPCBase::setReferenceInputControlPoints(
   if (!opts_.use_input_cost)
     throw std::logic_error("[MPCBase::setReferenceInputControlPoints] "
                            "Input cost is not enabled.");
-  assert(control_points.size() == ctrls_dim_);
+  validateSize(control_points.size(), ctrls_dim_,
+               "setReferenceInputControlPoints", "control_points");
   ctrls_ref_ = control_points;
   return qpUpdateReferences();
 }
@@ -437,10 +472,11 @@ bool MPCBase::setReferenceInputControlPoints(
 bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
                              const Ref<const VectorXd>& u_max)
 {
+  validateSize(u_min.size(), input_dim_, "setInputLimits", "u_min");
+  validateSize(u_max.size(), input_dim_, "setInputLimits", "u_max");
   if ((u_max - u_min).minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setInputLimits] u_min cannot be greater than u_max.");
-  assert(u_min.size() == input_dim_ && u_max.size() == input_dim_);
   u_min_ = u_min;
   u_max_ = u_max;
   u_lims_set_ = true;
@@ -456,10 +492,11 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   if (!opts_.saturate_states)
     throw std::logic_error(
         "[MPCBase::setStateLimits] State saturation is not enabled.");
+  validateSize(x_min.size(), state_dim_, "setStateLimits", "x_min");
+  validateSize(x_max.size(), state_dim_, "setStateLimits", "x_max");
   if ((x_max - x_min).minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateLimits] x_min cannot be greater than x_max.");
-  assert(x_min.size() == state_dim_ && x_max.size() == state_dim_);
   x_min_ = x_min;
   x_max_ = x_max;
   x_lims_set_ = true;
@@ -473,10 +510,11 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
     throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
+  validateSize(control_point_slew.size(), input_dim_, "setSlewRate",
+               "control_point_slew");
   if (control_point_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setSlewRate] Slew rate must be non-negative.");
-  assert(control_point_slew.size() == input_dim_);
   ctrls_slew_ = control_point_slew;
   ctrls_slew_rate_set_ = true;
 
@@ -491,10 +529,10 @@ bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
   if (!opts_.slew_initial_input)
     throw std::logic_error(
         "[MPCBase::setSlewRateInitial] Initial slew rate is not enabled.");
+  validateSize(u0_slew.size(), input_dim_, "setSlewRateInitial", "u0_slew");
   if (u0_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setSlewRate] Slew rate must be non-negative.");
-  assert(u0_slew.size() == input_dim_);
+        "[MPCBase::setSlewRateInitial] Slew rate must be non-negative.");
   u0_slew_ = u0_slew;
   slew0_rate_set_ = true;
 
@@ -508,7 +546,7 @@ bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
   if (!opts_.slew_initial_input)
     throw std::logic_error(
         "[MPCBase::setPreviousInput] Initial slew rate is not enabled.");
-  assert(u_prev.size() == input_dim_);
+  validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
   u_prev_ = u_prev;
 
   l_.segment(slew0_idx_, input_dim_) = u_prev_ - u0_slew_;

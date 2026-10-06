@@ -83,6 +83,7 @@ public:
    *   getPredictedStateTrajectory() after calling this function to access the
    *   results.
    * @param x0 Initial (current) state vector.
+   * @throws std::invalid_argument if x0 does not have size state_dim.
    * @return SolveStatus Result indication. Generally expected to be `Success`
    *   unless the solver has not been initialized, then `NotInitialized`. Verify
    *   your problem setup and consult OSQP documentation for any other value.
@@ -95,8 +96,10 @@ public:
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param u0 Output vector for input.
+   * @throws std::invalid_argument if u0 does not have size
+   *   input_dim.
    */
-  void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const noexcept;
+  void getNextInput(Eigen::Ref<Eigen::VectorXd> u0) const;
 
   /**
    * @brief Get the control points that parameterize the input trajectory from
@@ -104,26 +107,31 @@ public:
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param control_points Output vector for stacked control points.
+   * @throws std::invalid_argument if control_points does not have size
+   *   input_dim * num_control_points.
    */
-  void getInputControlPoints(
-      Eigen::Ref<Eigen::VectorXd> control_points) const noexcept;
+  void getInputControlPoints(Eigen::Ref<Eigen::VectorXd> control_points) const;
 
   /**
    * @brief Get the full input trajectory from the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param u_traj Output vector for input trajectory.
+   * @throws std::invalid_argument if u_traj does not have size
+   *   input_dim * horizon_steps.
    */
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
+  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const;
 
   /**
    * @brief Get the predicted state trajectory from the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
    * @param x_traj Output vector for state trajectory.
+   * @throws std::invalid_argument if x_traj does not have size
+   *   state_dim * horizon_steps.
    */
-  virtual void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept;
+  virtual void
+  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
 
   /**
    * @brief Propagate the internal discrete-time model for one step.

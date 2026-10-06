@@ -136,3 +136,42 @@ def test_solution_getters_before_initialize_raise(mpc_type):
 
     with pytest.raises(RuntimeError, match="must be initialized"):
         mpc.getNextInput(np.zeros(1))
+
+
+@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_wrong_size_arguments_raise(mpc_type):
+    n, m, T = 2, 1, 10
+    mpc = mpc_type(n, m, T)
+
+    # setters are checked in C++ and raise ValueError (std::invalid_argument)
+    with pytest.raises(ValueError, match="x_step must have size 2, got 5"):
+        mpc.setReferenceState(np.ones(5))
+    with pytest.raises(ValueError, match="Q_diag must have size 2, got 7"):
+        mpc.setStateWeights(np.ones(7))
+    with pytest.raises(ValueError, match="Ad must be 2x2, got 3x3"):
+        mpc.setModelDiscrete(np.eye(3), np.ones(n), np.zeros(n))
+
+    mpc.setModelDiscrete(
+        np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(n)
+    )
+    with pytest.raises(ValueError, match="x must have size 2"):
+        mpc.propagateModel(np.zeros(3), np.zeros(m))
+
+    mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+    mpc.setStateWeights(np.ones(n))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    assert mpc.initializeSolver()
+
+    # solve() and the output-buffer getters are checked in the bindings
+    with pytest.raises(ValueError, match="x0 must have size 2, got 3"):
+        mpc.solve(np.zeros(3))
+    assert mpc.solve(np.zeros(n)) == ampc.SolveStatus.Success
+
+    with pytest.raises(ValueError, match="u0 must have size 1, got 4"):
+        mpc.getNextInput(np.zeros(4))
+    with pytest.raises(ValueError, match="control_points must have size"):
+        mpc.getInputControlPoints(np.zeros(1))
+    with pytest.raises(ValueError, match="u_traj must have size"):
+        mpc.getInputTrajectory(np.zeros(1))
+    with pytest.raises(ValueError, match="x_traj must have size"):
+        mpc.getPredictedStateTrajectory(np.zeros(1))

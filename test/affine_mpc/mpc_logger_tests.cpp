@@ -178,3 +178,13 @@ TEST(MPCLoggerUninitializedTest, LogStepBeforeInitializeSolver_Throws)
 
   fs::remove_all(test_dir);
 }
+
+TEST_F(MPCLoggerTest, LogStepWithWrongSizeState_Throws)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "bad_x0");
+
+  const Eigen::Vector2d x0{1.0, 0.5};
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
+  EXPECT_THROW(logger.logStep(0.0, Eigen::Vector3d{1.0, 0.5, 0.0}),
+               std::invalid_argument);
+}

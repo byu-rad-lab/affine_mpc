@@ -634,6 +634,99 @@ TEST(MPCBaseTester, givenInvalidInputWeights_Throws)
                                    "Input weights must be non-negative");
 }
 
+TEST(MPCBaseTester, givenWrongSizeArguments_Throws)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .slew_control_points = true,
+                           .saturate_states = true};
+  MPCBaseTester base{n, m, {T, deg, nc}, opts};
+
+  const MatrixXd A2{MatrixXd::Identity(n, n)}, A3{MatrixXd::Identity(3, 3)};
+  const MatrixXd B{MatrixXd::Ones(n, m)}, B_wide{MatrixXd::Ones(n, 2)};
+  const VectorXd x2{VectorXd::Ones(n)}, x3{VectorXd::Ones(3)};
+  const VectorXd u1{VectorXd::Ones(m)}, u2{VectorXd::Ones(2)};
+
+  // the message should name the function, the argument, and both sizes
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelDiscrete(A3, B, x2); },
+      "[MPCBase::setModelDiscrete] Ad must be 2x2, got 3x3.");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelDiscrete(A2, B_wide, x2); }, "Bd must be 2x1");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelDiscrete(A2, B, x3); },
+      "[MPCBase::setModelDiscrete] wd must have size 2, got 3.");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A3, B, x2, 0.1); },
+      "Ac must be 2x2");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A2, B_wide, x2, 0.1); },
+      "Bc must be 2x1");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setModelContinuous2Discrete(A2, B, x3, 0.1); },
+      "wc must have size 2");
+
+  expectInvalidArgumentWithMessage([&]() { base.setStateWeights(x3); },
+                                   "Q_diag must have size 2");
+  expectInvalidArgumentWithMessage([&]() { base.setStateWeights(x2, x3); },
+                                   "Qf_diag must have size 2");
+  expectInvalidArgumentWithMessage([&]() { base.setInputWeights(u2); },
+                                   "R_diag must have size 1");
+
+  expectInvalidArgumentWithMessage([&]() { base.setReferenceState(x3); },
+                                   "x_step must have size 2");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setReferenceStateTrajectory(x2); },
+      "x_traj must have size 8");
+  expectInvalidArgumentWithMessage([&]() { base.setReferenceInput(u2); },
+                                   "u_step must have size 1");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setReferenceInputControlPoints(u2); },
+      "control_points must have size 3");
+
+  expectInvalidArgumentWithMessage([&]() { base.setInputLimits(u2, u1); },
+                                   "u_min must have size 1");
+  expectInvalidArgumentWithMessage([&]() { base.setInputLimits(u1, u2); },
+                                   "u_max must have size 1");
+  expectInvalidArgumentWithMessage([&]() { base.setStateLimits(x3, x2); },
+                                   "x_min must have size 2");
+  expectInvalidArgumentWithMessage([&]() { base.setStateLimits(x2, x3); },
+                                   "x_max must have size 2");
+
+  expectInvalidArgumentWithMessage([&]() { base.setSlewRate(u2); },
+                                   "control_point_slew must have size 1");
+  expectInvalidArgumentWithMessage([&]() { base.setSlewRateInitial(u2); },
+                                   "u0_slew must have size 1");
+  expectInvalidArgumentWithMessage([&]() { base.setPreviousInput(u2); },
+                                   "u_prev must have size 1");
+
+  // propagateModel checks sizes after confirming the model is set
+  base.setModelDiscrete(A2, B, x2);
+  VectorXd x_next{n}, x_next3{3};
+  expectInvalidArgumentWithMessage(
+      [&]() { base.propagateModel(x3, u1, x_next); }, "x must have size 2");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.propagateModel(x2, u2, x_next); }, "u must have size 1");
+  expectInvalidArgumentWithMessage(
+      [&]() { base.propagateModel(x2, u1, x_next3); },
+      "x_next must have size 2");
+}
+
+TEST(MPCBaseTester, givenWrongSizeLimits_ThrowsSizeErrorBeforeOrderCheck)
+{
+  const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+
+  // the size check must run before (u_max - u_min) is formed
+  const VectorXd u_min{VectorXd::Ones(m)}, u_max{VectorXd::Zero(2)};
+  expectInvalidArgumentWithMessage([&]() { base.setInputLimits(u_min, u_max); },
+                                   "u_max must have size 1");
+  const VectorXd x_min{VectorXd::Ones(n)}, x_max{VectorXd::Zero(3)};
+  expectInvalidArgumentWithMessage([&]() { base.setStateLimits(x_min, x_max); },
+                                   "x_max must have size 2");
+}
+
 TEST(MPCBaseTester,
      givenControlPointSatOption_FormsInputSaturationConstraintsCorrectly)
 {

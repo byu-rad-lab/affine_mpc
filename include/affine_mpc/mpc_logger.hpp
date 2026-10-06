@@ -122,6 +122,7 @@ public:
    * @param solve_time Optional user-calculated solve time (likely to include
    *   setup time). The solve time reported by OSQP is also logged separately.
    * @throws std::logic_error if the MPC solver has not been initialized.
+   * @throws std::invalid_argument if x0 does not have size state_dim.
    */
   void logStep(double t,
                const Eigen::Ref<const Eigen::VectorXd>& x0,

@@ -122,6 +122,9 @@ Returns:
     solve_status: Result indication. Generally expected to be `Success` unless
         the solver has not been initialized, then `NotInitialized`. Verify your
         problem setup and consult OSQP documentation for any other value.
+
+Raises:
+    ValueError: If x0 does not have size state_dim.
            )doc",
            py::arg("x0"));
 
@@ -144,6 +147,7 @@ Returns:
 
 Raises:
     RuntimeError: If the solver has not been initialized.
+    ValueError: If u0 has the wrong size.
       )doc",
       py::arg("u0"));
   base.def(
@@ -185,6 +189,7 @@ Returns:
 
 Raises:
     RuntimeError: If the solver has not been initialized.
+    ValueError: If control_points has the wrong size.
       )doc",
       py::arg("control_points"));
   base.def(
@@ -225,6 +230,7 @@ returns:
 
 Raises:
     RuntimeError: If the solver has not been initialized.
+    ValueError: If u_traj has the wrong size.
       )doc",
       py::arg("u_traj"));
   base.def(
@@ -263,6 +269,7 @@ returns:
 
 Raises:
     RuntimeError: If the solver has not been initialized.
+    ValueError: If x_traj has the wrong size.
       )doc",
       py::arg("x_traj"));
   base.def(

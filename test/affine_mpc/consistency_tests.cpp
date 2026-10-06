@@ -298,6 +298,41 @@ TEST(ConsistencyTester, askedIfSolverInitialized_TracksInitializeSolver)
   EXPECT_TRUE(tester.sparse.isSolverInitialized());
 }
 
+TEST(ConsistencyTester, givenWrongSizeSolveAndGetterArgs_Throws)
+{
+  const int n{2}, m{1}, T{5}, nc{3};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  ConsistencyTester tester{n, m, param};
+
+  // sizes are validated before the initialization check
+  EXPECT_THROW((void)tester.condensed.solve(VectorXd::Zero(3)),
+               std::invalid_argument);
+  EXPECT_THROW((void)tester.sparse.solve(VectorXd::Zero(3)),
+               std::invalid_argument);
+
+  tester.setup();
+  auto check = [&](ampc::MPCBase& mpc) {
+    expectInvalidArgumentWithMessage(
+        [&]() { (void)mpc.solve(VectorXd::Zero(3)); },
+        "[MPCBase::solve] x0 must have size 2, got 3.");
+    ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+
+    VectorXd wrong{VectorXd::Zero(4)};
+    expectInvalidArgumentWithMessage([&]() { mpc.getNextInput(wrong); },
+                                     "u0 must have size 1, got 4");
+    expectInvalidArgumentWithMessage(
+        [&]() { mpc.getInputControlPoints(wrong); },
+        "control_points must have size 3, got 4");
+    expectInvalidArgumentWithMessage([&]() { mpc.getInputTrajectory(wrong); },
+                                     "u_traj must have size 5, got 4");
+    expectInvalidArgumentWithMessage(
+        [&]() { mpc.getPredictedStateTrajectory(wrong); },
+        "x_traj must have size 10, got 4");
+  };
+  check(tester.condensed);
+  check(tester.sparse);
+}
+
 TEST(ConsistencyTester, givenSlewControlPoints_CondensedAndSparseMPCAgree)
 {
   const int n{2}, m{1}, T{10}, nc{10};

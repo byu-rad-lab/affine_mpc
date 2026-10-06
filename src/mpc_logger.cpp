@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 
 #include "npy_writer.hpp"
@@ -190,6 +191,10 @@ void MPCLogger::logStep(double t,
   if (!mpc_->solver_initialized_)
     throw std::logic_error("[MPCLogger::logStep] MPC solver must be "
                            "initialized before logging.");
+  if (x0.size() != state_dim_)
+    throw std::invalid_argument("[MPCLogger::logStep] x0 must have size "
+                                + std::to_string(state_dim_) + ", got "
+                                + std::to_string(x0.size()) + ".");
   solve_times_buf_ << solve_time, mpc_->getSolveInfo().solve_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);

@@ -59,7 +59,7 @@ SparseMPC::SparseMPC(int state_dim,
   // nothing to do, delegating to main constructor with no parameterization
 }
 
-void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const noexcept
+void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   MPCBase::getPredictedStateTrajectory(x_traj); // size checks
   x_traj = solution_map_.tail(x_traj_dim_);
