@@ -186,7 +186,7 @@ void MPCLogger::logStep(double t,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
                         double solve_time)
 {
-  solve_times_buf_ << solve_time, mpc_->solver_->getSolveTime();
+  solve_times_buf_ << solve_time, mpc_->getSolveInfo().solve_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);
   const bool has_input_ref{mpc_->opts_.use_input_cost};

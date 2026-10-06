@@ -339,6 +339,14 @@ public:
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
 
   /**
+   * @brief Get solver diagnostics from the last solve() (status, iterations,
+   *   objective, and timing).
+   * @return SolveInfo with default values (status `NotInitialized`) before
+   *   initializeSolver().
+   */
+  SolveInfo getSolveInfo() const noexcept { return solver_->getSolveInfo(); }
+
+  /**
    * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
    *   analysis and debugging.
    *

@@ -565,6 +565,16 @@ Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
            )doc");
 
+  base.def("getSolveInfo", &ampc::MPCBase::getSolveInfo,
+           R"doc(
+Get solver diagnostics from the last solve() (status, iterations, objective,
+and timing).
+
+Returns:
+    info (SolveInfo): Default values (status `NotInitialized`) before
+        initializeSolver().
+           )doc");
+
   base.def("isWithinSparsityPattern", &ampc::MPCBase::isWithinSparsityPattern,
            R"doc(
 Debugging aid: check whether the current QP matrices fit the sparsity pattern

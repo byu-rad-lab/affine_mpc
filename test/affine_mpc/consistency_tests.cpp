@@ -4,6 +4,7 @@
 #include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
+#include <cmath>
 #include <gtest/gtest.h>
 
 #include "utils.hpp"
@@ -579,6 +580,36 @@ TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
   mpc.setModelDiscrete(Ad, Bd, wd);
   ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
   EXPECT_TRUE(mpc.isWithinSparsityPattern());
+}
+
+TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::NotInitialized);
+
+    configureMsd(mpc, opts);
+    ASSERT_TRUE(mpc.initializeSolver());
+    // OSQP reports "unsolved" between initialization and the first solve
+    EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::OtherFailure);
+
+    const ampc::SolveStatus status{mpc.solve(Vector2d{0.5, -0.2})};
+    ASSERT_EQ(status, ampc::SolveStatus::Success);
+    const ampc::SolveInfo info{mpc.getSolveInfo()};
+    EXPECT_EQ(info.status, status);
+    EXPECT_GT(info.iterations, 0);
+    EXPECT_TRUE(std::isfinite(info.objective));
+    EXPECT_GE(info.run_time, info.solve_time);
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  check(condensed);
+
+  ampc::SparseMPC sparse{n, m, param, opts};
+  check(sparse);
 }
 
 TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)

@@ -75,9 +75,14 @@ OSQPSolver::getSolutionMap() const noexcept
     return Eigen::Map<const VectorXF>{nullptr, 0, 1};
 }
 
-OSQPFloat OSQPSolver::getSolveTime() const noexcept
+SolveInfo OSQPSolver::getSolveInfo() const noexcept
 {
-  return solver_->info->solve_time;
+  if (!initialized_)
+    return SolveInfo{};
+  const OSQPInfo& info{*solver_->info};
+  return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
+                   static_cast<int>(info.iter), info.obj_val, info.solve_time,
+                   info.run_time};
 }
 
 SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)

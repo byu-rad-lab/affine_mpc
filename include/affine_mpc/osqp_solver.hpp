@@ -76,11 +76,10 @@ public:
   getSolutionMap() const noexcept;
 
   /**
-   * @brief Returns the time taken (seconds) by the last solve, as reported by
-   *   OSQP.
-   * @return Solve time in seconds.
+   * @brief Returns diagnostics from the last solve, as reported by OSQP.
+   * @return SolveInfo with default values if the solver is not initialized.
    */
-  OSQPFloat getSolveTime() const noexcept;
+  SolveInfo getSolveInfo() const noexcept;
 
   /**
    * @brief Solve the QP and write the solution to the provided vector.

@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
+#include <sstream>
 
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
@@ -476,4 +477,45 @@ TEST(OSQPSolverProtectedTester,
   // A outside the pattern
   A(1, 2) = 1;
   EXPECT_FALSE(base.isWithinSparsityPattern(P, A));
+}
+
+TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
+{
+  const int n{2}, m{3};
+  OSQPSolverProtectedTester base{n, m};
+
+  // defaults before initialization
+  const affine_mpc::SolveInfo info_init{base.getSolveInfo()};
+  EXPECT_EQ(info_init.status, affine_mpc::SolveStatus::NotInitialized);
+  EXPECT_EQ(info_init.iterations, 0);
+
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 1, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P << 4, 1, 1, 2;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  settings.verbose = false;
+  settings.polishing = true;
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+
+  Eigen::Vector2d solution;
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+
+  // solution is (0.3, 0.7): 1/2 z^T P z + q^T z = 0.88 + 1.0
+  const affine_mpc::SolveInfo info{base.getSolveInfo()};
+  EXPECT_EQ(info.status, affine_mpc::SolveStatus::Success);
+  EXPECT_GT(info.iterations, 0);
+  EXPECT_NEAR(info.objective, 1.88, 1e-5);
+  EXPECT_GE(info.solve_time, 0.0);
+  EXPECT_GE(info.run_time, info.solve_time);
+
+  std::ostringstream oss;
+  oss << info;
+  EXPECT_NE(oss.str().find("SolveInfo(status=Success, iterations="),
+            std::string::npos);
 }

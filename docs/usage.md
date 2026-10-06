@@ -22,6 +22,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `SparseMPC`
     - `MPCLogger`
     - `SolveStatus`
+    - `SolveInfo`
 
 === "C++"
 
@@ -36,6 +37,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `SparseMPC`
     - `MPCLogger`
     - `SolveStatus`
+    - `SolveInfo`
 
     For users wanting to modify default solver settings, `OSQPSettings` is defined in the global namespace from OSQP.
 
@@ -396,6 +398,24 @@ You can also access the full input and predicted state trajectories:
     Eigen::VectorXd x_pred(state_dim * horizon_steps);
     mpc.getPredictedStateTrajectory(x_pred);
     ```
+
+Solver diagnostics from the last solve (status, iterations, objective, and timing) are available as a `SolveInfo`:
+
+=== "Python"
+
+    ```python
+    info = mpc.getSolveInfo()
+    print(info.iterations, info.solve_time)
+    ```
+
+=== "C++"
+
+    ```cpp
+    const affine_mpc::SolveInfo info = mpc.getSolveInfo();
+    std::cout << info.iterations << ' ' << info.solve_time << '\n';
+    ```
+
+`objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
 
 ### 8. (Optional) Logging
 

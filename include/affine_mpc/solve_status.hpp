@@ -61,12 +61,49 @@ inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
 }
 
 /**
+ * @struct SolveInfo
+ * @brief Solver diagnostics from the most recent solve.
+ *
+ * Timing fields are filled in only when OSQP is built with profiling enabled
+ * (the default); otherwise they are zero.
+ */
+struct SolveInfo
+{
+  /// Result of the solve. NotInitialized before initializeSolver(), and
+  /// OtherFailure after initialization but before the first solve.
+  SolveStatus status{SolveStatus::NotInitialized};
+
+  /// Number of solver iterations.
+  int iterations{0};
+
+  /// QP objective value 1/2 z^T P z + q^T z at the solution. This omits
+  /// constant terms of the MPC cost (they depend on x0 and the references), so
+  /// it is not the full MPC cost.
+  double objective{0.0};
+
+  /// Time spent in the solve phase (seconds).
+  double solve_time{0.0};
+
+  /// Total solver time for the last solve, including data updates and
+  /// polishing (seconds).
+  double run_time{0.0};
+};
+
+/**
  * @brief Stream output operator for SolveStatus.
  * @param os Output stream.
  * @param status SolveStatus value.
  * @return Reference to the output stream.
  */
 std::ostream& operator<<(std::ostream& os, const SolveStatus status);
+
+/**
+ * @brief Stream a one-line summary of SolveInfo.
+ * @param os Output stream.
+ * @param info SolveInfo value.
+ * @return Reference to the output stream.
+ */
+std::ostream& operator<<(std::ostream& os, const SolveInfo& info);
 
 } // namespace affine_mpc
 

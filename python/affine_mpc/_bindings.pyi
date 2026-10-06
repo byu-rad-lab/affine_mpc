@@ -15,6 +15,7 @@ __all__: list[str] = [
     "OSQPSettings",
     "Options",
     "Parameterization",
+    "SolveInfo",
     "SolveStatus",
     "SparseMPC",
 ]
@@ -243,6 +244,16 @@ class MPCBase:
 
         Returns:
             P (matrix): Copy of the full symmetric QP cost matrix.
+        """
+
+    def getSolveInfo(self) -> SolveInfo:
+        """
+        Get solver diagnostics from the last solve() (status, iterations, objective,
+        and timing).
+
+        Returns:
+            info (SolveInfo): Default values (status `NotInitialized`) before
+                initializeSolver().
         """
 
     def initializeSolver(self, solver_settings: OSQPSettings = OSQPSettings()) -> bool:
@@ -1269,6 +1280,45 @@ class Parameterization:
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
     @property
     def num_control_points(self) -> int: ...
+
+class SolveInfo:
+    """
+
+    Solver diagnostics from the most recent solve. Obtain with
+    MPCBase.getSolveInfo(). Timing fields are zero if OSQP was built without
+    profiling.
+    """
+
+    def __repr__(self) -> str: ...
+    @property
+    def iterations(self) -> int:
+        """
+        Number of solver iterations.
+        """
+
+    @property
+    def objective(self) -> float:
+        """
+        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
+        """
+
+    @property
+    def run_time(self) -> float:
+        """
+        Total solver time for the last solve, including data updates and polishing (seconds).
+        """
+
+    @property
+    def solve_time(self) -> float:
+        """
+        Time spent in the solve phase (seconds).
+        """
+
+    @property
+    def status(self) -> SolveStatus:
+        """
+        Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
+        """
 
 class SolveStatus(enum.Enum):
     """
