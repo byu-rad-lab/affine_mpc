@@ -2,10 +2,11 @@
 
 #include <Eigen/Core>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <unsupported/Eigen/Splines>
 
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
+#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 namespace affine_mpc {
 
@@ -104,6 +105,10 @@ Parameterization
 Parameterization::moveBlocking(int horizon_steps,
                                const Ref<const VectorXd>& change_points)
 {
+  if (change_points.size() == 0) {
+    throw std::invalid_argument(
+        "[Parameterization::moveBlocking] change_points can not be empty.");
+  }
   if (change_points.size() > horizon_steps) {
     throw std::invalid_argument(
         "[Parameterization::moveBlocking] change_points size must be less than "
@@ -206,7 +211,7 @@ VectorXd Parameterization::evaluate(
   if (control_points.size() != num_control_points * input_dim)
     throw std::invalid_argument(
         "[Parameterization::evaluate] "
-        "Size of control_points must be input_dim*horizon_steps");
+        "Size of control_points must be input_dim*num_control_points");
 
   using Spline1d = Spline<double, 1>;
   VectorXd u_traj{input_dim * horizon_steps};
@@ -222,8 +227,7 @@ VectorXd Parameterization::evaluate(
     const double t = k;
     const int idx = Spline1d::Span(t, degree, knots) - degree;
     weights = Spline1d::BasisFunctions(t, degree, knots);
-    for (int i{0}; i < order; ++i)
-      map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
+    map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
   }
   return u_traj;
 }

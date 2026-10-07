@@ -129,7 +129,7 @@ public:
   ~Parameterization() = default;
 
   /**
-   * @brief Evalutate an input trajectory from provided control_points.
+   * @brief Evaluate an input trajectory from provided control_points.
    * @param input_dim Dimension of input vector.
    * @param control_points Parameterized input trajectory as a vector of size
    *   input_dim*num_control_points.

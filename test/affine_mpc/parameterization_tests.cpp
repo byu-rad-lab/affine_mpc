@@ -348,6 +348,23 @@ TEST(ParameterizationMoveBlocking, givenCustomChangePoints_FormsKnotsCorrectly)
   ASSERT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-15));
 }
 
+TEST(ParameterizationEvaluate, givenWrongControlPointsSize_Throws)
+{
+  const auto p{ampc::Parameterization::linearInterp(10, 4)};
+  const VectorXd ctrls{VectorXd::Zero(10)}; // input_dim * horizon_steps
+  expectInvalidArgumentWithMessage(
+      [&]() { (void)p.evaluate(1, ctrls); },
+      "Size of control_points must be input_dim*num_control_points");
+}
+
+TEST(ParameterizationMoveBlocking, givenEmptyChangePoints_Throws)
+{
+  const VectorXd change_points{0};
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::moveBlocking(6, change_points); },
+      "change_points can not be empty");
+}
+
 TEST(ParameterizationMoveBlocking, givenChangePointsFirstNotZero_Throws)
 {
   const int T{6};
