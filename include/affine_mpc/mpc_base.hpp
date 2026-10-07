@@ -9,6 +9,7 @@
 #include <Eigen/Core>
 #include <iosfwd>
 #include <memory>
+#include <vector>
 
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
@@ -416,6 +417,8 @@ protected:
   const int horizon_steps_, num_ctrl_pts_, spline_degree_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
   const Options opts_;
+  /// Sample indices with input saturation rows (empty: control points instead)
+  const std::vector<int> u_sat_samples_;
   const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
   const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;
   bool model_set_, u_lims_set_, x_lims_set_;

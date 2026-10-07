@@ -309,6 +309,9 @@ $$
 \underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_T}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
+For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
+
 ### Slew Initial Input
 
 $$
@@ -642,6 +645,9 @@ $$
 \leq
 \underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_T}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
+
+For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
 

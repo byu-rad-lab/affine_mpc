@@ -1086,11 +1086,13 @@ class Options:
         slew_control_points: Enables slew-rate constraints on parameterization
             control points (|v_{i+1} - v_i| <= control_point_slew).
         saturate_states: Enables state saturation constraints.
-        saturate_input_trajectory: Enables saturation of each input in the
-            trajectory rather than just the control points. Only applicable for
-            parameterizations with degree > 1. This adds constraints to the
-            optimization, but can allow control points to be outside of input limits
-            while keeping inputs within limits.
+        saturate_input_trajectory: Enables saturation of the sampled input
+            trajectory rather than just the control points. Ignored for degree 0,
+            where the control points are the sampled inputs. For degree 1 only the
+            samples adjacent to each knot are constrained (at most
+            2*num_control_points-2 rows), which is exact for non-integer knots. For
+            degree > 1 every sample is constrained. Allows control points to be
+            outside of input limits while keeping inputs within limits.
 
     """
 
@@ -1118,11 +1120,13 @@ class Options:
             slew_control_points: Enables slew-rate constraints on parameterization
                 control points (|v_{i+1} - v_i| <= control_point_slew).
             saturate_states: Enables state saturation constraints.
-            saturate_input_trajectory: Enables saturation of each input in the
-                trajectory rather than just the control points. Only applicable for
-                parameterizations with degree > 1. This adds constraints to the
-                optimization, but can allow control points to be outside of input limits
-                while keeping inputs within limits.
+            saturate_input_trajectory: Enables saturation of the sampled input
+                trajectory rather than just the control points. Ignored for degree 0,
+                where the control points are the sampled inputs. For degree 1 only the
+                samples adjacent to each knot are constrained (at most
+                2*num_control_points-2 rows), which is exact for non-integer knots. For
+                degree > 1 every sample is constrained. Allows control points to be
+                outside of input limits while keeping inputs within limits.
         """
 
     def __repr__(self) -> str: ...

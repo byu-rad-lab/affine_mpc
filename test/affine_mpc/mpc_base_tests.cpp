@@ -1,10 +1,12 @@
 #include <Eigen/Core>
 #include <cmath>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
 
 #include <sstream>
 #include <unsupported/Eigen/Splines>
+#include <vector>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/mpc_base.hpp"
@@ -735,7 +737,7 @@ TEST(MPCBaseTester,
 {
 
   auto test = [&](bool sat_u_traj) {
-    const int n{2}, m{1}, T{4}, nc{3}, deg{1};
+    const int n{2}, m{1}, T{4}, nc{3}, deg{0};
     const ampc::Options opts{.saturate_input_trajectory = sat_u_traj};
     MPCBaseTester base{n, m, {T, deg, nc}, opts};
 
@@ -759,9 +761,197 @@ TEST(MPCBaseTester,
   };
 
   test(false);
-  // when asked to saturate input traj, but deg < 2, then it should still only
-  // saturate control points, not the whole trajectory
+  // degree 0 control points equal the sampled inputs, so saturating the input
+  // trajectory still only saturates the control points
   test(true);
+}
+
+TEST(MPCBaseTester, givenDeg1WithoutInputTrajSat_SaturatesControlPoints)
+{
+  // active knots {0, 2.5, 6, 9}: still control points without the option
+  const int n{2}, m{1}, T{10}, deg{1};
+  VectorXd knots{6};
+  knots << 0, 0, 2.5, 6, 9, 9;
+  MPCBaseTester base{n, m, {T, deg, knots}};
+
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * 4);
+  ASSERT_TRUE(A.isIdentity());
+}
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionDeg1IntegerKnots_SaturatesKnotSamplesOnly)
+{
+  // uniform active knots {0, 3, 6, 9}: every knot is a sample, one row per knot
+  const int n{2}, m{1}, T{10}, nc{4}, deg{1};
+  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
+
+  Eigen::Vector<double, 1> u_min{-1}, u_max{2};
+  base.setInputLimits(u_min, u_max);
+
+  const MatrixXd A = base.getASatU();
+  const VectorXd l = base.getLSatU();
+  const VectorXd u = base.getUSatU();
+  ASSERT_EQ(A.rows(), m * nc);
+  ASSERT_TRUE(A.isIdentity());
+  ASSERT_TRUE(expectEigenNear(l, VectorXd{u_min.replicate(nc, 1)}, 1e-15));
+  ASSERT_TRUE(expectEigenNear(u, VectorXd{u_max.replicate(nc, 1)}, 1e-15));
+}
+
+namespace {
+
+// Expected input saturation rows: sampled inputs at the given sample indices
+MatrixXd expectedSatRows(const MPCBaseTester& base,
+                         int m,
+                         int deg,
+                         int num_ctrls,
+                         const std::vector<int>& samples)
+{
+  const MatrixXd w = base.getSplineWeights();
+  const VectorXi seg = base.getSplineSegmentIdxs();
+  const MatrixXd I = MatrixXd::Identity(m, m);
+  const int num_rows{static_cast<int>(samples.size())};
+  MatrixXd A = MatrixXd::Zero(m * num_rows, m * num_ctrls);
+  for (int r{0}; r < num_rows; ++r) {
+    const int k{samples[r]};
+    for (int i{0}; i < deg + 1; ++i)
+      A.block(m * r, m * (seg(k) + i), m, m) = w(i, k) * I;
+  }
+  return A;
+}
+
+} // namespace
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionDeg1FractionalKnots_SaturatesKnotAdjacentSamples)
+{
+  // active knots {0, 2.5, 6, 9}: samples {0, 2, 3, 6, 9}
+  const int n{2}, m{2}, T{10}, deg{1};
+  VectorXd knots{6};
+  knots << 0, 0, 2.5, 6, 9, 9;
+  MPCBaseTester base{
+      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+
+  Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
+  base.setInputLimits(u_min, u_max);
+
+  const std::vector<int> samples{0, 2, 3, 6, 9};
+  const int num_rows{static_cast<int>(samples.size())};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * num_rows);
+  ASSERT_TRUE(
+      expectEigenNear(A, expectedSatRows(base, m, deg, 4, samples), 1e-15));
+
+  const VectorXd l = base.getLSatU();
+  const VectorXd u = base.getUSatU();
+  ASSERT_TRUE(
+      expectEigenNear(l, VectorXd{u_min.replicate(num_rows, 1)}, 1e-15));
+  ASSERT_TRUE(
+      expectEigenNear(u, VectorXd{u_max.replicate(num_rows, 1)}, 1e-15));
+}
+
+TEST(MPCBaseTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
+{
+  // active knots {0, 2.3, 2.7, 3.5, 9}: floor/ceil give {0, 2, 3, 2, 3, 3, 4,
+  // 9}
+  const int n{2}, m{1}, T{10}, deg{1};
+  VectorXd knots{7};
+  knots << 0, 0, 2.3, 2.7, 3.5, 9, 9;
+  MPCBaseTester base{
+      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+
+  const std::vector<int> samples{0, 2, 3, 4, 9};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * static_cast<int>(samples.size()));
+  ASSERT_TRUE(
+      expectEigenNear(A, expectedSatRows(base, m, deg, 5, samples), 1e-15));
+}
+
+TEST(MPCBaseTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
+{
+  // knots within round-off of an integer are treated as that integer
+  const int n{2}, m{1}, T{10}, deg{1};
+  VectorXd knots{6};
+  knots << 0, 0, 3 + 1e-12, 6 - 1e-12, 9, 9;
+  MPCBaseTester base{
+      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+
+  const std::vector<int> samples{0, 3, 6, 9};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * static_cast<int>(samples.size()));
+  ASSERT_TRUE(
+      expectEigenNear(A, expectedSatRows(base, m, deg, 4, samples), 1e-9));
+}
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
+{
+  // active knots {0, 1.5, 4.2, 4.8, 11, 19}: samples {0, 1, 2, 4, 5, 11, 19}
+  const int n{2}, m{2}, T{20}, deg{1};
+  VectorXd knots{8};
+  knots << 0, 0, 1.5, 4.2, 4.8, 11, 19, 19;
+  const ampc::Parameterization param{T, deg, knots};
+  MPCBaseTester base{n, m, param, {.saturate_input_trajectory = true}};
+
+  const std::vector<int> samples{0, 1, 2, 4, 5, 11, 19};
+  const int num_rows{static_cast<int>(samples.size())};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * num_rows);
+
+  std::srand(0);
+  for (int trial{0}; trial < 100; ++trial) {
+    // Parameterization::evaluate is independent of MPCBase's spline weights
+    const VectorXd ctrls{VectorXd::Random(m * param.num_control_points)};
+    const VectorXd u_traj{param.evaluate(m, ctrls)};
+    const VectorXd u_cons{A * ctrls};
+    for (int r{0}; r < num_rows; ++r)
+      ASSERT_TRUE(expectEigenNear(VectorXd{u_cons.segment(m * r, m)},
+                                  VectorXd{u_traj.segment(m * samples[r], m)},
+                                  1e-12));
+
+    // the spline is linear between knots, so the extreme sampled inputs always
+    // lie on the constrained samples
+    const Map<const MatrixXd> u_traj_mat{u_traj.data(), m, T};
+    const Map<const MatrixXd> u_cons_mat{u_cons.data(), m, num_rows};
+    ASSERT_TRUE(expectEigenNear(VectorXd{u_cons_mat.rowwise().maxCoeff()},
+                                VectorXd{u_traj_mat.rowwise().maxCoeff()},
+                                1e-12));
+    ASSERT_TRUE(expectEigenNear(VectorXd{u_cons_mat.rowwise().minCoeff()},
+                                VectorXd{u_traj_mat.rowwise().minCoeff()},
+                                1e-12));
+  }
+}
+
+TEST(MPCBaseTester,
+     givenInputTrajSatOptionDeg1_AllowsControlPointsOutsideLimits)
+{
+  // active knots {0, 2.5, 6.5, 12}: the control points at 2.5 and 6.5 are
+  // never sampled, so they can leave [0, 1] while every sample stays inside
+  const int n{2}, m{1}, T{13}, deg{1};
+  VectorXd knots{6};
+  knots << 0, 0, 2.5, 6.5, 12, 12;
+  const ampc::Parameterization param{T, deg, knots};
+  MPCBaseTester base{n, m, param, {.saturate_input_trajectory = true}};
+
+  Eigen::Vector<double, 1> u_min{0}, u_max{1};
+  base.setInputLimits(u_min, u_max);
+
+  // u_3 = (3.5*c1 + 0.5*c2)/4 = 1 and u_7 = (5*c2 + 0.5*c3)/5.5 = 0
+  Vector4d ctrls;
+  ctrls << 0.0, 0.0, -0.08, 0.8;
+  ctrls(1) = (4.0 - 0.5 * ctrls(2)) / 3.5;
+  ASSERT_GT(ctrls(1), u_max(0));
+  ASSERT_LT(ctrls(2), u_min(0));
+
+  const VectorXd u_traj{param.evaluate(m, ctrls)};
+  EXPECT_NEAR(u_traj.maxCoeff(), u_max(0), 1e-12);
+  EXPECT_NEAR(u_traj.minCoeff(), u_min(0), 1e-12);
+
+  const VectorXd u_cons{base.getASatU() * ctrls};
+  const VectorXd l = base.getLSatU();
+  const VectorXd u = base.getUSatU();
+  EXPECT_TRUE(((u_cons - l).array() >= -1e-12).all());
+  EXPECT_TRUE(((u - u_cons).array() >= -1e-12).all());
 }
 
 TEST(MPCBaseTester,

@@ -251,6 +251,126 @@ def make_knot_placement_figure(output_dir: Path):
     plt.close(fig)
 
 
+def degree1_saturation_samples(active_knots: np.ndarray) -> np.ndarray:
+    """Samples bounded by MPCBase for degree 1 when saturating the trajectory."""
+    samples = []
+    for tau in active_knots:
+        tau_round = np.round(tau)
+        if abs(tau - tau_round) <= 1e-9:
+            samples.append(int(tau_round))
+        else:
+            samples += [int(np.floor(tau)), int(np.ceil(tau))]
+    return np.unique(samples)
+
+
+def plot_saturation_comparison(
+    output_path: Path,
+    horizon_steps: int,
+    degree: int,
+    knots: np.ndarray,
+    cp_ctrls: np.ndarray,
+    cp_traj: np.ndarray,
+    samples: np.ndarray,
+    samples_title: str,
+    u_min: float = 0.0,
+    u_max: float = 1.0,
+):
+    """Compare saturating control points (left) with saturating samples (right)."""
+    fig, axes = plt.subplots(
+        1, 2, figsize=(10.5, 4.2), sharey=True, constrained_layout=True
+    )
+    ctrl_x = greville_abscissae(knots, degree)
+    sample_x = samples.astype(float)
+    panels = [
+        (axes[0], cp_ctrls, "Saturate Control Points", ctrl_x, cp_ctrls),
+        (
+            axes[1],
+            cp_traj,
+            samples_title,
+            sample_x,
+            evaluate_spline(cp_traj, degree, knots, sample_x),
+        ),
+    ]
+    for ax, control_points, title, cons_x, cons_u in panels:
+        ax.axhspan(u_min, u_max, color="0.85", alpha=0.5, zorder=0)
+        for limit in (u_min, u_max):
+            ax.axhline(limit, color="0.4", linewidth=1.0, zorder=1)
+        plot_parameterization(ax, horizon_steps, degree, knots, control_points, title)
+        ax.scatter(
+            cons_x,
+            cons_u,
+            s=110,
+            facecolors="none",
+            edgecolors="#2ca02c",
+            linewidths=1.8,
+            zorder=5,
+            label="constrained",
+        )
+    margin = 0.25 * (u_max - u_min)
+    y_lo = min(u_min - margin, cp_traj.min() - 0.1 * margin)
+    y_hi = max(u_max + margin, cp_traj.max() + 0.1 * margin)
+    axes[0].set_ylim(y_lo, y_hi)
+
+    handles, labels = axes[1].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=5,
+        frameon=False,
+        bbox_to_anchor=(0.5, 1.08),
+    )
+    fig.savefig(output_path, format="svg", bbox_inches="tight")
+    plt.close(fig)
+
+
+def make_degree1_saturation_figure(output_dir: Path):
+    horizon_steps = 13
+    degree = 1
+    active_knots = np.array([0.0, 2.5, 6.5, horizon_steps - 1.0])
+    knots = make_clamped_knots_from_active(horizon_steps, degree, active_knots)
+    # same control points as the MPCBase degree 1 saturation test: u_3 = u_max
+    # and u_7 = u_min while the control points at 2.5 and 6.5 leave the limits
+    cp_traj = np.array([0.0, 0.0, -0.08, 0.8])
+    cp_traj[1] = (4.0 - 0.5 * cp_traj[2]) / 3.5
+    plot_saturation_comparison(
+        output_dir / "degree1-saturation.svg",
+        horizon_steps,
+        degree,
+        knots,
+        cp_ctrls=np.clip(cp_traj, 0.0, 1.0),
+        cp_traj=cp_traj,
+        samples=degree1_saturation_samples(active_knots),
+        samples_title="Saturate Knot-Adjacent Samples",
+    )
+
+
+def make_degree3_saturation_figure(output_dir: Path):
+    horizon_steps = 13
+    degree = 3
+    shape = np.array([0.0, 1.6, -0.6, 1.3, -0.2, 0.6])
+    knots = make_uniform_clamped_knots(horizon_steps, degree, len(shape))
+    k = np.arange(horizon_steps, dtype=float)
+
+    # Same shape in both panels: scaled so the control points span the limits
+    # (left) or so the sampled inputs span the limits (right). B-spline basis
+    # functions sum to 1, so an affine map of the control points maps the
+    # spline the same way.
+    def normalize(cp: np.ndarray, values: np.ndarray) -> np.ndarray:
+        return (cp - values.min()) / (values.max() - values.min())
+
+    plot_saturation_comparison(
+        output_dir / "degree3-saturation.svg",
+        horizon_steps,
+        degree,
+        knots,
+        cp_ctrls=normalize(shape, shape),
+        cp_traj=normalize(shape, evaluate_spline(shape, degree, knots, k)),
+        samples=np.arange(horizon_steps),
+        samples_title="Saturate Every Sample",
+    )
+
+
 def main():
     output_dir = Path("docs/assets/input-parameterization")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -264,6 +384,8 @@ def main():
     )
     make_factory_methods_figure(output_dir)
     make_knot_placement_figure(output_dir)
+    make_degree1_saturation_figure(output_dir)
+    make_degree3_saturation_figure(output_dir)
     print(f"Wrote figures to: {output_dir}")
 
 

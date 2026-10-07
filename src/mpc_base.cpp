@@ -1,12 +1,15 @@
 #include "affine_mpc/mpc_base.hpp"
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <numeric>
 #include <osqp.h>
 #include <stdexcept>
 #include <string>
 #include <unsupported/Eigen/Splines>
+#include <vector>
 
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
@@ -36,9 +39,50 @@ constexpr int validateInputDim(int input_dim)
   return input_dim;
 }
 
-constexpr bool satInputTraj(const Parameterization& param, const Options& opts)
+/**
+ * @brief Sample indices whose inputs are bounded when
+ * `saturate_input_trajectory` is enabled. An empty result means the control
+ * points are bounded instead.
+ *
+ * - degree 0: control points (each one equals the sampled inputs on its
+ *   interval, so this is already exact).
+ * - degree 1: floor(t) and ceil(t) of every active knot t, without
+ *   duplicates. The spline is linear between knots, so every other sample lies
+ *   between the first and last samples of its segment, and bounding these (at
+ *   most 2*num_control_points-2) samples is exactly equivalent to bounding all
+ *   of them. Active knots can not repeat, so the spline is continuous.
+ * - degree > 1: every sample.
+ */
+std::vector<int> inputSatSamples(const Parameterization& param,
+                                 const Options& opts)
 {
-  return opts.saturate_input_trajectory && param.degree > 1;
+  if (!opts.saturate_input_trajectory || param.degree == 0)
+    return {};
+
+  std::vector<int> samples;
+  if (param.degree > 1) {
+    samples.resize(param.horizon_steps);
+    std::iota(samples.begin(), samples.end(), 0);
+    return samples;
+  }
+
+  // degree 1: active knots are knots(1), ..., knots(size-2) and span [0, T-1]
+  constexpr double snap_tol{1e-9}; // treat round-off from integers as integers
+  const VectorXd& knots{param.knots};
+  samples.reserve(2 * (knots.size() - 2));
+  for (Index i{1}; i < knots.size() - 1; ++i) {
+    const double t{knots(i)};
+    const double t_round{std::round(t)};
+    if (std::abs(t - t_round) <= snap_tol) {
+      samples.push_back(static_cast<int>(t_round));
+    } else {
+      samples.push_back(static_cast<int>(std::floor(t)));
+      samples.push_back(static_cast<int>(std::ceil(t)));
+    }
+  }
+  std::sort(samples.begin(), samples.end());
+  samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+  return samples;
 }
 
 // Size checks for setters, which are not on the solve path. The message is
@@ -84,8 +128,10 @@ MPCBase::MPCBase(int state_dim,
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
-    num_u_sat_cons_{satInputTraj(param, opts) ? param.horizon_steps
-                                              : param.num_control_points},
+    u_sat_samples_{inputSatSamples(param, opts)},
+    num_u_sat_cons_{u_sat_samples_.empty()
+                        ? param.num_control_points
+                        : static_cast<int>(u_sat_samples_.size())},
     u_sat_dim_{input_dim_ * num_u_sat_cons_},
     slew_dim_{(ctrls_dim_ - input_dim_) * opts.slew_control_points},
     x_sat_dim_{x_traj_dim_ * opts.saturate_states},
@@ -135,15 +181,19 @@ MPCBase::MPCBase(int state_dim,
   // initialize common constraint matrix blocks
   A_.setZero();
 
-  if (satInputTraj(param, opts)) {
+  if (!u_sat_samples_.empty()) {
+    // saturate sampled inputs (each a weighted sum of control points)
     const int num_weights{spline_degree_ + 1};
-    for (int k{0}, row{u_sat_idx_}; k < horizon_steps_; ++k, row += input_dim_)
+    int row{u_sat_idx_};
+    for (const int k : u_sat_samples_) {
       for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
            ++i, col += input_dim_) {
         A_.block(row, col, input_dim_, input_dim_)
             .diagonal()
             .setConstant(spline_weights_(i, k));
       }
+      row += input_dim_;
+    }
   } else {
     // saturate control points directly (much fewer constraints)
     A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();

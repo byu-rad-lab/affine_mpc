@@ -184,7 +184,7 @@ The active knot vector must include at least the two boundary entries $0$ and $T
 - Lower degree gives a more local and less smooth trajectory representation.
 - Higher degree gives smoother trajectories and broader basis support, but can somewhat flatten the input trajectory if
   the control points are saturated by the input limits since splines generally do not pass through control points.
-  This can be remedied by saturating the evaluated input trajectory instead (when $p>1$).
+  This can be remedied by saturating the evaluated input trajectory instead (when $p>1$, or $p=1$ with non-integer knots).
 
 ### Knot Placement
 

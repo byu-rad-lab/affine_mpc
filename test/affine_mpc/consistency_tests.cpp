@@ -514,6 +514,81 @@ TEST(ConsistencyTester,
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }
 
+TEST(ConsistencyTester,
+     givenDeg1InputTrajectorySaturation_CondensedAndSparseMPCAgree)
+{
+  // non-integer knots: only knot-adjacent samples are constrained
+  const int n{2}, m{1}, T{10};
+  VectorXd knots{6};
+  knots << 0, 0, 2.5, 6.5, 9, 9;
+  const ampc::Parameterization param{T, 1, knots};
+  const ampc::Options opts{.saturate_input_trajectory = true};
+  ConsistencyTester tester{n, m, param, opts};
+  tester.setup(); // input limits are [0, 3]
+
+  const Vector2d x0{0, 0};
+  ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+  VectorXd u_traj_condensed{m * T}, u_traj_sparse{m * T};
+  tester.condensed.getInputTrajectory(u_traj_condensed);
+  tester.sparse.getInputTrajectory(u_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(u_traj_condensed, u_traj_sparse, 1e-4));
+
+  // every sample respects the limits, and the upper limit is active
+  EXPECT_NEAR(u_traj_sparse.maxCoeff(), 3.0, 1e-4);
+  EXPECT_GE(u_traj_sparse.minCoeff(), -1e-4);
+
+  VectorXd x_traj_condensed{n * T}, x_traj_sparse{n * T};
+  tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
+  tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
+}
+
+TEST(ConsistencyTester,
+     givenDeg1InputTrajectorySaturation_ControlPointExceedsLimitsButInputsDoNot)
+{
+  // The initial slew limit (u_prev = 0, slew = 0.5) keeps c0 = u_0 <= 0.5. A
+  // low reference (steady-state input 0.9) is reached fastest by ramping to
+  // u_max = 3 and backing off, so the optimizer pushes the (unsampled) control
+  // point at knot 2.5 above u_max while every sample stays within limits.
+  const int n{2}, m{1}, T{10};
+  VectorXd knots{6};
+  knots << 0, 0, 2.5, 6.5, 9, 9;
+  const ampc::Parameterization param{T, 1, knots};
+  const Vector2d x0{0, 0}, x_ref{0.3, 0};
+  const double u_max{3.0};
+
+  ConsistencyTester tester{
+      n,
+      m,
+      param,
+      {.slew_initial_input = true, .saturate_input_trajectory = true}};
+  tester.setup(); // input limits are [0, 3]
+  for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&tester.condensed),
+                             static_cast<ampc::MPCBase*>(&tester.sparse)}) {
+    mpc->setReferenceState(x_ref);
+    ASSERT_EQ(mpc->solve(x0), ampc::SolveStatus::Success);
+    VectorXd ctrls{m * param.num_control_points}, u_traj{m * T};
+    mpc->getInputControlPoints(ctrls);
+    mpc->getInputTrajectory(u_traj);
+    EXPECT_GT(ctrls(1), u_max + 1e-2);
+    EXPECT_NEAR(u_traj.maxCoeff(), u_max, 1e-4);
+    EXPECT_GE(u_traj.minCoeff(), -1e-4);
+  }
+
+  // saturating the control points instead caps u_2 at 0.2*0.5 + 0.8*3 = 2.5
+  ConsistencyTester tester_ctrls{n, m, param, {.slew_initial_input = true}};
+  tester_ctrls.setup();
+  tester_ctrls.condensed.setReferenceState(x_ref);
+  ASSERT_EQ(tester_ctrls.condensed.solve(x0), ampc::SolveStatus::Success);
+  VectorXd ctrls{m * param.num_control_points}, u_traj{m * T};
+  tester_ctrls.condensed.getInputControlPoints(ctrls);
+  tester_ctrls.condensed.getInputTrajectory(u_traj);
+  EXPECT_LE(ctrls.maxCoeff(), u_max + 1e-4);
+  EXPECT_LE(u_traj(2), 2.5 + 1e-4);
+}
+
 // ---- Sparsity pattern fixed at initialization ------------------------------
 
 namespace {
