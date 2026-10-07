@@ -222,6 +222,8 @@ public:
 
   /**
    * @brief Set only the state weights for the cost function.
+   *
+   *   The terminal state weights are also set to `Q_diag`.
    * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    */
   void setStateWeights(const Eigen::Ref<const Eigen::VectorXd>& Q_diag);

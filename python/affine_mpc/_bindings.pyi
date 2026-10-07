@@ -88,10 +88,9 @@ class MPCBase:
         """
         Constructor for MPCBase.
 
-        This is an abstract class and not meant to be used directly, but is still
-        defined here to allow for testing and potentially to allow for users to create
-        their own custom MPC classes in Python by inheriting from this class and
-        implementing the pure virtual functions.
+        This is an abstract class and not meant to be used directly. It is defined
+        here for testing and so derived classes share its methods. Subclassing it in
+        Python to define a custom formulation is not supported.
 
         Args:
             state_dim: Dimension of state vector.
@@ -625,6 +624,8 @@ class MPCBase:
     ) -> None:
         """
         Set only the state weights for the cost function.
+
+        The terminal state weights are also set to `Q_diag`.
 
         Args:
             Q_diag: Vector for diagonal of state weight matrix (non-negative).
