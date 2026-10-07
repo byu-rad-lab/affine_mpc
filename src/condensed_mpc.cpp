@@ -26,6 +26,7 @@ CondensedMPC::CondensedMPC(int state_dim,
             0),                                   // num_custom_constraints
     S_{x_traj_dim_, ctrls_dim_},
     v_{x_traj_dim_},
+    weighted_state_err_{x_traj_dim_},
     model_changed_{false},
     bounds_changed_{false}
 {
@@ -86,7 +87,8 @@ bool CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
     bounds_changed_ = true;
   }
 
-  q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_ref_);
+  weighted_state_err_.noalias() = Q_big_ * (v_ - x_ref_);
+  q_.noalias() = S_.transpose() * weighted_state_err_;
   if (opts_.use_input_cost)
     q_.noalias() -= R_big_ * ctrls_ref_;
   success &= solver_->updateCostVector(q_);
