@@ -4,6 +4,22 @@ project(affine_mpc
   VERSION 0.1.1
 )
 
+# Default to an optimized build. Single-config generators (Makefiles, Ninja)
+# otherwise build without optimization when no build type is given, and
+# `cmake --build --config Release` only applies to multi-config generators.
+# Only set when this is the top-level project so parent projects keep control.
+get_property(AFFINE_MPC_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR AND NOT AFFINE_MPC_MULTI_CONFIG)
+  if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING
+      "Build type (Debug, Release, RelWithDebInfo, MinSizeRel)" FORCE)
+    message(STATUS "No build type given; defaulting to Release")
+  endif()
+  # dropdown in cmake-gui and ccmake
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 # --------------------------------------------------
 # Standard includes
 # --------------------------------------------------
@@ -90,6 +106,8 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 if(AFFINE_MPC_BUILD_EXAMPLES)
   add_executable(example_sim examples/sim.cpp)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+  # the library is C++17; the example uses C++20 designated initializers
+  target_compile_features(example_sim PRIVATE cxx_std_20)
 endif()
 
 # --------------------------------------------------
@@ -166,6 +184,8 @@ if(AFFINE_MPC_BUILD_TESTS)
     get_filename_component(TEST_NAME "${TEST_SRC}" NAME_WE)
     add_executable(${TEST_NAME} ${TEST_SRC})
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER tests)
+    # the library is C++17; the tests use C++20 designated initializers
+    target_compile_features(${TEST_NAME} PRIVATE cxx_std_20)
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}

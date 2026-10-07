@@ -127,7 +127,7 @@ This project defines the following CMake options (specified with `-D`):
 
 | Option                      | Description                                              |
 | --------------------------- | -------------------------------------------------------- |
-| `CMAKE_BUILD_TYPE`          | Select `Release` or `Debug` for single-config generators |
+| `CMAKE_BUILD_TYPE`          | Select `Release` (default) or `Debug` for single-config generators |
 | `AFFINE_MPC_BUILD_EXAMPLES` | Build example executables                                |
 | `AFFINE_MPC_BUILD_TESTS`    | Build unit tests and register test entry points          |
 | `AFFINE_MPC_BUILD_BINDINGS` | Build the Python bindings                                |
@@ -171,7 +171,7 @@ This makes diffs and review comments more localized without affecting rendered o
 
 ## Coding Conventions
 
-- C++17
+- C++17 for the library and bindings; tests and examples build as C++20 (they use designated initializers)
 - 2-space indentation in the existing codebase
 - `PascalCase` for classes and structs
 - `camelCase` for methods and functions
