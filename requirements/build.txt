@@ -1,5 +1,5 @@
 numpy
 pybind11[global]
-pybind11-stubgen
+pybind11-stubgen<3
 black
 pytest

@@ -30,7 +30,7 @@ keywords = ["affine mpc", "mpc", "model predictive control"]
 [project.optional-dependencies]
 # Install these with `pip install ".[dev]"`
 dev = [
-    "pybind11-stubgen",
+    "pybind11-stubgen<3",
     "black",
     "pytest",
 ]
