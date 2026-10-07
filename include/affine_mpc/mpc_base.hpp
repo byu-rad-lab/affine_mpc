@@ -85,8 +85,14 @@ public:
    * @param x0 Initial (current) state vector.
    * @throws std::invalid_argument if x0 does not have size state_dim.
    * @return SolveStatus Result indication. Generally expected to be `Success`
-   *   unless the solver has not been initialized, then `NotInitialized`. Verify
-   *   your problem setup and consult OSQP documentation for any other value.
+   *   unless the solver has not been initialized, then `NotInitialized`.
+   *   `UpdateFailed` means OSQP rejected a data update (often from non-finite
+   *   model or weight values), so the QP was not solved and the getters still
+   *   return the previous solution. The update is retried at the next solve,
+   *   which usually recovers once the values are valid again (infinite weights
+   *   can leave OSQP unable to recover).
+   *   Verify your problem setup and consult OSQP documentation for any other
+   *   value.
    */
   [[nodiscard]] SolveStatus solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
@@ -452,7 +458,13 @@ private:
 
   // need to be implemented by derived classes (they define how to update the
   // QP matrices based on changes to the MPC problem)
-  virtual void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+
+  // Assemble the QP for x0 and push pending changes to the solver. Returns
+  // false if a solver update failed; failed updates stay pending and are
+  // retried at the next call. Before initializeSolver() the solver updates
+  // fail and the result is ignored, since initializeSolver() passes the
+  // assembled QP to the solver directly.
+  virtual bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
   virtual bool qpUpdateModel() = 0;
   virtual bool qpUpdateReferences() = 0;
   virtual bool qpUpdateInputLimits() = 0;

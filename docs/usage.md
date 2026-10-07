@@ -339,6 +339,7 @@ is in the main runtime loop. Common cases include:
 
 - `Success`
 - `NotInitialized` (`solve()` was called prior to `initializeSolver()`)
+- `UpdateFailed` (OSQP rejected an update to the QP data, often from non-finite model or weight values; the QP was not solved, and the update is retried at the next solve, which usually recovers once the values are valid again)
 - OSQP-derived failure conditions (see [OSQP documentation](https://osqp.org/docs/interfaces/status_values.html#status-values))
 
 How to respond to a failed solve depends on the application.

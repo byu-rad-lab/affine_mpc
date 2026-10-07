@@ -50,7 +50,10 @@ public:
   const auto getUSatU() { return u_.segment(u_sat_idx_, u_sat_dim_); }
 
 protected:
-  void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final {}
+  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final
+  {
+    return true;
+  }
   bool qpUpdateModel() override final { return true; }
   bool qpUpdateReferences() override final { return true; }
   bool qpUpdateInputLimits() override final { return true; }

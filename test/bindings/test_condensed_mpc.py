@@ -208,3 +208,27 @@ def test_reset_warm_start_repeats_solve_from_zero(mpc_type):
     assert mpc.solve(x0) == ampc.SolveStatus.Success
     assert mpc.getSolveInfo().iterations == iters_from_zero
     assert np.array_equal(mpc.getNextInput(), u_first)
+
+
+@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_nonfinite_model_reports_update_failed_and_recovers(mpc_type):
+    mpc = mpc_type(2, 1, ampc.Parameterization.linearInterp(10, 5))
+    Ad = np.array([[1.0, 0.1], [-0.06, 0.99]])
+    Bd = np.array([0.0, 0.02])
+    mpc.setModelDiscrete(Ad, Bd, np.zeros(2))
+    mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+    mpc.setStateWeights(np.ones(2))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    assert mpc.initializeSolver()
+
+    x0 = np.array([0.5, -0.2])
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    u_first = mpc.getNextInput()
+
+    mpc.setModelDiscrete(Ad, np.array([0.0, np.nan]), np.zeros(2))
+    assert mpc.solve(x0) == ampc.SolveStatus.UpdateFailed
+    assert np.array_equal(mpc.getNextInput(), u_first)
+
+    mpc.setModelDiscrete(Ad, Bd, np.zeros(2))
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert np.allclose(mpc.getNextInput(), u_first, atol=1e-4)

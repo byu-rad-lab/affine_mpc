@@ -6,6 +6,7 @@
 #include <Eigen/Core>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 
 #include "utils.hpp"
 
@@ -751,4 +752,73 @@ TEST(ConsistencyTester, askedToResetWarmStart_NextSolveStartsFromZero)
 
   ampc::SparseMPC sparse{n, m, param, opts};
   check(sparse);
+}
+
+TEST(ConsistencyTester,
+     givenNonFiniteUpdate_SolveReportsUpdateFailedAndRecovers)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  // deterministic iteration counts: fixed rho, check termination every step
+  settings.adaptive_rho = false;
+  settings.check_termination = 1;
+  const Vector2d x0{0.5, -0.2};
+  const double nan{std::numeric_limits<double>::quiet_NaN()};
+
+  // OSQP rejects the matrix update, so solve() must not report Success on
+  // the stale QP. Restoring valid data must recover the original solve.
+  auto check = [&](ampc::MPCBase& mpc, const ampc::Options& opts,
+                   bool nan_in_weights) {
+    configureMsd(mpc, opts);
+    mpc.setStateWeights(Vector2d::Ones());
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    const int iters_first{mpc.getSolveInfo().iterations};
+    VectorXd u_first{m}, u{m};
+    mpc.getNextInput(u_first);
+
+    if (nan_in_weights)
+      mpc.setStateWeights(Vector2d{nan, 1.0});
+    else
+      mpc.setModelDiscrete(Matrix2d::Identity(), Vector2d{0.0, nan},
+                           Vector2d::Zero());
+    EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::UpdateFailed);
+    // stays failed while the data is invalid
+    EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::UpdateFailed);
+    // the getters still return the last successful solve
+    mpc.getNextInput(u);
+    expectEigenNear(u, u_first, 0.0);
+
+    if (nan_in_weights)
+      mpc.setStateWeights(Vector2d::Ones());
+    else
+      setMsdModel(mpc);
+    mpc.resetWarmStart();
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    EXPECT_EQ(mpc.getSolveInfo().iterations, iters_first);
+    mpc.getNextInput(u);
+    expectEigenNear(u, u_first, 1e-12);
+  };
+
+  for (const bool saturate_states : {false, true}) {
+    const ampc::Options opts{.use_input_cost = true,
+                             .saturate_states = saturate_states};
+    for (const bool nan_in_weights : {false, true}) {
+      SCOPED_TRACE(::testing::Message()
+                   << "saturate_states=" << saturate_states
+                   << " nan_in_weights=" << nan_in_weights);
+      {
+        SCOPED_TRACE("CondensedMPC");
+        ampc::CondensedMPC condensed{n, m, param, opts};
+        check(condensed, opts, nan_in_weights);
+      }
+      {
+        SCOPED_TRACE("SparseMPC");
+        ampc::SparseMPC sparse{n, m, param, opts};
+        check(sparse, opts, nan_in_weights);
+      }
+    }
+  }
 }

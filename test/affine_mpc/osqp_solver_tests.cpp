@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
+#include <limits>
 #include <sstream>
 
 #include "affine_mpc/osqp_solver.hpp"
@@ -570,4 +571,70 @@ TEST(OSQPSolverProtectedTester, givenColdStart_NextSolveStartsFromZero)
   ASSERT_EQ(base.solve(cold), affine_mpc::SolveStatus::Success);
   EXPECT_EQ(base.getSolveInfo().iterations, iters_from_zero);
   expectEigenNear(cold, first, 0.0);
+}
+
+TEST(OSQPSolverProtectedTester,
+     givenBothMatrices_UpdateMatricesMatchesSeparateUpdates)
+{
+  const int n{2}, m{3};
+  Eigen::Matrix<OSQPFloat, m, n> A, A_new;
+  A << 1, 1, 1, 0, 0, 1;
+  A_new << 1, 2, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, n> P, P_new;
+  P << 4, 1, 1, 2;
+  P_new << 5, 1, 1, 3;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  settings.verbose = false;
+
+  OSQPSolverProtectedTester combined{n, m}, separate{n, m};
+  EXPECT_FALSE(combined.updateMatrices(P_new, A_new)); // not initialized
+  ASSERT_TRUE(combined.initialize(P, A, q, l, u, settings));
+  ASSERT_TRUE(separate.initialize(P, A, q, l, u, settings));
+
+  ASSERT_TRUE(combined.updateMatrices(P_new, A_new));
+  ASSERT_TRUE(separate.updateCostMatrix(P_new));
+  ASSERT_TRUE(separate.updateConstraintMatrix(A_new));
+  expectEigenNear(combined.getPx(), separate.getPx(), 0.0);
+  expectEigenNear(combined.getAx(), separate.getAx(), 0.0);
+
+  Eigen::Vector2d x_combined, x_separate;
+  ASSERT_EQ(combined.solve(x_combined), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(separate.solve(x_separate), affine_mpc::SolveStatus::Success);
+  expectEigenNear(x_combined, x_separate, 1e-12);
+}
+
+TEST(OSQPSolverProtectedTester,
+     givenFailedMatrixUpdate_RecoversWhenValidDataResent)
+{
+  const int n{2}, m{3};
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 1, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, n> P, P_bad;
+  P << 4, 1, 1, 2;
+  P_bad << std::numeric_limits<double>::quiet_NaN(), 1, 1, 2;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  settings.verbose = false;
+  settings.polishing = true;
+
+  OSQPSolverProtectedTester base{n, m};
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+  EXPECT_FALSE(base.updateCostMatrix(P_bad));
+
+  // resending the valid matrix and vectors restores the original problem
+  ASSERT_TRUE(base.updateCostMatrix(P));
+  ASSERT_TRUE(base.updateCostVector(q));
+  ASSERT_TRUE(base.updateBounds(l, u));
+  Eigen::Vector2d solution;
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+  expectEigenNear(solution, Eigen::Vector2d{0.3, 0.7}, 1e-6);
 }

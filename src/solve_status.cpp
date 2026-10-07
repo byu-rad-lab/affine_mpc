@@ -30,6 +30,8 @@ const char* toString(const SolveStatus status)
     return "MaxIterReached";
   case SolveStatus::TimeLimitReached:
     return "TimeLimitReached";
+  case SolveStatus::UpdateFailed:
+    return "UpdateFailed";
   default:
     return "OtherFailure";
   }

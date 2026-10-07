@@ -65,7 +65,7 @@ void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj = solution_map_.tail(x_traj_dim_);
 }
 
-void SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
+bool SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
   bool success{true};
   l_.head(state_dim_).noalias() = -(Ad_ * x0 + wd_);
@@ -84,10 +84,11 @@ void SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
       P_.diagonal().tail(x_traj_dim_).setOnes();
       if (opts_.use_input_cost)
         P_.diagonal().head(ctrls_dim_).setOnes();
-      return;
+      return true;
     }
-    weights_changed_ = false;
-    success &= solver_->updateCostMatrix(P_);
+    // stays set if the update fails so the next solve retries it
+    weights_changed_ = !solver_->updateCostMatrix(P_);
+    success &= !weights_changed_;
     success &= solver_->updateCostVector(q_);
   } else if (refs_changed_) {
     refs_changed_ = false;
@@ -95,9 +96,7 @@ void SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
     success &= solver_->updateCostVector(q_);
   }
 
-  // Note: success is used to avoid build warnings. Failures will manifest in
-  // either initializeSolver() or solve(), no need to check on protected
-  // method
+  return success;
 }
 
 bool SparseMPC::qpUpdateModel()
@@ -128,7 +127,12 @@ bool SparseMPC::qpUpdateModel()
 
   if (!solver_initialized_)
     return true;
-  return solver_->updateConstraintMatrix(A_);
+  const bool updated{solver_->updateConstraintMatrix(A_)};
+  // On failure, the next solve's weights check retries the cost update, which
+  // fails too while OSQP holds invalid data, so solve() reports the failure.
+  if (!updated)
+    weights_changed_ = true;
+  return updated;
 }
 
 bool SparseMPC::qpUpdateReferences()

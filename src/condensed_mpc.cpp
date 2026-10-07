@@ -53,25 +53,29 @@ void CondensedMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj += v_;
 }
 
-void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
+bool CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
-  // Note: success is used to avoid build warnings. Failures will manifest in
-  // either initializeSolver() or solve(), no need to check on protected method
-  [[maybe_unused]] bool success;
+  bool success{true};
 
   // check every time because avoiding this computation is more significant than
   // the overhead of a boolean check if the model does not change often
   if (model_changed_ || weights_changed_) {
-    model_changed_ = weights_changed_ = false;
     P_.noalias() = S_.transpose() * Q_big_ * S_;
     if (opts_.use_input_cost)
       P_ += R_big_;
-    success = solver_->updateCostMatrix(P_);
-
-    if (opts_.saturate_states) {
+    if (opts_.saturate_states)
       A_.bottomRows(S_.rows()) = S_;
-      success = solver_->updateConstraintMatrix(A_);
+
+    // Before initializeSolver() the QP is only assembled. When A also changes,
+    // one combined update rescales and refactors once instead of twice. The
+    // flags stay set if the update fails so the next solve retries it.
+    bool updated{true};
+    if (solver_initialized_) {
+      updated = opts_.saturate_states ? solver_->updateMatrices(P_, A_)
+                                      : solver_->updateCostMatrix(P_);
     }
+    model_changed_ = weights_changed_ = !updated;
+    success = updated;
   }
 
   updateV(x0);
@@ -85,12 +89,14 @@ void CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
   q_.noalias() = S_.transpose() * Q_big_ * (v_ - x_ref_);
   if (opts_.use_input_cost)
     q_.noalias() -= R_big_ * ctrls_ref_;
-  success = solver_->updateCostVector(q_);
+  success &= solver_->updateCostVector(q_);
 
   if (bounds_changed_) {
-    bounds_changed_ = false;
-    success = solver_->updateBounds(l_, u_);
+    const bool updated{solver_->updateBounds(l_, u_)};
+    bounds_changed_ = !updated;
+    success &= updated;
   }
+  return success;
 }
 
 bool CondensedMPC::qpUpdateModel()

@@ -38,9 +38,9 @@ public:
   ~PyMPCBase() override = default;
 
   // define pure virtual funtions for unit testing
-  void qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override
+  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override
   {
-    PYBIND11_OVERLOAD_PURE(void, MPCBase, qpUpdateX0, x0);
+    PYBIND11_OVERLOAD_PURE(bool, MPCBase, qpUpdateX0, x0);
   }
   bool qpUpdateModel() override { return true; }
   bool qpUpdateReferences() override { return true; }
@@ -120,7 +120,12 @@ Args:
 
 Returns:
     solve_status: Result indication. Generally expected to be `Success` unless
-        the solver has not been initialized, then `NotInitialized`. Verify your
+        the solver has not been initialized, then `NotInitialized`.
+        `UpdateFailed` means OSQP rejected a data update (often from
+        non-finite model or weight values), so the QP was not solved and the
+        getters still return the previous solution. The update is retried at
+        the next solve, which usually recovers once the values are valid again
+        (infinite weights can leave OSQP unable to recover). Verify your
         problem setup and consult OSQP documentation for any other value.
 
 Raises:

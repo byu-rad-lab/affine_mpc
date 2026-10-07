@@ -206,10 +206,11 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
     return true;
 
   // x0 only affects vector terms (q, l, u) so the values don't matter to set
-  // initial sparsity structure. Setting to ones.
+  // initial sparsity structure. Setting to ones. The solver is not
+  // initialized yet, so only the assembled QP matters here, not the result.
   VectorXd x_full{state_dim_};
   x_full.setOnes();
-  qpUpdateX0(x_full);
+  (void)qpUpdateX0(x_full);
 
   solver_initialized_ =
       solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
@@ -230,7 +231,8 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   if (!solver_initialized_)
     return SolveStatus::NotInitialized;
 
-  qpUpdateX0(x0);
+  if (!qpUpdateX0(x0))
+    return SolveStatus::UpdateFailed;
   const SolveStatus status{solver_->solve()};
 
   // update u_prev after solve rather than before so user can manually

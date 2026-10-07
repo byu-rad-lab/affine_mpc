@@ -30,6 +30,9 @@ void moduleAddSolveStatus(py::module& m)
              "OSQP reported value - see their docs")
       .value("OtherFailure", ampc::SolveStatus::OtherFailure,
              "OSQP reported value - see their docs")
+      .value("UpdateFailed", ampc::SolveStatus::UpdateFailed,
+             "OSQP rejected a QP data update, so the QP was not solved (often "
+             "from non-finite model or weight values)")
       .finalize();
 
   py::class_<ampc::SolveInfo>(m, "SolveInfo",

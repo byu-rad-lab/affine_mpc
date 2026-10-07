@@ -693,7 +693,12 @@ class MPCBase:
 
         Returns:
             solve_status: Result indication. Generally expected to be `Success` unless
-                the solver has not been initialized, then `NotInitialized`. Verify your
+                the solver has not been initialized, then `NotInitialized`.
+                `UpdateFailed` means OSQP rejected a data update (often from
+                non-finite model or weight values), so the QP was not solved and the
+                getters still return the previous solution. The update is retried at
+                the next solve, which usually recovers once the values are valid again
+                (infinite weights can leave OSQP unable to recover). Verify your
                 problem setup and consult OSQP documentation for any other value.
 
         Raises:
@@ -1396,6 +1401,7 @@ class SolveStatus(enum.Enum):
     TimeLimitReached: typing.ClassVar[
         SolveStatus
     ]  # value = <SolveStatus.TimeLimitReached: 6>
+    UpdateFailed: typing.ClassVar[SolveStatus]  # value = <SolveStatus.UpdateFailed: 8>
 
 class SparseMPC(MPCBase):
     """

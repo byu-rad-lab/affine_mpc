@@ -135,15 +135,7 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
     return false;
   assert(P.rows() == n_ && P.cols() == n_);
 
-  int idx{0}, idx_diff, row;
-  for (int col{0}; col < n_; ++col) {
-    idx_diff = P_p_(col + 1) - P_p_(col);
-    while (idx_diff != 0) {
-      row = P_i_(idx);
-      P_x_(idx++) = P(row, col);
-      --idx_diff;
-    }
-  }
+  fillCostValues(P);
   OSQPInt exit_status{osqp_update_data_mat(
       solver_.get(), P_x_.data(), OSQP_NULL, P_nnz_, OSQP_NULL, OSQP_NULL, 0)};
   return exit_status == 0;
@@ -155,6 +147,43 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
     return false;
   assert(A.rows() == m_ && A.cols() == n_);
 
+  fillConstraintValues(A);
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL,
+                                           0, A_x_.data(), OSQP_NULL, A_nnz_)};
+  return exit_status == 0;
+}
+
+bool OSQPSolver::updateMatrices(const Eigen::Ref<const MatrixXF>& P,
+                                const Eigen::Ref<const MatrixXF>& A)
+{
+  if (!initialized_)
+    return false;
+  assert(P.rows() == n_ && P.cols() == n_);
+  assert(A.rows() == m_ && A.cols() == n_);
+
+  fillCostValues(P);
+  fillConstraintValues(A);
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), P_x_.data(),
+                                           OSQP_NULL, P_nnz_, A_x_.data(),
+                                           OSQP_NULL, A_nnz_)};
+  return exit_status == 0;
+}
+
+void OSQPSolver::fillCostValues(const Eigen::Ref<const MatrixXF>& P)
+{
+  int idx{0}, idx_diff, row;
+  for (int col{0}; col < n_; ++col) {
+    idx_diff = P_p_(col + 1) - P_p_(col);
+    while (idx_diff != 0) {
+      row = P_i_(idx);
+      P_x_(idx++) = P(row, col);
+      --idx_diff;
+    }
+  }
+}
+
+void OSQPSolver::fillConstraintValues(const Eigen::Ref<const MatrixXF>& A)
+{
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col) {
     idx_diff = A_p_(col + 1) - A_p_(col);
@@ -164,9 +193,6 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
       --idx_diff;
     }
   }
-  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL,
-                                           0, A_x_.data(), OSQP_NULL, A_nnz_)};
-  return exit_status == 0;
 }
 
 bool OSQPSolver::updateCostVector(const Eigen::Ref<const VectorXF>& q)

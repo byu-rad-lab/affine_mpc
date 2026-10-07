@@ -27,7 +27,8 @@ enum class SolveStatus
   DualInfeasible,   ///< Problem is dual infeasible
   MaxIterReached,   ///< OSQP hit max iterations
   TimeLimitReached, ///< OSQP hit time limit
-  OtherFailure      ///< Any other OSQP error
+  OtherFailure,     ///< Any other OSQP error
+  UpdateFailed      ///< OSQP rejected a QP data update; the QP was not solved
 };
 
 /**

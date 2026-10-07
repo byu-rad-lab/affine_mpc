@@ -137,6 +137,17 @@ public:
   updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
 
   /**
+   * @brief Update both P and A in a single OSQP update (values only, sparsity
+   *   fixed).
+   *
+   *   OSQP rescales its data and refactors on every matrix update, so this
+   *   does that once instead of twice.
+   * @return True if update succeeds, false otherwise.
+   */
+  [[nodiscard]] bool updateMatrices(const Eigen::Ref<const MatrixXF>& P,
+                                    const Eigen::Ref<const MatrixXF>& A);
+
+  /**
    * @brief Update the linear cost vector q.
    * @param q New cost vector.
    * @return True if update succeeds, false otherwise.
@@ -174,6 +185,11 @@ private:
    * @return Number of non-zero elements in upper triangle.
    */
   int countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat);
+
+  // Copy the values of P and A within the stored sparsity pattern into the
+  // CSC value buffers passed to OSQP.
+  void fillCostValues(const Eigen::Ref<const MatrixXF>& P);
+  void fillConstraintValues(const Eigen::Ref<const MatrixXF>& A);
 
   /**
    * @brief Initializes the cost matrix storage for OSQP.

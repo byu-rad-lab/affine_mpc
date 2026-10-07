@@ -12,6 +12,7 @@ def test_solve_status_interface():
         s = ampc.SolveStatus.MaxIterReached
         s = ampc.SolveStatus.TimeLimitReached
         s = ampc.SolveStatus.OtherFailure
+        s = ampc.SolveStatus.UpdateFailed
     except:
         assert False
 
