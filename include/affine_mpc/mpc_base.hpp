@@ -365,6 +365,18 @@ public:
   SolveInfo getSolveInfo() const noexcept { return solver_->getSolveInfo(); }
 
   /**
+   * @brief Make the next solve() start from zero instead of warm starting
+   *   from the previous solution (an OSQP cold start).
+   *
+   *   Useful after a failed solve, whose iterates may have diverged and would
+   *   slow down or prevent convergence of the next solve. Does not change the
+   *   problem data, the previous input used by `slew_initial_input`, or the
+   *   results returned by the solution getters. No-op before
+   *   initializeSolver().
+   */
+  void resetWarmStart() noexcept { solver_->coldStart(); }
+
+  /**
    * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
    *   analysis and debugging.
    *

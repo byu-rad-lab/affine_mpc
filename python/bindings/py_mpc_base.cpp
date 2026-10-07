@@ -630,6 +630,17 @@ Returns:
         initializeSolver().
            )doc");
 
+  base.def("resetWarmStart", &ampc::MPCBase::resetWarmStart,
+           R"doc(
+Make the next solve() start from zero instead of warm starting from the previous
+solution (an OSQP cold start).
+
+Useful after a failed solve, whose iterates may have diverged and would slow
+down or prevent convergence of the next solve. Does not change the problem data,
+the previous input used by `slew_initial_input`, or the results returned by the
+solution getters. No-op before initializeSolver().
+           )doc");
+
   base.def("isWithinSparsityPattern", &ampc::MPCBase::isWithinSparsityPattern,
            R"doc(
 Debugging aid: check whether the current QP matrices fit the sparsity pattern

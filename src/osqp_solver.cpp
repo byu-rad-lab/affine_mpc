@@ -103,6 +103,12 @@ SolveStatus OSQPSolver::solve()
   return osqpStatusToSolveStatus(solver_->info->status_val);
 }
 
+void OSQPSolver::coldStart() noexcept
+{
+  if (initialized_)
+    osqp_cold_start(solver_.get());
+}
+
 bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
                             const Eigen::Ref<const MatrixXF>& A,
                             const Eigen::Ref<const VectorXF>& q,

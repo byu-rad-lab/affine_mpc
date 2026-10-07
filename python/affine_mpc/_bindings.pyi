@@ -366,6 +366,17 @@ class MPCBase:
             x_next : Resulting next state vector.
         """
 
+    def resetWarmStart(self) -> None:
+        """
+        Make the next solve() start from zero instead of warm starting from the previous
+        solution (an OSQP cold start).
+
+        Useful after a failed solve, whose iterates may have diverged and would slow
+        down or prevent convergence of the next solve. Does not change the problem data,
+        the previous input used by `slew_initial_input`, or the results returned by the
+        solution getters. No-op before initializeSolver().
+        """
+
     def setInputLimits(
         self,
         u_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],

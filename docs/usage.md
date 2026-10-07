@@ -341,21 +341,35 @@ is in the main runtime loop. Common cases include:
 - `NotInitialized` (`solve()` was called prior to `initializeSolver()`)
 - OSQP-derived failure conditions (see [OSQP documentation](https://osqp.org/docs/interfaces/status_values.html#status-values))
 
+How to respond to a failed solve depends on the application.
+For example, you could reuse the previously applied input or have a fallback control law like LQR.
+After a failure, `solve()` has still stored the first input of the failed solution as the previous input used by `slew_initial_input`,
+so call `setPreviousInput()` with the input you actually applied.
+The failed solve's iterates may also have diverged, which would slow down the next solve since OSQP warm starts from them,
+so call `resetWarmStart()` to start the next solve from zero.
+
 === "Python"
 
     ```python
     status = mpc.solve(xk)
-    if status != affine_mpc.SolveStatus.Success:
-        # handle how you want
-        pass
+    if status == affine_mpc.SolveStatus.Success:
+        uk = mpc.getNextInput()
+    else:
+        uk = u_fallback
+        mpc.setPreviousInput(uk)  # if slew_initial_input is enabled
+        mpc.resetWarmStart()
     ```
 
 === "C++"
 
     ```cpp
     affine_mpc::SolveStatus status = mpc.solve(xk);
-    if (status != affine_mpc::SolveStatus::Success) {
-      // handle how you want
+    if (status == affine_mpc::SolveStatus::Success) {
+      mpc.getNextInput(uk);
+    } else {
+      uk = u_fallback;
+      mpc.setPreviousInput(uk); // if slew_initial_input is enabled
+      mpc.resetWarmStart();
     }
     ```
 

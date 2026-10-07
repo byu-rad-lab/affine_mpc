@@ -175,3 +175,36 @@ def test_wrong_size_arguments_raise(mpc_type):
         mpc.getInputTrajectory(np.zeros(1))
     with pytest.raises(ValueError, match="x_traj must have size"):
         mpc.getPredictedStateTrajectory(np.zeros(1))
+
+
+@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_reset_warm_start_repeats_solve_from_zero(mpc_type):
+    mpc = mpc_type(2, 1, ampc.Parameterization.linearInterp(10, 5))
+    mpc.resetWarmStart()  # no-op before initialization
+    mpc.setModelDiscrete(
+        np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
+    )
+    mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+    mpc.setStateWeights(np.ones(2))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+
+    settings = ampc.OSQPSettings()
+    settings.adaptive_rho = False  # deterministic iteration counts
+    settings.check_termination = 1
+    assert mpc.initializeSolver(settings)
+
+    x0 = np.array([0.5, -0.2])
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    iters_from_zero = mpc.getSolveInfo().iterations
+    u_first = mpc.getNextInput()
+
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getSolveInfo().iterations < iters_from_zero
+    u_warm = mpc.getNextInput()
+
+    mpc.resetWarmStart()
+    assert np.array_equal(mpc.getNextInput(), u_warm)
+
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getSolveInfo().iterations == iters_from_zero
+    assert np.array_equal(mpc.getNextInput(), u_first)

@@ -531,3 +531,43 @@ TEST(OSQPSolverProtectedTester, askedBeforeInitialize_ReturnsSafeDefaults)
   EXPECT_EQ(base.solve(solution), affine_mpc::SolveStatus::NotInitialized);
   EXPECT_EQ(solution, Eigen::Vector2d(1.0, 2.0));
 }
+
+TEST(OSQPSolverProtectedTester, givenColdStart_NextSolveStartsFromZero)
+{
+  const int n{2}, m{3};
+  OSQPSolverProtectedTester base{n, m};
+  base.coldStart(); // no-op before initialization
+
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 1, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P << 4, 1, 1, 2;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.verbose = false;
+  // deterministic iteration counts: fixed rho, check termination every step
+  settings.adaptive_rho = false;
+  settings.check_termination = 1;
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+
+  Eigen::Vector2d first, warm, cold;
+  ASSERT_EQ(base.solve(first), affine_mpc::SolveStatus::Success);
+  const int iters_from_zero{base.getSolveInfo().iterations};
+
+  // warm start from the converged solution needs fewer iterations
+  ASSERT_EQ(base.solve(warm), affine_mpc::SolveStatus::Success);
+  EXPECT_LT(base.getSolveInfo().iterations, iters_from_zero);
+
+  // cold start leaves the solution buffer alone
+  base.coldStart();
+  expectEigenNear(Eigen::Vector2d{base.getSolutionMap()}, warm, 0.0);
+
+  // and the next solve repeats the solve from zero exactly
+  ASSERT_EQ(base.solve(cold), affine_mpc::SolveStatus::Success);
+  EXPECT_EQ(base.getSolveInfo().iterations, iters_from_zero);
+  expectEigenNear(cold, first, 0.0);
+}

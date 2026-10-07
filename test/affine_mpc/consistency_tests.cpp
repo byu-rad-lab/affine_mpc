@@ -707,3 +707,48 @@ TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
   P_diff_expected.diagonal() = (2 * R).replicate(nc, 1);
   EXPECT_TRUE(expectEigenNear(P_diff, P_diff_expected, 1e-12));
 }
+
+TEST(ConsistencyTester, askedToResetWarmStart_NextSolveStartsFromZero)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true};
+  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  // deterministic iteration counts: fixed rho, check termination every step
+  settings.adaptive_rho = false;
+  settings.check_termination = 1;
+  const Vector2d x0{0.5, -0.2};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    mpc.resetWarmStart(); // no-op before initialization
+    configureMsd(mpc, opts);
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    const int iters_from_zero{mpc.getSolveInfo().iterations};
+    VectorXd u_first{m};
+    mpc.getNextInput(u_first);
+
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    EXPECT_LT(mpc.getSolveInfo().iterations, iters_from_zero);
+    VectorXd u_warm{m}, u_after_reset{m};
+    mpc.getNextInput(u_warm);
+
+    // the getters still return the last solve's results
+    mpc.resetWarmStart();
+    mpc.getNextInput(u_after_reset);
+    expectEigenNear(u_after_reset, u_warm, 0.0);
+
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    EXPECT_EQ(mpc.getSolveInfo().iterations, iters_from_zero);
+    VectorXd u_cold{m};
+    mpc.getNextInput(u_cold);
+    expectEigenNear(u_cold, u_first, 0.0);
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  check(condensed);
+
+  ampc::SparseMPC sparse{n, m, param, opts};
+  check(sparse);
+}

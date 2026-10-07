@@ -96,6 +96,13 @@ public:
   [[nodiscard]] SolveStatus solve();
 
   /**
+   * @brief Zero OSQP's internal iterates so the next solve starts from zero
+   *   instead of the previous solution (osqp_cold_start). The problem data and
+   *   the solution buffer are unchanged. No-op if not initialized.
+   */
+  void coldStart() noexcept;
+
+  /**
    * @brief Initialize the OSQP solver with QP matrices and settings.
    * @param P Quadratic cost matrix (upper triangular).
    * @param A Constraint matrix.
