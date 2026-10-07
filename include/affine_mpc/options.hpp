@@ -27,7 +27,7 @@ namespace affine_mpc {
  * - saturate_input_trajectory: Enables saturation of each input in the
  *     trajectory rather than just the control points. Only applicable for
  *     parameterizations with degree > 1. This adds constraints to the
- *     optimiztion, but can allow control points to be outside of input limits
+ *     optimization, but can allow control points to be outside of input limits
  *     while keeping inputs within limits.
  */
 struct Options

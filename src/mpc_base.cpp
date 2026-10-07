@@ -10,7 +10,7 @@
 
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
+#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required
@@ -132,7 +132,7 @@ MPCBase::MPCBase(int state_dim,
 
   calcSplineParams();
 
-  // initiallize common constraint matrix blocks
+  // initialize common constraint matrix blocks
   A_.setZero();
 
   if (satInputTraj(param, opts)) {

@@ -184,7 +184,7 @@ Args:
 
   param.def("evaluate", &ampc::Parameterization::evaluate,
             R"doc(
-Evalutate an input trajectory from provided control_points.
+Evaluate an input trajectory from provided control_points.
 
 Args:
     input_dim: Dimension of input vector.

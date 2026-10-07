@@ -18,7 +18,7 @@ namespace affine_mpc {
  * optimization design variables (condensed QP).
  *
  * Eliminates state variables analytically by implicitly wrapping the model into
- * the const function rather than as a constraint , resulting in a smaller dense
+ * the cost function rather than as a constraint, resulting in a smaller dense
  * QP. Preferred for shorter horizons and lower-dimensional problems.
  * Converts the MPC problem to QP form for OSQP, using input parameterization.
  */

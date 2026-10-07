@@ -5,7 +5,7 @@
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/osqp_solver.hpp"
-#include "eigen_compat.hpp" // revmove this once Eigen 3.5 is required
+#include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required

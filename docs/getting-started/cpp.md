@@ -9,7 +9,7 @@ The fastest path is usually to try building first and let CMake fetch missing de
 1. CMake configuration
 
     ```sh
-    cmake -S . -B build --DCMAKE_BUILD_TYPE=Release -DAFFINE_MPC_BUILD_EXAMPLES=ON
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DAFFINE_MPC_BUILD_EXAMPLES=ON
     ```
 
 1. Build
@@ -33,7 +33,7 @@ If you prefer to use system libraries, the expected dependencies are listed belo
 The project targets:
 
 - C++17
-- CMake 3.15+
+- CMake 3.18+
 
 Required dependencies:
 
@@ -152,7 +152,7 @@ This is useful if you want to reuse `affine_mpc` in multiple projects.
     system and use their shared libraries:
 
     ```sh
-    cmake -S . -B build -DBUILD_SHARED_LIBS=ON --DCMAKE_BUILD_TYPE=Release
+    cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
     ```
 
 You can install `affine_mpc` to your system after it has been built (likely need admin privileges):

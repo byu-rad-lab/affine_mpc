@@ -27,7 +27,7 @@ class CondensedMPC(MPCBase):
     design variables (condensed QP).
 
     Eliminates state variables analytically by implicitly wrapping the model into
-    the const function rather than as a constraint , resulting in a smaller dense
+    the cost function rather than as a constraint, resulting in a smaller dense
     QP. Preferred for shorter horizons and lower-dimensional problems.
     Converts the MPC problem to QP form for OSQP, using input parameterization.
 
@@ -1089,7 +1089,7 @@ class Options:
         saturate_input_trajectory: Enables saturation of each input in the
             trajectory rather than just the control points. Only applicable for
             parameterizations with degree > 1. This adds constraints to the
-            optimiztion, but can allow control points to be outside of input limits
+            optimization, but can allow control points to be outside of input limits
             while keeping inputs within limits.
 
     """
@@ -1121,7 +1121,7 @@ class Options:
             saturate_input_trajectory: Enables saturation of each input in the
                 trajectory rather than just the control points. Only applicable for
                 parameterizations with degree > 1. This adds constraints to the
-                optimiztion, but can allow control points to be outside of input limits
+                optimization, but can allow control points to be outside of input limits
                 while keeping inputs within limits.
         """
 
@@ -1315,7 +1315,7 @@ class Parameterization:
         control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Evalutate an input trajectory from provided control_points.
+        Evaluate an input trajectory from provided control_points.
 
         Args:
             input_dim: Dimension of input vector.
