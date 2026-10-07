@@ -5,6 +5,7 @@
 
 #include <Eigen/Core>
 #include <cmath>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
 
@@ -818,6 +819,180 @@ TEST(ConsistencyTester,
         SCOPED_TRACE("SparseMPC");
         ampc::SparseMPC sparse{n, m, param, opts};
         check(sparse, opts, nan_in_weights);
+      }
+    }
+  }
+}
+
+// ---- exhaustive QP equivalence over every option combination ---------------
+
+// Exposes the assembled QP (P, A, q, l, u) of a formulation for comparison.
+template <class Formulation> class QPAccess : public Formulation
+{
+public:
+  using Formulation::Formulation;
+  void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
+  const MatrixXd& P() const { return this->P_; }
+  const MatrixXd& A() const { return this->A_; }
+  const VectorXd& q() const { return this->q_; }
+  const VectorXd& l() const { return this->l_; }
+  const VectorXd& u() const { return this->u_; }
+};
+
+// Checks that CondensedMPC and SparseMPC define the same QP, without solving:
+// for random control points z, with y = [z; x(z)] where x(z) propagates the
+// model, the costs must differ by the same constant for every z, the sparse
+// model rows must hold exactly, and every other constraint row must have the
+// same margins to its bounds (the rows match one to one after the model rows).
+void expectSameQP(const QPAccess<ampc::CondensedMPC>& condensed,
+                  const QPAccess<ampc::SparseMPC>& sparse,
+                  const ampc::Parameterization& param,
+                  const VectorXd& x0)
+{
+  const int n{static_cast<int>(x0.size())};
+  const int nz{static_cast<int>(condensed.q().size())};
+  const int m{nz / param.num_control_points};
+  const int T{param.horizon_steps};
+  const int num_model_rows{n * T};
+  const double tol{1e-9};
+
+  ASSERT_EQ(sparse.A().rows(), num_model_rows + condensed.A().rows());
+
+  std::srand(1);
+  double cost_offset{0.0};
+  for (int trial{0}; trial < 4; ++trial) {
+    const VectorXd z{2.0 * VectorXd::Random(nz)};
+
+    // y = [z; x(z)]
+    const VectorXd u_traj{param.evaluate(m, z)};
+    VectorXd y{nz + num_model_rows}, x{x0};
+    y.head(nz) = z;
+    for (int k{0}; k < T; ++k) {
+      condensed.propagateModel(x, u_traj.segment(k * m, m), x);
+      y.segment(nz + k * n, n) = x;
+    }
+
+    const double cost_c{0.5 * z.dot(condensed.P() * z) + condensed.q().dot(z)};
+    const double cost_s{0.5 * y.dot(sparse.P() * y) + sparse.q().dot(y)};
+    if (trial == 0)
+      cost_offset = cost_c - cost_s;
+    else
+      EXPECT_NEAR(cost_c - cost_s, cost_offset, tol * (1.0 + std::abs(cost_c)))
+          << "cost differs by more than a constant";
+
+    const VectorXd Ay{sparse.A() * y};
+    const VectorXd Az{condensed.A() * z};
+    const int num_shared{static_cast<int>(Az.size())};
+    const VectorXd model_rows{Ay.head(num_model_rows)};
+    const VectorXd model_l{sparse.l().head(num_model_rows)};
+    const VectorXd model_u{sparse.u().head(num_model_rows)};
+    expectEigenNear(model_rows, model_l, tol);
+    expectEigenNear(model_u, model_l, 0.0);
+
+    const VectorXd lower_margin_s{Ay.tail(num_shared)
+                                  - sparse.l().tail(num_shared)};
+    const VectorXd upper_margin_s{sparse.u().tail(num_shared)
+                                  - Ay.tail(num_shared)};
+    const VectorXd lower_margin_c{Az - condensed.l()};
+    const VectorXd upper_margin_c{condensed.u() - Az};
+    expectEigenNear(lower_margin_c, lower_margin_s, tol);
+    expectEigenNear(upper_margin_c, upper_margin_s, tol);
+  }
+}
+
+TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
+{
+  const int T{10}, nc{5};
+
+  struct System
+  {
+    const char* name;
+    MatrixXd Ad, Bd;
+    VectorXd wd, x0;
+  };
+  System siso{"SISO", MatrixXd(2, 2), MatrixXd(2, 1), Vector2d{0.0, 0.01},
+              Vector2d{0.3, -0.1}};
+  siso.Ad << 0.997, 0.0998, -0.0599, 0.987;
+  siso.Bd << 0.001, 0.02;
+  System mimo{"MIMO", MatrixXd(3, 3), MatrixXd(3, 2),
+              Vector3d{0.01, 0.0, -0.02}, Vector3d{0.2, -0.1, 0.3}};
+  mimo.Ad << 0.9, 0.1, 0.0, 0.0, 0.8, 0.1, 0.0, 0.0, 0.9;
+  mimo.Bd << 0.1, 0.0, 0.0, 0.1, 0.05, 0.05;
+
+  for (int mask{0}; mask < 32; ++mask) {
+    ampc::Options opts;
+    opts.use_input_cost = mask & 1;
+    opts.slew_initial_input = mask & 2;
+    opts.slew_control_points = mask & 4;
+    opts.saturate_states = mask & 8;
+    opts.saturate_input_trajectory = mask & 16;
+
+    for (int degree{0}; degree <= 3; ++degree) {
+      const auto param{ampc::Parameterization::bspline(T, degree, nc)};
+      for (const System* sys : {&siso, &mimo}) {
+        SCOPED_TRACE(::testing::Message()
+                     << sys->name << " degree=" << degree
+                     << " use_input_cost=" << opts.use_input_cost
+                     << " slew_initial_input=" << opts.slew_initial_input
+                     << " slew_control_points=" << opts.slew_control_points
+                     << " saturate_states=" << opts.saturate_states
+                     << " saturate_input_trajectory="
+                     << opts.saturate_input_trajectory);
+        const int n{static_cast<int>(sys->Ad.rows())};
+        const int m{static_cast<int>(sys->Bd.cols())};
+
+        // distinct, nonuniform values so mismatched rows or columns show up
+        auto configure = [&](ampc::MPCBase& mpc, double scale) {
+          mpc.setModelDiscrete(sys->Ad, scale * sys->Bd, scale * sys->wd);
+          mpc.setInputLimits(-scale * VectorXd::LinSpaced(m, 1.0, 2.0),
+                             scale * VectorXd::LinSpaced(m, 1.5, 2.5));
+          mpc.setStateWeights(scale * VectorXd::LinSpaced(n, 1.0, 2.0),
+                              scale * VectorXd::LinSpaced(n, 3.0, 4.0));
+          mpc.setReferenceStateTrajectory(
+              scale * VectorXd::LinSpaced(n * T, 0.5, 1.5));
+          if (opts.use_input_cost) {
+            mpc.setInputWeights(scale * VectorXd::LinSpaced(m, 0.1, 0.2));
+            mpc.setReferenceInputControlPoints(
+                scale * VectorXd::LinSpaced(m * nc, -0.3, 0.3));
+          }
+          if (opts.slew_initial_input) {
+            mpc.setSlewRateInitial(scale * VectorXd::LinSpaced(m, 0.4, 0.6));
+            mpc.setPreviousInput(scale * VectorXd::LinSpaced(m, 0.1, 0.2));
+          }
+          if (opts.slew_control_points)
+            mpc.setSlewRate(scale * VectorXd::LinSpaced(m, 0.3, 0.5));
+          if (opts.saturate_states)
+            mpc.setStateLimits(-scale * VectorXd::LinSpaced(n, 5.0, 6.0),
+                               scale * VectorXd::LinSpaced(n, 7.0, 8.0));
+        };
+
+        QPAccess<ampc::CondensedMPC> condensed{n, m, param, opts};
+        QPAccess<ampc::SparseMPC> sparse{n, m, param, opts};
+        configure(condensed, 1.0);
+        configure(sparse, 1.0);
+        ASSERT_TRUE(condensed.initializeSolver());
+        ASSERT_TRUE(sparse.initializeSolver());
+
+        // after initialization (sparse weights are applied at the next update)
+        condensed.assemble(sys->x0);
+        sparse.assemble(sys->x0);
+        {
+          SCOPED_TRACE("after initialization");
+          expectSameQP(condensed, sparse, param, sys->x0);
+        }
+
+        // after runtime updates of every parameter, within the sparsity pattern
+        configure(condensed, 1.3);
+        configure(sparse, 1.3);
+        const VectorXd x0_new{-0.5 * sys->x0};
+        condensed.assemble(x0_new);
+        sparse.assemble(x0_new);
+        {
+          SCOPED_TRACE("after runtime updates");
+          expectSameQP(condensed, sparse, param, x0_new);
+        }
+        EXPECT_TRUE(condensed.isWithinSparsityPattern());
+        EXPECT_TRUE(sparse.isWithinSparsityPattern());
       }
     }
   }

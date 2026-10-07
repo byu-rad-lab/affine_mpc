@@ -999,6 +999,7 @@ TEST(MPCBaseTester,
   VectorXd ctrls_ref_direct = base.getRefInputControlPoints(); // [1, 2, 3]
 
   // They should differ
-  ASSERT_FALSE(expectEigenNear(ctrls_ref_replicated, ctrls_ref_direct, 1e-10));
+  ASSERT_GT((ctrls_ref_replicated - ctrls_ref_direct).cwiseAbs().maxCoeff(),
+            1e-10);
   ASSERT_TRUE(expectEigenNear(ctrls_ref_direct, u_ctrl_pts, 1e-15));
 }
