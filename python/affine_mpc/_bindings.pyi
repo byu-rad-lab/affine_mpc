@@ -5,8 +5,8 @@ Affine MPC module
 import enum
 import numpy
 import numpy.typing
-import typing
 import os
+import typing
 
 __all__: list[str] = [
     "CondensedMPC",
@@ -20,55 +20,527 @@ __all__: list[str] = [
     "SparseMPC",
 ]
 
-class CondensedMPC(MPCBase):
+class Options:
+    """
+    Controls which optional features are enabled at MPC construction time.
+
+    All fields default to false. These options are immutable after constructing an
+    MPC instance.
+
+    Attributes:
+        use_input_cost: Enables input regularization term in the cost function
+            ((uref_k - u_k)^T R (uref_k - u_k)).
+        slew_initial_input: Slew-rate constraint on initial input
+            (|u0 - u_prev| <= u0_slew).
+        slew_control_points: Enables slew-rate constraints on parameterization
+            control points (|v_{i+1} - v_i| <= control_point_slew).
+        saturate_states: Enables state saturation constraints.
+        saturate_input_trajectory: Enables saturation of the sampled input
+            trajectory rather than just the control points. Ignored for degree 0,
+            where the control points are the sampled inputs. For degree 1 only the
+            samples adjacent to each knot are constrained (at most
+            2*num_control_points-2 rows), which is exact for non-integer knots. For
+            degree > 1 every sample is constrained. Allows control points to be
+            outside of input limits while keeping inputs within limits.
+
     """
 
-    MPC formulation where only parameterization control points are optimization
-    design variables (condensed QP).
-
-    Eliminates state variables analytically by implicitly wrapping the model into
-    the cost function rather than as a constraint, resulting in a smaller dense
-    QP. Preferred for shorter horizons and lower-dimensional problems.
-    Converts the MPC problem to QP form for OSQP, using input parameterization.
-
-    """
-
-    @typing.overload
+    saturate_input_trajectory: bool
+    saturate_states: bool
+    slew_control_points: bool
+    slew_initial_input: bool
+    use_input_cost: bool
     def __init__(
         self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
+        use_input_cost: bool = False,
+        slew_initial_input: bool = False,
+        slew_control_points: bool = False,
+        saturate_states: bool = False,
+        saturate_input_trajectory: bool = False,
     ) -> None:
         """
-        Construct CondensedMPC with specified input parameterization and MPC
-        configuration options.
+        Construct an Options struct defining optional MPC configuration features.
 
         Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
+            use_input_cost: Enables input regularization term in the cost function
+                ((uref_k - u_k)^T R (uref_k - u_k)).
+            slew_initial_input: Slew-rate constraint on initial input
+                (|u0 - u_prev| <= u0_slew).
+            slew_control_points: Enables slew-rate constraints on parameterization
+                control points (|v_{i+1} - v_i| <= control_point_slew).
+            saturate_states: Enables state saturation constraints.
+            saturate_input_trajectory: Enables saturation of the sampled input
+                trajectory rather than just the control points. Ignored for degree 0,
+                where the control points are the sampled inputs. For degree 1 only the
+                samples adjacent to each knot are constrained (at most
+                2*num_control_points-2 rows), which is exact for non-integer knots. For
+                degree > 1 every sample is constrained. Allows control points to be
+                outside of input limits while keeping inputs within limits.
         """
 
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class Parameterization:
+    """
+    Encapsulates B-spline input trajectory parameterization for MPC.
+
+    Provides constructors and factory methods for generating knot vectors and
+    metadata to map control points to per-step input trajectories over the
+    prediction horizon.
+
+    The preferred usage is via the static factory methods for common
+    parameterizations.
+
+    Attributes:
+        horizon_steps: Number of discrete steps in the MPC horizon.
+        degree: Degree of B-spline polynomials.
+        num_control_points: Number of B-spline control points.
+        knots: Full knot vector of size num_control_points + degree + 1.
+
+    Static Methods:
+        makeUniformClampedKnots: Generate a knot vector that can be modified.
+        moveBlocking: Factory method for move-blocking parameterization.
+        linearInterp: Factory method for linear interpolation parameterization.
+        bspline: Factory method for clamped B-spline parameterization.
+
+    """
+
+    @staticmethod
     @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
+    def bspline(
+        horizon_steps: int, degree: int, num_control_points: int
+    ) -> Parameterization:
+        """
+        Factory method for uniform clamped B-spline parameterization.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than num_control_points.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+
+        returns:
+            out: Parameterization instance with uniform clamped B-spline structure.
+        """
+
+    @staticmethod
+    @typing.overload
+    def bspline(
         horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
+        degree: int,
+        active_knots: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> Parameterization:
         """
-        Construct CondensedMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
+        Factory method for clamped B-spline parameterization with custom active knots.
 
         Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than horizon_steps.
+            active_knots: Vector of active knots (need at least deg+1).
+
+        returns:
+            out: Parameterization instance with clamped B-spline structure.
+        """
+
+    @staticmethod
+    @typing.overload
+    def linearInterp(horizon_steps: int, num_control_points: int) -> Parameterization:
+        """
+        Factory method for uniform linear interpolation parameterization.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+
+        returns:
+            out: Parameterization instance with uniform linear interpolation structure.
+        """
+
+    @staticmethod
+    @typing.overload
+    def linearInterp(
+        horizon_steps: int,
+        endpoints: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> Parameterization:
+        """
+        Factory method for linear interpolation parameterization with custom endpoints.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            endpoints: Vector of linear segment endpoint locations. Must include 0 and
+                horizon_steps - 1.
+
+        returns:
+            out: Parameterization instance with linear interpolation structure.
+        """
+
+    @staticmethod
+    def makeUniformClampedKnots(
+        horizon_steps: int, degree: int, num_control_points: int
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Static method for generating a uniform clamped knot vector. Useful for
+        generating a starting point that can be modified for custom parameterizations.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than num_control_points.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+
+        Returns:
+            knots: The uniform clamped knot vector.
+        """
+
+    @staticmethod
+    @typing.overload
+    def moveBlocking(horizon_steps: int, num_control_points: int) -> Parameterization:
+        """
+        Factory method for uniform move-blocking parameterization.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+
+        returns:
+            out: Parameterization instance with uniform move-blocking structure.
+        """
+
+    @staticmethod
+    @typing.overload
+    def moveBlocking(
+        horizon_steps: int,
+        change_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> Parameterization:
+        """
+        Factory method for move-blocking parameterization with custom change points.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            change_points: Vector of change point locations.
+
+        returns:
+            out: Parameterization instance with move-blocking structure.
+        """
+
+    @typing.overload
+    def __init__(
+        self, horizon_steps: int, degree: int, num_control_points: int
+    ) -> None:
+        """
+        Direct constructor for uniform clamped B-spline parameterization.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than num_control_points.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+        """
+
+    @typing.overload
+    def __init__(
+        self,
+        horizon_steps: int,
+        degree: int,
+        knots: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Direct constructor for advanced use cases with custom knot vector
+        (e.g. unclamped B-splines).
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than horizon_steps.
+            knots: Full knot vector with size in the range [2*(degree+1),
+                horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0
+                and last knot must be horizon_steps-1.
+        """
+
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+    def evaluate(
+        self,
+        input_dim: int,
+        control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Evaluate an input trajectory from provided control_points.
+
+        Args:
+            input_dim: Dimension of input vector.
+            control_points (vector): Parameterized input trajectory as a vector of size
+                input_dim*num_control_points.
+
+        Returns:
+            input_traj (vector): The evaluated input trajectory.
+        """
+
+    @property
+    def degree(self) -> int: ...
+    @property
+    def horizon_steps(self) -> int: ...
+    @property
+    def knots(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
+    @property
+    def num_control_points(self) -> int: ...
+
+class OSQPSettings:
+    """
+    OSQP solver settings.
+
+    Most users will likely not need to modify the default settings, but they are
+    exposed here for advanced use cases. See OSQP documentation for details on each
+    setting: https://osqp.org/docs/interfaces/solver_settings.html.
+
+    Note: `eps_abs` and `eps_rel` are the main tolerances for convergence.
+    Tightening these can improve solution accuracy but may increase solve time.
+    Defaults are usually sufficient for MPC applications, but can be adjusted if
+    convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
+
+    Attributes:
+        adaptive_rho: Enable adaptive ADMM step size.
+        adaptive_rho_fraction: Fraction of primal and dual residuals to trigger rho update.
+        adaptive_rho_interval: Minimum number of iterations between rho updates.
+        adaptive_rho_tolerance: Absolute residual tolerance for adaptive rho updates.
+        alpha: Relaxation parameter. Default for QP solvers is 1.6.
+            =1: no relaxation (standard ADMM).
+            >1: over-relaxation (can improve convergence in some cases).
+            <1: under-relaxation (rarely useful).
+
+            If iters is high, consider increasing to 1.6-1.8. If oscillations occur,
+            consider decreasing to 1.4-1.5. Can also try 1.0 for standard ADMM if
+            convergence is an issue.
+        cg_max_iter: Maximum iterations for conjugate gradient linear system solver.
+        cg_precond: Preconditioner type for conjugate gradient solver.
+        cg_tol_fraction: Conjugate gradient tolerance as fraction of initial residual.
+        cg_tol_reduction: Number of conjugate gradient iterations before tol is halved.
+        check_dualgap: Check duality gap at each iteration for termination.
+        check_termination: Check termination interval.
+        delta: Regularization parameter for linear system solver.
+        eps_abs: Absolute tolerance for termination.
+        eps_dual_inf: Dual infeasibility tolerance for termination.
+        eps_prim_inf: Primal infeasibility tolerance for termination.
+        eps_rel: Relative tolerance for termination.
+        linsys_solver: Linear system solver to use (direct, indirect, or unknown).
+        max_iter: Maximum number of iterations.
+        polishing: Enable polishing of the solution, which performs an additional
+            solve after convergence to polish the solution. This can improve
+            accuracy near,constraint limits, but adds computation time. For example,
+            if the solution is at input saturation, tolerances may cause the
+            solution to be slightly outside the limits, and polishing can help
+            ensure the final solution respects the limits more accurately.
+            An alternative to polishing is to saturate the solution after solving.
+        polish_refine_iter: Number of refinement iterations for polishing.
+        profiler_level: Level of detail for profiler annotations.
+        rho: ADMM step size.
+        rho_is_vec: Whether rho is a scalar or vector.
+        scaled_termination: Check termination conditions on scaled residuals.
+        scaling: Enable problem data scaling.
+        sigma: ADMM regularization parameter.
+        time_limit: Time limit for solver in seconds.
+        verbose: Enable verbose output from OSQP for each solve, which may be useful
+            for debugging. For general MPC usage, this should be false.
+        warm_starting: Enable warm starting with previous solution.
+
+    """
+
+    class LinsysSolverType(enum.Enum):
+        """
+        Enum for linear system solver type.
+        """
+
+        DirectSolver: typing.ClassVar[OSQPSettings.LinsysSolverType]
+        IndirectSolver: typing.ClassVar[OSQPSettings.LinsysSolverType]
+        UnknownSolver: typing.ClassVar[OSQPSettings.LinsysSolverType]
+
+    class PreconditionerType(enum.Enum):
+        """
+        Enum for preconditioner type.
+        """
+
+        DiagonalPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
+        NoPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
+
+    cg_precond: OSQPSettings.PreconditionerType
+    linsys_solver: OSQPSettings.LinsysSolverType
+    @staticmethod
+    def fromOSQPDefaults() -> OSQPSettings:
+        """
+        Factory method to create OSQPSettings with OSQP default values.
+        """
+
+    def __init__(self) -> None:
+        """
+        Constructor sets affine_mpc recommended values.
+        """
+
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+    @property
+    def adaptive_rho(self) -> int: ...
+    @adaptive_rho.setter
+    def adaptive_rho(self, arg0: int) -> None: ...
+    @property
+    def adaptive_rho_fraction(self) -> float: ...
+    @adaptive_rho_fraction.setter
+    def adaptive_rho_fraction(self, arg0: float) -> None: ...
+    @property
+    def adaptive_rho_interval(self) -> int: ...
+    @adaptive_rho_interval.setter
+    def adaptive_rho_interval(self, arg0: int) -> None: ...
+    @property
+    def adaptive_rho_tolerance(self) -> float: ...
+    @adaptive_rho_tolerance.setter
+    def adaptive_rho_tolerance(self, arg0: float) -> None: ...
+    @property
+    def alpha(self) -> float: ...
+    @alpha.setter
+    def alpha(self, arg0: float) -> None: ...
+    @property
+    def cg_max_iter(self) -> int: ...
+    @cg_max_iter.setter
+    def cg_max_iter(self, arg0: int) -> None: ...
+    @property
+    def cg_tol_fraction(self) -> float: ...
+    @cg_tol_fraction.setter
+    def cg_tol_fraction(self, arg0: float) -> None: ...
+    @property
+    def cg_tol_reduction(self) -> int: ...
+    @cg_tol_reduction.setter
+    def cg_tol_reduction(self, arg0: int) -> None: ...
+    @property
+    def check_dualgap(self) -> int: ...
+    @check_dualgap.setter
+    def check_dualgap(self, arg0: int) -> None: ...
+    @property
+    def check_termination(self) -> int: ...
+    @check_termination.setter
+    def check_termination(self, arg0: int) -> None: ...
+    @property
+    def delta(self) -> float: ...
+    @delta.setter
+    def delta(self, arg0: float) -> None: ...
+    @property
+    def eps_abs(self) -> float: ...
+    @eps_abs.setter
+    def eps_abs(self, arg0: float) -> None: ...
+    @property
+    def eps_dual_inf(self) -> float: ...
+    @eps_dual_inf.setter
+    def eps_dual_inf(self, arg0: float) -> None: ...
+    @property
+    def eps_prim_inf(self) -> float: ...
+    @eps_prim_inf.setter
+    def eps_prim_inf(self, arg0: float) -> None: ...
+    @property
+    def eps_rel(self) -> float: ...
+    @eps_rel.setter
+    def eps_rel(self, arg0: float) -> None: ...
+    @property
+    def max_iter(self) -> int: ...
+    @max_iter.setter
+    def max_iter(self, arg0: int) -> None: ...
+    @property
+    def polish_refine_iter(self) -> int: ...
+    @polish_refine_iter.setter
+    def polish_refine_iter(self, arg0: int) -> None: ...
+    @property
+    def polishing(self) -> int: ...
+    @polishing.setter
+    def polishing(self, arg0: int) -> None: ...
+    @property
+    def profiler_level(self) -> int: ...
+    @profiler_level.setter
+    def profiler_level(self, arg0: int) -> None: ...
+    @property
+    def rho(self) -> float: ...
+    @rho.setter
+    def rho(self, arg0: float) -> None: ...
+    @property
+    def rho_is_vec(self) -> int: ...
+    @rho_is_vec.setter
+    def rho_is_vec(self, arg0: int) -> None: ...
+    @property
+    def scaled_termination(self) -> int: ...
+    @scaled_termination.setter
+    def scaled_termination(self, arg0: int) -> None: ...
+    @property
+    def scaling(self) -> int: ...
+    @scaling.setter
+    def scaling(self, arg0: int) -> None: ...
+    @property
+    def sigma(self) -> float: ...
+    @sigma.setter
+    def sigma(self, arg0: float) -> None: ...
+    @property
+    def time_limit(self) -> float: ...
+    @time_limit.setter
+    def time_limit(self, arg0: float) -> None: ...
+    @property
+    def verbose(self) -> int: ...
+    @verbose.setter
+    def verbose(self, arg0: int) -> None: ...
+    @property
+    def warm_starting(self) -> int: ...
+    @warm_starting.setter
+    def warm_starting(self, arg0: int) -> None: ...
+
+class SolveStatus(enum.Enum):
+    """
+    Enum for reporting the status of an MPC solve.
+    """
+
+    DualInfeasible: typing.ClassVar[SolveStatus]
+    MaxIterReached: typing.ClassVar[SolveStatus]
+    NotInitialized: typing.ClassVar[SolveStatus]
+    OtherFailure: typing.ClassVar[SolveStatus]
+    PrimalInfeasible: typing.ClassVar[SolveStatus]
+    SolvedInaccurate: typing.ClassVar[SolveStatus]
+    Success: typing.ClassVar[SolveStatus]
+    TimeLimitReached: typing.ClassVar[SolveStatus]
+    UpdateFailed: typing.ClassVar[SolveStatus]
+
+class SolveInfo:
+    """
+    Solver diagnostics from the most recent solve. Obtain with
+    MPCBase.getSolveInfo(). Timing fields are zero if OSQP was built without
+    profiling.
+    """
+
+    def __repr__(self) -> str: ...
+    @property
+    def iterations(self) -> int:
+        """
+        Number of solver iterations.
+        """
+
+    @property
+    def objective(self) -> float:
+        """
+        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
+        """
+
+    @property
+    def run_time(self) -> float:
+        """
+        Total solver time for the last solve, including data updates and polishing (seconds).
+        """
+
+    @property
+    def solve_time(self) -> float:
+        """
+        Time spent in the solve phase (seconds).
+        """
+
+    @property
+    def status(self) -> SolveStatus:
+        """
+        Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
         """
 
 class MPCBase:
@@ -715,9 +1187,108 @@ class MPCBase:
     @property
     def state_dim(self) -> int: ...
 
-class MPCLogger:
+class CondensedMPC(MPCBase):
+    """
+    MPC formulation where only parameterization control points are optimization
+    design variables (condensed QP).
+
+    Eliminates state variables analytically by implicitly wrapping the model into
+    the cost function rather than as a constraint, resulting in a smaller dense
+    QP. Preferred for shorter horizons and lower-dimensional problems.
+    Converts the MPC problem to QP form for OSQP, using input parameterization.
+
     """
 
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        param: Parameterization,
+        opts: Options = Options(),
+    ) -> None:
+        """
+        Construct CondensedMPC with specified input parameterization and MPC
+        configuration options.
+
+        Args:
+           state_dim: State vector dimension.
+           input_dim: Input vector dimension.
+           param: Input trajectory parameterization.
+           opts: Optional MPC configuration features to enable.
+        """
+
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        horizon_steps: int,
+        opts: Options = Options(),
+    ) -> None:
+        """
+        Construct CondensedMPC with no parameterization (full input trajectory will be
+        optimized) and MPC configuration options.
+
+        Args:
+           state_dim: State vector dimension.
+           input_dim: Input vector dimension.
+           horizon_steps: Number of discrete steps in the MPC horizon.
+           opts: Optional MPC configuration features to enable.
+        """
+
+class SparseMPC(MPCBase):
+    """
+    MPC formulation where the predicted state trajectory and parameterization
+    control points are both optimization design variables (sparse QP).
+
+    Retains state and input variables with model as an optimization constraint,
+    exploiting sparsity for scalability. Preferred for longer horizons or larger
+    state dimensions. Converts the MPC problem to QP form for OSQP, using input
+    parameterization.
+
+    """
+
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        param: Parameterization,
+        opts: Options = Options(),
+    ) -> None:
+        """
+        Construct SparseMPC with specified input parameterization and MPC
+        configuration options.
+
+        Args:
+           state_dim: State vector dimension.
+           input_dim: Input vector dimension.
+           param: Input trajectory parameterization.
+           opts: Optional MPC configuration features to enable.
+        """
+
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        horizon_steps: int,
+        opts: Options = Options(),
+    ) -> None:
+        """
+        Construct SparseMPC with no parameterization (full input trajectory will be
+        optimized) and MPC configuration options.
+
+        Args:
+           state_dim: State vector dimension.
+           input_dim: Input vector dimension.
+           horizon_steps: Number of discrete steps in the MPC horizon.
+           opts: Optional MPC configuration features to enable.
+        """
+
+class MPCLogger:
+    """
     High-performance binary logger for MPC data and metadata.
 
     Uses a "write-raw, pack-later" strategy to support high logging frequencies.
@@ -737,16 +1308,10 @@ class MPCLogger:
         Controls how logged payloads are finalized after raw binary capture.
         """
 
-        Npy: typing.ClassVar[MPCLogger.Mode]  # value = <Mode.Npy: 1>
-        NpzCompressed: typing.ClassVar[
-            MPCLogger.Mode
-        ]  # value = <Mode.NpzCompressed: 3>
-        NpzUncompressed: typing.ClassVar[
-            MPCLogger.Mode
-        ]  # value = <Mode.NpzUncompressed: 2>
-        RawRecoverable: typing.ClassVar[
-            MPCLogger.Mode
-        ]  # value = <Mode.RawRecoverable: 0>
+        Npy: typing.ClassVar[MPCLogger.Mode]
+        NpzCompressed: typing.ClassVar[MPCLogger.Mode]
+        NpzUncompressed: typing.ClassVar[MPCLogger.Mode]
+        RawRecoverable: typing.ClassVar[MPCLogger.Mode]
 
     def __init__(
         self,
@@ -857,604 +1422,4 @@ class MPCLogger:
 
         Args:
             filename: Output filename (should end with .yaml or .yml).
-        """
-
-class OSQPSettings:
-    """
-
-    OSQP solver settings.
-
-    Most users will likely not need to modify the default settings, but they are
-    exposed here for advanced use cases. See OSQP documentation for details on each
-    setting: https://osqp.org/docs/interfaces/solver_settings.html.
-
-    Note: `eps_abs` and `eps_rel` are the main tolerances for convergence.
-    Tightening these can improve solution accuracy but may increase solve time.
-    Defaults are usually sufficient for MPC applications, but can be adjusted if
-    convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
-
-    Attributes:
-        adaptive_rho: Enable adaptive ADMM step size.
-        adaptive_rho_fraction: Fraction of primal and dual residuals to trigger rho update.
-        adaptive_rho_interval: Minimum number of iterations between rho updates.
-        adaptive_rho_tolerance: Absolute residual tolerance for adaptive rho updates.
-        alpha: Relaxation parameter. Default for QP solvers is 1.6.
-            =1: no relaxation (standard ADMM).
-            >1: over-relaxation (can improve convergence in some cases).
-            <1: under-relaxation (rarely useful).
-
-            If iters is high, consider increasing to 1.6-1.8. If oscillations occur,
-            consider decreasing to 1.4-1.5. Can also try 1.0 for standard ADMM if
-            convergence is an issue.
-        cg_max_iter: Maximum iterations for conjugate gradient linear system solver.
-        cg_precond: Preconditioner type for conjugate gradient solver.
-        cg_tol_fraction: Conjugate gradient tolerance as fraction of initial residual.
-        cg_tol_reduction: Number of conjugate gradient iterations before tol is halved.
-        check_dualgap: Check duality gap at each iteration for termination.
-        check_termination: Check termination interval.
-        delta: Regularization parameter for linear system solver.
-        eps_abs: Absolute tolerance for termination.
-        eps_dual_inf: Dual infeasibility tolerance for termination.
-        eps_prim_inf: Primal infeasibility tolerance for termination.
-        eps_rel: Relative tolerance for termination.
-        linsys_solver: Linear system solver to use (direct, indirect, or unknown).
-        max_iter: Maximum number of iterations.
-        polishing: Enable polishing of the solution, which performs an additional
-            solve after convergence to polish the solution. This can improve
-            accuracy near,constraint limits, but adds computation time. For example,
-            if the solution is at input saturation, tolerances may cause the
-            solution to be slightly outside the limits, and polishing can help
-            ensure the final solution respects the limits more accurately.
-            An alternative to polishing is to saturate the solution after solving.
-        polish_refine_iter: Number of refinement iterations for polishing.
-        profiler_level: Level of detail for profiler annotations.
-        rho: ADMM step size.
-        rho_is_vec: Whether rho is a scalar or vector.
-        scaled_termination: Check termination conditions on scaled residuals.
-        scaling: Enable problem data scaling.
-        sigma: ADMM regularization parameter.
-        time_limit: Time limit for solver in seconds.
-        verbose: Enable verbose output from OSQP for each solve, which may be useful
-            for debugging. For general MPC usage, this should be false.
-        warm_starting: Enable warm starting with previous solution.
-
-    """
-
-    class LinsysSolverType(enum.Enum):
-        """
-        Enum for linear system solver type.
-        """
-
-        DirectSolver: typing.ClassVar[
-            OSQPSettings.LinsysSolverType
-        ]  # value = <LinsysSolverType.DirectSolver: 1>
-        IndirectSolver: typing.ClassVar[
-            OSQPSettings.LinsysSolverType
-        ]  # value = <LinsysSolverType.IndirectSolver: 2>
-        UnknownSolver: typing.ClassVar[
-            OSQPSettings.LinsysSolverType
-        ]  # value = <LinsysSolverType.UnknownSolver: 0>
-
-    class PreconditionerType(enum.Enum):
-        """
-        Enum for preconditioner type.
-        """
-
-        DiagonalPreconditioner: typing.ClassVar[
-            OSQPSettings.PreconditionerType
-        ]  # value = <PreconditionerType.DiagonalPreconditioner: 1>
-        NoPreconditioner: typing.ClassVar[
-            OSQPSettings.PreconditionerType
-        ]  # value = <PreconditionerType.NoPreconditioner: 0>
-
-    cg_precond: OSQPSettings.PreconditionerType
-    linsys_solver: OSQPSettings.LinsysSolverType
-    @staticmethod
-    def fromOSQPDefaults() -> OSQPSettings:
-        """
-        Factory method to create OSQPSettings with OSQP default values.
-        """
-
-    def __init__(self) -> None:
-        """
-        Constructor sets affine_mpc recommended values.
-        """
-
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-    @property
-    def adaptive_rho(self) -> int: ...
-    @adaptive_rho.setter
-    def adaptive_rho(self, arg0: int) -> None: ...
-    @property
-    def adaptive_rho_fraction(self) -> float: ...
-    @adaptive_rho_fraction.setter
-    def adaptive_rho_fraction(self, arg0: float) -> None: ...
-    @property
-    def adaptive_rho_interval(self) -> int: ...
-    @adaptive_rho_interval.setter
-    def adaptive_rho_interval(self, arg0: int) -> None: ...
-    @property
-    def adaptive_rho_tolerance(self) -> float: ...
-    @adaptive_rho_tolerance.setter
-    def adaptive_rho_tolerance(self, arg0: float) -> None: ...
-    @property
-    def alpha(self) -> float: ...
-    @alpha.setter
-    def alpha(self, arg0: float) -> None: ...
-    @property
-    def cg_max_iter(self) -> int: ...
-    @cg_max_iter.setter
-    def cg_max_iter(self, arg0: int) -> None: ...
-    @property
-    def cg_tol_fraction(self) -> float: ...
-    @cg_tol_fraction.setter
-    def cg_tol_fraction(self, arg0: float) -> None: ...
-    @property
-    def cg_tol_reduction(self) -> int: ...
-    @cg_tol_reduction.setter
-    def cg_tol_reduction(self, arg0: int) -> None: ...
-    @property
-    def check_dualgap(self) -> int: ...
-    @check_dualgap.setter
-    def check_dualgap(self, arg0: int) -> None: ...
-    @property
-    def check_termination(self) -> int: ...
-    @check_termination.setter
-    def check_termination(self, arg0: int) -> None: ...
-    @property
-    def delta(self) -> float: ...
-    @delta.setter
-    def delta(self, arg0: float) -> None: ...
-    @property
-    def eps_abs(self) -> float: ...
-    @eps_abs.setter
-    def eps_abs(self, arg0: float) -> None: ...
-    @property
-    def eps_dual_inf(self) -> float: ...
-    @eps_dual_inf.setter
-    def eps_dual_inf(self, arg0: float) -> None: ...
-    @property
-    def eps_prim_inf(self) -> float: ...
-    @eps_prim_inf.setter
-    def eps_prim_inf(self, arg0: float) -> None: ...
-    @property
-    def eps_rel(self) -> float: ...
-    @eps_rel.setter
-    def eps_rel(self, arg0: float) -> None: ...
-    @property
-    def max_iter(self) -> int: ...
-    @max_iter.setter
-    def max_iter(self, arg0: int) -> None: ...
-    @property
-    def polish_refine_iter(self) -> int: ...
-    @polish_refine_iter.setter
-    def polish_refine_iter(self, arg0: int) -> None: ...
-    @property
-    def polishing(self) -> int: ...
-    @polishing.setter
-    def polishing(self, arg0: int) -> None: ...
-    @property
-    def profiler_level(self) -> int: ...
-    @profiler_level.setter
-    def profiler_level(self, arg0: int) -> None: ...
-    @property
-    def rho(self) -> float: ...
-    @rho.setter
-    def rho(self, arg0: float) -> None: ...
-    @property
-    def rho_is_vec(self) -> int: ...
-    @rho_is_vec.setter
-    def rho_is_vec(self, arg0: int) -> None: ...
-    @property
-    def scaled_termination(self) -> int: ...
-    @scaled_termination.setter
-    def scaled_termination(self, arg0: int) -> None: ...
-    @property
-    def scaling(self) -> int: ...
-    @scaling.setter
-    def scaling(self, arg0: int) -> None: ...
-    @property
-    def sigma(self) -> float: ...
-    @sigma.setter
-    def sigma(self, arg0: float) -> None: ...
-    @property
-    def time_limit(self) -> float: ...
-    @time_limit.setter
-    def time_limit(self, arg0: float) -> None: ...
-    @property
-    def verbose(self) -> int: ...
-    @verbose.setter
-    def verbose(self, arg0: int) -> None: ...
-    @property
-    def warm_starting(self) -> int: ...
-    @warm_starting.setter
-    def warm_starting(self, arg0: int) -> None: ...
-
-class Options:
-    """
-
-    Controls which optional features are enabled at MPC construction time.
-
-    All fields default to false. These options are immutable after constructing an
-    MPC instance.
-
-    Attributes:
-        use_input_cost: Enables input regularization term in the cost function
-            ((uref_k - u_k)^T R (uref_k - u_k)).
-        slew_initial_input: Slew-rate constraint on initial input
-            (|u0 - u_prev| <= u0_slew).
-        slew_control_points: Enables slew-rate constraints on parameterization
-            control points (|v_{i+1} - v_i| <= control_point_slew).
-        saturate_states: Enables state saturation constraints.
-        saturate_input_trajectory: Enables saturation of the sampled input
-            trajectory rather than just the control points. Ignored for degree 0,
-            where the control points are the sampled inputs. For degree 1 only the
-            samples adjacent to each knot are constrained (at most
-            2*num_control_points-2 rows), which is exact for non-integer knots. For
-            degree > 1 every sample is constrained. Allows control points to be
-            outside of input limits while keeping inputs within limits.
-
-    """
-
-    saturate_input_trajectory: bool
-    saturate_states: bool
-    slew_control_points: bool
-    slew_initial_input: bool
-    use_input_cost: bool
-    def __init__(
-        self,
-        use_input_cost: bool = False,
-        slew_initial_input: bool = False,
-        slew_control_points: bool = False,
-        saturate_states: bool = False,
-        saturate_input_trajectory: bool = False,
-    ) -> None:
-        """
-        Construct an Options struct defining optional MPC configuration features.
-
-        Args:
-            use_input_cost: Enables input regularization term in the cost function
-                ((uref_k - u_k)^T R (uref_k - u_k)).
-            slew_initial_input: Slew-rate constraint on initial input
-                (|u0 - u_prev| <= u0_slew).
-            slew_control_points: Enables slew-rate constraints on parameterization
-                control points (|v_{i+1} - v_i| <= control_point_slew).
-            saturate_states: Enables state saturation constraints.
-            saturate_input_trajectory: Enables saturation of the sampled input
-                trajectory rather than just the control points. Ignored for degree 0,
-                where the control points are the sampled inputs. For degree 1 only the
-                samples adjacent to each knot are constrained (at most
-                2*num_control_points-2 rows), which is exact for non-integer knots. For
-                degree > 1 every sample is constrained. Allows control points to be
-                outside of input limits while keeping inputs within limits.
-        """
-
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class Parameterization:
-    """
-
-    Encapsulates B-spline input trajectory parameterization for MPC.
-
-    Provides constructors and factory methods for generating knot vectors and
-    metadata to map control points to per-step input trajectories over the
-    prediction horizon.
-
-    The preferred usage is via the static factory methods for common
-    parameterizations.
-
-    Attributes:
-        horizon_steps: Number of discrete steps in the MPC horizon.
-        degree: Degree of B-spline polynomials.
-        num_control_points: Number of B-spline control points.
-        knots: Full knot vector of size num_control_points + degree + 1.
-
-    Static Methods:
-        makeUniformClampedKnots: Generate a knot vector that can be modified.
-        moveBlocking: Factory method for move-blocking parameterization.
-        linearInterp: Factory method for linear interpolation parameterization.
-        bspline: Factory method for clamped B-spline parameterization.
-
-    """
-
-    @staticmethod
-    @typing.overload
-    def bspline(
-        horizon_steps: int, degree: int, num_control_points: int
-    ) -> Parameterization:
-        """
-        Factory method for uniform clamped B-spline parameterization.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            degree: Degree of B-spline polynomials. Must be less than num_control_points.
-            num_control_points: Number of B-spline control points. Cannot be greater
-                than horizon_steps.
-
-        returns:
-            out: Parameterization instance with uniform clamped B-spline structure.
-        """
-
-    @staticmethod
-    @typing.overload
-    def bspline(
-        horizon_steps: int,
-        degree: int,
-        active_knots: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> Parameterization:
-        """
-        Factory method for clamped B-spline parameterization with custom active knots.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            degree: Degree of B-spline polynomials. Must be less than horizon_steps.
-            active_knots: Vector of active knots (need at least deg+1).
-
-        returns:
-            out: Parameterization instance with clamped B-spline structure.
-        """
-
-    @staticmethod
-    @typing.overload
-    def linearInterp(horizon_steps: int, num_control_points: int) -> Parameterization:
-        """
-        Factory method for uniform linear interpolation parameterization.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            num_control_points: Number of B-spline control points. Cannot be greater
-                than horizon_steps.
-
-        returns:
-            out: Parameterization instance with uniform linear interpolation structure.
-        """
-
-    @staticmethod
-    @typing.overload
-    def linearInterp(
-        horizon_steps: int,
-        endpoints: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> Parameterization:
-        """
-        Factory method for linear interpolation parameterization with custom endpoints.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            endpoints: Vector of linear segment endpoint locations. Must include 0 and
-                horizon_steps - 1.
-
-        returns:
-            out: Parameterization instance with linear interpolation structure.
-        """
-
-    @staticmethod
-    def makeUniformClampedKnots(
-        horizon_steps: int, degree: int, num_control_points: int
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
-        """
-        Static method for generating a uniform clamped knot vector. Useful for
-        generating a starting point that can be modified for custom parameterizations.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            degree: Degree of B-spline polynomials. Must be less than num_control_points.
-            num_control_points: Number of B-spline control points. Cannot be greater
-                than horizon_steps.
-
-        Returns:
-            knots: The uniform clamped knot vector.
-        """
-
-    @staticmethod
-    @typing.overload
-    def moveBlocking(horizon_steps: int, num_control_points: int) -> Parameterization:
-        """
-        Factory method for uniform move-blocking parameterization.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            num_control_points: Number of B-spline control points. Cannot be greater
-                than horizon_steps.
-
-        returns:
-            out: Parameterization instance with uniform move-blocking structure.
-        """
-
-    @staticmethod
-    @typing.overload
-    def moveBlocking(
-        horizon_steps: int,
-        change_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> Parameterization:
-        """
-        Factory method for move-blocking parameterization with custom change points.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            change_points: Vector of change point locations.
-
-        returns:
-            out: Parameterization instance with move-blocking structure.
-        """
-
-    @typing.overload
-    def __init__(
-        self, horizon_steps: int, degree: int, num_control_points: int
-    ) -> None:
-        """
-        Direct constructor for uniform clamped B-spline parameterization.
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            degree: Degree of B-spline polynomials. Must be less than num_control_points.
-            num_control_points: Number of B-spline control points. Cannot be greater
-                than horizon_steps.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        horizon_steps: int,
-        degree: int,
-        knots: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> None:
-        """
-        Direct constructor for advanced use cases with custom knot vector
-        (e.g. unclamped B-splines).
-
-        Args:
-            horizon_steps: Number of discrete steps in the MPC horizon.
-            degree: Degree of B-spline polynomials. Must be less than horizon_steps.
-            knots: Full knot vector with size in the range [2*(degree+1),
-                horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0
-                and last knot must be horizon_steps-1.
-        """
-
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-    def evaluate(
-        self,
-        input_dim: int,
-        control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
-        """
-        Evaluate an input trajectory from provided control_points.
-
-        Args:
-            input_dim: Dimension of input vector.
-            control_points (vector): Parameterized input trajectory as a vector of size
-                input_dim*num_control_points.
-
-        Returns:
-            input_traj (vector): The evaluated input trajectory.
-        """
-
-    @property
-    def degree(self) -> int: ...
-    @property
-    def horizon_steps(self) -> int: ...
-    @property
-    def knots(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
-    @property
-    def num_control_points(self) -> int: ...
-
-class SolveInfo:
-    """
-
-    Solver diagnostics from the most recent solve. Obtain with
-    MPCBase.getSolveInfo(). Timing fields are zero if OSQP was built without
-    profiling.
-    """
-
-    def __repr__(self) -> str: ...
-    @property
-    def iterations(self) -> int:
-        """
-        Number of solver iterations.
-        """
-
-    @property
-    def objective(self) -> float:
-        """
-        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
-        """
-
-    @property
-    def run_time(self) -> float:
-        """
-        Total solver time for the last solve, including data updates and polishing (seconds).
-        """
-
-    @property
-    def solve_time(self) -> float:
-        """
-        Time spent in the solve phase (seconds).
-        """
-
-    @property
-    def status(self) -> SolveStatus:
-        """
-        Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
-        """
-
-class SolveStatus(enum.Enum):
-    """
-    Enum for reporting the status of an MPC solve.
-    """
-
-    DualInfeasible: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.DualInfeasible: 4>
-    MaxIterReached: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.MaxIterReached: 5>
-    NotInitialized: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.NotInitialized: 1>
-    OtherFailure: typing.ClassVar[SolveStatus]  # value = <SolveStatus.OtherFailure: 7>
-    PrimalInfeasible: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.PrimalInfeasible: 3>
-    SolvedInaccurate: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.SolvedInaccurate: 2>
-    Success: typing.ClassVar[SolveStatus]  # value = <SolveStatus.Success: 0>
-    TimeLimitReached: typing.ClassVar[
-        SolveStatus
-    ]  # value = <SolveStatus.TimeLimitReached: 6>
-    UpdateFailed: typing.ClassVar[SolveStatus]  # value = <SolveStatus.UpdateFailed: 8>
-
-class SparseMPC(MPCBase):
-    """
-
-    MPC formulation where the predicted state trajectory and parameterization
-    control points are both optimization design variables (sparse QP).
-
-    Retains state and input variables with model as an optimization constraint,
-    exploiting sparsity for scalability. Preferred for longer horizons or larger
-    state dimensions. Converts the MPC problem to QP form for OSQP, using input
-    parameterization.
-
-    """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with specified input parameterization and MPC
-        configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
         """
