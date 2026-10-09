@@ -390,7 +390,7 @@ TEST(ParameterizationMoveBlocking,
      givenCustomChangePoints_SplineEvaluatesProperly)
 {
   using Spline1d = Spline<double, 1>;
-  const int T{10}, nc{3};
+  const int T{10};
   const Vector3d controls{0, 1, -1}, change_pts{0, 2, 5};
 
   VectorXd vals{T}, vals_expected{T};
@@ -414,7 +414,7 @@ TEST(ParameterizationMoveBlocking,
      givenLenHorizonCustomChangePoints_SplineEvaluatesProperly)
 {
   using Spline1d = Spline<double, 1>;
-  const int T{3}, nc{3};
+  const int T{3};
   const Vector3d controls{0, 1, -1}, change_pts{0, 1, 2};
 
   VectorXd vals{T}, vals_expected{T};
@@ -544,7 +544,7 @@ TEST(ParameterizationBspline, givenUniformParams_FormsKnotsCorrectly)
 TEST(ParameterizationBspline, givenCustomActiveKnots_FormsKnotsCorrectly)
 {
   // nc=5, deg=2: num_active = nc - deg + 1 = 4 internal knots expected
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   VectorXd active_knots{4};
   active_knots << 0, 2, 5, 9; // first must be 0, last must be T-1 = 9
   const ampc::Parameterization p{
@@ -568,7 +568,7 @@ TEST(ParameterizationBspline, givenWrongActiveKnotsCount_Throws)
 
 TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
 {
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   // nc - deg + 1 = 4 active knots required
   VectorXd active_knots{4};
 

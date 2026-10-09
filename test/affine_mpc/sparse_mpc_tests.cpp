@@ -452,7 +452,6 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 {
   const int n{2}, m{1}, T{10}, nc{10};
-  const bool use_input_cost{true};
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc),
                                ampc::Options{.use_input_cost = true}};

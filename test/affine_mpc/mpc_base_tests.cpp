@@ -32,7 +32,7 @@ public:
   {}
   virtual ~MPCBaseTester() = default;
   void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override final
+      Eigen::Ref<Eigen::VectorXd> /*x_traj*/) const noexcept override final
   {}
   const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
   const auto getSplineKnots() const { return this->spline_knots_; }
@@ -52,7 +52,8 @@ public:
   const auto getUSatU() { return u_.segment(u_sat_idx_, u_sat_dim_); }
 
 protected:
-  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final
+  bool
+  qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& /*x0*/) override final
   {
     return true;
   }
@@ -106,7 +107,6 @@ TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
     ASSERT_TRUE(expectEigenNear(weights_i, weights_expected, 1e-15));
 
     // test spline evaluation
-    const int span = Spline1d::Span(t, deg, knots_expected);
     Ref<const VectorXd> active_ctrls = ctrls.segment(segment_idxs(k), deg + 1);
     double eval = weights_i * active_ctrls;
     double eval_expected = spline_test(t)(0);

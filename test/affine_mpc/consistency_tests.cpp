@@ -39,7 +39,7 @@ public:
     const double ts{0.1};
 
     auto setup = [&](auto& mpc) {
-      mpc.setModelContinuous2Discrete(A, B, w, 0.1);
+      mpc.setModelContinuous2Discrete(A, B, w, ts);
       mpc.setInputLimits(VectorXd::Constant(m, 0.0),
                          VectorXd::Constant(m, 3.0));
       mpc.setStateWeights(Vector2d{1.0, 0.1});
@@ -183,10 +183,10 @@ TEST(ConsistencyTester, initializeSolverWithoutModel_Throws)
 
   // model not set
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Model must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Model must be set before initializing solver");
 }
 
@@ -198,10 +198,10 @@ TEST(ConsistencyTester, initializeSolverWithoutInputLimits_Throws)
   tester.setModel();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Input limits must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Input limits must be set before initializing solver");
 }
 
@@ -214,10 +214,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingInitialSlewRate_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Initial slew rate must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Initial slew rate must be set before initializing solver");
 }
 
@@ -230,10 +230,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingSlewRate_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Slew rate must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Slew rate must be set before initializing solver");
 }
 
@@ -246,10 +246,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingStateLimits_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "State limits must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "State limits must be set before initializing solver");
 }
 

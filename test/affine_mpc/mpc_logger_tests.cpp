@@ -67,7 +67,7 @@ TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
   ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "conv_log");
 
   Eigen::Vector2d x0{1.0, 0.5};
-  const auto status = mpc_->solve(x0);
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
   logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 

@@ -48,7 +48,7 @@ public:
 
 TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base(n, m);
 
   Eigen::Matrix<OSQPFloat, n, n> P;
@@ -72,7 +72,7 @@ TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
 
 TEST(OSQPSolverProtectedTester, givenIdentityA_FormsCscACorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6}, A_nnz_max{4};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -136,7 +136,7 @@ TEST(OSQPSolverProtectedTester, givenFullA_FormsCscACorrectly)
 
 TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, n, n> P;
@@ -160,7 +160,7 @@ TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
 
 TEST(OSQPSolverProtectedTester, givenExampleA_FormsCscACorrectly)
 {
-  const int n{2}, m{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -179,7 +179,7 @@ TEST(OSQPSolverProtectedTester, givenExampleA_FormsCscACorrectly)
 
 TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
 {
-  const int n{6}, m{2}, P_nnz_max{6};
+  const int n{6}, m{2};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -219,7 +219,7 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
 
 TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
 {
-  const int n{6}, m{2}, P_nnz_max{6}, A_nnz_max{2};
+  const int n{6}, m{2}, A_nnz_max{2};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -309,7 +309,7 @@ TEST(OSQPSolverProtectedTester,
 
 TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -340,7 +340,7 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -392,7 +392,7 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
