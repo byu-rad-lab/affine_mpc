@@ -387,13 +387,11 @@ Returns:
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
            py::arg("tol") = 1e-10);
 
-  base.def(
-      "setWeights",
-      [](ampc::MPCBase& self, const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
-         const Eigen::Ref<const Eigen::VectorXd>& R_diag) {
-        self.setWeights(Q_diag, R_diag);
-      },
-      R"doc(
+  base.def("setWeights",
+           py::overload_cast<const Eigen::Ref<const Eigen::VectorXd>&,
+                             const Eigen::Ref<const Eigen::VectorXd>&>(
+               &ampc::MPCBase::setWeights),
+           R"doc(
 Set state and input weights for the cost function.
 
 This method can only be called if `use_input_cost` is enabled.
@@ -402,15 +400,13 @@ Args:
     Q_diag: Vector for diagonal of state weight matrix (non-negative).
     R_diag: Vector for diagonal of input weight matrix (non-negative).
       )doc",
-      py::arg("Q_diag"), py::arg("R_diag"));
-  base.def(
-      "setWeights",
-      [](ampc::MPCBase& self, const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
-         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag,
-         const Eigen::Ref<const Eigen::VectorXd>& R_diag) {
-        self.setWeights(Q_diag, Qf_diag, R_diag);
-      },
-      R"doc(
+           py::arg("Q_diag"), py::arg("R_diag"));
+  base.def("setWeights",
+           py::overload_cast<const Eigen::Ref<const Eigen::VectorXd>&,
+                             const Eigen::Ref<const Eigen::VectorXd>&,
+                             const Eigen::Ref<const Eigen::VectorXd>&>(
+               &ampc::MPCBase::setWeights),
+           R"doc(
 Set state, terminal state, and input weights for the cost function.
 
 This method can only be called if `use_input_cost` is enabled.
@@ -420,14 +416,12 @@ Args:
     Qf_diag: Vector for diagonal of terminal state weight matrix (non-negative).
     R_diag: Vector for diagonal of input weight matrix (non-negative).
       )doc",
-      py::arg("Q_diag"), py::arg("Qf_diag"), py::arg("R_diag"));
+           py::arg("Q_diag"), py::arg("Qf_diag"), py::arg("R_diag"));
 
-  base.def(
-      "setStateWeights",
-      [](ampc::MPCBase& self, const Eigen::Ref<const Eigen::VectorXd>& Q_diag) {
-        self.setStateWeights(Q_diag);
-      },
-      R"doc(
+  base.def("setStateWeights",
+           py::overload_cast<const Eigen::Ref<const Eigen::VectorXd>&>(
+               &ampc::MPCBase::setStateWeights),
+           R"doc(
 Set only the state weights for the cost function.
 
 The terminal state weights are also set to `Q_diag`.
@@ -435,21 +429,19 @@ The terminal state weights are also set to `Q_diag`.
 Args:
     Q_diag: Vector for diagonal of state weight matrix (non-negative).
       )doc",
-      py::arg("Q_diag"));
-  base.def(
-      "setStateWeights",
-      [](ampc::MPCBase& self, const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
-         const Eigen::Ref<const Eigen::VectorXd>& Qf_diag) {
-        self.setStateWeights(Q_diag, Qf_diag);
-      },
-      R"doc(
+           py::arg("Q_diag"));
+  base.def("setStateWeights",
+           py::overload_cast<const Eigen::Ref<const Eigen::VectorXd>&,
+                             const Eigen::Ref<const Eigen::VectorXd>&>(
+               &ampc::MPCBase::setStateWeights),
+           R"doc(
 Set only the state and terminal state weights for the cost function.
 
 Args:
     Q_diag: Vector for diagonal of state weight matrix (non-negative).
     Qf_diag: Vector for diagonal of terminal state weight matrix (non-negative).
       )doc",
-      py::arg("Q_diag"), py::arg("Qf_diag"));
+           py::arg("Q_diag"), py::arg("Qf_diag"));
 
   base.def("setInputWeights", &ampc::MPCBase::setInputWeights,
            R"doc(
@@ -664,16 +656,11 @@ Returns:
         solver is not initialized yet. False otherwise.
            )doc");
 
-  base.def_property_readonly(
-      "state_dim", [](ampc::MPCBase& self) { return self.getStateDim(); });
-  base.def_property_readonly(
-      "input_dim", [](ampc::MPCBase& self) { return self.getInputDim(); });
-  base.def_property_readonly("horizon_steps", [](ampc::MPCBase& self) {
-    return self.getHorizonSteps();
-  });
-  base.def_property_readonly("num_control_points", [](ampc::MPCBase& self) {
-    return self.getNumControlPoints();
-  });
+  base.def_property_readonly("state_dim", &ampc::MPCBase::getStateDim);
+  base.def_property_readonly("input_dim", &ampc::MPCBase::getInputDim);
+  base.def_property_readonly("horizon_steps", &ampc::MPCBase::getHorizonSteps);
+  base.def_property_readonly("num_control_points",
+                             &ampc::MPCBase::getNumControlPoints);
 
   // MPCBase can't work in Python anyways because derived classes resize Eigen
   // variables base.def("_qpUpdateX0", static_cast<void (MPCBase::*)(const

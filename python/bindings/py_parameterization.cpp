@@ -39,10 +39,7 @@ Static Methods:
 
   param.def_static(
       "moveBlocking",
-      [](int horizon_steps, int num_control_points) {
-        return ampc::Parameterization::moveBlocking(horizon_steps,
-                                                    num_control_points);
-      },
+      py::overload_cast<int, int>(&ampc::Parameterization::moveBlocking),
       R"doc(
 Factory method for uniform move-blocking parameterization.
 
@@ -58,11 +55,8 @@ returns:
 
   param.def_static(
       "moveBlocking",
-      [](int horizon_steps,
-         const Eigen::Ref<const Eigen::VectorXd>& change_points) {
-        return ampc::Parameterization::moveBlocking(horizon_steps,
-                                                    change_points);
-      },
+      py::overload_cast<int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::moveBlocking),
       R"doc(
 Factory method for move-blocking parameterization with custom change points.
 
@@ -77,10 +71,7 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](int horizon_steps, int num_control_points) {
-        return ampc::Parameterization::linearInterp(horizon_steps,
-                                                    num_control_points);
-      },
+      py::overload_cast<int, int>(&ampc::Parameterization::linearInterp),
       R"doc(
 Factory method for uniform linear interpolation parameterization.
 
@@ -96,10 +87,8 @@ returns:
 
   param.def_static(
       "linearInterp",
-      [](int horizon_steps,
-         const Eigen::Ref<const Eigen::VectorXd>& endpoints) {
-        return ampc::Parameterization::linearInterp(horizon_steps, endpoints);
-      },
+      py::overload_cast<int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::linearInterp),
       R"doc(
 Factory method for linear interpolation parameterization with custom endpoints.
 
@@ -115,10 +104,7 @@ returns:
 
   param.def_static(
       "bspline",
-      [](int horizon_steps, int degree, int num_control_points) {
-        return ampc::Parameterization::bspline(horizon_steps, degree,
-                                               num_control_points);
-      },
+      py::overload_cast<int, int, int>(&ampc::Parameterization::bspline),
       R"doc(
 Factory method for uniform clamped B-spline parameterization.
 
@@ -136,11 +122,8 @@ returns:
 
   param.def_static(
       "bspline",
-      [](int horizon_steps, int degree,
-         const Eigen::Ref<const Eigen::VectorXd>& active_knots) {
-        return ampc::Parameterization::bspline(horizon_steps, degree,
-                                               active_knots);
-      },
+      py::overload_cast<int, int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::bspline),
       R"doc(
 Factory method for clamped B-spline parameterization with custom active knots.
 
