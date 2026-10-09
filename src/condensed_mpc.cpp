@@ -28,6 +28,7 @@ CondensedMPC::CondensedMPC(int state_dim,
     v_{x_traj_dim_},
     weighted_state_err_{x_traj_dim_},
     model_changed_{false},
+    weights_changed_{false},
     bounds_changed_{false}
 {
   // Avoids setting first row block of S_ to zero every time solve() is
@@ -133,6 +134,8 @@ bool CondensedMPC::qpUpdateSlewRate()
   bounds_changed_ = true;
   return true;
 }
+
+void CondensedMPC::qpUpdateWeights() { weights_changed_ = true; }
 
 void CondensedMPC::updateS()
 {

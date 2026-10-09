@@ -426,7 +426,6 @@ protected:
   bool model_set_, u_lims_set_, x_lims_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
-  bool weights_changed_;
 
   // MPC variables
   Eigen::MatrixXd Ad_, Bd_;
@@ -475,6 +474,9 @@ private:
   virtual bool qpUpdateInputLimits() = 0;
   virtual bool qpUpdateStateLimits() = 0;
   virtual bool qpUpdateSlewRate() = 0;
+  // Weight changes only mark the cost as changed. Formulations apply them in
+  // qpUpdateX0(), so they can be batched with model changes into one update.
+  virtual void qpUpdateWeights() = 0;
 };
 
 /**

@@ -27,6 +27,7 @@ SparseMPC::SparseMPC(int state_dim,
                 + state_dim * param.horizon_steps,
             // num_custom_constraints (model)
             state_dim * param.horizon_steps),
+    weights_changed_{false},
     refs_changed_{true} // ensure q_ updates on first solve
 {
   if (opts_.use_input_cost) {
@@ -163,6 +164,8 @@ bool SparseMPC::qpUpdateSlewRate()
   // already
   return true;
 }
+
+void SparseMPC::qpUpdateWeights() { weights_changed_ = true; }
 
 void SparseMPC::calcBothCostTerms()
 {

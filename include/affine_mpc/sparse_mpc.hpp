@@ -73,10 +73,12 @@ private:
   bool qpUpdateInputLimits() override final;
   bool qpUpdateStateLimits() override final;
   bool qpUpdateSlewRate() override final;
+  void qpUpdateWeights() override final;
 
   void calcBothCostTerms();
   void calcCostVector();
 
+  bool weights_changed_;
   bool refs_changed_;
 };
 

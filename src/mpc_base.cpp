@@ -145,7 +145,6 @@ MPCBase::MPCBase(int state_dim,
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
-    weights_changed_{false},
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
@@ -454,7 +453,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
   Q_big_.diagonal() = Q_diag.replicate(horizon_steps_, 1);
-  weights_changed_ = true;
+  qpUpdateWeights();
 }
 
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
@@ -468,7 +467,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
   Q_big_.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
       Q_diag.replicate(horizon_steps_ - 1, 1);
   Q_big_.diagonal().tail(state_dim_) = Qf_diag;
-  weights_changed_ = true;
+  qpUpdateWeights();
 }
 
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
@@ -481,7 +480,7 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
     throw std::invalid_argument(
         "[MPCBase::setInputWeights] Input weights must be non-negative.");
   R_big_.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
-  weights_changed_ = true;
+  qpUpdateWeights();
 }
 
 bool MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)

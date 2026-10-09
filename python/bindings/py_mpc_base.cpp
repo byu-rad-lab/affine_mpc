@@ -47,6 +47,7 @@ public:
   bool qpUpdateInputLimits() override { return true; }
   bool qpUpdateStateLimits() override { return true; }
   bool qpUpdateSlewRate() override { return true; }
+  void qpUpdateWeights() override {}
 };
 
 // The C++ solution getters do not check initialization (hot path), but reading

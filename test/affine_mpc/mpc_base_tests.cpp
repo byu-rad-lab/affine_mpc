@@ -61,7 +61,12 @@ protected:
   bool qpUpdateInputLimits() override final { return true; }
   bool qpUpdateStateLimits() override final { return true; }
   bool qpUpdateSlewRate() override final { return true; }
+  void qpUpdateWeights() override final { ++num_weight_updates; }
 
+public:
+  int num_weight_updates{0};
+
+protected:
   int totalSlewDim() const
   {
     return slew_dim_ + input_dim_ * opts_.slew_initial_input;
@@ -109,6 +114,26 @@ TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
   }
 }
 
+
+TEST(MPCBaseTester, givenWeightSetters_CallWeightsHook)
+{
+  const int n{2}, m{1};
+  MPCBaseTester base{n,
+                     m,
+                     ampc::Parameterization::linearInterp(5, 3),
+                     {.use_input_cost = true}};
+  const Vector2d Q{1.0, 2.0};
+  const VectorXd R{VectorXd::Ones(m)};
+
+  base.setStateWeights(Q);
+  EXPECT_EQ(base.num_weight_updates, 1);
+  base.setStateWeights(Q, Q);
+  EXPECT_EQ(base.num_weight_updates, 2);
+  base.setInputWeights(R);
+  EXPECT_EQ(base.num_weight_updates, 3);
+  base.setWeights(Q, R); // state and input setters each notify
+  EXPECT_EQ(base.num_weight_updates, 5);
+}
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 {

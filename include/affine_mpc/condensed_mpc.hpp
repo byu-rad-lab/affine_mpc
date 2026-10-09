@@ -76,10 +76,12 @@ private:
   bool qpUpdateInputLimits() override final;
   bool qpUpdateStateLimits() override final;
   bool qpUpdateSlewRate() override final;
+  void qpUpdateWeights() override final;
 
   Eigen::VectorXd weighted_state_err_; // Q_big_ * (v_ - x_ref_), avoids a temp
 
   bool model_changed_;
+  bool weights_changed_;
   bool bounds_changed_;
 };
 
