@@ -31,6 +31,7 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
+include(cmake/compiler_warnings.cmake)
 
 # Internal flag for building python bindings
 if(NOT DEFINED AFFINE_MPC_BUILD_BINDINGS)
@@ -99,6 +100,7 @@ endif()
 
 # C++ standard
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+affine_mpc_enable_warnings(${PROJECT_NAME})
 
 # --------------------------------------------------
 # Examples
@@ -108,6 +110,7 @@ if(AFFINE_MPC_BUILD_EXAMPLES)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
   # the library is C++17; the example uses C++20 designated initializers
   target_compile_features(example_sim PRIVATE cxx_std_20)
+  affine_mpc_enable_warnings(example_sim)
 endif()
 
 # --------------------------------------------------
@@ -149,6 +152,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   target_include_directories(np_writer_fixture
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
+  affine_mpc_enable_warnings(np_writer_fixture)
 
   if(Python_Interpreter_FOUND)
     execute_process(
@@ -186,6 +190,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER tests)
     # the library is C++17; the tests use C++20 designated initializers
     target_compile_features(${TEST_NAME} PRIVATE cxx_std_20)
+    affine_mpc_enable_warnings(${TEST_NAME})
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}

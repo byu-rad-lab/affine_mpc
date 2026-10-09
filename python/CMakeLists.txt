@@ -3,6 +3,10 @@ project(affine_mpc_py LANGUAGES CXX)
 
 option(AFFINE_MPC_PY_ADD_TESTS "Register Python binding tests" OFF)
 
+# Shared warning settings. OPTIONAL keeps standalone builds working when only
+# this directory is available.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/compiler_warnings.cmake OPTIONAL)
+
 # -----------------------------------------
 # Dependencies
 # -----------------------------------------
@@ -32,6 +36,10 @@ pybind11_add_module(_bindings MODULE
   bindings/py_sparse_mpc.cpp
   bindings/py_mpc_logger.cpp
 )
+
+if(COMMAND affine_mpc_enable_warnings)
+  affine_mpc_enable_warnings(_bindings)
+endif()
 
 set_target_properties(_bindings PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/affine_mpc"

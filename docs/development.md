@@ -132,8 +132,13 @@ This project defines the following CMake options (specified with `-D`):
 | `AFFINE_MPC_BUILD_TESTS`    | Build unit tests and register test entry points          |
 | `AFFINE_MPC_BUILD_BINDINGS` | Build the Python bindings                                |
 | `AFFINE_MPC_PY_ADD_TESTS`   | Register Python binding tests in the Python subproject   |
+| `AFFINE_MPC_WARNINGS_AS_ERRORS` | Treat compiler warnings as errors (enabled in CI)    |
 
 `AFFINE_MPC_PY_ADD_TESTS` is mainly set internally by the top-level build when both bindings and tests are enabled.
+
+GCC and Clang builds always enable `-Wall -Wextra` for the targets in this repository, but not for dependencies.
+CI also sets `AFFINE_MPC_WARNINGS_AS_ERRORS=ON`, so new warnings fail the build.
+It is off by default so that other compilers or newer compiler versions do not break user and packaging builds.
 
 ## Stub Generation
 
