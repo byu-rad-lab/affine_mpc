@@ -407,7 +407,7 @@ Args:
       [](ampc::MPCBase& self, const Eigen::Ref<const Eigen::VectorXd>& Q_diag,
          const Eigen::Ref<const Eigen::VectorXd>& Qf_diag,
          const Eigen::Ref<const Eigen::VectorXd>& R_diag) {
-        self.setWeights(Q_diag, R_diag);
+        self.setWeights(Q_diag, Qf_diag, R_diag);
       },
       R"doc(
 Set state, terminal state, and input weights for the cost function.
