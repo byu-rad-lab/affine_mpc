@@ -605,6 +605,71 @@ bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
   return qpUpdateSlewRate();
 }
 
+VectorXd MPCBase::getStateWeights() const
+{
+  return Q_big_.diagonal().head(state_dim_);
+}
+
+VectorXd MPCBase::getTerminalStateWeights() const
+{
+  return Q_big_.diagonal().tail(state_dim_);
+}
+
+VectorXd MPCBase::getInputWeights() const
+{
+  if (!opts_.use_input_cost)
+    throw std::logic_error(
+        "[MPCBase::getInputWeights] Input cost is not enabled.");
+  return R_big_.diagonal().head(input_dim_);
+}
+
+const VectorXd& MPCBase::getStateMin() const
+{
+  if (!opts_.saturate_states)
+    throw std::logic_error(
+        "[MPCBase::getStateMin] State saturation is not enabled.");
+  return x_min_;
+}
+
+const VectorXd& MPCBase::getStateMax() const
+{
+  if (!opts_.saturate_states)
+    throw std::logic_error(
+        "[MPCBase::getStateMax] State saturation is not enabled.");
+  return x_max_;
+}
+
+const VectorXd& MPCBase::getSlewRate() const
+{
+  if (!opts_.slew_control_points)
+    throw std::logic_error("[MPCBase::getSlewRate] Slew rate is not enabled.");
+  return ctrls_slew_;
+}
+
+const VectorXd& MPCBase::getSlewRateInitial() const
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::getSlewRateInitial] Initial slew rate is not enabled.");
+  return u0_slew_;
+}
+
+const VectorXd& MPCBase::getPreviousInput() const
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::getPreviousInput] Initial slew rate is not enabled.");
+  return u_prev_;
+}
+
+const VectorXd& MPCBase::getReferenceInputControlPoints() const
+{
+  if (!opts_.use_input_cost)
+    throw std::logic_error("[MPCBase::getReferenceInputControlPoints] "
+                           "Input cost is not enabled.");
+  return ctrls_ref_;
+}
+
 void MPCBase::calcSplineParams()
 {
   using Spline1d = Spline<double, 1>;

@@ -617,6 +617,20 @@ class MPCBase:
             RuntimeError: If the solver has not been initialized.
         """
 
+    def getInputMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper input limit (+inf until setInputLimits()).
+        """
+
+    def getInputMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower input limit (-inf until setInputLimits()).
+        """
+
     @typing.overload
     def getInputTrajectory(
         self,
@@ -652,6 +666,16 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+        """
+
+    def getInputWeights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the diagonal of the input weight matrix R (size input_dim).
+
+        Raises:
+            RuntimeError: If `use_input_cost` is not enabled.
         """
 
     @typing.overload
@@ -693,6 +717,11 @@ class MPCBase:
             RuntimeError: If the solver has not been initialized.
         """
 
+    def getOptions(self) -> Options:
+        """
+        Get a copy of the options enabled at construction.
+        """
+
     @typing.overload
     def getPredictedStateTrajectory(
         self,
@@ -730,6 +759,17 @@ class MPCBase:
             RuntimeError: If the solver has not been initialized.
         """
 
+    def getPreviousInput(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the previous input used by the initial slew rate constraint. Updated
+        automatically after each solve.
+
+        Raises:
+            RuntimeError: If `slew_initial_input` is not enabled.
+        """
+
     def getQPCostMatrix(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
@@ -745,6 +785,44 @@ class MPCBase:
             P (matrix): Copy of the full symmetric QP cost matrix.
         """
 
+    def getReferenceInputControlPoints(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the reference input control points as a stacked vector (size
+        input_dim * num_control_points).
+
+        Raises:
+            RuntimeError: If `use_input_cost` is not enabled.
+        """
+
+    def getReferenceStateTrajectory(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the reference state trajectory as stacked states (size state_dim * horizon_steps).
+        """
+
+    def getSlewRate(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the control point slew rate (+inf until setSlewRate()).
+
+        Raises:
+            RuntimeError: If `slew_control_points` is not enabled.
+        """
+
+    def getSlewRateInitial(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the initial input slew rate (+inf until setSlewRateInitial()).
+
+        Raises:
+            RuntimeError: If `slew_initial_input` is not enabled.
+        """
+
     def getSolveInfo(self) -> SolveInfo:
         """
         Get solver diagnostics from the last solve() (status, iterations, objective,
@@ -753,6 +831,40 @@ class MPCBase:
         Returns:
             info (SolveInfo): Default values (status `NotInitialized`) before
                 initializeSolver().
+        """
+
+    def getStateMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper state limit (+inf until setStateLimits()).
+
+        Raises:
+            RuntimeError: If `saturate_states` is not enabled.
+        """
+
+    def getStateMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower state limit (-inf until setStateLimits()).
+
+        Raises:
+            RuntimeError: If `saturate_states` is not enabled.
+        """
+
+    def getStateWeights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the diagonal of the state weight matrix Q (size state_dim).
+        """
+
+    def getTerminalStateWeights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the diagonal of the terminal state weight matrix Q_f (size state_dim).
         """
 
     def initializeSolver(self, solver_settings: OSQPSettings = OSQPSettings()) -> bool:

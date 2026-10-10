@@ -619,6 +619,77 @@ Returns:
   base.def("isSolverInitialized", &ampc::MPCBase::isSolverInitialized,
            "Whether initializeSolver() has succeeded.");
 
+  // Configuration getters return copies so Python never holds a reference into
+  // the MPC object.
+  const auto copy{py::return_value_policy::copy};
+  base.def("getOptions", &ampc::MPCBase::getOptions, copy,
+           "Get a copy of the options enabled at construction.");
+  base.def("getStateWeights", &ampc::MPCBase::getStateWeights,
+           "Get the diagonal of the state weight matrix Q (size state_dim).");
+  base.def("getTerminalStateWeights", &ampc::MPCBase::getTerminalStateWeights,
+           "Get the diagonal of the terminal state weight matrix Q_f (size "
+           "state_dim).");
+  base.def("getInputWeights", &ampc::MPCBase::getInputWeights,
+           R"doc(
+Get the diagonal of the input weight matrix R (size input_dim).
+
+Raises:
+    RuntimeError: If `use_input_cost` is not enabled.
+           )doc");
+  base.def("getInputMin", &ampc::MPCBase::getInputMin, copy,
+           "Get the lower input limit (-inf until setInputLimits()).");
+  base.def("getInputMax", &ampc::MPCBase::getInputMax, copy,
+           "Get the upper input limit (+inf until setInputLimits()).");
+  base.def("getStateMin", &ampc::MPCBase::getStateMin, copy,
+           R"doc(
+Get the lower state limit (-inf until setStateLimits()).
+
+Raises:
+    RuntimeError: If `saturate_states` is not enabled.
+           )doc");
+  base.def("getStateMax", &ampc::MPCBase::getStateMax, copy,
+           R"doc(
+Get the upper state limit (+inf until setStateLimits()).
+
+Raises:
+    RuntimeError: If `saturate_states` is not enabled.
+           )doc");
+  base.def("getSlewRate", &ampc::MPCBase::getSlewRate, copy,
+           R"doc(
+Get the control point slew rate (+inf until setSlewRate()).
+
+Raises:
+    RuntimeError: If `slew_control_points` is not enabled.
+           )doc");
+  base.def("getSlewRateInitial", &ampc::MPCBase::getSlewRateInitial, copy,
+           R"doc(
+Get the initial input slew rate (+inf until setSlewRateInitial()).
+
+Raises:
+    RuntimeError: If `slew_initial_input` is not enabled.
+           )doc");
+  base.def("getPreviousInput", &ampc::MPCBase::getPreviousInput, copy,
+           R"doc(
+Get the previous input used by the initial slew rate constraint. Updated
+automatically after each solve.
+
+Raises:
+    RuntimeError: If `slew_initial_input` is not enabled.
+           )doc");
+  base.def("getReferenceStateTrajectory",
+           &ampc::MPCBase::getReferenceStateTrajectory, copy,
+           "Get the reference state trajectory as stacked states (size "
+           "state_dim * horizon_steps).");
+  base.def("getReferenceInputControlPoints",
+           &ampc::MPCBase::getReferenceInputControlPoints, copy,
+           R"doc(
+Get the reference input control points as a stacked vector (size
+input_dim * num_control_points).
+
+Raises:
+    RuntimeError: If `use_input_cost` is not enabled.
+           )doc");
+
   base.def("getSolveInfo", &ampc::MPCBase::getSolveInfo,
            R"doc(
 Get solver diagnostics from the last solve() (status, iterations, objective,

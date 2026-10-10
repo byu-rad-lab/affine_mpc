@@ -365,6 +365,80 @@ public:
   /// @brief Whether initializeSolver() has succeeded.
   bool isSolverInitialized() const noexcept { return solver_initialized_; }
 
+  /// @brief Get the options enabled at construction.
+  const Options& getOptions() const noexcept { return opts_; }
+
+  /**
+   * @brief Get the diagonal of the state weight matrix Q.
+   * @return Vector of size state_dim.
+   */
+  Eigen::VectorXd getStateWeights() const;
+
+  /**
+   * @brief Get the diagonal of the terminal state weight matrix Q_f.
+   * @return Vector of size state_dim.
+   */
+  Eigen::VectorXd getTerminalStateWeights() const;
+
+  /**
+   * @brief Get the diagonal of the input weight matrix R.
+   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @return Vector of size input_dim.
+   */
+  Eigen::VectorXd getInputWeights() const;
+
+  /// @brief Get the lower input limit (-inf until setInputLimits()).
+  const Eigen::VectorXd& getInputMin() const noexcept { return u_min_; }
+  /// @brief Get the upper input limit (+inf until setInputLimits()).
+  const Eigen::VectorXd& getInputMax() const noexcept { return u_max_; }
+
+  /**
+   * @brief Get the lower state limit (-inf until setStateLimits()).
+   * @throws std::logic_error if `saturate_states` is not enabled.
+   */
+  const Eigen::VectorXd& getStateMin() const;
+
+  /**
+   * @brief Get the upper state limit (+inf until setStateLimits()).
+   * @throws std::logic_error if `saturate_states` is not enabled.
+   */
+  const Eigen::VectorXd& getStateMax() const;
+
+  /**
+   * @brief Get the control point slew rate (+inf until setSlewRate()).
+   * @throws std::logic_error if `slew_control_points` is not enabled.
+   */
+  const Eigen::VectorXd& getSlewRate() const;
+
+  /**
+   * @brief Get the initial input slew rate (+inf until setSlewRateInitial()).
+   * @throws std::logic_error if `slew_initial_input` is not enabled.
+   */
+  const Eigen::VectorXd& getSlewRateInitial() const;
+
+  /**
+   * @brief Get the previous input used by the initial slew rate constraint.
+   *   Updated automatically after each solve.
+   * @throws std::logic_error if `slew_initial_input` is not enabled.
+   */
+  const Eigen::VectorXd& getPreviousInput() const;
+
+  /**
+   * @brief Get the reference state trajectory.
+   * @return Stacked states of size state_dim * horizon_steps.
+   */
+  const Eigen::VectorXd& getReferenceStateTrajectory() const noexcept
+  {
+    return x_ref_;
+  }
+
+  /**
+   * @brief Get the reference input control points.
+   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @return Stacked control points of size input_dim * num_control_points.
+   */
+  const Eigen::VectorXd& getReferenceInputControlPoints() const;
+
   /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,
    *   objective, and timing).

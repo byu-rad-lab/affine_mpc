@@ -159,6 +159,10 @@ TEST(ConsistencyTester,
 
   ASSERT_TRUE(expectEigenNear(u_condensed, 2 * slew, 1e-4));
   ASSERT_TRUE(expectEigenNear(u_sparse, 2 * slew, 1e-4));
+  // the previous input follows the applied input
+  ASSERT_TRUE(
+      expectEigenNear(tester.condensed.getPreviousInput(), u_condensed, 0.0));
+  ASSERT_TRUE(expectEigenNear(tester.sparse.getPreviousInput(), u_sparse, 0.0));
 
   // testing manually-set u_prev
   VectorXd u_prev = VectorXd::Constant(m, 0.1);

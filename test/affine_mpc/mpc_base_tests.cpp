@@ -115,6 +115,83 @@ TEST(MPCBaseTester, givenParams_FormsSplineCorrectly)
 }
 
 
+TEST(MPCBaseTester, givenConfiguration_GettersReturnSetValues)
+{
+  const int n{2}, m{2}, T{6}, nc{3};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .slew_control_points = true,
+                           .saturate_states = true};
+  MPCBaseTester base{n, m, param, opts};
+
+  const ampc::Options& got{base.getOptions()};
+  EXPECT_EQ(got.use_input_cost, opts.use_input_cost);
+  EXPECT_EQ(got.slew_initial_input, opts.slew_initial_input);
+  EXPECT_EQ(got.slew_control_points, opts.slew_control_points);
+  EXPECT_EQ(got.saturate_states, opts.saturate_states);
+  EXPECT_EQ(got.saturate_input_trajectory, opts.saturate_input_trajectory);
+
+  // defaults before the setters are called
+  // isConstant() compares approximately, which fails for infinities
+  const double inf{std::numeric_limits<double>::infinity()};
+  EXPECT_TRUE((base.getInputMin().array() == -inf).all());
+  EXPECT_TRUE((base.getSlewRate().array() == inf).all());
+  EXPECT_TRUE(base.getPreviousInput().isZero());
+
+  const Vector2d Q{1.0, 2.0}, Qf{3.0, 4.0}, R{0.5, 0.6};
+  base.setWeights(Q, Qf, R);
+  ASSERT_TRUE(expectEigenNear(base.getStateWeights(), Q, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getTerminalStateWeights(), Qf, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getInputWeights(), R, 0.0));
+
+  const Vector2d u_min{-1.0, -2.0}, u_max{1.0, 2.0};
+  base.setInputLimits(u_min, u_max);
+  ASSERT_TRUE(expectEigenNear(base.getInputMin(), u_min, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getInputMax(), u_max, 0.0));
+
+  const Vector2d x_min{-5.0, -6.0}, x_max{5.0, 6.0};
+  base.setStateLimits(x_min, x_max);
+  ASSERT_TRUE(expectEigenNear(base.getStateMin(), x_min, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getStateMax(), x_max, 0.0));
+
+  const Vector2d slew{0.1, 0.2}, slew0{0.3, 0.4}, u_prev{0.7, 0.8};
+  base.setSlewRate(slew);
+  base.setSlewRateInitial(slew0);
+  base.setPreviousInput(u_prev);
+  ASSERT_TRUE(expectEigenNear(base.getSlewRate(), slew, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getSlewRateInitial(), slew0, 0.0));
+  ASSERT_TRUE(expectEigenNear(base.getPreviousInput(), u_prev, 0.0));
+
+  const VectorXd x_ref{VectorXd::LinSpaced(n * T, 0.0, 1.0)};
+  const VectorXd ctrls_ref{VectorXd::LinSpaced(m * nc, -1.0, 1.0)};
+  base.setReferenceStateTrajectory(x_ref);
+  base.setReferenceInputControlPoints(ctrls_ref);
+  ASSERT_TRUE(expectEigenNear(base.getReferenceStateTrajectory(), x_ref, 0.0));
+  ASSERT_TRUE(
+      expectEigenNear(base.getReferenceInputControlPoints(), ctrls_ref, 0.0));
+}
+
+TEST(MPCBaseTester, givenDisabledOptions_OptionalGettersThrow)
+{
+  MPCBaseTester base{2, 1, ampc::Parameterization::linearInterp(5, 3)};
+  expectLogicErrorWithMessage([&]() { (void)base.getInputWeights(); },
+                              "Input cost is not enabled");
+  expectLogicErrorWithMessage(
+      [&]() { (void)base.getReferenceInputControlPoints(); },
+      "Input cost is not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getStateMin(); },
+                              "State saturation is not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getStateMax(); },
+                              "State saturation is not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getSlewRate(); },
+                              "Slew rate is not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getSlewRateInitial(); },
+                              "Initial slew rate is not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getPreviousInput(); },
+                              "Initial slew rate is not enabled");
+}
+
 TEST(MPCBaseTester, givenWeightSetters_CallWeightsHook)
 {
   const int n{2}, m{1};
