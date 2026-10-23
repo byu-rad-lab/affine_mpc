@@ -10,10 +10,18 @@
 #include <iosfwd>
 #include <memory>
 #include <osqp.h>
+#include <type_traits>
 
 #include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
+
+// The MPC classes store the QP as double precision Eigen objects, which would
+// be silently converted at every update by a single precision OSQP build
+// (OSQP_USE_FLOAT). Fail at compile time instead.
+static_assert(std::is_same_v<OSQPFloat, double>,
+              "affine_mpc requires OSQP built with double precision "
+              "(OSQPFloat must be double; do not define OSQP_USE_FLOAT).");
 
 /**
  * @class OSQPSolver
