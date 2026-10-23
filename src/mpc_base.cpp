@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <numeric>
 #include <osqp.h>
@@ -145,6 +146,7 @@ MPCBase::MPCBase(int state_dim,
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
+    mpc_solve_time_{0.0},
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
@@ -280,8 +282,13 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   if (!solver_initialized_)
     return SolveStatus::NotInitialized;
 
-  if (!qpUpdateX0(x0))
+  using Clock = std::chrono::steady_clock;
+  const Clock::time_point start{Clock::now()};
+  if (!qpUpdateX0(x0)) {
+    mpc_solve_time_ =
+        std::chrono::duration<double>(Clock::now() - start).count();
     return SolveStatus::UpdateFailed;
+  }
   const SolveStatus status{solver_->solve()};
 
   // update u_prev after solve rather than before so user can manually
@@ -294,6 +301,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
     getNextInput(u_prev_);
     setPreviousInput(u_prev_);
   }
+  mpc_solve_time_ = std::chrono::duration<double>(Clock::now() - start).count();
   return status;
 }
 

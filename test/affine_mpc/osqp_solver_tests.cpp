@@ -512,8 +512,9 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_EQ(info.status, affine_mpc::SolveStatus::Success);
   EXPECT_GT(info.iterations, 0);
   EXPECT_NEAR(info.objective, 1.88, 1e-5);
-  EXPECT_GE(info.solve_time, 0.0);
-  EXPECT_GE(info.run_time, info.solve_time);
+  EXPECT_GE(info.qp_solve_time, 0.0);
+  // only MPCBase::solve() measures the whole call
+  EXPECT_EQ(info.mpc_solve_time, 0.0);
 
   std::ostringstream oss;
   oss << info;

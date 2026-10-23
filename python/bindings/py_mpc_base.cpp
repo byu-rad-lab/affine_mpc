@@ -700,6 +700,9 @@ Raises:
 Get solver diagnostics from the last solve() (status, iterations, objective,
 and timing).
 
+After a solve() that returned `UpdateFailed`, the solver fields still describe
+the previous solve, while `mpc_solve_time` covers the failed call.
+
 Returns:
     info (SolveInfo): Default values (status `NotInitialized`) before
         initializeSolver().

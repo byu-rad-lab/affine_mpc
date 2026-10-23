@@ -195,7 +195,7 @@ void MPCLogger::logStep(double t,
     throw std::invalid_argument("[MPCLogger::logStep] x0 must have size "
                                 + std::to_string(state_dim_) + ", got "
                                 + std::to_string(x0.size()) + ".");
-  solve_times_buf_ << solve_time, mpc_->getSolveInfo().solve_time;
+  solve_times_buf_ << solve_time, mpc_->getSolveInfo().qp_solve_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);
   const bool has_input_ref{mpc_->opts_.use_input_cost};

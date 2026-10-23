@@ -515,8 +515,8 @@ class SolveStatus(enum.Enum):
 class SolveInfo:
     """
     Solver diagnostics from the most recent solve. Obtain with
-    MPCBase.getSolveInfo(). Timing fields are zero if OSQP was built without
-    profiling.
+    MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
+    outside the QP solver (QP assembly, data updates, and refactorization).
     """
 
     def __repr__(self) -> str: ...
@@ -533,21 +533,21 @@ class SolveInfo:
         """
 
     @property
-    def run_time(self) -> float:
+    def qp_solve_time(self) -> float:
         """
-        Total solver time for the last solve, including data updates and polishing (seconds).
-        """
-
-    @property
-    def solve_time(self) -> float:
-        """
-        Time spent in the solve phase (seconds).
+        Time the QP solver spent solving, including polishing (seconds). Zero when OSQP is built without profiling.
         """
 
     @property
     def status(self) -> SolveStatus:
         """
         Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
+        """
+
+    @property
+    def mpc_solve_time(self) -> float:
+        """
+        Duration of the whole last solve() call after initialization, including QP assembly, data updates, refactorization, and the solver (seconds). Does not depend on OSQP profiling.
         """
 
 class MPCBase:
@@ -834,6 +834,9 @@ class MPCBase:
         """
         Get solver diagnostics from the last solve() (status, iterations, objective,
         and timing).
+
+        After a solve() that returned `UpdateFailed`, the solver fields still describe
+        the previous solve, while `mpc_solve_time` covers the failed call.
 
         Returns:
             info (SolveInfo): Default values (status `NotInitialized`) before

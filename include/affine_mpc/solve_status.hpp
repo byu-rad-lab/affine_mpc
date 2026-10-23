@@ -65,8 +65,8 @@ inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
  * @struct SolveInfo
  * @brief Solver diagnostics from the most recent solve.
  *
- * Timing fields are filled in only when OSQP is built with profiling enabled
- * (the default); otherwise they are zero.
+ * `mpc_solve_time - qp_solve_time` is the time the library spends outside the
+ * QP solver (QP assembly, data updates, and refactorization).
  */
 struct SolveInfo
 {
@@ -82,12 +82,15 @@ struct SolveInfo
   /// it is not the full MPC cost.
   double objective{0.0};
 
-  /// Time spent in the solve phase (seconds).
-  double solve_time{0.0};
+  /// Time the QP solver spent solving, including polishing (seconds). Zero
+  /// when OSQP is built without profiling.
+  double qp_solve_time{0.0};
 
-  /// Total solver time for the last solve, including data updates and
-  /// polishing (seconds).
-  double run_time{0.0};
+  /// Duration of the whole last MPCBase::solve() call after initialization,
+  /// including QP assembly, data updates, refactorization, and the solver
+  /// (seconds). Measured with `std::chrono::steady_clock`, so it does not
+  /// depend on OSQP profiling.
+  double mpc_solve_time{0.0};
 };
 
 /**

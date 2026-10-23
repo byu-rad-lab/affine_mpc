@@ -444,10 +444,19 @@ public:
   /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,
    *   objective, and timing).
+   *
+   *   After a solve() that returned `UpdateFailed`, the solver fields still
+   *   describe the previous solve, while `mpc_solve_time` covers the failed
+   *   call.
    * @return SolveInfo with default values (status `NotInitialized`) before
    *   initializeSolver().
    */
-  SolveInfo getSolveInfo() const noexcept { return solver_->getSolveInfo(); }
+  SolveInfo getSolveInfo() const noexcept
+  {
+    SolveInfo info{solver_->getSolveInfo()};
+    info.mpc_solve_time = mpc_solve_time_;
+    return info;
+  }
 
   /**
    * @brief Make the next solve() start from zero instead of warm starting
@@ -502,6 +511,7 @@ protected:
   bool model_set_, u_lims_set_, x_lims_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
+  double mpc_solve_time_; ///< duration of the last solve() call (seconds)
 
   // MPC variables
   Eigen::MatrixXd Ad_, Bd_;

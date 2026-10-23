@@ -38,8 +38,8 @@ void moduleAddSolveStatus(py::module& m)
   py::class_<ampc::SolveInfo>(m, "SolveInfo",
                               R"doc(
 Solver diagnostics from the most recent solve. Obtain with
-MPCBase.getSolveInfo(). Timing fields are zero if OSQP was built without
-profiling.
+MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
+outside the QP solver (QP assembly, data updates, and refactorization).
 )doc")
       .def_readonly("status", &ampc::SolveInfo::status,
                     "Result of the solve. NotInitialized before "
@@ -51,11 +51,14 @@ profiling.
                     "QP objective value 1/2 z^T P z + q^T z at the solution. "
                     "Omits constant terms of the MPC cost, so it is not the "
                     "full MPC cost.")
-      .def_readonly("solve_time", &ampc::SolveInfo::solve_time,
-                    "Time spent in the solve phase (seconds).")
-      .def_readonly("run_time", &ampc::SolveInfo::run_time,
-                    "Total solver time for the last solve, including data "
-                    "updates and polishing (seconds).")
+      .def_readonly("qp_solve_time", &ampc::SolveInfo::qp_solve_time,
+                    "Time the QP solver spent solving, including polishing "
+                    "(seconds). Zero when OSQP is built without profiling.")
+      .def_readonly("mpc_solve_time", &ampc::SolveInfo::mpc_solve_time,
+                    "Duration of the whole last solve() call after "
+                    "initialization, including QP assembly, data updates, "
+                    "refactorization, and the solver (seconds). Does not "
+                    "depend on OSQP profiling.")
       .def("__repr__", [](const ampc::SolveInfo& self) {
         std::ostringstream oss;
         oss << self;

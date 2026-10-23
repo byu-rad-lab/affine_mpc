@@ -731,7 +731,10 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
     EXPECT_EQ(info.status, status);
     EXPECT_GT(info.iterations, 0);
     EXPECT_TRUE(std::isfinite(info.objective));
-    EXPECT_GE(info.run_time, info.solve_time);
+    EXPECT_GE(info.qp_solve_time, 0.0);
+    // measured with steady_clock, so nonzero even without OSQP profiling
+    EXPECT_GT(info.mpc_solve_time, 0.0);
+    EXPECT_GE(info.mpc_solve_time, info.qp_solve_time);
   };
 
   ampc::CondensedMPC condensed{n, m, param, opts};

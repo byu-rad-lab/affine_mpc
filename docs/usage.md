@@ -420,17 +420,20 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
 
     ```python
     info = mpc.getSolveInfo()
-    print(info.iterations, info.solve_time)
+    print(info.iterations, info.qp_solve_time, info.mpc_solve_time)
     ```
 
 === "C++"
 
     ```cpp
     const affine_mpc::SolveInfo info = mpc.getSolveInfo();
-    std::cout << info.iterations << ' ' << info.solve_time << '\n';
+    std::cout << info.iterations << ' ' << info.qp_solve_time << ' '
+              << info.mpc_solve_time << '\n';
     ```
 
 `objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
+`qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
+Setters do little work, but `setModelContinuous2Discrete()` computes a matrix exponential, so time it yourself if the model changes every step.
 
 ### 8. (Optional) Logging
 

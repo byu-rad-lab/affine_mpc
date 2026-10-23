@@ -40,5 +40,7 @@ def test_solve_info_from_mpc():
     assert info.status == ampc.SolveStatus.Success
     assert info.iterations > 0
     assert np.isfinite(info.objective)
-    assert info.run_time >= info.solve_time >= 0.0
+    assert info.mpc_solve_time > 0.0
+    assert info.mpc_solve_time >= info.qp_solve_time >= 0.0
+    assert not hasattr(info, "run_time")
     assert repr(info).startswith("SolveInfo(status=Success, iterations=")
