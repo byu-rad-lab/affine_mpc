@@ -54,7 +54,7 @@ def _log_single_step(
 
     x0 = np.array([1.0, 0.5])
     assert mpc.solve(x0) == ampc.SolveStatus.Success
-    logger.logStep(t=0.0, x0=x0, solve_time=0.001)
+    logger.logStep(t=0.0, x0=x0, loop_time=0.001)
     logger.finalize()
 
     return save_dir / f"{save_name}.npz", save_dir / "params.yaml", save_dir / f"{save_name}_raw", save_dir / f"{save_name}_npy"
@@ -90,6 +90,32 @@ def test_mpc_logger_npz_contents_default_stride():
             np.testing.assert_equal(data["inputs"].shape, (1, 6, 1))
             np.testing.assert_equal(data["meta_t_pred"].shape, (6,))
             np.testing.assert_allclose(data["meta_t_pred"][-1], 0.5)
+
+
+def test_mpc_logger_logs_timing():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mpc = _make_mpc(use_input_cost=True)
+        logger = ampc.MPCLogger(mpc=mpc, save_dir=Path(tmpdir), ts=0.1)
+        x0 = np.array([1.0, 0.5])
+        infos = []
+        for k in range(3):
+            assert mpc.solve(x0) == ampc.SolveStatus.Success
+            infos.append(mpc.getSolveInfo())
+            logger.logStep(t=0.1 * k, x0=x0, loop_time=0.01 * (k + 1))
+        logger.logStep(t=0.3, x0=x0)  # loop_time defaults to -1
+        infos.append(mpc.getSolveInfo())
+        logger.finalize()
+
+        with np.load(Path(tmpdir) / "log.npz", allow_pickle=False) as data:
+            assert "solve_times" not in data
+            np.testing.assert_array_equal(data["loop_time"], [0.01, 0.02, 0.03, -1.0])
+            np.testing.assert_array_equal(
+                data["mpc_solve_time"], [info.mpc_solve_time for info in infos]
+            )
+            np.testing.assert_array_equal(
+                data["qp_solve_time"], [info.qp_solve_time for info in infos]
+            )
+            assert np.all(data["mpc_solve_time"] > 0.0)
 
 
 def test_mpc_logger_stride_behavior():

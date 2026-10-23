@@ -35,7 +35,7 @@ The logger is useful for:
             # handle how you wish
             break
 
-        logger.logStep(t, xk, user_solve_time)
+        logger.logStep(t, xk)
         t += ts
     ```
 
@@ -54,7 +54,7 @@ The logger is useful for:
         break;
       }
 
-      logger.logStep(t, xk, user_solve_time);
+      logger.logStep(t, xk);
       t += dt;
     }
     ```
@@ -116,7 +116,9 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `ref_states`: same shape as `states`
 - `inputs`: `(N, K, m)`, `(N, nc, m)`, or `(N, m)` depending on mode
 - `ref_inputs`: same general shape as `inputs` when input reference data is applicable
-- `solve_times`: `(N, 2)` for user-measured (1st) and OSQP-reported times (2nd)
+- `mpc_solve_time`: `(N,)` duration of each whole `solve()` call (`SolveInfo.mpc_solve_time`)
+- `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
+- `loop_time`: `(N,)` optional user-measured time passed to `logStep()`, e.g. of the whole control loop on hardware (`-1` when not provided)
 - `meta_*`: metadata arrays copied into the NPZ container
 
 Here:

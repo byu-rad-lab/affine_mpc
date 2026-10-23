@@ -90,6 +90,9 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     save_name_{save_name},
     is_finalized_{false},
     num_logged_steps_{0},
+    loop_time_{-1.0},
+    mpc_solve_time_{0.0},
+    qp_solve_time_{0.0},
     x_traj_buf_{state_dim_ * horizon_steps_},
     u_traj_buf_{log_control_points ? input_dim_ * num_ctrls_
                                    : input_dim_ * horizon_steps_}
@@ -186,7 +189,7 @@ void MPCLogger::addMetadata(const std::string& key,
 
 void MPCLogger::logStep(double t,
                         const Eigen::Ref<const Eigen::VectorXd>& x0,
-                        double solve_time)
+                        double loop_time)
 {
   if (!mpc_->solver_initialized_)
     throw std::logic_error("[MPCLogger::logStep] MPC solver must be "
@@ -195,7 +198,10 @@ void MPCLogger::logStep(double t,
     throw std::invalid_argument("[MPCLogger::logStep] x0 must have size "
                                 + std::to_string(state_dim_) + ", got "
                                 + std::to_string(x0.size()) + ".");
-  solve_times_buf_ << solve_time, mpc_->getSolveInfo().qp_solve_time;
+  const SolveInfo info{mpc_->getSolveInfo()};
+  loop_time_ = loop_time;
+  mpc_solve_time_ = info.mpc_solve_time;
+  qp_solve_time_ = info.qp_solve_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);
   const bool has_input_ref{mpc_->opts_.use_input_cost};
@@ -280,7 +286,9 @@ void MPCLogger::initRawFiles()
   };
 
   open_bin(time_bin_, "time");
-  open_bin(solve_times_bin_, "solve_times");
+  open_bin(loop_time_bin_, "loop_time");
+  open_bin(mpc_solve_time_bin_, "mpc_solve_time");
+  open_bin(qp_solve_time_bin_, "qp_solve_time");
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
   open_bin(ref_states_bin_, "ref_states");
@@ -291,7 +299,9 @@ void MPCLogger::initRawFiles()
 void MPCLogger::closeRawFiles()
 {
   time_bin_.close();
-  solve_times_bin_.close();
+  loop_time_bin_.close();
+  mpc_solve_time_bin_.close();
+  qp_solve_time_bin_.close();
   states_bin_.close();
   inputs_bin_.close();
   ref_states_bin_.close();
@@ -309,10 +319,8 @@ std::vector<MPCLogger::PayloadEntry> MPCLogger::buildPayloadEntries() const
 
   std::vector<PayloadEntry> payloads;
   payloads.push_back({"time", rawDataPath("time"), rawHeaderPath("time"), {N}});
-  payloads.push_back({"solve_times",
-                      rawDataPath("solve_times"),
-                      rawHeaderPath("solve_times"),
-                      {N, 2}});
+  for (const char* name : {"loop_time", "mpc_solve_time", "qp_solve_time"})
+    payloads.push_back({name, rawDataPath(name), rawHeaderPath(name), {N}});
 
   if (K == 1) {
     payloads.push_back(
@@ -559,7 +567,12 @@ void MPCLogger::writeParamFileToPath(const std::filesystem::path& path) const
 void MPCLogger::writeStep(double t)
 {
   time_bin_.write(reinterpret_cast<const char*>(&t), sizeof(double));
-  writeBinary(solve_times_bin_, solve_times_buf_);
+  loop_time_bin_.write(reinterpret_cast<const char*>(&loop_time_),
+                       sizeof(double));
+  mpc_solve_time_bin_.write(reinterpret_cast<const char*>(&mpc_solve_time_),
+                            sizeof(double));
+  qp_solve_time_bin_.write(reinterpret_cast<const char*>(&qp_solve_time_),
+                           sizeof(double));
   writeBinary(states_bin_, states_out_buf_);
   writeBinary(inputs_bin_, inputs_out_buf_);
   writeBinary(ref_states_bin_, ref_states_out_buf_);

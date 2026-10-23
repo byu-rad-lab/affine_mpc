@@ -66,16 +66,18 @@ int main()
   double tf{10};
   affine_mpc::SolveStatus status;
   for (double t{0}; t < tf; t += ts) {
-    auto start = std::chrono::high_resolution_clock::now();
+    // The logger records the solve() timing from SolveInfo automatically.
+    // loop_time is for timing your own loop, e.g. on hardware.
+    const auto start{std::chrono::steady_clock::now()};
     status = msd_mpc.solve(xk);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
 
     if (status != ampc::SolveStatus::Success)
       std::cout << "Solver status: " << status << std::endl;
 
     msd_mpc.getNextInput(uk);
-    logger.logStep(t, xk, elapsed.count());
+    const std::chrono::duration<double> loop_time{
+        std::chrono::steady_clock::now() - start};
+    logger.logStep(t, xk, loop_time.count());
 
     msd_mpc.propagateModel(xk, uk, xk);
   }

@@ -59,7 +59,9 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
   EXPECT_TRUE(fs::exists(raw_dir / "time.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "states.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "inputs.bin"));
-  EXPECT_TRUE(fs::exists(raw_dir / "solve_times.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "loop_time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "mpc_solve_time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "qp_solve_time.bin"));
 }
 
 TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)

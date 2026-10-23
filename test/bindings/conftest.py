@@ -108,7 +108,7 @@ def _probe_installed_has_zlib() -> str:
         )
         x0 = np.array([1.0, 0.5])
         assert mpc.solve(x0) == ampc.SolveStatus.Success
-        logger.logStep(t=0.0, x0=x0, solve_time=0.001)
+        logger.logStep(t=0.0, x0=x0, loop_time=0.001)
         logger.finalize()
 
         with zipfile.ZipFile(Path(tmpdir) / "zlib_probe.npz") as archive:

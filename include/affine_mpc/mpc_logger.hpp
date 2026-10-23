@@ -119,14 +119,16 @@ public:
    * @param t Current simulation time (time of solve).
    * @param x0 Current state at time t (same as provided to solve() since
    *   MPCBase does not store this).
-   * @param solve_time Optional user-calculated solve time (likely to include
-   *   setup time). The solve time reported by OSQP is also logged separately.
+   * @param loop_time Optional user-measured time (seconds), e.g. of the whole
+   *   control loop iteration on hardware. Logged as `loop_time` (-1 when not
+   *   provided). The `mpc_solve_time` and `qp_solve_time` of the last solve
+   *   (see SolveInfo) are logged automatically.
    * @throws std::logic_error if the MPC solver has not been initialized.
    * @throws std::invalid_argument if x0 does not have size state_dim.
    */
   void logStep(double t,
                const Eigen::Ref<const Eigen::VectorXd>& x0,
-               double solve_time = -1.0);
+               double loop_time = -1.0);
 
   /**
    * @brief Add or overwrite custom metadata to be saved in both the main output
@@ -223,13 +225,15 @@ private:
   std::vector<std::string> metadata_keys_;
   std::map<std::string, MetadataEntry> metadata_registry_;
 
-  Eigen::Vector2d solve_times_buf_;
+  double loop_time_, mpc_solve_time_, qp_solve_time_;
   Eigen::VectorXd x_traj_buf_, u_traj_buf_;
   Eigen::VectorXd states_out_buf_, inputs_out_buf_;
   Eigen::VectorXd ref_states_out_buf_, ref_inputs_out_buf_;
 
   std::ofstream time_bin_;
-  std::ofstream solve_times_bin_;
+  std::ofstream loop_time_bin_;
+  std::ofstream mpc_solve_time_bin_;
+  std::ofstream qp_solve_time_bin_;
   std::ofstream states_bin_;
   std::ofstream inputs_bin_;
   std::ofstream ref_states_bin_;

@@ -464,13 +464,13 @@ Inside the control loop:
 === "Python"
 
     ```python
-    logger.logStep(t, xk, solve_time)
+    logger.logStep(t, xk)  # or logStep(t, xk, loop_time) to log your own timing
     ```
 
 === "C++"
 
     ```cpp
-    logger.logStep(t, xk, user_solve_time);
+    logger.logStep(t, xk); // or logStep(t, xk, loop_time) for your own timing
     ```
 
 See [Logging](logging.md) for output format and workflow details.
