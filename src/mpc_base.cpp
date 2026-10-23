@@ -285,8 +285,12 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   const SolveStatus status{solver_->solve()};
 
   // update u_prev after solve rather than before so user can manually
-  // overwrite it between solves if desired
-  if (opts_.slew_initial_input) {
+  // overwrite it between solves if desired. Other statuses leave an iterate
+  // that is not a solution (e.g. an infeasibility certificate), which would
+  // corrupt the initial slew constraint of every later solve.
+  if (opts_.slew_initial_input
+      && (status == SolveStatus::Success
+          || status == SolveStatus::SolvedInaccurate)) {
     getNextInput(u_prev_);
     setPreviousInput(u_prev_);
   }

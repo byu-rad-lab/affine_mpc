@@ -741,6 +741,59 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
   check(sparse);
 }
 
+TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.slew_initial_input = true};
+  const VectorXd u_prev{VectorXd::Constant(m, 0.2)};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
+    auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+    settings.max_iter = 1;
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+    const Vector2d x0{0.5, -0.2};
+
+    // the iterate after one iteration is not a solution
+    mpc.setPreviousInput(u_prev);
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::MaxIterReached);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u_prev, 0.0));
+  };
+
+  auto check_infeasible = [&](ampc::MPCBase& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
+    ASSERT_TRUE(mpc.initializeSolver());
+    const Vector2d x0{0.5, -0.2};
+
+    // u_0 must be in [2, 3] and within 0.5 of u_prev = 0.2
+    mpc.setPreviousInput(u_prev);
+    mpc.setInputLimits(VectorXd::Constant(m, 2.0), VectorXd::Constant(m, 3.0));
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::PrimalInfeasible);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u_prev, 0.0));
+
+    // a successful solve updates it again
+    mpc.setInputLimits(VectorXd::Constant(m, 0.0), VectorXd::Constant(m, 3.0));
+    mpc.resetWarmStart();
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    VectorXd u0{m};
+    mpc.getNextInput(u0);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u0, 0.0));
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  check(condensed);
+  ampc::SparseMPC sparse{n, m, param, opts};
+  check(sparse);
+
+  ampc::CondensedMPC condensed_infeasible{n, m, param, opts};
+  check_infeasible(condensed_infeasible);
+  ampc::SparseMPC sparse_infeasible{n, m, param, opts};
+  check_infeasible(sparse_infeasible);
+}
+
 TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
 {
   const int n{2}, m{1}, T{10}, nc{5};

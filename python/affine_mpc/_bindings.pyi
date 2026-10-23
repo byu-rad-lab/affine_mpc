@@ -764,7 +764,7 @@ class MPCBase:
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
         Get the previous input used by the initial slew rate constraint. Updated
-        automatically after each solve.
+        automatically after each solve that returns `Success` or `SolvedInaccurate`.
 
         Raises:
             RuntimeError: If `slew_initial_input` is not enabled.
@@ -1064,9 +1064,10 @@ class MPCBase:
         constraint option. Defaults to zeros, but should be set prior to first solve if
         a different value is desired.
 
-        This value is automatically updated after each solve, so you really only need to
-        call this function once before the first solve, or potentially if a solve fails
-        and you want to set a custom strategy for handling it.
+        This value is automatically set to the next input after each solve that returns
+        `Success` or `SolvedInaccurate`, so you really only need to call this function
+        once before the first solve, or after a failed solve (which leaves it unchanged)
+        if you apply an input other than the stored one.
 
         This function can only be called if `slew_initial_input` is enabled. Must be
         called prior to `initializeSolver()`, but can also be called after if limits
