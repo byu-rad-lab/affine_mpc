@@ -43,7 +43,10 @@ public:
    * @brief Factory method for move-blocking parameterization with custom change
    *   points.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param change_points Vector of change point locations.
+   * @param change_points Increasing start times of the blocks. The first must
+   *   be 0 and the last at most horizon_steps - 1. horizon_steps - 1 is
+   *   appended to close the last block, so 0, 1, ..., horizon_steps - 1 gives
+   *   one control point per step.
    * @return Parameterization instance.
    */
   static Parameterization

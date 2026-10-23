@@ -220,7 +220,10 @@ class Parameterization:
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.
-            change_points: Vector of change point locations.
+            change_points: Increasing start times of the blocks. The first must be 0
+                and the last at most horizon_steps - 1. horizon_steps - 1 is appended
+                to close the last block, so 0, 1, ..., horizon_steps - 1 gives one
+                control point per step.
 
         returns:
             out: Parameterization instance with move-blocking structure.

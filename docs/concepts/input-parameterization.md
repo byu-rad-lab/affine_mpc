@@ -119,6 +119,8 @@ The first creates a uniform parameterization with equally sized blocks.
 The second uses explicitly specified change points and therefore allows variable block widths.
 The first change point must be $0$ and the minimum number of change points is 1, where the input trajectory would be constant.
 When using the move-blocking factory method, the right boundary knot is internally appended to the list of change points to create the full knot vector.
+The change points are the start indices of the blocks, so each one may be any sample from $0$ to $T-1$.
+For example, `moveBlocking(10, [0, 1, 2])` gives one free input for each of the first three steps and holds the third until the end of the horizon, and change points $0, 1, \dots, T-1$ give one free input per step.
 
 ### Linear Interpolation
 

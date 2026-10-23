@@ -430,6 +430,32 @@ TEST(ParameterizationMoveBlocking,
   ASSERT_TRUE(expectEigenNear(vals, vals_expected, 1e-15));
 }
 
+TEST(ParameterizationMoveBlocking, givenEveryStepChangePoints_OneInputPerStep)
+{
+  // change points 0, 1, ..., T-1 give every sample its own control point
+  const int T{5};
+  const VectorXd change_pts{VectorXd::LinSpaced(T, 0, T - 1)};
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  ASSERT_EQ(p.num_control_points, T);
+
+  VectorXd controls{T};
+  controls << 10, 20, 30, 40, 50;
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, controls), controls, 0.0));
+}
+
+TEST(ParameterizationMoveBlocking, givenFreeStepsThenTail_EvaluatesProperly)
+{
+  // one free input for each of the first 3 steps, then constant to the end
+  const int T{10};
+  const Vector3d change_pts{0, 1, 2}, controls{10, 20, 30};
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  ASSERT_EQ(p.num_control_points, 3);
+
+  VectorXd u_expected{T};
+  u_expected << 10, 20, 30, 30, 30, 30, 30, 30, 30, 30;
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, controls), u_expected, 0.0));
+}
+
 TEST(ParameterizationMoveBlocking, givenRepeatedChangePoint_Throws)
 {
   const int T{5};

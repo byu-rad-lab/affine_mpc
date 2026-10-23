@@ -167,6 +167,9 @@ Parameterization::moveBlocking(int horizon_steps,
         "[Parameterization::moveBlocking] change_points size must be less than "
         "or equal to horizon_steps.");
   }
+  // horizon_steps - 1 is appended below to close the last block. A change point
+  // there is still valid and gives the last sample its own block, since the
+  // degree 0 span search never reads the final knot.
   if (change_points(ph::last) > horizon_steps - 1) {
     throw std::invalid_argument(
         "[Parameterization::moveBlocking] change_points must be less than "
