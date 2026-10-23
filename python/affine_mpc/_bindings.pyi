@@ -1294,6 +1294,10 @@ class MPCBase:
                 (infinite weights can leave OSQP unable to recover). Verify your
                 problem setup and consult OSQP documentation for any other value.
 
+        The GIL is released while solving, so other Python threads can run (e.g.
+        solving several independent MPC objects in parallel threads). Do not modify x0
+        or this MPC object from another thread during the call.
+
         Raises:
             ValueError: If x0 does not have size state_dim.
         """

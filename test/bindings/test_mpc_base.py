@@ -150,3 +150,37 @@ def test_mpc_base_optional_getters_raise_when_disabled():
     ):
         with pytest.raises(RuntimeError, match="not enabled"):
             getter()
+
+
+def _msd_mpc(cls):
+    n, m, T = 2, 1, 20
+    mpc = cls(n, m, ampc.Parameterization.linearInterp(T, 5))
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
+    mpc.setInputLimits(np.zeros(m), 3.0 * np.ones(m))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    assert mpc.initializeSolver()
+    return mpc
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_solve_in_threads_matches_sequential_solve(cls):
+    # solve() releases the GIL, so independent MPC objects can solve in parallel
+    from concurrent.futures import ThreadPoolExecutor
+
+    x0s = [np.array([0.1 * i, -0.05 * i]) for i in range(8)]
+
+    def solve(x0):
+        mpc = _msd_mpc(cls)
+        assert mpc.solve(x0) == ampc.SolveStatus.Success
+        return mpc.getInputTrajectory()
+
+    expected = [solve(x0) for x0 in x0s]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        got = list(pool.map(solve, x0s))
+    for u_got, u_expected in zip(got, expected):
+        np.testing.assert_array_equal(u_got, u_expected)
+
+    # exceptions still propagate with the GIL released during the call
+    with pytest.raises(ValueError, match="x0"):
+        _msd_mpc(cls).solve(np.zeros(3))
