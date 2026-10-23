@@ -102,7 +102,7 @@ See [Concepts](concepts/index.md) for more details on options.
 Choose between `CondensedMPC` and `SparseMPC` (they have the same interfaces).
 
 - `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
-- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
+- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
 
 The best way to know which is faster for your problem is to try them both.
 
@@ -265,6 +265,10 @@ With input cost:
     mpc.setInputWeights(R_diag);
     ```
 
+The input weight `R` weights the control points, not the sampled inputs.
+With non-uniform knots, a control point on a short early interval is weighted the same as one on a long late interval, even though it affects fewer samples.
+Keep this in mind when comparing input penalties across parameterizations.
+
 #### Set references
 
 State step reference:
@@ -331,6 +335,24 @@ If input cost is enabled, input references can also be configured:
     ```
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+`getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
+Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached` (the paper experiments use 20000):
+
+=== "Python"
+
+    ```python
+    settings = affine_mpc.OSQPSettings()  # recommended settings
+    settings.max_iter = 20000
+    mpc.initializeSolver(settings)
+    ```
+
+=== "C++"
+
+    ```cpp
+    OSQPSettings settings = affine_mpc::OSQPSolver::getRecommendedSettings();
+    settings.max_iter = 20000;
+    if (!mpc.initializeSolver(settings)) { /* handle the error */ }
+    ```
 
 ### 6. Solve in the control loop
 
@@ -344,10 +366,14 @@ is in the main runtime loop. Common cases include:
 
 How to respond to a failed solve depends on the application.
 For example, you could reuse the previously applied input or have a fallback control law like LQR.
-After a failure, `solve()` has still stored the first input of the failed solution as the previous input used by `slew_initial_input`,
-so call `setPreviousInput()` with the input you actually applied.
+After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return OSQP's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
+The previous input used by `slew_initial_input` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
 The failed solve's iterates may also have diverged, which would slow down the next solve since OSQP warm starts from them,
 so call `resetWarmStart()` to start the next solve from zero.
+
+`MaxIterReached` is a partial exception.
+With B-spline parameterizations its iterate is usually close to the solution: in the paper experiments the applied input violated the input limits by at most $8.7 \times 10^{-6}$ of `u_max`.
+Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
 === "Python"
 
@@ -535,4 +561,4 @@ You can propagate the internal model one step with:
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
 - If a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` weights are exempt; see [Runtime Updates](concepts/runtime-updates.md)).
 - To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()`.
-- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve, it is automatically set from the previous solve.
+- If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.
