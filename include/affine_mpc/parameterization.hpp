@@ -120,7 +120,8 @@ public:
    *   horizon_steps.
    * @param knots Full knot vector with size in the range [2*(degree+1),
    *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
-   *   last knot must be horizon_steps-1.
+   *   last knot must be horizon_steps-1. The first and last degree+1 knots are
+   *   snapped to these values when within `1e-9 * horizon_steps` (round-off).
    * @throws std::invalid_argument if the knots are invalid, including when a
    *   control point has no influence on any sampled input (its basis function
    *   is zero at every sample k = 0, ..., horizon_steps-1).

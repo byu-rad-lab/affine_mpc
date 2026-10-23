@@ -171,6 +171,7 @@ The two overloads are:
 The first creates a uniform clamped spline.
 The second accepts custom active knots, which allows nonuniform knot spacing.
 The active knot vector must include at least the two boundary entries $0$ and $T-1$ so that the spline is valid over the MPC horizon.
+Boundary knots within $10^{-9} T$ of $0$ or $T-1$ (round-off from computing the knots) are snapped to those values.
 
 ## Tradeoffs and Interpretation
 

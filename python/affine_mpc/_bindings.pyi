@@ -256,7 +256,9 @@ class Parameterization:
             degree: Degree of B-spline polynomials. Must be less than horizon_steps.
             knots: Full knot vector with size in the range [2*(degree+1),
                 horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0
-                and last knot must be horizon_steps-1. Every control point must
+                and last knot must be horizon_steps-1 (the first and last degree+1
+                knots are snapped to these values when within 1e-9 * horizon_steps).
+                Every control point must
                 influence at least one sampled input (its basis function can not be
                 zero at every sample k = 0, ..., horizon_steps-1).
         """

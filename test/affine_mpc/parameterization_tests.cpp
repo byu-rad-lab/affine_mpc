@@ -619,3 +619,40 @@ TEST(ParameterizationBspline, givenSubSampleKnotsWithInfluence_Succeeds)
   const Vector3d change_points{0, 0.5, 1.2};
   EXPECT_NO_THROW(ampc::Parameterization::moveBlocking(10, change_points));
 }
+
+// ---- end-knot tolerance ----------------------------------------------------
+
+TEST(ParameterizationBspline, givenEndKnotsWithRoundOff_SnapsToBoundaries)
+{
+  // e.g. knots computed by scaling fractions to [0, T-1]
+  const int T{10}, deg{2};
+  const Vector3d active_knots{1e-13, 4.0, T - 1 - 1e-13};
+  const auto p{ampc::Parameterization::bspline(T, deg, active_knots)};
+
+  VectorXd knots_expected{7};
+  knots_expected << 0, 0, 0, 4, 9, 9, 9;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 0.0));
+}
+
+TEST(ParameterizationDirectConstructor,
+     givenEndKnotsWithRoundOff_SnapsToBoundaries)
+{
+  const int T{10}, deg{1};
+  VectorXd knots{5};
+  knots << -1e-13, 1e-13, 4.0, T - 1 - 1e-13, T - 1 + 1e-13;
+  const ampc::Parameterization p{T, deg, knots};
+
+  VectorXd knots_expected{5};
+  knots_expected << 0, 0, 4, 9, 9;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 0.0));
+}
+
+TEST(ParameterizationBspline, givenEndKnotOutsideTolerance_PrintsFullPrecision)
+{
+  const int T{10}, deg{2};
+  const Vector3d active_knots{0.0, 4.0, T - 1 - 1e-6};
+  // the default stream precision would print "Got 9"
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
+      "Got 8.999999");
+}

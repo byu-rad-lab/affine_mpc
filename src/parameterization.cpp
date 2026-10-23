@@ -1,6 +1,7 @@
 #include "affine_mpc/parameterization.hpp"
 
 #include <Eigen/Core>
+#include <cmath>
 #include <iomanip>
 #include <ostream>
 #include <sstream>
@@ -61,14 +62,15 @@ void validateKnots(const Ref<const VectorXd>& knots,
 
   if (knots(degree) != 0.0) {
     std::stringstream ss;
-    ss << "[Parameterization::validateKnots] First active knot must equal zero "
+    ss << std::setprecision(17)
+       << "[Parameterization::validateKnots] First active knot must equal zero "
        << "(representing input at current time step, k=0).\n    "
        << "Got " << knots(degree) << std::endl;
     throw std::invalid_argument(ss.str());
   }
   if (knots(ph::last - degree) != horizon_steps - 1) {
     std::stringstream ss;
-    ss << "[Parameterization::validateKnots] "
+    ss << std::setprecision(17) << "[Parameterization::validateKnots] "
        << "Last active knot must equal horizon_steps-1 "
        << "(representing final input).\n    Got "
        << knots(knots.size() - degree - 1)
@@ -113,6 +115,32 @@ void validateKnots(const Ref<const VectorXd>& knots,
       throw std::invalid_argument(ss.str());
     }
   }
+}
+
+// Validates the knots after snapping the boundary knots (the first and last
+// degree+1, which include the first and last active knots) to exactly 0 and
+// horizon_steps-1 when they are within round-off, e.g. from knots computed by
+// scaling fractions of the horizon.
+VectorXd
+validatedKnots(const Ref<const VectorXd>& knots, int horizon_steps, int degree)
+{
+  validateHorizonSteps(horizon_steps);
+  validateDegree(degree, horizon_steps);
+
+  VectorXd snapped{knots};
+  const Index num_knots{snapped.size()};
+  if (num_knots >= 2 * (degree + 1)) {
+    const double tol{1e-9 * horizon_steps};
+    const double last{horizon_steps - 1.0};
+    for (Index i{0}; i <= degree; ++i) {
+      if (std::abs(snapped(i)) <= tol)
+        snapped(i) = 0.0;
+      if (std::abs(snapped(num_knots - 1 - i) - last) <= tol)
+        snapped(num_knots - 1 - i) = last;
+    }
+  }
+  validateKnots(snapped, horizon_steps, degree);
+  return snapped;
 }
 
 } // namespace
@@ -219,12 +247,8 @@ Parameterization::Parameterization(int horizon_steps,
     horizon_steps{horizon_steps},
     degree{degree},
     num_control_points{int(knots.size()) - degree - 1},
-    knots{knots}
-{
-  validateHorizonSteps(horizon_steps);
-  validateDegree(degree, horizon_steps);
-  validateKnots(knots, horizon_steps, degree);
-}
+    knots{validatedKnots(knots, horizon_steps, degree)}
+{}
 
 VectorXd Parameterization::evaluate(
     int input_dim,
