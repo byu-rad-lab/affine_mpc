@@ -121,6 +121,9 @@ public:
    * @param knots Full knot vector with size in the range [2*(degree+1),
    *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
    *   last knot must be horizon_steps-1.
+   * @throws std::invalid_argument if the knots are invalid, including when a
+   *   control point has no influence on any sampled input (its basis function
+   *   is zero at every sample k = 0, ..., horizon_steps-1).
    */
   Parameterization(int horizon_steps,
                    int degree,

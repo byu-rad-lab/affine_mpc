@@ -195,6 +195,10 @@ Changing the active-knot locations redistributes where the trajectory can vary m
 - Uniform knots distribute flexibility evenly across the horizon.
 - Custom knots or change points concentrate flexibility where it is most needed.
 
+Knots do not have to be integers or at least one sample apart, but every control point must affect at least one sampled input.
+A control point whose basis function is zero at every sample $k = 0, \dots, T-1$ would only add a direction the QP can not see, so construction throws `std::invalid_argument` (`ValueError` in Python).
+For example, `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` is rejected because control point 2 is only nonzero on $(3.2, 3.22)$, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
+
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
 
 ## Next Step

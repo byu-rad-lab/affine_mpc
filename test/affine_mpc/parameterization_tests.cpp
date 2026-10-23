@@ -584,3 +584,38 @@ TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
       [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
       "Last active knot must equal horizon_steps-1");
 }
+
+// ---- zero-influence control points -----------------------------------------
+
+TEST(ParameterizationBspline, givenControlPointWithoutInfluence_Throws)
+{
+  // the hat function of control point 2 is nonzero only on (3.2, 3.22), which
+  // contains no sample
+  VectorXd active_knots{5};
+  active_knots << 0, 3.2, 3.21, 3.22, 9;
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(10, 1, active_knots); },
+      "control point 2 has no influence on any sampled input");
+}
+
+TEST(ParameterizationMoveBlocking, givenBlockWithoutSample_Throws)
+{
+  // block [3.2, 3.5) contains no integer sample
+  const Vector3d change_points{0, 3.2, 3.5};
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::moveBlocking(10, change_points); },
+      "control point 1 has no influence on any sampled input");
+}
+
+TEST(ParameterizationBspline, givenSubSampleKnotsWithInfluence_Succeeds)
+{
+  // knots closer than one sample are fine as long as every control point
+  // influences some sample
+  VectorXd active_knots{4};
+  active_knots << 0, 0.5, 1.2, 9;
+  EXPECT_NO_THROW(ampc::Parameterization::bspline(10, 1, active_knots));
+  EXPECT_NO_THROW(ampc::Parameterization::bspline(10, 2, active_knots));
+
+  const Vector3d change_points{0, 0.5, 1.2};
+  EXPECT_NO_THROW(ampc::Parameterization::moveBlocking(10, change_points));
+}

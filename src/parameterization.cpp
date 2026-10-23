@@ -1,6 +1,7 @@
 #include "affine_mpc/parameterization.hpp"
 
 #include <Eigen/Core>
+#include <iomanip>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -88,6 +89,30 @@ void validateKnots(const Ref<const VectorXd>& knots,
         "(technically a spline can repeat knots, but it causes discontinuities "
         "that essentially leave some control points unused and wastes "
         "optimization effort in this context).\n");
+
+  // A basis function that is zero at every sample leaves its control point
+  // without any effect on the inputs, so the QP is singular in that direction.
+  // This happens when knots closer than one sample leave no sample inside a
+  // support (degree 0: a block [t_i, t_i+1) that contains no integer).
+  using Spline1d = Spline<double, 1>;
+  VectorXd influence{VectorXd::Zero(num_ctrls)};
+  for (int k{0}; k < horizon_steps; ++k) {
+    const double t = k;
+    const int idx = Spline1d::Span(t, degree, knots) - degree;
+    influence.segment(idx, degree + 1) +=
+        Spline1d::BasisFunctions(t, degree, knots).matrix().transpose();
+  }
+  for (int i{0}; i < num_ctrls; ++i) {
+    if (influence(i) == 0.0) {
+      std::stringstream ss;
+      ss << std::setprecision(17) << prefix << "control point " << i
+         << " has no influence on any sampled input: no sample time k = 0, "
+         << "..., horizon_steps-1 lies inside the support of its basis "
+         << "function [" << knots(i) << ", " << knots(i + degree + 1)
+         << "]. Spread the knots so every support contains a sample.\n";
+      throw std::invalid_argument(ss.str());
+    }
+  }
 }
 
 } // namespace
