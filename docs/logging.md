@@ -59,7 +59,9 @@ The logger is useful for:
     }
     ```
 
-If `finalize()` is not called manually, the destructor will attempt to finalize automatically.
+Call `finalize()` explicitly when logging is done.
+If `finalize()` is not called manually, the destructor attempts to finalize automatically, but a destructor can not throw, so any error (for example a full disk or an unwritable directory) is only printed to `stderr` and is easy to miss.
+An explicit `finalize()` throws `std::runtime_error` (`RuntimeError` in Python) instead.
 
 ## Main Constructor Arguments
 
@@ -120,6 +122,10 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
 - `loop_time`: `(N,)` optional user-measured time passed to `logStep()`, e.g. of the whole control loop on hardware (`-1` when not provided)
 - `meta_*`: metadata arrays copied into the NPZ container
+
+The logged `states` start at the current state `x0` passed to `logStep()` (prediction step $k = 0$), followed by the predicted states.
+This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
+`meta_t_pred` holds the prediction times of the logged samples relative to the time of each step.
 
 Here:
 
@@ -188,7 +194,7 @@ When `log_control_points` is `true`, the logger stores parameterized control poi
 ## Practical Recommendations
 
 - Use a dedicated output directory per run when comparing experiments
-- Call `finalize()` explicitly in long scripts so errors surface sooner
+- Call `finalize()` explicitly so errors are raised instead of only printed by the destructor
 - Use `prediction_stride > 1` for long simulations if file size becomes large
 - Use `RawRecoverable` for the strongest crash-recovery guarantees
 - Use `NpzUncompressed` when faster finalization matters more than archive size
