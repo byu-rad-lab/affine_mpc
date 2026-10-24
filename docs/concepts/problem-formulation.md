@@ -18,8 +18,8 @@ It holds everything that does not depend on the state or input, such as gravity,
 $$
 \begin{align}
 \min_{\mathbf{c}}
-    &\quad J_x = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
+    &\quad J_x = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
     \\
 \text{s.t.}
     &\quad \mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w} \\
@@ -42,7 +42,7 @@ so saturating the control points saturates the entire input trajectory as well
 ### Input Cost
 
 $$
-J_u = \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
+J_u = \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
 $$
 
 In unconstrained LQR-style formulations,
@@ -51,8 +51,8 @@ whereas MPC can also enforce hard input limits directly without an input regular
 
 **When you may want to use it:**
 
-- You specifically want to minimize control effort or energy (set $\bar{\mathbf{c}}=0$)
-- You want to stay near an equilibrium value (set $\bar{\mathbf{c}}=\mathbf{u}_e$)
+- You specifically want to minimize control effort or energy (set $\mathbf{c}_{\mathrm{ref}}=0$)
+- You want to stay near an equilibrium value (set $\mathbf{c}_{\mathrm{ref}}=\mathbf{u}_e$)
 - You have a reference input trajectory, perhaps from using differential flatness
 
 !!! note

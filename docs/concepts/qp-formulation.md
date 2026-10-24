@@ -95,9 +95,9 @@ The rest of this page describes how to convert the MPC optimization problem into
 The MPC cost is
 
 $$
-J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
-    + \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
+J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
+    + \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
 $$
 
 Since we're optimizing a norm, it doesn't matter which term is being subtracted.
@@ -114,8 +114,8 @@ $$
 Now the cost function can be written as
 
 $$
-J = (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}})
+J = (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})
 $$
 
 We will use this form of the cost function as the starting point for both the sparse and condensed formulations,
@@ -226,16 +226,16 @@ Starting with the cost function we derived above:
 
 $$
 \begin{align}
-J &= (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}}) \\
-  &=(\mathbf{z}_{\mathrm{s}} - \bar{\mathbf{z}}_s)^\top
+J &= (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
+  &=(\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}})^\top
         \underbrace{
             \begin{bmatrix} \bar{R} & \mathbf{0} \\ \mathbf{0} & \bar{Q} \end{bmatrix}
         }_{P}
-    (\mathbf{z}_{\mathrm{s}} - \bar{\mathbf{z}}_s) \\
+    (\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}}) \\
   &= \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
-    -2 \bar{\mathbf{z}}_s^\top P \mathbf{z}_{\mathrm{s}}
-    + \underbrace{\bar{\mathbf{z}}_s^\top P \bar{\mathbf{z}}_s}_{\text{drop}}
+    -2 \mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s}}
+    + \underbrace{\mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\text{drop}}
 \end{align}
 $$
 
@@ -246,7 +246,7 @@ Scaling the cost by $\frac{1}{2}$ also leaves the argmin unchanged and matches t
 $$
 \frac{1}{2} J
     = \frac{1}{2} \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
-    + (\, \underbrace{-P \bar{\mathbf{z}}_s}_{\mathbf{q}} \,)^\top \mathbf{z}_{\mathrm{s}}
+    + (\, \underbrace{-P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\mathbf{q}} \,)^\top \mathbf{z}_{\mathrm{s}}
     + \text{const}
 $$
 
@@ -254,7 +254,7 @@ Now we have the definition of the QP cost terms:
 
 $$
 P = \mathrm{blkdiag}(\bar{R}, \bar{Q})
-    \quad \quad \quad \mathbf{q} = -P \bar{\mathbf{z}}_s
+    \quad \quad \quad \mathbf{q} = -P \mathbf{z}_{\mathrm{s},\mathrm{ref}}
 $$
 
 ### Input Saturation
@@ -537,20 +537,20 @@ $$
 \begin{align}
 J
     &=
-    (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}}) \\
+    (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
     &=
     \mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \bar{\mathbf{x}}
-    + \underbrace{\bar{\mathbf{x}}^\top \bar{Q} \bar{\mathbf{x}}}_{\text{drop}}
+    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}
+    + \underbrace{\mathbf{x}_{\mathrm{ref}}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}}
     + \mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \mathbf{c}^\top \bar{R} \bar{\mathbf{c}}
-    + \underbrace{\bar{\mathbf{c}}^\top \bar{R} \bar{\mathbf{c}}}_{\text{drop}} \\
+    - 2 \mathbf{c}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}
+    + \underbrace{\mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
     \underbrace{\mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \bar{\mathbf{x}}}_{J_x}
+    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{J_x}
     + \underbrace{\mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{c}}_{J_c}
+    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}}_{J_c}
 \end{align}
 $$
 
@@ -561,16 +561,16 @@ $$
 J_x
     &=
     (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})
-    - 2 (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} \bar{\mathbf{x}} \\
+    - 2 (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} \mathbf{x}_{\mathrm{ref}} \\
     &=
     \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
     + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
     + \underbrace{\mathbf{v}^\top \bar{Q} \mathbf{v}}_{\text{drop}}
-    - 2 \bar{\mathbf{x}}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
-    - \underbrace{2 \mathbf{v}^\top \bar{Q} \bar{\mathbf{x}}}_{\text{drop}} \\
+    - 2 \mathbf{x}_{\mathrm{ref}}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
+    - \underbrace{2 \mathbf{v}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
     \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
-    + 2 (S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}))^\top \mathbf{z}_{\mathrm{c}}
+    + 2 (S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}))^\top \mathbf{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
 $$
@@ -582,10 +582,10 @@ $$
 J_c
     &=
     \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
-    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}} \\
+    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{z}_{\mathrm{c}} \\
     &=
     \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
-    - 2 (\bar{R} \bar{\mathbf{c}})^\top \mathbf{z}_{\mathrm{c}} \\
+    - 2 (\bar{R} \mathbf{c}_{\mathrm{ref}})^\top \mathbf{z}_{\mathrm{c}} \\
 \end{align}
 $$
 
@@ -601,7 +601,7 @@ $$
     \mathbf{z}_{\mathrm{c}}
     +
     (\underbrace{
-        S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
+        S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
     }_{\mathbf{q}})^\top \mathbf{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
@@ -614,7 +614,7 @@ P = (S^\top \bar{Q} S + \bar{R})
 $$
 
 $$
-\mathbf{q} =  S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
+\mathbf{q} =  S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
 $$
 
 ### Input Saturation

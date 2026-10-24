@@ -104,8 +104,8 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{x}_0$                                       | `solve()`                                                 |
 | $A$, $B$, $\mathbf{w}$                               | `setModelDiscrete()`, `setModelContinuous2Discrete()`     |
 | $\mathbf{w}$ only                                    | `setModelOffsetDiscrete()`, `setModelOffsetContinuous2Discrete()` |
-| $\bar{\mathbf{x}}$                                   | `setReferenceState()`, `setReferenceStateTrajectory()`    |
-| $\bar{\mathbf{c}}$                                   | `setReferenceInput()`, `setReferenceInputControlPoints()` |
+| $\mathbf{x}_{\mathrm{ref}}$                          | `setReferenceState()`, `setReferenceStateTrajectory()`    |
+| $\mathbf{c}_{\mathrm{ref}}$                          | `setReferenceInput()`, `setReferenceInputControlPoints()` |
 | $Q$, $Q_{\mathrm{f}}$                                | `setWeights()`, `setStateWeights()`                       |
 | $R$                                                  | `setWeights()`, `setInputWeights()`                       |
 | $\mathbf{x}_\mathrm{min}$, $\mathbf{x}_\mathrm{max}$ | `setStateLimits()`                                        |
@@ -156,8 +156,8 @@ but the actual cost depends on the formulation and problem structure.
 
 | MPC Term                       | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
 | ------------------------------ | --- | --------------- | --- | ------------------- | ----------------------- |
-| $\bar{\mathbf{x}}$             |     |                 | ✓   |                     |                         |
-| $\bar{\mathbf{c}}$             |     |                 | ✓   |                     |                         |
+| $\mathbf{x}_{\mathrm{ref}}$    |     |                 | ✓   |                     |                         |
+| $\mathbf{c}_{\mathrm{ref}}$    |     |                 | ✓   |                     |                         |
 | $\mathbf{x}_\mathrm{min}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{x}_\mathrm{max}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{u}_\mathrm{min}$      |     |                 |     | ✓                   | ✓                       |

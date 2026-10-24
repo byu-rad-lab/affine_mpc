@@ -23,10 +23,10 @@ with several optional terms controlled by `Options` (highlighted in red):
 $$
 \begin{align}
 \min
-    &\quad J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
+    &\quad J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
     + \underbrace{
-        \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
+        \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
       }_{\textcolor{red}{\text{input cost}}} \\
 \text{w.r.t.}
     &\quad \mathbf{c}_0, \dots ,\mathbf{c}_{\eta-1} \quad \underbrace{\mathbf{x}_1, \dots, \mathbf{x}_T}_{\textcolor{magenta}{\text{sparse only}}}\\
