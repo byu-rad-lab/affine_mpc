@@ -113,6 +113,7 @@ MPCBase::MPCBase(int state_dim,
     Ad_{state_dim, state_dim},
     Bd_{state_dim, input_dim},
     wd_{state_dim},
+    discretizer_{state_dim_, input_dim_},
     Q_big_{state_dim * param.horizon_steps},
     x_ref_{state_dim * param.horizon_steps},
     u_min_{input_dim},
@@ -343,61 +344,7 @@ bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   validateShape(Bc, state_dim_, input_dim_, "setModelContinuous2Discrete",
                 "Bc");
   validateSize(wc.size(), state_dim_, "setModelContinuous2Discrete", "wc");
-  if (!(dt > 0.0))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] dt must be positive.");
-  if (!(tol > 0.0))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] tol must be positive.");
-
-  // Computes Ad = E(dt) = exp(A*dt) and G(dt) = integral_0^dt exp(A*s) ds via
-  // scaling and squaring. The Taylor series is only evaluated at h = dt / 2^s
-  // where ||A*h||_1 <= 0.5, which keeps terms small and avoids the
-  // cancellation that ruins the series for large ||A*dt||. Then
-  // E(2h) = E(h)^2 and G(2h) = G(h) + E(h) G(h) recover dt.
-
-  // allocates memory first time only (since sizes are constant)
-  At_.resize(state_dim_, state_dim_);
-  At_.noalias() = Ac * dt;
-  const double At_norm{At_.cwiseAbs().colwise().sum().maxCoeff()};
-  if (!std::isfinite(At_norm))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] Ac*dt must be finite.");
-
-  constexpr double max_norm{0.5};
-  const int num_squarings{
-      At_norm > max_norm
-          ? static_cast<int>(std::ceil(std::log2(At_norm / max_norm)))
-          : 0};
-  const double scale{std::ldexp(1.0, -num_squarings)};
-  At_ *= scale;
-
-  At_pow_.setIdentity(state_dim_, state_dim_);
-  Ad_.setIdentity(state_dim_, state_dim_);
-  G_.setIdentity(state_dim_, state_dim_);
-
-  // term_bound is an upper bound on ||(A*h)^i / i!||, the next term to add
-  double factorial{1.0};
-  double term_bound{At_norm * scale};
-  for (int i{1}; term_bound >= tol; ++i) {
-    disc_tmp_.noalias() = At_pow_ * At_;
-    At_pow_.swap(disc_tmp_);
-    factorial *= i;
-    Ad_ += At_pow_ / factorial;
-    G_ += At_pow_ / (factorial * (i + 1));
-    term_bound *= At_norm * scale / (i + 1);
-  }
-  G_ *= dt * scale;
-
-  for (int j{0}; j < num_squarings; ++j) {
-    disc_tmp_.noalias() = Ad_ * G_;
-    G_ += disc_tmp_; // G(2h) = G(h) + E(h) G(h), uses E(h) before squaring
-    disc_tmp_.noalias() = Ad_ * Ad_;
-    Ad_.swap(disc_tmp_); // E(2h) = E(h)^2
-  }
-
-  Bd_.noalias() = G_ * Bc;
-  wd_.noalias() = G_ * wc;
+  discretizer_.discretize(Ac, Bc, wc, dt, Ad_, Bd_, wd_, tol);
   model_set_ = true;
   return qpUpdateModel();
 }

@@ -16,6 +16,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     The most important names exported by `affine_mpc` are:
 
     - `Parameterization`
+    - `Discretizer`
     - `Options`
     - `OSQPSettings`
     - `CondensedMPC`
@@ -177,6 +178,21 @@ The matrix exponential is computed with scaling and squaring, so the result stay
 An optional fifth argument, `tol` (default `1e-10`), sets the truncation tolerance of the underlying Taylor series.
 The default gives results close to machine precision.
 If you relinearize and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
+The same discretization is available on its own as `Discretizer`, e.g. to simulate the plant or to discretize a model before passing it to several MPC objects:
+
+=== "Python"
+
+    ```python
+    disc = affine_mpc.Discretizer(state_dim, input_dim)
+    Ad, Bd, wd = disc.discretize(Ac, Bc, wc, dt)
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::Discretizer disc{state_dim, input_dim};
+    disc.discretize(Ac, Bc, wc, dt, Ad, Bd, wd); // writes into Ad, Bd, wd
+    ```
 
 #### Set input limits
 

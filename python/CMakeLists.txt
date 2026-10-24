@@ -29,6 +29,7 @@ pybind11_add_module(_bindings MODULE
   bindings/affine_mpc_py_module.cpp
   bindings/py_options.cpp
   bindings/py_parameterization.cpp
+  bindings/py_discretizer.cpp
   bindings/py_osqp_settings.cpp
   bindings/py_solve_status.cpp
   bindings/py_mpc_base.cpp

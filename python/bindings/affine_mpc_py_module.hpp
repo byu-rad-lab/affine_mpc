@@ -7,6 +7,7 @@ namespace affine_mpc_py {
 
 void moduleAddOptions(pybind11::module& m);
 void moduleAddParameterization(pybind11::module& m);
+void moduleAddDiscretizer(pybind11::module& m);
 void moduleAddOsqpSettings(pybind11::module& m);
 void moduleAddSolveStatus(pybind11::module& m);
 void moduleAddMPCBase(pybind11::module& m);

@@ -54,6 +54,7 @@ add_library(${PROJECT_NAME}
   src/solve_status.cpp
   src/osqp_solver.cpp
   src/vector_parameterization.cpp
+  src/discretizer.cpp
   src/mpc_base.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
@@ -137,6 +138,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/parameterization_tests.cpp
+    test/affine_mpc/discretizer_tests.cpp
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp

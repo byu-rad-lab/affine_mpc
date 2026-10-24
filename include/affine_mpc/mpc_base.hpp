@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 
+#include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
@@ -164,14 +165,8 @@ public:
    *
    *   The discretization assumes the input u is constant over the time step
    *   (true for discrete controllers like MPC) and uses a matrix exponential,
-   *   which is an exact discretization (theoretically).
-   *
-   *   The matrix exponential is computed with scaling and squaring: the step is
-   *   halved `s` times until `||A*h||_1 <= 0.5` (with `h = dt / 2^s`), a
-   *   Taylor series is evaluated at `h`, and the result is squared `s` times
-   *   to recover `dt`. When `||A*dt||_1 <= 0.5` no squaring is needed. The
-   *   Taylor series stops once the bound on the next term,
-   *   `||A*h||_1^i / i!`, is smaller than `tol`.
+   *   which is an exact discretization (theoretically). See Discretizer, which
+   *   computes it and can also be used on its own.
    * @param Ac Continuous-time state matrix A.
    * @param Bc Continuous-time input matrix B.
    * @param wc Continuous-time affine/bias term w.
@@ -520,8 +515,7 @@ protected:
   Eigen::MatrixXd Ad_, Bd_;
   Eigen::VectorXd wd_;
 
-  // Working matrices for model discretization
-  Eigen::MatrixXd G_, At_, At_pow_, disc_tmp_;
+  Discretizer discretizer_; // for setModelContinuous2Discrete()
 
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big_, R_big_;
   Eigen::VectorXd x_ref_, ctrls_ref_, u_min_, u_max_, x_min_, x_max_;

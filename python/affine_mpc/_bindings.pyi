@@ -10,6 +10,7 @@ import typing
 
 __all__: list[str] = [
     "CondensedMPC",
+    "Discretizer",
     "MPCBase",
     "MPCLogger",
     "OSQPSettings",
@@ -386,6 +387,115 @@ class Parameterization:
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
     @property
     def num_control_points(self) -> int: ...
+
+class Discretizer:
+    """
+    Discretizes a continuous-time affine model dx/dt = Ac x + Bc u + wc into
+    x_next = Ad x + Bd u + wd, assuming the input is held constant over each time
+    step (zero-order hold).
+
+    The result is exact up to the truncation tolerance: Ad = exp(Ac dt),
+    Bd = G Bc, and wd = G wc with G = integral_0^dt exp(Ac s) ds. The matrix
+    exponential is computed with scaling and squaring. The last G is kept, so a new
+    model offset can be discretized without recomputing the matrix exponential
+    (see discretizeOffset()). Useful on its own for simulation and for
+    updating the affine approximation of a nonlinear model.
+    """
+
+    def __init__(self, state_dim: int, input_dim: int) -> None:
+        """
+        Construct a Discretizer for models of the given dimensions.
+
+        Args:
+            state_dim: State vector dimension (positive).
+            input_dim: Input vector dimension (positive).
+
+        Raises:
+            ValueError: If a dimension is not positive.
+        """
+
+    def __repr__(self) -> str: ...
+    def discretize(
+        self,
+        Ac: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        Bc: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        wc: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        dt: float,
+        tol: float = 1e-10,
+    ) -> tuple[
+        typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"],
+        typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"],
+        typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ]:
+        """
+        Discretize a continuous-time affine model.
+
+        Args:
+            Ac: Continuous-time state matrix (state_dim x state_dim).
+            Bc: Continuous-time input matrix (state_dim x input_dim).
+            wc: Continuous-time model offset (size state_dim).
+            dt: Time step in seconds (positive).
+            tol: Truncation tolerance for the Taylor series (positive). The actual
+                error is typically two to three orders of magnitude smaller than tol.
+                The default gives results close to machine precision; larger values
+                (e.g., 1e-6) save a few matrix products.
+
+        Returns:
+            (Ad, Bd, wd): Discrete-time state matrix, input matrix, and model offset.
+
+        Raises:
+            ValueError: If a size is wrong, dt or tol is not positive, or Ac*dt is not
+                finite.
+        """
+
+    def discretizeOffset(
+        self, wc: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Discretize only a model offset with the state matrix and time step of the last
+        discretize() call: wd = G wc. Costs one matrix-vector product, with no matrix
+        exponential.
+
+        Args:
+            wc: Continuous-time model offset (size state_dim).
+
+        Returns:
+            wd: Discrete-time model offset.
+
+        Raises:
+            ValueError: If wc has the wrong size.
+            RuntimeError: If discretize() has not been called.
+        """
+
+    def getExponentialIntegral(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get a copy of G = integral_0^dt exp(Ac s) ds from the last discretize() call
+        (Bd = G Bc, wd = G wc).
+
+        Raises:
+            RuntimeError: If discretize() has not been called.
+        """
+
+    def getInputDim(self) -> int:
+        """
+        Get the input dimension.
+        """
+
+    def getStateDim(self) -> int:
+        """
+        Get the state dimension.
+        """
+
+    def hasDiscretized(self) -> bool:
+        """
+        Whether discretize() has been called.
+        """
 
 class OSQPSettings:
     """

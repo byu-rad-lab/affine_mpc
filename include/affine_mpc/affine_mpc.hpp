@@ -11,11 +11,13 @@
  * This header provides access to:
  *  - Options configuration
  *  - Input parameterization (B-splines, move-blocking, etc.)
+ *  - Model discretization (Discretizer)
  *  - Solve status codes
  *  - Core MPC classes (CondensedMPC, SparseMPC)
  *  - Logging utilities
  */
 
+#include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
