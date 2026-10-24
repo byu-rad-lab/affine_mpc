@@ -202,6 +202,11 @@ Knots do not have to be integers or at least one sample apart, but every control
 A control point whose basis function is zero at every sample $k = 0, \dots, T-1$ would only add a direction the QP can not see, so construction throws `std::invalid_argument` (`ValueError` in Python).
 For example, `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` is rejected because control point 2 is only nonzero on $(3.2, 3.22)$, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
 
+Clustered or very short knot intervals make the QP worse conditioned, because nearby control points affect almost the same samples.
+In the knot optimization experiments, degree 0 with optimized (clustered) knots had a median QP condition number of $1.45 \times 10^5$, compared with about $10^3$ for uniform or geometric knots.
+OSQP then needs more iterations and may stop at `MaxIterReached`.
+A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
+
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
 
 ## Next Step
