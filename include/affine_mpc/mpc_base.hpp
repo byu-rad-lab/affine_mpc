@@ -177,7 +177,7 @@ public:
    *   actual error in the discrete model is typically two to three orders of
    *   magnitude smaller than `tol`. The default gives results close to machine
    *   precision. Larger values (e.g., 1e-6) save a few matrix products, which
-   *   can help when the model is relinearized every time step.
+   *   can help when the affine approximation is updated every time step.
    * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
