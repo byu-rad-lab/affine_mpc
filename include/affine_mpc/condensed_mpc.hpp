@@ -73,6 +73,7 @@ protected: // for testing
 
 private:
   bool qpUpdateModel() override final;
+  void qpUpdateModelOffset() override final;
   bool qpUpdateReferences() override final;
   bool qpUpdateInputLimits() override final;
   bool qpUpdateStateLimits() override final;

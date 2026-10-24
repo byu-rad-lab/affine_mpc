@@ -43,6 +43,7 @@ public:
     PYBIND11_OVERLOAD_PURE(bool, MPCBase, qpUpdateX0, x0);
   }
   bool qpUpdateModel() override { return true; }
+  void qpUpdateModelOffset() override {}
   bool qpUpdateReferences() override { return true; }
   bool qpUpdateInputLimits() override { return true; }
   bool qpUpdateStateLimits() override { return true; }
@@ -390,6 +391,45 @@ Returns:
            )doc",
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
            py::arg("tol") = 1e-10);
+
+  base.def("setModelOffsetDiscrete", &ampc::MPCBase::setModelOffsetDiscrete,
+           R"doc(
+Set only the model offset wd of the discrete-time model x_next = Ad x + Bd u +
+wd, keeping Ad and Bd.
+
+Much cheaper than setModelDiscrete(): the offset only enters vectors of the QP,
+so the QP matrices are not rebuilt and the solver does not refactor. Use it when
+only the offset changes between solves, e.g. a disturbance estimate for
+offset-free tracking or a measured exogenous input.
+
+Args:
+    wd: Discrete-time model offset.
+
+Raises:
+    ValueError: If wd does not have size state_dim.
+    RuntimeError: If the model has not been set.
+           )doc",
+           py::arg("wd"));
+
+  base.def("setModelOffsetContinuous2Discrete",
+           &ampc::MPCBase::setModelOffsetContinuous2Discrete,
+           R"doc(
+Set only the model offset from a continuous-time offset wc, discretized with the
+state matrix and time step of the last setModelContinuous2Discrete() call
+(wd = G wc, see Discretizer).
+
+Costs one matrix-vector product (no matrix exponential), and like
+setModelOffsetDiscrete() does not rebuild the QP matrices.
+
+Args:
+    wc: Continuous-time model offset.
+
+Raises:
+    ValueError: If wc does not have size state_dim.
+    RuntimeError: If the model was not last set with
+        setModelContinuous2Discrete().
+           )doc",
+           py::arg("wc"));
 
   base.def("setWeights",
            py::overload_cast<const Eigen::Ref<const Eigen::VectorXd>&,

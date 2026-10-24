@@ -103,14 +103,7 @@ bool SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 
 bool SparseMPC::qpUpdateModel()
 {
-  // Don't need to update 1st state block since it must be updated every solve
-  // with x0 anyway. Similarly, don't need to update l/u with solver
-  const auto neg_wd = (-wd_).eval();
-  for (Index k{1}, offset{state_dim_}; k < horizon_steps_;
-       ++k, offset += state_dim_) {
-    l_.segment(offset, state_dim_) = neg_wd;
-    u_.segment(offset, state_dim_) = neg_wd;
-  }
+  setDynamicsOffsetBounds();
 
   // set model constraints that multiply controls
   const Parameterization& param{input_param_.parameterization()};
@@ -136,6 +129,12 @@ bool SparseMPC::qpUpdateModel()
   if (!updated)
     weights_changed_ = true;
   return updated;
+}
+
+void SparseMPC::qpUpdateModelOffset()
+{
+  // The bounds are sent to the solver at every solve
+  setDynamicsOffsetBounds();
 }
 
 bool SparseMPC::qpUpdateReferences()
@@ -168,6 +167,17 @@ bool SparseMPC::qpUpdateSlewRate()
 }
 
 void SparseMPC::qpUpdateWeights() { weights_changed_ = true; }
+
+void SparseMPC::setDynamicsOffsetBounds()
+{
+  // Don't need to update 1st state block since it must be updated every solve
+  // with x0 anyway. Similarly, don't need to update l/u with solver
+  for (Index k{1}, offset{state_dim_}; k < horizon_steps_;
+       ++k, offset += state_dim_) {
+    l_.segment(offset, state_dim_) = -wd_;
+    u_.segment(offset, state_dim_) = -wd_;
+  }
+}
 
 void SparseMPC::calcBothCostTerms()
 {

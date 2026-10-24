@@ -70,12 +70,15 @@ protected: // for testing
 
 private:
   bool qpUpdateModel() override final;
+  void qpUpdateModelOffset() override final;
   bool qpUpdateReferences() override final;
   bool qpUpdateInputLimits() override final;
   bool qpUpdateStateLimits() override final;
   bool qpUpdateSlewRate() override final;
   void qpUpdateWeights() override final;
 
+  // dynamics-row bounds -wd_ for steps k >= 1 (k = 0 also depends on x0)
+  void setDynamicsOffsetBounds();
   void calcBothCostTerms();
   void calcCostVector();
 

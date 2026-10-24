@@ -32,6 +32,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     The most important types in the `affine_mpc` namespace are:
 
     - `Parameterization`
+    - `Discretizer`
     - `Options`
     - `MPCBase`
     - `CondensedMPC`
@@ -178,6 +179,8 @@ The matrix exponential is computed with scaling and squaring, so the result stay
 An optional fifth argument, `tol` (default `1e-10`), sets the truncation tolerance of the underlying Taylor series.
 The default gives results close to machine precision.
 If you relinearize and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
+If only the model offset changes between solves (with $A$ and $B$ fixed), set it with `setModelOffsetDiscrete(wd)` or `setModelOffsetContinuous2Discrete(wc)` instead, which avoids rebuilding and refactoring the QP (see [Runtime Updates](concepts/runtime-updates.md#what-can-change-between-solves)).
+
 The same discretization is available on its own as `Discretizer`, e.g. to simulate the plant or to discretize a model before passing it to several MPC objects:
 
 === "Python"

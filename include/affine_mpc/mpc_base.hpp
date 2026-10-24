@@ -187,6 +187,36 @@ public:
                                    double tol = 1e-10);
 
   /**
+   * @brief Set only the model offset `wd` of the discrete-time model
+   *   `x_next = Ad x + Bd u + wd`, keeping `Ad` and `Bd`.
+   *
+   *   Much cheaper than setModelDiscrete(): the offset only enters vectors of
+   *   the QP, so the QP matrices are not rebuilt and the solver does not
+   *   refactor. Use it when only the offset changes between solves, e.g. a
+   *   disturbance estimate for offset-free tracking or a measured exogenous
+   *   input.
+   * @param wd Discrete-time model offset.
+   * @throws std::invalid_argument if wd does not have size state_dim.
+   * @throws std::logic_error if the model has not been set.
+   */
+  void setModelOffsetDiscrete(const Eigen::Ref<const Eigen::VectorXd>& wd);
+
+  /**
+   * @brief Set only the model offset from a continuous-time offset `wc`,
+   *   discretized with the state matrix and time step of the last
+   *   setModelContinuous2Discrete() call (`wd = G wc`, see Discretizer).
+   *
+   *   Costs one matrix-vector product (no matrix exponential), and like
+   *   setModelOffsetDiscrete() does not rebuild the QP matrices.
+   * @param wc Continuous-time model offset.
+   * @throws std::invalid_argument if wc does not have size state_dim.
+   * @throws std::logic_error if the model was not last set with
+   *   setModelContinuous2Discrete().
+   */
+  void setModelOffsetContinuous2Discrete(
+      const Eigen::Ref<const Eigen::VectorXd>& wc);
+
+  /**
    * @brief Set state and input weights for the cost function.
    *
    *   This method can only be called if `use_input_cost` is enabled.
@@ -506,7 +536,7 @@ protected:
   const std::vector<int> u_sat_samples_;
   const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
   const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;
-  bool model_set_, u_lims_set_, x_lims_set_;
+  bool model_set_, model_from_continuous_, u_lims_set_, x_lims_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
   double mpc_solve_time_; ///< duration of the last solve() call (seconds)
@@ -541,6 +571,9 @@ private:
   // assembled QP to the solver directly.
   virtual bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
   virtual bool qpUpdateModel() = 0;
+  // Only the model offset wd_ changed (Ad_ and Bd_ did not), which only enters
+  // vectors of the QP
+  virtual void qpUpdateModelOffset() = 0;
   virtual bool qpUpdateReferences() = 0;
   virtual bool qpUpdateInputLimits() = 0;
   virtual bool qpUpdateStateLimits() = 0;

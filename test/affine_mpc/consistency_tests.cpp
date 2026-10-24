@@ -607,6 +607,19 @@ void setMsdModel(ampc::MPCBase& mpc)
   mpc.setModelContinuous2Discrete(A, B, w, 0.1);
 }
 
+// Everything but the model
+void configureMsdLimits(ampc::MPCBase& mpc, const ampc::Options& opts)
+{
+  mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  if (opts.use_input_cost)
+    mpc.setReferenceInput(VectorXd::Zero(1));
+  if (opts.slew_initial_input)
+    mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
+  if (opts.saturate_states)
+    mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
+}
+
 void configureMsd(ampc::MPCBase& mpc, const ampc::Options& opts)
 {
   setMsdModel(mpc);
@@ -1240,4 +1253,104 @@ TEST(ConsistencyTester, givenNoActiveConstraints_SolutionMatchesLeastSquares)
   check(condensed);
   ampc::SparseMPC sparse{n, m, param, {.use_input_cost = true}};
   check(sparse);
+}
+
+// ---- model offset updates --------------------------------------------------
+
+TEST(ConsistencyTester, givenModelOffsetUpdate_MatchesModelSetWithThatOffset)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .saturate_states = true};
+  Matrix2d Ad;
+  Ad << 0.99, 0.1, -0.06, 0.98;
+  const Vector2d Bd{0.001, 0.02}, w1{0.0, 0.0}, w2{0.002, -0.01};
+  const Vector2d x0{0.5, -0.2};
+
+  auto configure = [&](ampc::MPCBase& mpc, const Vector2d& w) {
+    mpc.setModelDiscrete(Ad, Bd, w);
+    configureMsdLimits(mpc, opts);
+    ASSERT_TRUE(mpc.initializeSolver());
+  };
+  auto check = [&](ampc::MPCBase& updated, ampc::MPCBase& reference) {
+    configure(updated, w1);
+    ASSERT_EQ(updated.solve(x0), ampc::SolveStatus::Success);
+    updated.setModelOffsetDiscrete(w2);
+    updated.resetWarmStart();
+    ASSERT_EQ(updated.solve(x0), ampc::SolveStatus::Success);
+
+    configure(reference, w2);
+    ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd u_updated{m * T}, u_reference{m * T};
+    updated.getInputTrajectory(u_updated);
+    reference.getInputTrajectory(u_reference);
+    EXPECT_TRUE(expectEigenNear(u_updated, u_reference, 1e-9));
+    VectorXd x_updated{n * T}, x_reference{n * T};
+    updated.getPredictedStateTrajectory(x_updated);
+    reference.getPredictedStateTrajectory(x_reference);
+    EXPECT_TRUE(expectEigenNear(x_updated, x_reference, 1e-9));
+
+    // the model used for propagation has the new offset too
+    VectorXd x_next{n};
+    updated.propagateModel(x0, VectorXd::Ones(m), x_next);
+    EXPECT_TRUE(expectEigenNear(x_next, Vector2d{Ad * x0 + Bd + w2}, 1e-15));
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts},
+      condensed_ref{n, m, param, opts};
+  check(condensed, condensed_ref);
+  ampc::SparseMPC sparse{n, m, param, opts}, sparse_ref{n, m, param, opts};
+  check(sparse, sparse_ref);
+}
+
+TEST(ConsistencyTester, givenContinuousModelOffsetUpdate_ReusesDiscretization)
+{
+  const int n{2}, m{1};
+  Matrix2d Ac;
+  Ac << 0, 1, -0.6, -0.1;
+  const Vector2d Bc{0, 0.2}, wc1{0, 0}, wc2{0.3, -0.4};
+  const double dt{0.1};
+  const Vector2d x{0.5, -0.2};
+  const VectorXd u{VectorXd::Constant(m, 1.5)};
+
+  ampc::CondensedMPC updated{n, m, 10}, reference{n, m, 10};
+  updated.setModelContinuous2Discrete(Ac, Bc, wc1, dt);
+  updated.setModelOffsetContinuous2Discrete(wc2);
+  reference.setModelContinuous2Discrete(Ac, Bc, wc2, dt);
+
+  VectorXd x_updated{n}, x_reference{n};
+  updated.propagateModel(x, u, x_updated);
+  reference.propagateModel(x, u, x_reference);
+  EXPECT_TRUE(expectEigenNear(x_updated, x_reference, 0.0));
+}
+
+TEST(ConsistencyTester, givenInvalidModelOffsetUpdate_Throws)
+{
+  ampc::SparseMPC mpc{2, 1, 10};
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetDiscrete(Vector2d::Zero()); },
+      "Model must be set");
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector2d::Zero()); },
+      "setModelContinuous2Discrete");
+
+  mpc.setModelDiscrete(Matrix2d::Identity(), Vector2d{0, 1}, Vector2d::Zero());
+  expectInvalidArgumentWithMessage(
+      [&] { mpc.setModelOffsetDiscrete(Vector3d::Zero()); },
+      "wd must have size 2");
+  // the continuous variant needs the G of a continuous model
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector2d::Zero()); },
+      "setModelContinuous2Discrete");
+
+  Matrix2d Ac;
+  Ac << 0, 1, -0.6, -0.1;
+  mpc.setModelContinuous2Discrete(Ac, Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
+  EXPECT_NO_THROW(mpc.setModelOffsetContinuous2Discrete(Vector2d::Ones()));
+  expectInvalidArgumentWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector3d::Zero()); },
+      "wc must have size 2");
 }

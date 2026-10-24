@@ -188,3 +188,30 @@ def test_solve_in_threads_matches_sequential_solve(cls):
     # exceptions still propagate with the GIL released during the call
     with pytest.raises(ValueError, match="x0"):
         _msd_mpc(cls).solve(np.zeros(3))
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_model_offset_setters(cls):
+    n, m = 2, 1
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    Bc = np.array([0.0, 0.2])
+    x, u = np.array([0.5, -0.2]), np.array([1.5])
+
+    mpc = cls(n, m, ampc.Parameterization.linearInterp(20, 5))
+    with pytest.raises(RuntimeError, match="Model must be set"):
+        mpc.setModelOffsetDiscrete(wd=np.zeros(n))
+
+    mpc.setModelContinuous2Discrete(Ac, Bc, np.zeros(n), 0.1)
+    wc = np.array([0.3, -0.4])
+    mpc.setModelOffsetContinuous2Discrete(wc=wc)
+    Ad, Bd, wd = ampc.Discretizer(n, m).discretize(Ac, Bc, wc, 0.1)
+    np.testing.assert_allclose(mpc.propagateModel(x, u), Ad @ x + Bd @ u + wd, atol=1e-15)
+
+    mpc.setModelOffsetDiscrete(wd=np.array([0.01, 0.02]))
+    np.testing.assert_allclose(
+        mpc.propagateModel(x, u), Ad @ x + Bd @ u + [0.01, 0.02], atol=1e-15
+    )
+
+    mpc.setModelDiscrete(Ad, Bd, wd)
+    with pytest.raises(RuntimeError, match="setModelContinuous2Discrete"):
+        mpc.setModelOffsetContinuous2Discrete(wc)

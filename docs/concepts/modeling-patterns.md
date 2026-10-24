@@ -35,7 +35,7 @@ $$
 $$
 
 where an observer (your own, e.g. a Kalman filter on the state augmented with $\mathbf{d}$) estimates $\hat{\mathbf{d}}_k$ from measurements.
-Before each solve, set the model offset to $\mathbf{w} = \mathbf{w}_{\mathrm{nom}} + B_{\mathrm{d}} \hat{\mathbf{d}}_k$ with $A$ and $B$ unchanged.
+Before each solve, set the model offset to $\mathbf{w} = \mathbf{w}_{\mathrm{nom}} + B_{\mathrm{d}} \hat{\mathbf{d}}_k$ with `setModelOffsetDiscrete()` (or `setModelOffsetContinuous2Discrete()` for a continuous-time offset), which keeps $A$ and $B$ and so does not rebuild the QP matrices.
 The MPC then predicts with the current disturbance estimate and removes the offset at steady state.
 For an input disturbance, $B_{\mathrm{d}} = B$.
 

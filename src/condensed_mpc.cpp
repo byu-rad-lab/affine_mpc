@@ -113,6 +113,11 @@ bool CondensedMPC::qpUpdateModel()
   return true;
 }
 
+void CondensedMPC::qpUpdateModelOffset()
+{
+  // wd_ only enters v_, which qpUpdateX0() rebuilds at every solve
+}
+
 bool CondensedMPC::qpUpdateReferences()
 {
   // no need to do anything because they only affect q, which is updated every

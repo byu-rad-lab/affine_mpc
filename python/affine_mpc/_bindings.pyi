@@ -1272,6 +1272,46 @@ class MPCBase:
             success: True if the internal QP was updated properly. Unlikely to be False.
         """
 
+    def setModelOffsetContinuous2Discrete(
+        self, wc: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+    ) -> None:
+        """
+        Set only the model offset from a continuous-time offset wc, discretized with the
+        state matrix and time step of the last setModelContinuous2Discrete() call
+        (wd = G wc, see Discretizer).
+
+        Costs one matrix-vector product (no matrix exponential), and like
+        setModelOffsetDiscrete() does not rebuild the QP matrices.
+
+        Args:
+            wc: Continuous-time model offset.
+
+        Raises:
+            ValueError: If wc does not have size state_dim.
+            RuntimeError: If the model was not last set with
+                setModelContinuous2Discrete().
+        """
+
+    def setModelOffsetDiscrete(
+        self, wd: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+    ) -> None:
+        """
+        Set only the model offset wd of the discrete-time model x_next = Ad x + Bd u +
+        wd, keeping Ad and Bd.
+
+        Much cheaper than setModelDiscrete(): the offset only enters vectors of the QP,
+        so the QP matrices are not rebuilt and the solver does not refactor. Use it when
+        only the offset changes between solves, e.g. a disturbance estimate for
+        offset-free tracking or a measured exogenous input.
+
+        Args:
+            wd: Discrete-time model offset.
+
+        Raises:
+            ValueError: If wd does not have size state_dim.
+            RuntimeError: If the model has not been set.
+        """
+
     def setPreviousInput(
         self, u_prev: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> bool:

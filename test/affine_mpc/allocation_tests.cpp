@@ -143,6 +143,8 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "weights";
   mpc.setModelContinuous2Discrete(1.1 * Ac, Bc, Vector2d{0.0, 0.01}, 0.1);
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "model";
+  mpc.setModelOffsetDiscrete(Vector2d{0.0, 0.02});
+  EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "offset";
   mpc.setReferenceState(Vector2d{0.5, 0.0});
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "references";
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));

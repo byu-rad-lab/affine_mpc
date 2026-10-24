@@ -54,6 +54,7 @@ protected:
     return true;
   }
   bool qpUpdateModel() override final { return true; }
+  void qpUpdateModelOffset() override final {}
   bool qpUpdateReferences() override final { return true; }
   bool qpUpdateInputLimits() override final { return true; }
   bool qpUpdateStateLimits() override final { return true; }

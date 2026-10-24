@@ -47,14 +47,15 @@ In practice this means:
 
 The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 
-- model terms: $A$, $B$, $\mathbf{w}$
+- model matrices: $A$, $B$
 - weights: $Q$, $Q_f$, $R$
 - enabled options and constraint structure
 - parameterization structure through the chosen `Parameterization`
 
 `Options` and `Parameterization` do not change at runtime,
 but they determine the QP structure within which runtime updates occur.
-The runtime-updated inputs that can affect QP sparsity are the model terms and weights.
+The runtime-updated inputs that can affect QP sparsity are the model matrices and weights.
+The model offset $\mathbf{w}$ only enters the QP vectors, so it never affects sparsity.
 To preserve sparsity structure,
 ensure that any model or weight updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
@@ -102,6 +103,7 @@ Entries related to optional constraints assume the corresponding constraint fami
 | ---------------------------------------------------- | --------------------------------------------------------- |
 | $\mathbf{x}_0$                                       | `solve()`                                                 |
 | $A$, $B$, $\mathbf{w}$                               | `setModelDiscrete()`, `setModelContinuous2Discrete()`     |
+| $\mathbf{w}$ only                                    | `setModelOffsetDiscrete()`, `setModelOffsetContinuous2Discrete()` |
 | $\bar{\mathbf{x}}$                                   | `setReferenceState()`, `setReferenceStateTrajectory()`    |
 | $\bar{\mathbf{c}}$                                   | `setReferenceInput()`, `setReferenceInputControlPoints()` |
 | $Q$, $Q_f$                                           | `setWeights()`, `setStateWeights()`                       |
@@ -110,6 +112,10 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{u}_\mathrm{min}$, $\mathbf{u}_\mathrm{max}$ | `setInputLimits()`                                        |
 | $\mathbf{u}_{0,\mathrm{slew}}$                       | `setSlewRateInitial()`                                    |
 | $\mathbf{c}_\mathrm{slew}$                           | `setSlewRate()`                                           |
+
+Updates differ in cost.
+Changing $A$ or $B$ (any call to `setModelDiscrete()` or `setModelContinuous2Discrete()`) rebuilds the QP matrices and makes OSQP refactor its linear system at the next solve, as do weight changes.
+If only the model offset changes, e.g. a disturbance estimate for offset-free tracking, use `setModelOffsetDiscrete()` or `setModelOffsetContinuous2Discrete()` instead: they only update QP vectors, like references and limits, and the continuous variant reuses the last discretization instead of computing a new matrix exponential.
 
 ## MPC to QP Relationship
 

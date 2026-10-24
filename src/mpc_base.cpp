@@ -104,6 +104,7 @@ MPCBase::MPCBase(int state_dim,
     slew_idx_{slew0_idx_ + input_dim * opts.slew_initial_input},
     x_sat_idx_{slew_idx_ + slew_dim_},
     model_set_{false},
+    model_from_continuous_{false},
     u_lims_set_{false},
     x_lims_set_{false},
     slew0_rate_set_{false},
@@ -330,6 +331,7 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   Bd_ = Bd;
   wd_ = wd;
   model_set_ = true;
+  model_from_continuous_ = false;
   return qpUpdateModel();
 }
 
@@ -346,7 +348,31 @@ bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   validateSize(wc.size(), state_dim_, "setModelContinuous2Discrete", "wc");
   discretizer_.discretize(Ac, Bc, wc, dt, Ad_, Bd_, wd_, tol);
   model_set_ = true;
+  model_from_continuous_ = true;
   return qpUpdateModel();
+}
+
+void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
+{
+  validateSize(wd.size(), state_dim_, "setModelOffsetDiscrete", "wd");
+  if (!model_set_)
+    throw std::logic_error("[MPCBase::setModelOffsetDiscrete] Model must be "
+                           "set before its offset.");
+  wd_ = wd;
+  qpUpdateModelOffset();
+}
+
+void MPCBase::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
+{
+  validateSize(wc.size(), state_dim_, "setModelOffsetContinuous2Discrete",
+               "wc");
+  if (!model_from_continuous_)
+    throw std::logic_error(
+        "[MPCBase::setModelOffsetContinuous2Discrete] The model must be last "
+        "set with setModelContinuous2Discrete(), whose discretization is "
+        "reused.");
+  discretizer_.discretizeOffset(wc, wd_);
+  qpUpdateModelOffset();
 }
 
 void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
