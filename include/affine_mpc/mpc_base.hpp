@@ -152,7 +152,7 @@ public:
    *   The model being `x_next = Ax + Bu + w`.
    * @param Ad Discrete-time state matrix A.
    * @param Bd Discrete-time input matrix B.
-   * @param wd Discrete-time affine/bias vector w.
+   * @param wd Discrete-time model offset w.
    * @return True if internal QP was updated properly. Unlikely to be false.
    */
   bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
@@ -169,7 +169,7 @@ public:
    *   computes it and can also be used on its own.
    * @param Ac Continuous-time state matrix A.
    * @param Bc Continuous-time input matrix B.
-   * @param wc Continuous-time affine/bias term w.
+   * @param wc Continuous-time model offset w.
    * @param dt Discretization time step in seconds (positive). This usually
    *   matches the control rate, and the input is held constant for this
    *   duration.

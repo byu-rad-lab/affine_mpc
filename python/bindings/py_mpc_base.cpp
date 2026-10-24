@@ -352,7 +352,7 @@ being `x_next = Ax + Bu + w`.
 Args:
     Ad: Discrete-time state matrix A.
     Bd: Discrete-time input matrix B.
-    wd: Discrete-time affine/bias vector w.
+    wd: Discrete-time model offset w.
 
 Returns:
     success: True if the internal QP was updated properly. Unlikely to be False.
@@ -377,7 +377,7 @@ on the next term, `||A*h||_1^i / i!`, is smaller than `tol`.
 Args:
     Ac: Continuous-time state matrix A.
     Bc: Continuous-time input matrix B.
-    wc: Continuous-time affine/bias vector w.
+    wc: Continuous-time model offset w.
     dt (seconds): Discretization time step (positive). This usually matches the
         control rate, and the input is held constant for this duration.
     tol: Truncation tolerance for the Taylor series (positive). The actual error

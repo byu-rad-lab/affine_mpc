@@ -12,6 +12,9 @@
     | $\eta$ | number of control points that parameterize the input trajectory |
     | $\mathbf{x}_k \in \mathbb{R}^n$ | state vector at horizon step $k$ |
     | $\mathbf{u}_k \in \mathbb{R}^m$ | input vector applied at horizon step $k$ |
+    | $A \in \mathbb{R}^{n \times n}$ | discrete-time state matrix |
+    | $B \in \mathbb{R}^{n \times m}$ | discrete-time input matrix |
+    | $\mathbf{w} \in \mathbb{R}^n$ | discrete-time model offset |
     | $\mathbf{u}_{-1} \in \mathbb{R}^m$ | previous input, applied before the current horizon |
     | $\mathbf{c}_i \in \mathbb{R}^m$ | control point vector at index $i$ |
     | $\bar{\mathbf{x}}_k \in \mathbb{R}^n$ | reference state at horizon step $k$ |

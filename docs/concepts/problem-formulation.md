@@ -10,6 +10,9 @@ $$
 \mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w},
 $$
 
+where $\mathbf{w}$ is the model offset.
+It holds everything that does not depend on the state or input, such as gravity, the operating point of an affine approximation, or a disturbance estimate (see [Modeling Patterns](modeling-patterns.md)).
+
 ## Base Problem
 
 $$
