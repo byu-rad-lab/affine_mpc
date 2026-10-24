@@ -170,7 +170,7 @@ if(AFFINE_MPC_BUILD_TESTS)
       )
       set(python_npz_tests_env
         "PYTHONPATH=${CMAKE_BINARY_DIR}"
-        "AFFINE_MPC_NP_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/np_writer_fixture"
+        "AFFINE_MPC_NP_WRITER_FIXTURE=$<TARGET_FILE:np_writer_fixture>"
         "AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
       )
       set_tests_properties(python_npz_tests PROPERTIES
