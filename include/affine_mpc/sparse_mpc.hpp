@@ -63,8 +63,9 @@ public:
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
 
-protected: // for testing
   const char* getClassName() const noexcept override { return "SparseMPC"; }
+
+protected: // for testing
   bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
 private:

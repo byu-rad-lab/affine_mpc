@@ -645,31 +645,31 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
   const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << ":\n  state_dim = " << mpc.state_dim_
-     << "\n  input_dim = " << mpc.input_dim_
+  os << mpc.getClassName() << ":\n  state_dim = " << mpc.getStateDim()
+     << "\n  input_dim = " << mpc.getInputDim()
      << "\n  parameterization = " << param << "\n  options = ";
-  print(os, mpc.opts_, capitalize_bools);
+  print(os, mpc.getOptions(), capitalize_bools);
   os << "\n  solver_initialized = ";
   if (capitalize_bools)
-    os << (mpc.solver_initialized_ ? "True" : "False");
+    os << (mpc.isSolverInitialized() ? "True" : "False");
   else
-    os << (mpc.solver_initialized_ ? "true" : "false");
+    os << (mpc.isSolverInitialized() ? "true" : "false");
 
   const IOFormat fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
-  os << "\n  Q = " << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
-     << "\n  Qf = " << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
-  if (mpc.opts_.use_input_cost)
-    os << "\n  R = " << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
-  os << "\n  u_min = " << mpc.u_min_.format(fmt)
-     << "\n  u_max = " << mpc.u_max_.format(fmt);
-  if (mpc.opts_.saturate_states)
-    os << "\n  x_min = " << mpc.x_min_.format(fmt)
-       << "\n  x_max = " << mpc.x_max_.format(fmt);
-  if (mpc.opts_.slew_initial_input)
-    os << "\n  u0_slew = " << mpc.u0_slew_.format(fmt);
-  if (mpc.opts_.slew_control_points)
-    os << "\n  control_point_slew = " << mpc.ctrls_slew_.format(fmt);
+  os << "\n  Q = " << mpc.getStateWeights().format(fmt)
+     << "\n  Qf = " << mpc.getTerminalStateWeights().format(fmt);
+  if (mpc.getOptions().use_input_cost)
+    os << "\n  R = " << mpc.getInputWeights().format(fmt);
+  os << "\n  u_min = " << mpc.getInputMin().format(fmt)
+     << "\n  u_max = " << mpc.getInputMax().format(fmt);
+  if (mpc.getOptions().saturate_states)
+    os << "\n  x_min = " << mpc.getStateMin().format(fmt)
+       << "\n  x_max = " << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().slew_initial_input)
+    os << "\n  u0_slew = " << mpc.getSlewRateInitial().format(fmt);
+  if (mpc.getOptions().slew_control_points)
+    os << "\n  control_point_slew = " << mpc.getSlewRate().format(fmt);
   return os;
 }
 
@@ -678,31 +678,31 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
   const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << "(state_dim=" << mpc.state_dim_
-     << ", input_dim=" << mpc.input_dim_ << ", parameterization=" << param
+  os << mpc.getClassName() << "(state_dim=" << mpc.getStateDim()
+     << ", input_dim=" << mpc.getInputDim() << ", parameterization=" << param
      << ", options=";
-  print(os, mpc.opts_, capitalize_bools);
+  print(os, mpc.getOptions(), capitalize_bools);
   os << ", solver_initialized=";
   if (capitalize_bools)
-    os << (mpc.solver_initialized_ ? "True" : "False");
+    os << (mpc.isSolverInitialized() ? "True" : "False");
   else
-    os << (mpc.solver_initialized_ ? "true" : "false");
+    os << (mpc.isSolverInitialized() ? "true" : "false");
 
   const IOFormat fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
-  os << ", Q=" << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
-     << ", Qf=" << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
-  if (mpc.opts_.use_input_cost)
-    os << ", R=" << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
-  os << ", u_min=" << mpc.u_min_.format(fmt)
-     << ", u_max=" << mpc.u_max_.format(fmt);
-  if (mpc.opts_.saturate_states)
-    os << ", x_min=" << mpc.x_min_.format(fmt)
-       << ", x_max=" << mpc.x_max_.format(fmt);
-  if (mpc.opts_.slew_initial_input)
-    os << ", u0_slew=" << mpc.u0_slew_.format(fmt);
-  if (mpc.opts_.slew_control_points)
-    os << ", control_point_slew=" << mpc.ctrls_slew_.format(fmt);
+  os << ", Q=" << mpc.getStateWeights().format(fmt)
+     << ", Qf=" << mpc.getTerminalStateWeights().format(fmt);
+  if (mpc.getOptions().use_input_cost)
+    os << ", R=" << mpc.getInputWeights().format(fmt);
+  os << ", u_min=" << mpc.getInputMin().format(fmt)
+     << ", u_max=" << mpc.getInputMax().format(fmt);
+  if (mpc.getOptions().saturate_states)
+    os << ", x_min=" << mpc.getStateMin().format(fmt)
+       << ", x_max=" << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().slew_initial_input)
+    os << ", u0_slew=" << mpc.getSlewRateInitial().format(fmt);
+  if (mpc.getOptions().slew_control_points)
+    os << ", control_point_slew=" << mpc.getSlewRate().format(fmt);
   os << ')';
   return os;
 }

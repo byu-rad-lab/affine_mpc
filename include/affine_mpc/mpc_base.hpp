@@ -32,13 +32,6 @@ namespace affine_mpc {
  */
 class MPCBase
 {
-  friend class MPCLogger; // allow access to member variables for logging
-  friend std::ostream& operator<<(std::ostream& os, const MPCBase& mpc);
-  friend std::ostream&
-  print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools);
-  friend std::ostream&
-  printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools);
-
 protected:
   /**
    * @brief Construct MPCBase with dimensions, parameterization, options, and
@@ -504,9 +497,10 @@ public:
    */
   [[nodiscard]] bool isWithinSparsityPattern() const;
 
-protected:
+  /// @brief Name of the MPC class (e.g. "CondensedMPC"), as printed by print().
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 
+protected:
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
