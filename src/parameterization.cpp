@@ -91,26 +91,51 @@ void validateKnots(const Ref<const VectorXd>& knots,
         "(technically a spline can repeat knots, but it causes discontinuities "
         "that essentially leave some control points unused and wastes "
         "optimization effort in this context).\n");
+}
 
-  // A basis function that is zero at every sample leaves its control point
-  // without any effect on the inputs, so the QP is singular in that direction.
-  // This happens when knots closer than one sample leave no sample inside a
-  // support (degree 0: a block [t_i, t_i+1) that contains no integer).
+// Index of the first control point of the band at each sample
+VectorXi computeBandStart(int horizon_steps, int degree, const VectorXd& knots)
+{
   using Spline1d = Spline<double, 1>;
-  VectorXd influence{VectorXd::Zero(num_ctrls)};
+  VectorXi start{horizon_steps};
   for (int k{0}; k < horizon_steps; ++k) {
     const double t = k;
-    const int idx = Spline1d::Span(t, degree, knots) - degree;
-    influence.segment(idx, degree + 1) +=
+    start(k) = static_cast<int>(Spline1d::Span(t, degree, knots)) - degree;
+  }
+  return start;
+}
+
+// Nonzero basis function values at each sample (one column per sample)
+MatrixXd
+computeBandWeights(int horizon_steps, int degree, const VectorXd& knots)
+{
+  using Spline1d = Spline<double, 1>;
+  MatrixXd weights{degree + 1, horizon_steps};
+  for (int k{0}; k < horizon_steps; ++k) {
+    const double t = k;
+    weights.col(k) =
         Spline1d::BasisFunctions(t, degree, knots).matrix().transpose();
   }
-  for (int i{0}; i < num_ctrls; ++i) {
+  return weights;
+}
+
+// A basis function that is zero at every sample leaves its control point
+// without any effect on the inputs, so the QP is singular in that direction.
+// This happens when knots closer than one sample leave no sample inside a
+// support (degree 0: a block [t_i, t_i+1) that contains no integer).
+void validateInfluence(const Parameterization& p)
+{
+  VectorXd influence{VectorXd::Zero(p.num_control_points)};
+  for (int k{0}; k < p.horizon_steps; ++k)
+    influence.segment(p.band_start(k), p.band_width) += p.band_weights.col(k);
+  for (int i{0}; i < p.num_control_points; ++i) {
     if (influence(i) == 0.0) {
       std::stringstream ss;
-      ss << std::setprecision(17) << prefix << "control point " << i
+      ss << std::setprecision(17) << "[Parameterization::validateInfluence] "
+         << "control point " << i
          << " has no influence on any sampled input: no sample time k = 0, "
          << "..., horizon_steps-1 lies inside the support of its basis "
-         << "function [" << knots(i) << ", " << knots(i + degree + 1)
+         << "function [" << p.knots(i) << ", " << p.knots(i + p.degree + 1)
          << "]. Spread the knots so every support contains a sample.\n";
       throw std::invalid_argument(ss.str());
     }
@@ -241,8 +266,13 @@ Parameterization::Parameterization(int horizon_steps,
     horizon_steps{horizon_steps},
     degree{degree},
     num_control_points{num_control_points},
-    knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)}
-{}
+    knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)},
+    band_width{degree + 1},
+    band_start{computeBandStart(horizon_steps, degree, knots)},
+    band_weights{computeBandWeights(horizon_steps, degree, knots)}
+{
+  validateInfluence(*this);
+}
 
 Parameterization::Parameterization(int horizon_steps,
                                    int degree,
@@ -250,8 +280,13 @@ Parameterization::Parameterization(int horizon_steps,
     horizon_steps{horizon_steps},
     degree{degree},
     num_control_points{int(knots.size()) - degree - 1},
-    knots{validatedKnots(knots, horizon_steps, degree)}
-{}
+    knots{validatedKnots(knots, horizon_steps, degree)},
+    band_width{degree + 1},
+    band_start{computeBandStart(horizon_steps, degree, this->knots)},
+    band_weights{computeBandWeights(horizon_steps, degree, this->knots)}
+{
+  validateInfluence(*this);
+}
 
 VectorXd Parameterization::evaluate(
     int input_dim,
@@ -265,21 +300,13 @@ VectorXd Parameterization::evaluate(
         "[Parameterization::evaluate] "
         "Size of control_points must be input_dim*num_control_points");
 
-  using Spline1d = Spline<double, 1>;
   VectorXd u_traj{input_dim * horizon_steps};
-  u_traj.setZero();
-
   Map<MatrixXd> map{u_traj.data(), input_dim, horizon_steps};
   Map<const MatrixXd> ctrls{control_points.data(), input_dim,
                             num_control_points};
-  const int order{degree + 1};
-  VectorXd weights{order};
-
   for (int k{0}; k < horizon_steps; ++k) {
-    const double t = k;
-    const int idx = Spline1d::Span(t, degree, knots) - degree;
-    weights = Spline1d::BasisFunctions(t, degree, knots);
-    map.col(k).noalias() = ctrls.middleCols(idx, order) * weights;
+    map.col(k).noalias() =
+        ctrls.middleCols(band_start(k), band_width) * band_weights.col(k);
   }
   return u_traj;
 }

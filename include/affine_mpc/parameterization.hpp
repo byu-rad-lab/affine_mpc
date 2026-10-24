@@ -137,6 +137,9 @@ public:
 
   /**
    * @brief Evaluate an input trajectory from provided control_points.
+   *
+   *   Uses the stored banded basis (see band_weights), so it only touches the
+   *   control points that affect each step.
    * @param input_dim Dimension of input vector.
    * @param control_points Parameterized input trajectory as a vector of size
    *   input_dim*num_control_points.
@@ -172,6 +175,19 @@ public:
 
   /// Full knot vector of size num_control_points + degree + 1.
   const Eigen::VectorXd knots;
+
+  /// Number of consecutive control points that can affect one sampled input
+  /// (degree + 1 for B-splines).
+  const int band_width;
+
+  /// Index of the first control point that affects the input at each step k
+  /// (size horizon_steps).
+  const Eigen::VectorXi band_start;
+
+  /// Basis weights in banded form (size band_width x horizon_steps). The input
+  /// at step k is `sum_i band_weights(i, k) * control_point(band_start(k) +
+  /// i)`.
+  const Eigen::MatrixXd band_weights;
 };
 
 /**

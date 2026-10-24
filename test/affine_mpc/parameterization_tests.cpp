@@ -682,3 +682,52 @@ TEST(ParameterizationBspline, givenEndKnotOutsideTolerance_PrintsFullPrecision)
       [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
       "Got 8.999999");
 }
+
+// ---- banded basis ----------------------------------------------------------
+
+TEST(ParameterizationBand, givenBspline_StoresBandOfBasisFunctions)
+{
+  const int T{10}, nc{5}, deg{2};
+  const auto p{ampc::Parameterization::bspline(T, deg, nc)};
+
+  ASSERT_EQ(p.band_width, deg + 1);
+  VectorXi start_expected{T};
+  start_expected << 0, 0, 0, 1, 1, 1, 2, 2, 2, 2;
+  EXPECT_TRUE(expectEigenNear(p.band_start, start_expected, 0.0));
+  ASSERT_EQ(p.band_weights.rows(), deg + 1);
+  ASSERT_EQ(p.band_weights.cols(), T);
+
+  using Spline1d = Spline<double, 1>;
+  const VectorXd ctrls{{0, 1, 1, -1, 0}};
+  const Spline1d spline{p.knots, ctrls.transpose()};
+  for (int k{0}; k < T; ++k) {
+    const double t = k;
+    const RowVectorXd weights_expected{
+        Spline1d::BasisFunctions(t, deg, p.knots)};
+    EXPECT_TRUE(expectEigenNear(p.band_weights.col(k).transpose(),
+                                weights_expected, 0.0));
+    const double u{p.band_weights.col(k).dot(
+        ctrls.segment(p.band_start(k), p.band_width))};
+    EXPECT_DOUBLE_EQ(u, spline(t)(0));
+  }
+}
+
+TEST(ParameterizationBand, givenAnyParameterization_BandReproducesEvaluate)
+{
+  const int m{2};
+  for (const auto& p : {ampc::Parameterization::moveBlocking(12, 4),
+                        ampc::Parameterization::linearInterp(12, 5),
+                        ampc::Parameterization::bspline(12, 3, 7),
+                        ampc::Parameterization{12, 2, 12}}) {
+    ASSERT_EQ(p.band_width, p.degree + 1);
+    const VectorXd ctrls{VectorXd::LinSpaced(m * p.num_control_points, -1, 2)};
+    const VectorXd u_traj{p.evaluate(m, ctrls)};
+    const Map<const MatrixXd> c{ctrls.data(), m, p.num_control_points};
+    for (int k{0}; k < p.horizon_steps; ++k) {
+      ASSERT_LE(p.band_start(k) + p.band_width, p.num_control_points);
+      const VectorXd uk{c.middleCols(p.band_start(k), p.band_width)
+                        * p.band_weights.col(k)};
+      EXPECT_TRUE(expectEigenNear(u_traj.segment(m * k, m), uk, 0.0));
+    }
+  }
+}

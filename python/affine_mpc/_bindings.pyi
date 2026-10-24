@@ -286,6 +286,28 @@ class Parameterization:
         """
 
     @property
+    def band_start(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.int32], "[m, 1]"]:
+        """
+        Index of the first control point that affects the input at each step k (size horizon_steps).
+        """
+
+    @property
+    def band_weights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Basis weights in banded form (band_width x horizon_steps). The input at step k is sum_i band_weights[i, k] * control_point[band_start[k] + i].
+        """
+
+    @property
+    def band_width(self) -> int:
+        """
+        Number of consecutive control points that can affect one sampled input (degree + 1 for B-splines).
+        """
+
+    @property
     def degree(self) -> int: ...
     @property
     def horizon_steps(self) -> int: ...

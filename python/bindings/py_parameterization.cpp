@@ -209,6 +209,17 @@ Returns:
   param.def_readonly("num_control_points",
                      &ampc::Parameterization::num_control_points);
   param.def_readonly("knots", &ampc::Parameterization::knots);
+  param.def_readonly("band_width", &ampc::Parameterization::band_width,
+                     "Number of consecutive control points that can affect "
+                     "one sampled input (degree + 1 for B-splines).");
+  param.def_readonly("band_start", &ampc::Parameterization::band_start,
+                     "Index of the first control point that affects the input "
+                     "at each step k (size horizon_steps).");
+  param.def_readonly("band_weights", &ampc::Parameterization::band_weights,
+                     "Basis weights in banded form (band_width x "
+                     "horizon_steps). The input at step k is "
+                     "sum_i band_weights[i, k] * control_point[band_start[k] "
+                     "+ i].");
 
   param.def("__str__", [](const ampc::Parameterization& self) {
     std::ostringstream os;

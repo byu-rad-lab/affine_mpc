@@ -65,6 +65,21 @@ def test_parameterization_str_and_repr():
     assert repr(custom) == "Parameterization(horizon_steps=5, degree=1, knots=[0, 0, 1, 4, 4])"
 
 
+def test_parameterization_band_reproduces_evaluate():
+    param = ampc.Parameterization.bspline(horizon_steps=12, degree=2, num_control_points=6)
+    assert param.band_width == 3
+    assert param.band_start.shape == (12,)
+    assert param.band_weights.shape == (3, 12)
+
+    m = 2
+    ctrls = np.linspace(-1.0, 2.0, m * param.num_control_points).reshape(-1, m)
+    u_traj = param.evaluate(m, ctrls.ravel()).reshape(-1, m)
+    for k in range(param.horizon_steps):
+        start = param.band_start[k]
+        uk = param.band_weights[:, k] @ ctrls[start : start + param.band_width]
+        np.testing.assert_allclose(u_traj[k], uk, rtol=0, atol=1e-15)
+
+
 if __name__ == "__main__":
     test_parameterization_interface()
     print("All tests passed!")
