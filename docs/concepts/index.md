@@ -55,6 +55,7 @@ $$
 - [Input Parameterization](input-parameterization.md): supported parameterizations and how they are implemented through B-splines.
 - [QP Formulation](qp-formulation.md): conversion from MPC to QP.
 - [Runtime Updates](runtime-updates.md): OSQP sparsity rules and what may change between solves.
+- [Modeling Patterns](modeling-patterns.md): operating points, offset-free tracking, input delay, and deviation form.
 
 <!-- ## Practical Takeaway -->
 <!---->

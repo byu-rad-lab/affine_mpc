@@ -21,6 +21,7 @@ nav = [
         "concepts/input-parameterization.md",
         "concepts/qp-formulation.md",
         "concepts/runtime-updates.md",
+        "concepts/modeling-patterns.md",
     ]},
     {"Usage" = "usage.md"},
     {"Examples" = "examples.md"},
