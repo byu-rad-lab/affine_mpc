@@ -13,6 +13,22 @@ with C++ and Python interfaces.
 - Repeated-solve workflows with runtime updates
 - Binary logging for simulation and analysis
 
+## What It Is Not
+
+`affine_mpc` solves one convex QP per time step for a model you provide, so some related tools are out of scope:
+
+- **Nonlinear MPC.**
+  The model inside the QP is affine.
+  For a nonlinear plant, compute an affine approximation yourself (by hand, Eigen AutoDiff, CasADi, or JAX) about an operating point or the current trajectory and update the model between solves.
+  The library does not differentiate models or iterate on the approximation within a time step.
+- **Explicit MPC.**
+  The QP is solved online at every step; no offline partition of the state space or lookup table is computed.
+- **State estimation.**
+  `solve()` takes the current state as given.
+  Observers, Kalman filters, and disturbance estimators are up to you (see [Modeling Patterns](concepts/modeling-patterns.md) for how to use a disturbance estimate).
+- **A general optimization toolkit.**
+  The cost and constraint structure is fixed (see [Concepts](concepts/index.md)), and OSQP is the only QP solver.
+
 ## Choose Your Path
 
 - [Getting Started](getting-started/index.md): install the library and run a first example
