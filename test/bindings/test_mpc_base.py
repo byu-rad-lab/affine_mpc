@@ -98,9 +98,13 @@ def _all_options_mpc(n=2, m=2, T=6, nc=3):
 
 def test_mpc_base_getters_return_set_values():
     n, m, T, nc = 2, 2, 6, 3
-    mpc, _, opts = _all_options_mpc(n, m, T, nc)
+    mpc, param, opts = _all_options_mpc(n, m, T, nc)
 
     assert str(mpc.getOptions()) == str(opts)
+    stored = mpc.getParameterization()
+    assert stored.num_control_points == nc
+    np.testing.assert_array_equal(stored.knots, param.knots)
+    np.testing.assert_array_equal(stored.band_weights, param.band_weights)
     assert np.all(mpc.getInputMin() == -np.inf)
     assert np.all(mpc.getSlewRate() == np.inf)
 

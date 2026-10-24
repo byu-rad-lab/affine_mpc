@@ -627,6 +627,8 @@ Returns:
   // Configuration getters return copies so Python never holds a reference into
   // the MPC object.
   const auto copy{py::return_value_policy::copy};
+  base.def("getParameterization", &ampc::MPCBase::getParameterization, copy,
+           "Get a copy of the input trajectory parameterization.");
   base.def("getOptions", &ampc::MPCBase::getOptions, copy,
            "Get a copy of the options enabled at construction.");
   base.def("getStateWeights", &ampc::MPCBase::getStateWeights,

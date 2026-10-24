@@ -751,6 +751,11 @@ class MPCBase:
         Get a copy of the options enabled at construction.
         """
 
+    def getParameterization(self) -> Parameterization:
+        """
+        Get a copy of the input trajectory parameterization.
+        """
+
     @typing.overload
     def getPredictedStateTrajectory(
         self,
