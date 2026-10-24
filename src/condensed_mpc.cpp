@@ -27,6 +27,7 @@ CondensedMPC::CondensedMPC(int state_dim,
     S_{x_traj_dim_, ctrls_dim_},
     v_{x_traj_dim_},
     weighted_state_err_{x_traj_dim_},
+    weighted_S_{x_traj_dim_, ctrls_dim_},
     model_changed_{false},
     weights_changed_{false},
     bounds_changed_{false}
@@ -62,7 +63,11 @@ bool CondensedMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
   // check every time because avoiding this computation is more significant than
   // the overhead of a boolean check if the model does not change often
   if (model_changed_ || weights_changed_) {
-    P_.noalias() = S_.transpose() * Q_big_ * S_;
+    // Eigen's matrix product still heap-allocates its blocking buffers when
+    // they exceed EIGEN_STACK_ALLOCATION_LIMIT (128 KB), i.e. for large
+    // problems after a model or weight change.
+    weighted_S_.noalias() = Q_big_ * S_;
+    P_.noalias() = S_.transpose() * weighted_S_;
     if (opts_.use_input_cost)
       P_ += R_big_;
     if (opts_.saturate_states)
@@ -159,13 +164,16 @@ void CondensedMPC::updateS()
 
 void CondensedMPC::updateV(const Ref<const VectorXd>& x0)
 {
-  // add dynamics of initial time step (k=0)
-  v_.head(state_dim_).noalias() = Ad_ * x0 + wd_;
+  // add dynamics of initial time step (k=0). Adding wd_ separately avoids a
+  // temporary for the product inside a sum.
+  v_.head(state_dim_).noalias() = Ad_ * x0;
+  v_.head(state_dim_) += wd_;
 
   for (int k{1}, row{state_dim_}; k < horizon_steps_; ++k, row += state_dim_) {
     // add cumulative effect of all previous dynamics
     v_.segment(row, state_dim_).noalias() =
-        Ad_ * v_.segment(row - state_dim_, state_dim_) + wd_;
+        Ad_ * v_.segment(row - state_dim_, state_dim_);
+    v_.segment(row, state_dim_) += wd_;
   }
 }
 

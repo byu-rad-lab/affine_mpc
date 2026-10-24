@@ -69,7 +69,9 @@ void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 bool SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
   bool success{true};
-  l_.head(state_dim_).noalias() = -(Ad_ * x0 + wd_);
+  // separate statements avoid a temporary for the product inside a sum
+  l_.head(state_dim_) = -wd_;
+  l_.head(state_dim_).noalias() -= Ad_ * x0;
   u_.head(state_dim_) = l_.head(state_dim_);
   success &= solver_->updateBounds(l_, u_);
 
