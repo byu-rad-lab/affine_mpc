@@ -76,8 +76,8 @@ The main difference between two formulations is the choice of design vector $\ma
 Sparse uses the control points and state trajectory while condensed only uses the control points:
 
 $$
-\mathbf{z}_c
-    = \mathbf{c} \quad \quad \quad \mathbf{z}_s
+\mathbf{z}_{\mathrm{c}}
+    = \mathbf{c} \quad \quad \quad \mathbf{z}_{\mathrm{s}}
     = \begin{bmatrix} \mathbf{c} \\ \mathbf{x} \end{bmatrix}
 $$
 
@@ -95,7 +95,7 @@ The rest of this page describes how to convert the MPC optimization problem into
 The MPC cost is
 
 $$
-J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_f}
+J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
     + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
     + \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
 $$
@@ -107,7 +107,7 @@ but it can be done either way.
 First, we will create block diagonal matrices using the weights:
 
 $$
-\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_f)
+\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_{\mathrm{f}})
     \quad \quad \quad \bar{R} = I_\eta \otimes R
 $$
 
@@ -143,7 +143,7 @@ $$
 $$
 
 we need to rearrange it slightly to fit into a QP form.
-The design variable $\mathbf{z}_s$ has states and inputs
+The design variable $\mathbf{z}_{\mathrm{s}}$ has states and inputs
 (excluding $\mathbf{x}_0$ since it is fixed and not optimized),
 so we group all of those on one side of the equation:
 
@@ -215,7 +215,7 @@ $$
     \underbrace{
         \begin{bmatrix} S_u \Psi^p(\boldsymbol{\tau}) & S_x \end{bmatrix}
     }_{A_{\mathrm{model}}}
-    \mathbf{z}_s
+    \mathbf{z}_{\mathrm{s}}
     =
     \underbrace{-\mathbf{s}_w}_{\boldsymbol{\upsilon}_{\mathrm{model}}}
 $$
@@ -228,13 +228,13 @@ $$
 \begin{align}
 J &= (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
     + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}}) \\
-  &=(\mathbf{z}_s - \bar{\mathbf{z}}_s)^\top
+  &=(\mathbf{z}_{\mathrm{s}} - \bar{\mathbf{z}}_s)^\top
         \underbrace{
             \begin{bmatrix} \bar{R} & \mathbf{0} \\ \mathbf{0} & \bar{Q} \end{bmatrix}
         }_{P}
-    (\mathbf{z}_s - \bar{\mathbf{z}}_s) \\
-  &= \mathbf{z}_s^\top P \mathbf{z}_s
-    -2 \bar{\mathbf{z}}_s^\top P \mathbf{z}_s
+    (\mathbf{z}_{\mathrm{s}} - \bar{\mathbf{z}}_s) \\
+  &= \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
+    -2 \bar{\mathbf{z}}_s^\top P \mathbf{z}_{\mathrm{s}}
     + \underbrace{\bar{\mathbf{z}}_s^\top P \bar{\mathbf{z}}_s}_{\text{drop}}
 \end{align}
 $$
@@ -245,8 +245,8 @@ Scaling the cost by $\frac{1}{2}$ also leaves the argmin unchanged and matches t
 
 $$
 \frac{1}{2} J
-    = \frac{1}{2} \mathbf{z}_s^\top P \mathbf{z}_s
-    + (\, \underbrace{-P \bar{\mathbf{z}}_s}_{\mathbf{q}} \,)^\top \mathbf{z}_s
+    = \frac{1}{2} \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
+    + (\, \underbrace{-P \bar{\mathbf{z}}_s}_{\mathbf{q}} \,)^\top \mathbf{z}_{\mathrm{s}}
     + \text{const}
 $$
 
@@ -282,7 +282,7 @@ $$
 \leq
 \underbrace{
     \begin{bmatrix} I_{m\eta} & \mathbf{0}_{m\eta \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_s
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
@@ -310,7 +310,7 @@ $$
 \leq
 \underbrace{
     \begin{bmatrix} \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{mT \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_s
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
@@ -335,7 +335,7 @@ $$
     \begin{bmatrix}
         (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{m \times nT}
     \end{bmatrix}
-}_{A_{\mathrm{slew0}}} \mathbf{z}_s
+}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
 $$
@@ -357,7 +357,7 @@ $$
     \begin{bmatrix}
         D_\eta \otimes I_m & \mathbf{0}_{m(\eta-1) \times nT} \\
     \end{bmatrix}
-}_{A_{\mathrm{slew}}} \mathbf{z}_s
+}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
 $$
@@ -401,7 +401,7 @@ $$
 \leq
 \underbrace{
     \begin{bmatrix} \mathbf{0}_{nT \times m\eta} & I_{nT} \end{bmatrix}
-}_{A_{\mathrm{xsat}}} \mathbf{z}_s
+}_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
 $$
@@ -520,7 +520,7 @@ $$
 then the final condensed form is
 
 $$
-\mathbf{x} = S \mathbf{z}_c + \mathbf{v}.
+\mathbf{x} = S \mathbf{z}_{\mathrm{c}} + \mathbf{v}.
 $$
 
 This gives us a model function we can use to substitute out predicted states from the cost function.
@@ -560,17 +560,17 @@ $$
 \begin{align}
 J_x
     &=
-    (S \mathbf{z}_c + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_c + \mathbf{v})
-    - 2 (S \mathbf{z}_c + \mathbf{v})^\top \bar{Q} \bar{\mathbf{x}} \\
+    (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})
+    - 2 (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} \bar{\mathbf{x}} \\
     &=
-    \mathbf{z}_c^\top (S^\top \bar{Q} S) \mathbf{z}_c
-    + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_c
+    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
+    + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
     + \underbrace{\mathbf{v}^\top \bar{Q} \mathbf{v}}_{\text{drop}}
-    - 2 \bar{\mathbf{x}}^\top \bar{Q} S \mathbf{z}_c
+    - 2 \bar{\mathbf{x}}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
     - \underbrace{2 \mathbf{v}^\top \bar{Q} \bar{\mathbf{x}}}_{\text{drop}} \\
     &=
-    \mathbf{z}_c^\top (S^\top \bar{Q} S) \mathbf{z}_c
-    + 2 (S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}))^\top \mathbf{z}_c
+    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
+    + 2 (S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}))^\top \mathbf{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
 $$
@@ -581,11 +581,11 @@ $$
 \begin{align}
 J_c
     &=
-    \mathbf{z}_c^\top \bar{R} \mathbf{z}_c
-    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{z}_c \\
+    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
+    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}} \\
     &=
-    \mathbf{z}_c^\top \bar{R} \mathbf{z}_c
-    - 2 (\bar{R} \bar{\mathbf{c}})^\top \mathbf{z}_c \\
+    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
+    - 2 (\bar{R} \bar{\mathbf{c}})^\top \mathbf{z}_{\mathrm{c}} \\
 \end{align}
 $$
 
@@ -596,13 +596,13 @@ $$
 \begin{align}
 \frac{1}{2} J
     &=
-    \frac{1}{2} \mathbf{z}_c^\top
+    \frac{1}{2} \mathbf{z}_{\mathrm{c}}^\top
     \underbrace{(S^\top \bar{Q} S + \bar{R})}_{P}
-    \mathbf{z}_c
+    \mathbf{z}_{\mathrm{c}}
     +
     (\underbrace{
         S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
-    }_{\mathbf{q}})^\top \mathbf{z}_c
+    }_{\mathbf{q}})^\top \mathbf{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
 $$
@@ -640,7 +640,7 @@ $$
 $$
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \mathbf{z}_c
+\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
@@ -666,7 +666,7 @@ $$
 $$
 \underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{ \Psi^p(\boldsymbol{\tau}) }_{A_{\mathrm{usat}}} \mathbf{z}_c
+\underbrace{ \Psi^p(\boldsymbol{\tau}) }_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
@@ -689,7 +689,7 @@ $$
 \leq
 \underbrace{
         (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau})
-}_{A_{\mathrm{slew0}}} \mathbf{z}_c
+}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
 $$
@@ -709,7 +709,7 @@ $$
 \leq
 \underbrace{
     (D_\eta \otimes I_m)
-}_{A_{\mathrm{slew}}} \mathbf{z}_c
+}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
 $$
@@ -739,7 +739,7 @@ $$
     \mathbf{x}_{\mathrm{min}} \\ \vdots \\ \mathbf{x}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-S \mathbf{z}_c + \mathbf{v}
+S \mathbf{z}_{\mathrm{c}} + \mathbf{v}
 \leq
 \begin{bmatrix}
     \mathbf{x}_{\mathrm{max}} \\ \vdots \\ \mathbf{x}_{\mathrm{max}}
@@ -753,7 +753,7 @@ $$
 $$
 \underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}} - \mathbf{v}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
 \leq
-\underbrace{ S }_{A_{\mathrm{xsat}}} \mathbf{z}_c
+\underbrace{ S }_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}} - \mathbf{v}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
 $$

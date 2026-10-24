@@ -48,7 +48,7 @@ In practice this means:
 The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 
 - model matrices: $A$, $B$
-- weights: $Q$, $Q_f$, $R$
+- weights: $Q$, $Q_{\mathrm{f}}$, $R$
 - enabled options and constraint structure
 - parameterization structure through the chosen `Parameterization`
 
@@ -71,7 +71,7 @@ If you switch between several models, such as piecewise or gain-scheduled models
 initialize with a model whose nonzeros cover all of them.
 
 Weights in `SparseMPC` are the one exception:
-`SparseMPC` places $Q$, $Q_f$, and $R$ only on the diagonal of $P$,
+`SparseMPC` places $Q$, $Q_{\mathrm{f}}$, and $R$ only on the diagonal of $P$,
 which OSQP always includes in its linear system,
 so `initializeSolver()` stores every weight position at no cost to solve time.
 Weights in `SparseMPC` may therefore change between zero and nonzero freely.
@@ -106,7 +106,7 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{w}$ only                                    | `setModelOffsetDiscrete()`, `setModelOffsetContinuous2Discrete()` |
 | $\bar{\mathbf{x}}$                                   | `setReferenceState()`, `setReferenceStateTrajectory()`    |
 | $\bar{\mathbf{c}}$                                   | `setReferenceInput()`, `setReferenceInputControlPoints()` |
-| $Q$, $Q_f$                                           | `setWeights()`, `setStateWeights()`                       |
+| $Q$, $Q_{\mathrm{f}}$                                | `setWeights()`, `setStateWeights()`                       |
 | $R$                                                  | `setWeights()`, `setInputWeights()`                       |
 | $\mathbf{x}_\mathrm{min}$, $\mathbf{x}_\mathrm{max}$ | `setStateLimits()`                                        |
 | $\mathbf{u}_\mathrm{min}$, $\mathbf{u}_\mathrm{max}$ | `setInputLimits()`                                        |
@@ -126,25 +126,25 @@ but the actual cost depends on the formulation and problem structure.
 
 **Sparse:**
 
-| MPC Term       | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
-| -------------- | --- | --------------- | --- | ------------------- | ----------------------- |
-| $\mathbf{x}_0$ |     |                 |     | ✓                   | ✓                       |
-| $A$            |     | ✓               |     | ✓                   | ✓                       |
-| $B$            |     | ✓               |     |                     |                         |
-| $\mathbf{w}$   |     |                 |     | ✓                   | ✓                       |
-| $Q$, $Q_f$     | ✓   |                 | ✓   |                     |                         |
-| $R$            | ✓   |                 | ✓   |                     |                         |
+| MPC Term              | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
+| --------------------- | --- | --------------- | --- | ------------------- | ----------------------- |
+| $\mathbf{x}_0$        |     |                 |     | ✓                   | ✓                       |
+| $A$                   |     | ✓               |     | ✓                   | ✓                       |
+| $B$                   |     | ✓               |     |                     |                         |
+| $\mathbf{w}$          |     |                 |     | ✓                   | ✓                       |
+| $Q$, $Q_{\mathrm{f}}$ | ✓   |                 | ✓   |                     |                         |
+| $R$                   | ✓   |                 | ✓   |                     |                         |
 
 **Condensed:**
 
-| MPC Term       | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
-| -------------- | --- | --------------- | --- | ------------------- | ----------------------- |
-| $\mathbf{x}_0$ |     |                 | ✓   | xsat                | xsat                    |
-| $A$            | ✓   |                 | ✓   | xsat                | xsat                    |
-| $B$            | ✓   |                 | ✓   | xsat                | xsat                    |
-| $\mathbf{w}$   | ✓   |                 | ✓   | xsat                | xsat                    |
-| $Q$, $Q_f$     | ✓   |                 | ✓   |                     |                         |
-| $R$            | ✓   |                 | ✓   |                     |                         |
+| MPC Term              | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
+| --------------------- | --- | --------------- | --- | ------------------- | ----------------------- |
+| $\mathbf{x}_0$        |     |                 | ✓   | xsat                | xsat                    |
+| $A$                   | ✓   |                 | ✓   | xsat                | xsat                    |
+| $B$                   | ✓   |                 | ✓   | xsat                | xsat                    |
+| $\mathbf{w}$          | ✓   |                 | ✓   | xsat                | xsat                    |
+| $Q$, $Q_{\mathrm{f}}$ | ✓   |                 | ✓   |                     |                         |
+| $R$                   | ✓   |                 | ✓   |                     |                         |
 
 !!! note
 
