@@ -99,6 +99,7 @@ class Parameterization:
         knots: Full knot vector of size num_control_points + degree + 1.
 
     Static Methods:
+        makeClampedKnots: Generate a uniform or geometric knot vector to modify.
         makeUniformClampedKnots: Generate a knot vector that can be modified.
         moveBlocking: Factory method for move-blocking parameterization.
         linearInterp: Factory method for linear interpolation parameterization.
@@ -109,19 +110,32 @@ class Parameterization:
     @staticmethod
     @typing.overload
     def bspline(
-        horizon_steps: int, degree: int, num_control_points: int
+        horizon_steps: int,
+        degree: int,
+        num_control_points: int,
+        knot_ratio: float = 1.0,
     ) -> Parameterization:
         """
-        Factory method for uniform clamped B-spline parameterization.
+        Factory method for clamped B-spline parameterization with uniform or
+        geometrically spaced active knots.
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.
             degree: Degree of B-spline polynomials. Must be less than num_control_points.
             num_control_points: Number of B-spline control points. Cannot be greater
                 than horizon_steps.
+            knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+                intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+                span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+                ratio above 1 puts short intervals (more flexibility) at the start of
+                the horizon and a ratio below 1 puts them at the end.
+
+        Raises:
+            ValueError: If the shortest knot interval is shorter than one sample, or
+                if any argument is invalid.
 
         returns:
-            out: Parameterization instance with uniform clamped B-spline structure.
+            out: Parameterization instance with clamped B-spline structure.
         """
 
     @staticmethod
@@ -145,17 +159,29 @@ class Parameterization:
 
     @staticmethod
     @typing.overload
-    def linearInterp(horizon_steps: int, num_control_points: int) -> Parameterization:
+    def linearInterp(
+        horizon_steps: int, num_control_points: int, knot_ratio: float = 1.0
+    ) -> Parameterization:
         """
-        Factory method for uniform linear interpolation parameterization.
+        Factory method for linear interpolation parameterization with uniform or
+        geometrically spaced endpoints.
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.
             num_control_points: Number of B-spline control points. Cannot be greater
                 than horizon_steps.
+            knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+                intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+                span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+                ratio above 1 puts short intervals (more flexibility) at the start of
+                the horizon and a ratio below 1 puts them at the end.
+
+        Raises:
+            ValueError: If the shortest segment is shorter than one sample, or
+                if any argument is invalid.
 
         returns:
-            out: Parameterization instance with uniform linear interpolation structure.
+            out: Parameterization instance with linear interpolation structure.
         """
 
     @staticmethod
@@ -174,6 +200,37 @@ class Parameterization:
 
         returns:
             out: Parameterization instance with linear interpolation structure.
+        """
+
+    @staticmethod
+    def makeClampedKnots(
+        horizon_steps: int,
+        degree: int,
+        num_control_points: int,
+        knot_ratio: float = 1.0,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Static method for generating a clamped knot vector with uniform or
+        geometrically spaced active knots (the knots used by the factories). Useful for
+        generating a starting point that can be modified for custom parameterizations.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            degree: Degree of B-spline polynomials. Must be less than num_control_points.
+            num_control_points: Number of B-spline control points. Cannot be greater
+                than horizon_steps.
+            knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+                intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+                span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+                ratio above 1 puts short intervals (more flexibility) at the start of
+                the horizon and a ratio below 1 puts them at the end.
+
+        Raises:
+            ValueError: If the shortest knot interval is shorter than one sample, or
+                if any argument is invalid.
+
+        Returns:
+            knots: The clamped knot vector.
         """
 
     @staticmethod
@@ -196,17 +253,29 @@ class Parameterization:
 
     @staticmethod
     @typing.overload
-    def moveBlocking(horizon_steps: int, num_control_points: int) -> Parameterization:
+    def moveBlocking(
+        horizon_steps: int, num_control_points: int, knot_ratio: float = 1.0
+    ) -> Parameterization:
         """
-        Factory method for uniform move-blocking parameterization.
+        Factory method for move-blocking parameterization with uniform or
+        geometrically spaced blocks.
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.
             num_control_points: Number of B-spline control points. Cannot be greater
                 than horizon_steps.
+            knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+                intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+                span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+                ratio above 1 puts short intervals (more flexibility) at the start of
+                the horizon and a ratio below 1 puts them at the end.
+
+        Raises:
+            ValueError: If the shortest block is shorter than one sample, or
+                if any argument is invalid.
 
         returns:
-            out: Parameterization instance with uniform move-blocking structure.
+            out: Parameterization instance with move-blocking structure.
         """
 
     @staticmethod

@@ -1,6 +1,7 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <sstream>
 
 #include "affine_mpc/parameterization.hpp"
@@ -730,4 +731,94 @@ TEST(ParameterizationBand, givenAnyParameterization_BandReproducesEvaluate)
       EXPECT_TRUE(expectEigenNear(u_traj.segment(m * k, m), uk, 0.0));
     }
   }
+}
+
+// ---- Factory option: knot_ratio --------------------------------------------
+
+TEST(ParameterizationKnotRatio, givenRatio_SpacesActiveKnotsGeometrically)
+{
+  // interval lengths 1, g, g^2, g^3 scaled to span [0, T-1]
+  const int T{20}, deg{2}, nc{6};
+  const double g{1.5};
+  const auto p{ampc::Parameterization::bspline(T, deg, nc, g)};
+  ASSERT_EQ(p.degree, deg);
+  ASSERT_EQ(p.num_control_points, nc);
+
+  const double scale{(T - 1) / (1 + g + g * g + g * g * g)};
+  VectorXd knots_expected{nc + deg + 1};
+  knots_expected << 0, 0, 0, scale, scale * (1 + g), scale * (1 + g + g * g),
+      T - 1, T - 1, T - 1;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+  // the last active knot is exact, not a round-off away from T-1
+  EXPECT_EQ(p.knots(nc), T - 1);
+}
+
+TEST(ParameterizationKnotRatio, givenRatioBelowOne_MoveBlockingShrinksBlocks)
+{
+  const int T{20}, nc{4};
+  const auto p{ampc::Parameterization::moveBlocking(T, nc, 0.5)};
+  ASSERT_EQ(p.degree, 0);
+  // blocks 8/15, 4/15, 2/15, 1/15 of 19
+  VectorXd knots_expected{nc + 1};
+  knots_expected << 0, 19 * 8.0 / 15, 19 * 12.0 / 15, 19 * 14.0 / 15, 19;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+}
+
+TEST(ParameterizationKnotRatio, givenRatio_LinearInterpSpacesEndpoints)
+{
+  const int T{15}, nc{4};
+  const double g{2.0};
+  const auto p{ampc::Parameterization::linearInterp(T, nc, g)};
+  ASSERT_EQ(p.degree, 1);
+  // segments 1, 2, 4 sevenths of 14
+  VectorXd knots_expected{nc + 2};
+  knots_expected << 0, 0, 2, 6, 14, 14;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+}
+
+TEST(ParameterizationKnotRatio, givenRatioOne_MatchesUniformKnotsExactly)
+{
+  const int T{15};
+  using P = ampc::Parameterization;
+  EXPECT_EQ(P::bspline(T, 3, 8, 1.0).knots,
+            P::makeUniformClampedKnots(T, 3, 8));
+  EXPECT_EQ(P::moveBlocking(T, 4, 1.0).knots,
+            P::makeUniformClampedKnots(T, 0, 4));
+  EXPECT_EQ(P::linearInterp(T, 5, 1.0).knots,
+            P::makeUniformClampedKnots(T, 1, 5));
+}
+
+TEST(ParameterizationKnotRatio, givenRatio_MakeClampedKnotsMatchesFactories)
+{
+  const int T{20};
+  const double g{1.4};
+  using P = ampc::Parameterization;
+  EXPECT_EQ(P::makeClampedKnots(T, 2, 6, g), P::bspline(T, 2, 6, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 0, 5, g), P::moveBlocking(T, 5, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 1, 5, g), P::linearInterp(T, 5, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 3, 8), P::makeUniformClampedKnots(T, 3, 8));
+  expectInvalidArgumentWithMessage(
+      [] { P::makeClampedKnots(20, 1, 5, 3.0); },
+      "[Parameterization::makeClampedKnots] shortest knot interval");
+}
+
+TEST(ParameterizationKnotRatio, givenInvalidArguments_Throws)
+{
+  using P = ampc::Parameterization;
+  expectInvalidArgumentWithMessage([] { P::bspline(20, 1, 5, 0.0); },
+                                   "knot_ratio must be positive and finite");
+  expectInvalidArgumentWithMessage(
+      [] { P::moveBlocking(20, 5, std::numeric_limits<double>::infinity()); },
+      "knot_ratio must be positive and finite");
+  // first interval 19 / (1 + 3 + 9 + 27) < 1 sample
+  expectInvalidArgumentWithMessage(
+      [] { P::bspline(20, 1, 5, 3.0); },
+      "shortest knot interval must be at least one sample");
+  // ratio below 1: the last interval is the shortest
+  expectInvalidArgumentWithMessage(
+      [] { P::linearInterp(20, 5, 1.0 / 3.0); },
+      "shortest knot interval must be at least one sample");
+  expectInvalidArgumentWithMessage(
+      [] { P::bspline(20, 2, 2, 1.5); },
+      "must have at least degree+1 control points");
 }

@@ -29,16 +29,25 @@ class Parameterization
 {
 public:
   /**
-   * @brief Factory method for uniform move-blocking parameterization.
+   * @brief Factory method for move-blocking parameterization with uniform or
+   *   geometrically spaced blocks.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest block is shorter than one
+   *   sample, or if any argument is invalid.
    * @return Parameterization instance.
    *
    * Piecewise constant inputs set from previous change point.
    */
   static Parameterization moveBlocking(int horizon_steps,
-                                       int num_control_points);
+                                       int num_control_points,
+                                       double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for move-blocking parameterization with custom change
@@ -55,16 +64,25 @@ public:
                const Eigen::Ref<const Eigen::VectorXd>& change_points);
 
   /**
-   * @brief Factory method for uniform linear interpolation parameterization.
+   * @brief Factory method for linear interpolation parameterization with
+   *   uniform or geometrically spaced endpoints.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest segment is shorter than one
+   *   sample, or if any argument is invalid.
    * @return Parameterization instance.
    *
-   * Change points are evenly spaced between 0 and horizon_steps - 1.
+   * Endpoints span 0 to horizon_steps - 1.
    */
   static Parameterization linearInterp(int horizon_steps,
-                                       int num_control_points);
+                                       int num_control_points,
+                                       double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for linear interpolation parameterization with custom
@@ -79,16 +97,26 @@ public:
                const Eigen::Ref<const Eigen::VectorXd>& endpoints);
 
   /**
-   * @brief Factory method for uniform clamped B-spline parameterization.
+   * @brief Factory method for clamped B-spline parameterization with uniform
+   *   or geometrically spaced active knots.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param degree Degree of B-spline polynomials. Must be less than
    *   num_control_points.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest knot interval is shorter
+   *   than one sample, or if any argument is invalid.
    * @return Parameterization instance.
    */
-  static Parameterization
-  bspline(int horizon_steps, int degree, int num_control_points);
+  static Parameterization bspline(int horizon_steps,
+                                  int degree,
+                                  int num_control_points,
+                                  double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for clamped B-spline parameterization with custom
@@ -149,6 +177,30 @@ public:
   Eigen::VectorXd
   evaluate(int input_dim,
            const Eigen::Ref<const Eigen::VectorXd>& control_points) const;
+
+  /**
+   * @brief Static method for generating a clamped knot vector with uniform or
+   *   geometrically spaced active knots (the knots used by the factories).
+   *   Useful for generating a starting point that can be modified for custom
+   *   parameterizations.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest knot interval is shorter
+   *   than one sample, or if any argument is invalid.
+   * @return knots The clamped knot vector.
+   */
+  static Eigen::VectorXd makeClampedKnots(int horizon_steps,
+                                          int degree,
+                                          int num_control_points,
+                                          double knot_ratio = 1.0);
 
   /**
    * @brief Static method for generating a uniform clamped knot vector. Useful

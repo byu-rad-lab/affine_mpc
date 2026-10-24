@@ -51,7 +51,7 @@ Factory methods are provided for
 - Linear interpolation (`linearInterp()`)
 - Clamped B-splines (`bspline()`)
 
-When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots are used) or you can supply a custom knot vector.
+When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots by default, or geometrically spaced knots with `knot_ratio`) or you can supply a custom knot vector.
 For unclamped splines, you must use the regular constructor directly.
 
 If you are unsure what to use, linear interpolation is a good default:

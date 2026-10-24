@@ -175,6 +175,32 @@ The second accepts custom active knots, which allows nonuniform knot spacing.
 The active knot vector must include at least the two boundary entries $0$ and $T-1$ so that the spline is valid over the MPC horizon.
 Boundary knots within $10^{-9} T$ of $0$ or $T-1$ (round-off from computing the knots) are snapped to those values.
 
+### Geometric Knots
+
+The factories that take a number of control points (`moveBlocking()`, `linearInterp()`, and `bspline()`) accept an optional `knot_ratio` $g > 0$.
+The knot intervals then have lengths proportional to $1, g, g^2, \dots$, scaled so the active knots span $[0, T-1]$.
+
+=== "Python"
+
+    ```python
+    param = Parameterization.bspline(horizon_steps, degree, num_control_points, knot_ratio=1.5)
+    param = Parameterization.moveBlocking(horizon_steps, num_control_points, knot_ratio=1.5)
+    ```
+
+=== "C++"
+
+    ```cpp
+    auto param = Parameterization::bspline(horizon_steps, degree, num_control_points, 1.5)
+    auto param = Parameterization::moveBlocking(horizon_steps, num_control_points, 1.5)
+    ```
+
+With $g > 1$, the short intervals (and so the most flexibility) are at the start of the horizon, whose inputs are applied first, and the long intervals are at the end.
+$g < 1$ does the opposite, and the default $g = 1$ gives uniform knots.
+With `moveBlocking()`, this gives geometric move blocking.
+A good ratio depends on the horizon and the number of control points; tuned geometric knots performed best in the B-spline parameterization experiments.
+The shortest interval must be at least one sample long, which limits $g$ for a given horizon and number of control points.
+`makeClampedKnots(horizon_steps, degree, num_control_points, knot_ratio)` returns the same knot vector, as a starting point for custom knots.
+
 ## Tradeoffs and Interpretation
 
 ### Number of Control Points $\eta$

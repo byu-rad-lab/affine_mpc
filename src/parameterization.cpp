@@ -170,14 +170,58 @@ validatedKnots(const Ref<const VectorXd>& knots, int horizon_steps, int degree)
   return snapped;
 }
 
+// Clamped knot vector whose active knot intervals have lengths proportional to
+// 1, knot_ratio, knot_ratio^2, ..., scaled to span [0, horizon_steps-1]. A
+// knot_ratio of exactly 1 uses the uniform knots, so it matches them bitwise.
+VectorXd makeKnots(const std::string& prefix,
+                   int horizon_steps,
+                   int degree,
+                   int num_control_points,
+                   double knot_ratio)
+{
+  if (!(knot_ratio > 0.0) || !std::isfinite(knot_ratio))
+    throw std::invalid_argument(prefix
+                                + "knot_ratio must be positive and finite.\n");
+  if (knot_ratio == 1.0)
+    return Parameterization::makeUniformClampedKnots(horizon_steps, degree,
+                                                     num_control_points);
+  validateHorizonSteps(horizon_steps);
+  validateDegree(degree, horizon_steps);
+  validateNumControls(num_control_points, horizon_steps, degree);
+
+  const int num_intervals{num_control_points - degree};
+  VectorXd knots{num_control_points + degree + 1};
+  knots.head(degree + 1).setZero();
+  double length{1.0};
+  for (int i{degree}; i < degree + num_intervals; ++i, length *= knot_ratio)
+    knots(i + 1) = knots(i) + length;
+  knots.segment(degree + 1, num_intervals) *=
+      (horizon_steps - 1) / knots(degree + num_intervals);
+  knots.tail(degree + 1).setConstant(horizon_steps - 1); // exact, not round-off
+
+  // the shortest interval is the first for knot_ratio > 1 and the last for < 1
+  const int shortest{knot_ratio > 1.0 ? degree : degree + num_intervals - 1};
+  const double min_length{knots(shortest + 1) - knots(shortest)};
+  if (min_length < 1.0) {
+    std::stringstream ss;
+    ss << std::setprecision(17) << prefix
+       << "shortest knot interval must be at least one sample. Got "
+       << min_length << " with knot_ratio = " << knot_ratio
+       << "; use a knot_ratio closer to 1 or fewer control points.\n";
+    throw std::invalid_argument(ss.str());
+  }
+  return knots;
+}
+
 } // namespace
 
 Parameterization Parameterization::moveBlocking(int horizon_steps,
-                                                int num_control_points)
+                                                int num_control_points,
+                                                double knot_ratio)
 {
   const int deg{0};
-  const auto knots{
-      makeUniformClampedKnots(horizon_steps, deg, num_control_points)};
+  const auto knots{makeKnots("[Parameterization::moveBlocking] ", horizon_steps,
+                             deg, num_control_points, knot_ratio)};
   return Parameterization{horizon_steps, deg, knots};
 }
 
@@ -210,11 +254,12 @@ Parameterization::moveBlocking(int horizon_steps,
 }
 
 Parameterization Parameterization::linearInterp(int horizon_steps,
-                                                int num_control_points)
+                                                int num_control_points,
+                                                double knot_ratio)
 {
   const int deg{1};
-  const auto knots{
-      makeUniformClampedKnots(horizon_steps, deg, num_control_points)};
+  const auto knots{makeKnots("[Parameterization::linearInterp] ", horizon_steps,
+                             deg, num_control_points, knot_ratio)};
   return Parameterization{horizon_steps, deg, knots};
 }
 
@@ -238,11 +283,13 @@ Parameterization::linearInterp(int horizon_steps,
   return Parameterization{horizon_steps, deg, knots};
 }
 
-Parameterization
-Parameterization::bspline(int horizon_steps, int degree, int num_control_points)
+Parameterization Parameterization::bspline(int horizon_steps,
+                                           int degree,
+                                           int num_control_points,
+                                           double knot_ratio)
 {
-  const auto knots{
-      makeUniformClampedKnots(horizon_steps, degree, num_control_points)};
+  const auto knots{makeKnots("[Parameterization::bspline] ", horizon_steps,
+                             degree, num_control_points, knot_ratio)};
   return Parameterization{horizon_steps, degree, knots};
 }
 
@@ -311,6 +358,15 @@ VectorXd Parameterization::evaluate(
         ctrls.middleCols(band_start(k), band_width) * band_weights.col(k);
   }
   return u_traj;
+}
+
+Eigen::VectorXd Parameterization::makeClampedKnots(int horizon_steps,
+                                                   int degree,
+                                                   int num_control_points,
+                                                   double knot_ratio)
+{
+  return makeKnots("[Parameterization::makeClampedKnots] ", horizon_steps,
+                   degree, num_control_points, knot_ratio);
 }
 
 Eigen::VectorXd Parameterization::makeUniformClampedKnots(
