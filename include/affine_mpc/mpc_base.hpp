@@ -15,6 +15,7 @@
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
+#include "affine_mpc/vector_parameterization.hpp"
 
 namespace affine_mpc {
 
@@ -366,6 +367,12 @@ public:
   /// @brief Whether initializeSolver() has succeeded.
   bool isSolverInitialized() const noexcept { return solver_initialized_; }
 
+  /// @brief Get the input trajectory parameterization.
+  const Parameterization& getParameterization() const noexcept
+  {
+    return input_param_.parameterization();
+  }
+
   /// @brief Get the options enabled at construction.
   const Options& getOptions() const noexcept { return opts_; }
 
@@ -501,9 +508,11 @@ protected:
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 
   const int state_dim_, input_dim_;
-  const int horizon_steps_, num_ctrl_pts_, spline_degree_;
+  const int horizon_steps_, num_ctrl_pts_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;
   const Options opts_;
+  /// Maps the control points (first in the QP solution) to the inputs
+  const VectorParameterization input_param_;
   /// Sample indices with input saturation rows (empty: control points instead)
   const std::vector<int> u_sat_samples_;
   const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
@@ -533,19 +542,7 @@ protected:
   Eigen::VectorXd l_; // osqp constraint lower bound
   Eigen::VectorXd u_; // osqp constraint upper bound
 
-  // Input parameterization variables
-  Eigen::VectorXi spline_segment_idxs_;
-  Eigen::VectorXd spline_knots_;
-  Eigen::MatrixXd spline_weights_;
-
 private:
-  void calcSplineParams();
-  void evaluateControlPoints(const Eigen::Ref<const Eigen::VectorXd>& ctrl_pts,
-                             Eigen::Ref<Eigen::VectorXd> u_traj) const noexcept;
-  void getInput(int k,
-                const Eigen::Ref<const Eigen::VectorXd>& ctrl_pts,
-                Eigen::Ref<Eigen::VectorXd> uk) const noexcept;
-
   // need to be implemented by derived classes (they define how to update the
   // QP matrices based on changes to the MPC problem)
 

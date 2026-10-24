@@ -10,6 +10,7 @@
 
 #include <Eigen/Core>
 #include <iosfwd>
+#include <vector>
 
 namespace affine_mpc {
 
@@ -185,9 +186,17 @@ public:
   const Eigen::VectorXi band_start;
 
   /// Basis weights in banded form (size band_width x horizon_steps). The input
-  /// at step k is `sum_i band_weights(i, k) * control_point(band_start(k) +
-  /// i)`.
+  /// at step k is the sum over i of `band_weights(i, k)` times control point
+  /// `band_start(k) + i`.
   const Eigen::MatrixXd band_weights;
+
+private:
+  friend class VectorParameterization;
+
+  // Sample indices whose bounds are equivalent to bounding every sampled
+  // input, or empty when bounding the control points is already exact. Not
+  // public until the interface for input bound rows is settled.
+  std::vector<int> inputSaturationSamples() const;
 };
 
 /**

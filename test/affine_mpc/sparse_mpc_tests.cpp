@@ -42,8 +42,6 @@ public:
   const auto getA() const { return this->A_; }
   const auto getL() const { return this->l_; }
   const auto getU() const { return this->u_; }
-  const auto getSplineWeights() const { return this->spline_weights_; }
-  const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
 };
 
 // ---- Constraint tests ------------------------------------------------------
@@ -160,7 +158,8 @@ TEST(SparseMPCProtectedTester,
   // this only works for m = 1 and nc = deg+1, otherwise each weight is
   // multiplied by I(m,m) or 0(m,m)
   const MatrixXd A_sat = A.bottomRows(m * T);
-  const MatrixXd A_sat_expected = mpc.getSplineWeights().transpose();
+  const MatrixXd A_sat_expected =
+      mpc.getParameterization().band_weights.transpose();
   const MatrixXd A_sat_ctrls = A_sat.leftCols(ctrls_dim);
   ASSERT_TRUE(expectEigenNear(A_sat_ctrls, A_sat_expected, 1e-15));
   ASSERT_TRUE(A_sat.rightCols(x_traj_dim).isZero());

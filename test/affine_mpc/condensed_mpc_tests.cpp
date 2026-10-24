@@ -1,6 +1,5 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
-#include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
@@ -39,9 +38,6 @@ public:
     qpUpdateX0(x0);
   }
 
-  const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
-  const auto getSplineKnots() const { return this->spline_knots_; }
-  const auto getSplineWeights() const { return this->spline_weights_; }
   const auto getAd() const { return this->Ad_; }
   const auto getBd() const { return this->Bd_; }
   const auto getWd() const { return this->wd_; }

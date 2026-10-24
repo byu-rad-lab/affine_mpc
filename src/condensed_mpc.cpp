@@ -1,7 +1,6 @@
 #include "affine_mpc/condensed_mpc.hpp"
 
 #include <Eigen/Core>
-#include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/osqp_solver.hpp"
@@ -144,21 +143,25 @@ void CondensedMPC::qpUpdateWeights() { weights_changed_ = true; }
 
 void CondensedMPC::updateS()
 {
-  const int num_weights{spline_degree_ + 1};
+  const Parameterization& param{input_param_.parameterization()};
 
   // add dynamics of initial time step (k=0)
-  for (int i{0}, col{0}; i < num_weights; ++i, col += input_dim_)
-    S_.block(0, col, state_dim_, input_dim_) = spline_weights_(i, 0) * Bd_;
+  for (int i{0}; i < param.band_width; ++i) {
+    const int col{input_param_.coefficientIndex(0, param.band_start(0) + i)};
+    S_.block(0, col, state_dim_, input_dim_) = param.band_weights(i, 0) * Bd_;
+  }
 
   for (int k{1}, row{state_dim_}; k < horizon_steps_; ++k, row += state_dim_) {
     // add cumulative effect of all previous dynamics
     S_.middleRows(row, state_dim_).noalias() =
         Ad_ * S_.middleRows(row - state_dim_, state_dim_);
 
-    // add effect of current input parameterized by spline
-    for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
-         ++i, col += input_dim_)
-      S_.block(row, col, state_dim_, input_dim_) += spline_weights_(i, k) * Bd_;
+    // add effect of current input parameterized by the basis
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
+      S_.block(row, col, state_dim_, input_dim_) +=
+          param.band_weights(i, k) * Bd_;
+    }
   }
 }
 

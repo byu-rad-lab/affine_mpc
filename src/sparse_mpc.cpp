@@ -1,7 +1,6 @@
 #include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
-#include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/osqp_solver.hpp"
@@ -114,11 +113,12 @@ bool SparseMPC::qpUpdateModel()
   }
 
   // set model constraints that multiply controls
-  const int num_weights{spline_degree_ + 1};
+  const Parameterization& param{input_param_.parameterization()};
   for (int k{0}, row{0}; k < horizon_steps_; ++k, row += state_dim_) {
-    for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
-         ++i, col += input_dim_) {
-      A_.block(row, col, state_dim_, input_dim_) = spline_weights_(i, k) * Bd_;
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
+      A_.block(row, col, state_dim_, input_dim_) =
+          param.band_weights(i, k) * Bd_;
     }
   }
 

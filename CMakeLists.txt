@@ -53,6 +53,7 @@ add_library(${PROJECT_NAME}
   src/parameterization.cpp
   src/solve_status.cpp
   src/osqp_solver.cpp
+  src/vector_parameterization.cpp
   src/mpc_base.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp

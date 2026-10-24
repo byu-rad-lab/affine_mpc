@@ -5,15 +5,14 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
-#include <numeric>
 #include <osqp.h>
 #include <stdexcept>
 #include <string>
-#include <unsupported/Eigen/Splines>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
+#include "affine_mpc/vector_parameterization.hpp"
 #include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 using namespace Eigen;
@@ -40,50 +39,14 @@ constexpr int validateInputDim(int input_dim)
   return input_dim;
 }
 
-/**
- * @brief Sample indices whose inputs are bounded when
- * `saturate_input_trajectory` is enabled. An empty result means the control
- * points are bounded instead.
- *
- * - degree 0: control points (each one equals the sampled inputs on its
- *   interval, so this is already exact).
- * - degree 1: floor(t) and ceil(t) of every active knot t, without
- *   duplicates. The spline is linear between knots, so every other sample lies
- *   between the first and last samples of its segment, and bounding these (at
- *   most 2*num_control_points-2) samples is exactly equivalent to bounding all
- *   of them. Active knots can not repeat, so the spline is continuous.
- * - degree > 1: every sample.
- */
-std::vector<int> inputSatSamples(const Parameterization& param,
+// Sample indices whose inputs are bounded when `saturate_input_trajectory` is
+// enabled. An empty result means the control points are bounded instead.
+std::vector<int> inputSatSamples(const VectorParameterization& input_param,
                                  const Options& opts)
 {
-  if (!opts.saturate_input_trajectory || param.degree == 0)
+  if (!opts.saturate_input_trajectory)
     return {};
-
-  std::vector<int> samples;
-  if (param.degree > 1) {
-    samples.resize(param.horizon_steps);
-    std::iota(samples.begin(), samples.end(), 0);
-    return samples;
-  }
-
-  // degree 1: active knots are knots(1), ..., knots(size-2) and span [0, T-1]
-  constexpr double snap_tol{1e-9}; // treat round-off from integers as integers
-  const VectorXd& knots{param.knots};
-  samples.reserve(2 * (knots.size() - 2));
-  for (Index i{1}; i < knots.size() - 1; ++i) {
-    const double t{knots(i)};
-    const double t_round{std::round(t)};
-    if (std::abs(t - t_round) <= snap_tol) {
-      samples.push_back(static_cast<int>(t_round));
-    } else {
-      samples.push_back(static_cast<int>(std::floor(t)));
-      samples.push_back(static_cast<int>(std::ceil(t)));
-    }
-  }
-  std::sort(samples.begin(), samples.end());
-  samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
-  return samples;
+  return input_param.inputSaturationSamples();
 }
 
 // Size checks for setters, which are not on the solve path. The message is
@@ -124,12 +87,12 @@ MPCBase::MPCBase(int state_dim,
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
     num_ctrl_pts_{param.num_control_points},
-    spline_degree_{param.degree},
     x_traj_dim_{state_dim * param.horizon_steps},
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
-    u_sat_samples_{inputSatSamples(param, opts)},
+    input_param_{input_dim_, param},
+    u_sat_samples_{inputSatSamples(input_param_, opts)},
     num_u_sat_cons_{u_sat_samples_.empty()
                         ? param.num_control_points
                         : static_cast<int>(u_sat_samples_.size())},
@@ -155,11 +118,7 @@ MPCBase::MPCBase(int state_dim,
     u_min_{input_dim},
     u_max_{input_dim},
     solution_map_{nullptr, 0},
-    solver_{nullptr},
-    spline_segment_idxs_{param.horizon_steps},
-    // spline_knots_{param.num_control_points + param.degree + 1},
-    spline_knots_{param.knots},
-    spline_weights_{param.degree + 1, param.horizon_steps}
+    solver_{nullptr}
 {
   // allocate QP memory
   const int slew0_dim{input_dim * opts.slew_initial_input};
@@ -177,21 +136,19 @@ MPCBase::MPCBase(int state_dim,
   u_min_.setConstant(-std::numeric_limits<double>::infinity());
   u_max_.setConstant(std::numeric_limits<double>::infinity());
 
-  calcSplineParams();
-
   // initialize common constraint matrix blocks
   A_.setZero();
 
   if (!u_sat_samples_.empty()) {
     // saturate sampled inputs (each a weighted sum of control points)
-    const int num_weights{spline_degree_ + 1};
     int row{u_sat_idx_};
     for (const int k : u_sat_samples_) {
-      for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
-           ++i, col += input_dim_) {
+      for (int i{0}; i < param.band_width; ++i) {
+        const int col{
+            input_param_.coefficientIndex(0, param.band_start(k) + i)};
         A_.block(row, col, input_dim_, input_dim_)
             .diagonal()
-            .setConstant(spline_weights_(i, k));
+            .setConstant(param.band_weights(i, k));
       }
       row += input_dim_;
     }
@@ -206,10 +163,12 @@ MPCBase::MPCBase(int state_dim,
     ctrls_ref_.setZero(ctrls_dim_);
   }
   if (opts.slew_initial_input) {
-    for (int i{0}, col{0}; i < spline_degree_ + 1; ++i, col += input_dim_) {
+    // the first sampled input u_0
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(0) + i)};
       A_.block(slew0_idx_, col, input_dim_, input_dim_)
           .diagonal()
-          .setConstant(spline_weights_(i, 0));
+          .setConstant(param.band_weights(i, 0));
     }
     u_prev_.setZero(input_dim_);
     u0_slew_.resize(input_dim);
@@ -317,7 +276,7 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const
   assert(solver_initialized_);
   validateSize(u0.size(), input_dim_, "getNextInput", "u0");
   // Assumes that the control points are first elements of solution
-  getInput(0, solution_map_, u0);
+  input_param_.evaluate(0, solution_map_, u0);
 }
 
 void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const
@@ -334,7 +293,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
   assert(solver_initialized_);
   validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
   // Assumes that the control points are first elements of solution
-  evaluateControlPoints(solution_map_, u_traj);
+  input_param_.evaluateTrajectory(solution_map_, u_traj);
 }
 
 void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
@@ -682,48 +641,9 @@ const VectorXd& MPCBase::getReferenceInputControlPoints() const
   return ctrls_ref_;
 }
 
-void MPCBase::calcSplineParams()
-{
-  using Spline1d = Spline<double, 1>;
-  for (int k{0}; k < horizon_steps_; ++k) {
-    const double t = k;
-    const int span = Spline1d::Span(t, spline_degree_, spline_knots_);
-    spline_segment_idxs_(k) = span - spline_degree_;
-
-    spline_weights_.col(k) =
-        Spline1d::BasisFunctions(t, spline_degree_, spline_knots_);
-  }
-}
-
-void MPCBase::evaluateControlPoints(const Ref<const VectorXd>& ctrl_pts,
-                                    Ref<VectorXd> u_traj) const noexcept
-{
-  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
-  Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
-
-  // same as Parameterization::evaluate except uses pre-computed weights
-  const int order{spline_degree_ + 1};
-  for (int k{0}; k < horizon_steps_; ++k) {
-    const int seg{spline_segment_idxs_(k)};
-    u_traj_mat.col(k).noalias() =
-        ctrls.middleCols(seg, order) * spline_weights_.col(k);
-  }
-}
-
-void MPCBase::getInput(const int k,
-                       const Ref<const VectorXd>& ctrl_pts,
-                       Ref<VectorXd> uk) const noexcept
-{
-  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
-  const int order{spline_degree_ + 1};
-  const int seg{spline_segment_idxs_(k)};
-  uk.noalias() = ctrls.middleCols(seg, order) * spline_weights_.col(k);
-}
-
 std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
-  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
-                               mpc.spline_knots_};
+  const Parameterization& param{mpc.getParameterization()};
 
   os << mpc.getClassName() << ":\n  state_dim = " << mpc.state_dim_
      << "\n  input_dim = " << mpc.input_dim_
@@ -756,8 +676,7 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 std::ostream&
 printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
-  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
-                               mpc.spline_knots_};
+  const Parameterization& param{mpc.getParameterization()};
 
   os << mpc.getClassName() << "(state_dim=" << mpc.state_dim_
      << ", input_dim=" << mpc.input_dim_ << ", parameterization=" << param

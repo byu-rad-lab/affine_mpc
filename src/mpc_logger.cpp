@@ -81,7 +81,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     input_dim_{mpc_->input_dim_},
     horizon_steps_{mpc_->horizon_steps_},
     num_ctrls_{mpc_->num_ctrl_pts_},
-    spline_degree_{mpc_->spline_degree_},
+    spline_degree_{mpc_->getParameterization().degree},
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
@@ -146,11 +146,10 @@ void MPCLogger::captureMPCSnapshot()
   addMetadata("state_dim", mpc_->state_dim_);
   addMetadata("input_dim", mpc_->input_dim_);
   addMetadata("horizon_steps", mpc_->horizon_steps_);
-  addMetadata("spline_degree", mpc_->spline_degree_);
+  addMetadata("spline_degree", mpc_->getParameterization().degree);
   addMetadata("num_control_points", mpc_->num_ctrl_pts_);
 
-  if (mpc_->spline_knots_.size() > 0)
-    addMetadata("knots", mpc_->spline_knots_);
+  addMetadata("knots", mpc_->getParameterization().knots);
 
   addMetadata("opt_use_input_cost",
               static_cast<int>(mpc_->opts_.use_input_cost));
@@ -234,7 +233,7 @@ void MPCLogger::logStep(double t,
           u_traj_buf_.segment(u_idx * input_dim_, input_dim_);
 
       if (has_input_ref) {
-        mpc_->getInput(
+        mpc_->input_param_.evaluate(
             u_idx, mpc_->ctrls_ref_,
             ref_inputs_out_buf_.segment(i_idx * input_dim_, input_dim_));
       }

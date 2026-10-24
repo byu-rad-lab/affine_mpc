@@ -1,8 +1,10 @@
 #include "affine_mpc/parameterization.hpp"
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <numeric>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -328,6 +330,44 @@ Eigen::VectorXd Parameterization::makeUniformClampedKnots(
   knots(seq(degree, ph::last - degree)) =
       ArrayXd::LinSpaced(num_active_knots, 0, horizon_steps - 1);
   return knots;
+}
+
+std::vector<int> Parameterization::inputSaturationSamples() const
+{
+  // degree 0: each sampled input equals one control point, so bounding the
+  // control points is already exact
+  if (degree == 0)
+    return {};
+
+  // degree > 1: every sample
+  std::vector<int> samples;
+  if (degree > 1) {
+    samples.resize(horizon_steps);
+    std::iota(samples.begin(), samples.end(), 0);
+    return samples;
+  }
+
+  // Degree 1: floor(t) and ceil(t) of every active knot t, without duplicates.
+  // The spline is linear between knots, so every other sample lies between the
+  // first and last samples of its segment, and bounding these (at most
+  // 2*num_control_points-2) samples is exactly equivalent to bounding all of
+  // them. Active knots can not repeat, so the spline is continuous. Active
+  // knots are knots(1), ..., knots(size-2) and span [0, T-1].
+  constexpr double snap_tol{1e-9}; // treat round-off from integers as integers
+  samples.reserve(2 * (knots.size() - 2));
+  for (Index i{1}; i < knots.size() - 1; ++i) {
+    const double t{knots(i)};
+    const double t_round{std::round(t)};
+    if (std::abs(t - t_round) <= snap_tol) {
+      samples.push_back(static_cast<int>(t_round));
+    } else {
+      samples.push_back(static_cast<int>(std::floor(t)));
+      samples.push_back(static_cast<int>(std::ceil(t)));
+    }
+  }
+  std::sort(samples.begin(), samples.end());
+  samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+  return samples;
 }
 
 std::ostream& operator<<(std::ostream& os, const Parameterization& param)
