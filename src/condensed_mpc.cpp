@@ -64,7 +64,9 @@ ChangeSet CondensedMPC::qpApplyChanges(const ChangeSet changes)
     // Eigen's matrix product still heap-allocates its blocking buffers when
     // they exceed EIGEN_STACK_ALLOCATION_LIMIT (128 KB), i.e. for large
     // problems after a model or weight change.
-    weighted_S_.noalias() = d.Q_big * S_;
+    // Products with a DiagonalMatrix copy it (a heap allocation) in Eigen 3.4,
+    // so the weights are applied through diagonal() views instead.
+    weighted_S_.noalias() = d.Q_big.diagonal().asDiagonal() * S_;
     P_.noalias() = S_.transpose() * weighted_S_;
     if (opts_.use_input_cost)
       P_ += d.R_big;
@@ -105,10 +107,10 @@ bool CondensedMPC::qpApplyX0(const Ref<const VectorXd>& x0)
     u_.tail(x_traj_dim_) = d.x_max.replicate(horizon_steps_, 1) - v_;
   }
 
-  weighted_state_err_.noalias() = d.Q_big * (v_ - d.x_ref);
+  weighted_state_err_.noalias() = d.Q_big.diagonal().cwiseProduct(v_ - d.x_ref);
   q_.noalias() = S_.transpose() * weighted_state_err_;
   if (opts_.use_input_cost)
-    q_.noalias() -= d.R_big * d.ctrls_ref;
+    q_.noalias() -= d.R_big.diagonal().cwiseProduct(d.ctrls_ref);
   success &= solver_->updateCostVector(q_);
 
   if (opts_.saturate_states)

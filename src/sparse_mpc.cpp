@@ -160,9 +160,11 @@ void SparseMPC::calcBothCostTerms()
 void SparseMPC::calcCostVector()
 {
   const ProblemData& d{data()};
-  q_.tail(x_traj_dim_).noalias() = -(d.Q_big * d.x_ref);
+  // Products with a DiagonalMatrix copy it (a heap allocation) in Eigen 3.4
+  q_.tail(x_traj_dim_).noalias() = -d.Q_big.diagonal().cwiseProduct(d.x_ref);
   if (opts_.use_input_cost)
-    q_.head(ctrls_dim_).noalias() = -(d.R_big * d.ctrls_ref);
+    q_.head(ctrls_dim_).noalias() =
+        -d.R_big.diagonal().cwiseProduct(d.ctrls_ref);
 }
 
 } // namespace affine_mpc
