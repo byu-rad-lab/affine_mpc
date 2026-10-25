@@ -1,8 +1,27 @@
-name: Publish to PyPI
+name: Build and publish to PyPI
 
 on:
   release:
     types: [published]
+  # Build and test the wheels and sdist on PRs into main (release PRs) without
+  # publishing, so packaging problems show up before a release is published.
+  pull_request:
+    branches: [main]
+    paths:
+      - CMakeLists.txt
+      - cmake/**
+      - include/**
+      - src/**
+      - python/**
+      - pyproject.toml
+      - README.md
+      - LICENSE
+      - .github/workflows/publish_pypi.yaml
+
+# A new push to a PR cancels its unfinished wheel builds; releases always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   ## Manually specify versions if one ever fails
@@ -35,6 +54,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # setuptools_scm needs the tags for the version (PR checkouts are
+          # shallow merge commits without them)
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -110,6 +133,8 @@ jobs:
           path: dist/*.tar.gz
 
   publish-pypi:
+    # PR runs only build and test; only a published release uploads to PyPI
+    if: github.event_name == 'release'
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
