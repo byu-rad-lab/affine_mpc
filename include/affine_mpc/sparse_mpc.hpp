@@ -66,7 +66,7 @@ public:
   const char* getClassName() const noexcept override { return "SparseMPC"; }
 
 private:
-  ChangeSet qpApplyChanges(ChangeSet changes) override final;
+  DataChangeSet qpApplyChanges(DataChangeSet changes) override final;
   bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
   // dynamics-row bounds -wd for steps k >= 1 (k = 0 also depends on x0)

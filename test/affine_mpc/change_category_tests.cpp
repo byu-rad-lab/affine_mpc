@@ -27,7 +27,7 @@ public:
   {
     ASSERT_TRUE(this->qpUpdateX0(x0));
   }
-  ampc::ChangeSet pending() const { return this->pendingChanges(); }
+  ampc::DataChangeSet pending() const { return this->pendingChanges(); }
   const MatrixXd& P() const { return this->P_; }
   const MatrixXd& A() const { return this->A_; }
   const VectorXd& q() const { return this->q_; }
@@ -242,7 +242,7 @@ TEST(ChangeCategoryTester, givenSetters_DoNotChangeTheQP)
                          .slew0 = 1.3,
                          .u_prev = 1.3};
     configure(mpc, changed);
-    EXPECT_EQ(mpc.pending(), ampc::ChangeSet::all());
+    EXPECT_EQ(mpc.pending(), ampc::DataChangeSet::all());
     EXPECT_TRUE(expectEigenNear(mpc.P(), P, 0.0));
     EXPECT_TRUE(expectEigenNear(mpc.A(), A, 0.0));
     EXPECT_TRUE(expectEigenNear(mpc.q(), q, 0.0));

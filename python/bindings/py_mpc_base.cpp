@@ -38,7 +38,7 @@ public:
   ~PyMPCBase() override = default;
 
   // define pure virtual funtions for unit testing
-  ampc::ChangeSet qpApplyChanges(ampc::ChangeSet /*changes*/) override
+  ampc::DataChangeSet qpApplyChanges(ampc::DataChangeSet /*changes*/) override
   {
     return {};
   }

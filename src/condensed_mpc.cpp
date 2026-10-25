@@ -52,15 +52,15 @@ void CondensedMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj += v_;
 }
 
-ChangeSet CondensedMPC::qpApplyChanges(const ChangeSet changes)
+DataChangeSet CondensedMPC::qpApplyChanges(const DataChangeSet changes)
 {
-  const ProblemData& d{data()};
-  ChangeSet pending{};
+  const MPCData& d{data()};
+  DataChangeSet pending{};
 
-  if (changes.has(Change::Model))
+  if (changes.has(DataChange::Model))
     updateS();
 
-  if (changes.has(Change::Model | Change::Weights)) {
+  if (changes.has(DataChange::Model | DataChange::Weights)) {
     // Eigen's matrix product still heap-allocates its blocking buffers when
     // they exceed EIGEN_STACK_ALLOCATION_LIMIT (128 KB), i.e. for large
     // problems after a model or weight change.
@@ -79,16 +79,16 @@ ChangeSet CondensedMPC::qpApplyChanges(const ChangeSet changes)
       const bool updated{opts_.saturate_states ? solver_->updateMatrices(P_, A_)
                                                : solver_->updateCostMatrix(P_)};
       if (!updated)
-        pending |= changes & (Change::Model | Change::Weights);
+        pending |= changes & (DataChange::Model | DataChange::Weights);
     }
   }
 
   // MPCBase wrote the limit and slew rows. With state saturation, qpApplyX0()
   // sends the bounds at every solve anyway.
   if (!opts_.saturate_states && isSolverInitialized()
-      && changes.has(Change::Limits | Change::PreviousInput)) {
+      && changes.has(DataChange::Limits | DataChange::PreviousInput)) {
     if (!solver_->updateBounds(l_, u_))
-      pending |= changes & (Change::Limits | Change::PreviousInput);
+      pending |= changes & (DataChange::Limits | DataChange::PreviousInput);
   }
 
   // The model offset and references only enter v_ and q_, which qpApplyX0()
@@ -98,7 +98,7 @@ ChangeSet CondensedMPC::qpApplyChanges(const ChangeSet changes)
 
 bool CondensedMPC::qpApplyX0(const Ref<const VectorXd>& x0)
 {
-  const ProblemData& d{data()};
+  const MPCData& d{data()};
   updateV(x0);
 
   bool success{true};

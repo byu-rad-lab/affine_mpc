@@ -107,7 +107,7 @@ MPCBase::MPCBase(int state_dim,
     solver_{nullptr},
     data_{state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, opts_},
     // nothing is in the QP yet, so initializeSolver() assembles everything
-    pending_{ChangeSet::all()},
+    pending_{DataChangeSet::all()},
     model_set_{false},
     model_from_continuous_{false},
     u_lims_set_{false},
@@ -242,7 +242,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
       && (status == SolveStatus::Success
           || status == SolveStatus::SolvedInaccurate)) {
     getNextInput(data_.u_prev);
-    pending_ |= Change::PreviousInput;
+    pending_ |= DataChange::PreviousInput;
   }
   mpc_solve_time_ = std::chrono::duration<double>(Clock::now() - start).count();
   return status;
@@ -277,10 +277,10 @@ bool MPCBase::applyPendingChanges()
   return pending_.empty();
 }
 
-void MPCBase::writeBounds(const ChangeSet changes)
+void MPCBase::writeBounds(const DataChangeSet changes)
 {
-  const ProblemData& d{data_};
-  if (changes.has(Change::Limits)) {
+  const MPCData& d{data_};
+  if (changes.has(DataChange::Limits)) {
     l_.segment(u_sat_idx_, u_sat_dim_) = d.u_min.replicate(num_u_sat_cons_, 1);
     u_.segment(u_sat_idx_, u_sat_dim_) = d.u_max.replicate(num_u_sat_cons_, 1);
     if (opts_.slew_control_points) {
@@ -294,7 +294,7 @@ void MPCBase::writeBounds(const ChangeSet changes)
     }
   }
   if (opts_.slew_initial_input
-      && changes.has(Change::Limits | Change::PreviousInput)) {
+      && changes.has(DataChange::Limits | DataChange::PreviousInput)) {
     l_.segment(slew0_idx_, input_dim_) = d.u_prev - d.u0_slew;
     u_.segment(slew0_idx_, input_dim_) = d.u_prev + d.u0_slew;
   }
@@ -366,7 +366,7 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   data_.wd = wd;
   model_set_ = true;
   model_from_continuous_ = false;
-  pending_ |= Change::Model | Change::ModelOffset;
+  pending_ |= DataChange::Model | DataChange::ModelOffset;
 }
 
 void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
@@ -385,7 +385,7 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   discretizer_.discretize(Ac, Bc, wc, dt, data_.Ad, data_.Bd, data_.wd, tol);
   model_set_ = true;
   model_from_continuous_ = true;
-  pending_ |= Change::Model | Change::ModelOffset;
+  pending_ |= DataChange::Model | DataChange::ModelOffset;
 }
 
 void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
@@ -395,7 +395,7 @@ void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
     throw std::logic_error("[MPCBase::setModelOffsetDiscrete] Model must be "
                            "set before its offset.");
   data_.wd = wd;
-  pending_ |= Change::ModelOffset;
+  pending_ |= DataChange::ModelOffset;
 }
 
 void MPCBase::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
@@ -408,7 +408,7 @@ void MPCBase::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
         "set with setModelContinuous2Discrete(), whose discretization is "
         "reused.");
   discretizer_.discretizeOffset(wc, data_.wd);
-  pending_ |= Change::ModelOffset;
+  pending_ |= DataChange::ModelOffset;
 }
 
 void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
@@ -433,7 +433,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
   data_.Q_big.diagonal() = Q_diag.replicate(horizon_steps_, 1);
-  pending_ |= Change::Weights;
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
@@ -447,7 +447,7 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
   data_.Q_big.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
       Q_diag.replicate(horizon_steps_ - 1, 1);
   data_.Q_big.diagonal().tail(state_dim_) = Qf_diag;
-  pending_ |= Change::Weights;
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
@@ -460,14 +460,14 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
     throw std::invalid_argument(
         "[MPCBase::setInputWeights] Input weights must be non-negative.");
   data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
-  pending_ |= Change::Weights;
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
   data_.x_ref = x_step.replicate(horizon_steps_, 1);
-  pending_ |= Change::References;
+  pending_ |= DataChange::References;
 }
 
 void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
@@ -475,7 +475,7 @@ void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
   validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
                "x_traj");
   data_.x_ref = x_traj;
-  pending_ |= Change::References;
+  pending_ |= DataChange::References;
 }
 
 void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
@@ -485,7 +485,7 @@ void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
   data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
-  pending_ |= Change::References;
+  pending_ |= DataChange::References;
 }
 
 void MPCBase::setReferenceInputControlPoints(
@@ -497,7 +497,7 @@ void MPCBase::setReferenceInputControlPoints(
   validateSize(control_points.size(), ctrls_dim_,
                "setReferenceInputControlPoints", "control_points");
   data_.ctrls_ref = control_points;
-  pending_ |= Change::References;
+  pending_ |= DataChange::References;
 }
 
 void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
@@ -511,7 +511,7 @@ void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
   data_.u_min = u_min;
   data_.u_max = u_max;
   u_lims_set_ = true;
-  pending_ |= Change::Limits;
+  pending_ |= DataChange::Limits;
 }
 
 void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
@@ -528,7 +528,7 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   data_.x_min = x_min;
   data_.x_max = x_max;
   x_lims_set_ = true;
-  pending_ |= Change::Limits;
+  pending_ |= DataChange::Limits;
 }
 
 void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
@@ -542,7 +542,7 @@ void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
         "[MPCBase::setSlewRate] Slew rate must be non-negative.");
   data_.ctrls_slew = control_point_slew;
   ctrls_slew_rate_set_ = true;
-  pending_ |= Change::Limits;
+  pending_ |= DataChange::Limits;
 }
 
 void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
@@ -556,7 +556,7 @@ void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
         "[MPCBase::setSlewRateInitial] Slew rate must be non-negative.");
   data_.u0_slew = u0_slew;
   slew0_rate_set_ = true;
-  pending_ |= Change::Limits;
+  pending_ |= DataChange::Limits;
 }
 
 void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
@@ -566,7 +566,7 @@ void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
         "[MPCBase::setPreviousInput] Initial slew rate is not enabled.");
   validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
   data_.u_prev = u_prev;
-  pending_ |= Change::PreviousInput;
+  pending_ |= DataChange::PreviousInput;
 }
 
 VectorXd MPCBase::getStateWeights() const

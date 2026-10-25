@@ -12,10 +12,10 @@
 #include <vector>
 
 #include "affine_mpc/discretizer.hpp"
+#include "affine_mpc/mpc_data.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/problem_data.hpp"
 #include "affine_mpc/solve_status.hpp"
 #include "affine_mpc/vector_parameterization.hpp"
 
@@ -35,7 +35,7 @@ namespace affine_mpc {
  * per changed category. Changes of the model matrices or the weights rebuild QP
  * matrices and make OSQP refactor; the other categories only update vectors.
  *
- * Derived classes read the problem data through data() and implement how the
+ * Derived classes read the MPC data through data() and implement how the
  * QP depends on each change category and on the initial state.
  */
 class MPCBase
@@ -606,11 +606,11 @@ protected:
   Eigen::VectorXd l_; // osqp constraint lower bound
   Eigen::VectorXd u_; // osqp constraint upper bound
 
-  /// @brief The problem data set through the setters (read-only).
-  const ProblemData& data() const noexcept { return data_; }
+  /// @brief The MPC data set through the setters (read-only).
+  const MPCData& data() const noexcept { return data_; }
 
   /// @brief Change categories not yet applied to the QP.
-  ChangeSet pendingChanges() const noexcept { return pending_; }
+  DataChangeSet pendingChanges() const noexcept { return pending_; }
 
   /**
    * @brief Bring the whole QP up to date for x0: apply the pending changes,
@@ -625,10 +625,10 @@ private:
   // update failed, in which case the failed categories stay pending.
   bool applyPendingChanges();
   // Write the bound rows owned by MPCBase for the given changes
-  void writeBounds(ChangeSet changes);
+  void writeBounds(DataChangeSet changes);
 
   // need to be implemented by derived classes (they define how the QP depends
-  // on the problem data)
+  // on the MPC data)
 
   // Write the parts of the QP that depend on the changed categories but not on
   // x0 (e.g. P and A after model or weight changes), and push the changed
@@ -638,14 +638,15 @@ private:
   // the QP is only assembled. Returns the categories that are still pending:
   // those whose solver update failed (retried at the next call), plus any the
   // formulation applies only after initialization.
-  virtual ChangeSet qpApplyChanges(ChangeSet changes) = 0;
+  virtual DataChangeSet qpApplyChanges(DataChangeSet changes) = 0;
   // Write the x0-dependent parts of the QP and push them to the solver.
   // Returns false if a solver update failed. Must not do matrix work, so that
   // solve() after prepare() only updates vectors.
   virtual bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
 
-  ProblemData data_;
-  ChangeSet pending_; // categories changed since they were applied to the QP
+  MPCData data_;
+  DataChangeSet
+      pending_; // categories changed since they were applied to the QP
   bool model_set_, model_from_continuous_, u_lims_set_, x_lims_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;

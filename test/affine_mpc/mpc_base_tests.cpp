@@ -64,11 +64,11 @@ public:
     applyChanges();
     return std::as_const(u_).segment(u_sat_idx_, u_sat_dim_);
   }
-  ampc::ChangeSet getPendingChanges() const { return pendingChanges(); }
+  ampc::DataChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
 
 private:
-  ampc::ChangeSet qpApplyChanges(ampc::ChangeSet changes) override final
+  ampc::DataChangeSet qpApplyChanges(ampc::DataChangeSet changes) override final
   {
     applied_changes = applied_changes | changes;
     return {};
@@ -79,7 +79,7 @@ private:
   }
 
 public:
-  ampc::ChangeSet applied_changes{};
+  ampc::DataChangeSet applied_changes{};
 
 protected:
   int totalSlewDim() const
@@ -190,19 +190,19 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
                            .slew_control_points = true,
                            .saturate_states = true};
   MPCBaseTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
-  using ampc::Change;
-  using ampc::ChangeSet;
+  using ampc::DataChange;
+  using ampc::DataChangeSet;
 
   // nothing is in the QP before the first update, so everything is pending
-  EXPECT_EQ(base.getPendingChanges(), ChangeSet::all());
+  EXPECT_EQ(base.getPendingChanges(), DataChangeSet::all());
   base.applyChanges();
-  EXPECT_EQ(base.applied_changes, ChangeSet::all());
+  EXPECT_EQ(base.applied_changes, DataChangeSet::all());
   EXPECT_TRUE(base.getPendingChanges().empty());
 
   const Vector2d v2{Vector2d::Ones()};
   const VectorXd v1{VectorXd::Ones(m)};
   auto expectMarks = [&](const std::function<void()>& setter,
-                         ChangeSet expected, const char* name) {
+                         DataChangeSet expected, const char* name) {
     SCOPED_TRACE(name);
     setter();
     EXPECT_EQ(base.getPendingChanges(), expected);
@@ -214,45 +214,47 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
 
   const Matrix2d Ad{Matrix2d::Identity()};
   expectMarks([&] { base.setModelDiscrete(Ad, v2, v2); },
-              Change::Model | Change::ModelOffset, "setModelDiscrete");
+              DataChange::Model | DataChange::ModelOffset, "setModelDiscrete");
   expectMarks([&] { base.setModelContinuous2Discrete(Ad, v2, v2, 0.1); },
-              Change::Model | Change::ModelOffset,
+              DataChange::Model | DataChange::ModelOffset,
               "setModelContinuous2Discrete");
-  expectMarks([&] { base.setModelOffsetDiscrete(v2); }, Change::ModelOffset,
+  expectMarks([&] { base.setModelOffsetDiscrete(v2); }, DataChange::ModelOffset,
               "setModelOffsetDiscrete");
   expectMarks([&] { base.setModelOffsetContinuous2Discrete(v2); },
-              Change::ModelOffset, "setModelOffsetContinuous2Discrete");
-  expectMarks([&] { base.setStateWeights(v2); }, Change::Weights,
+              DataChange::ModelOffset, "setModelOffsetContinuous2Discrete");
+  expectMarks([&] { base.setStateWeights(v2); }, DataChange::Weights,
               "setStateWeights");
-  expectMarks([&] { base.setStateWeights(v2, v2); }, Change::Weights,
+  expectMarks([&] { base.setStateWeights(v2, v2); }, DataChange::Weights,
               "setStateWeights(Q, Qf)");
-  expectMarks([&] { base.setInputWeights(v1); }, Change::Weights,
+  expectMarks([&] { base.setInputWeights(v1); }, DataChange::Weights,
               "setInputWeights");
-  expectMarks([&] { base.setWeights(v2, v1); }, Change::Weights, "setWeights");
-  expectMarks([&] { base.setWeights(v2, v2, v1); }, Change::Weights,
+  expectMarks([&] { base.setWeights(v2, v1); }, DataChange::Weights,
+              "setWeights");
+  expectMarks([&] { base.setWeights(v2, v2, v1); }, DataChange::Weights,
               "setWeights(Q, Qf, R)");
-  expectMarks([&] { base.setReferenceState(v2); }, Change::References,
+  expectMarks([&] { base.setReferenceState(v2); }, DataChange::References,
               "setReferenceState");
   expectMarks([&] { base.setReferenceStateTrajectory(VectorXd::Ones(10)); },
-              Change::References, "setReferenceStateTrajectory");
-  expectMarks([&] { base.setReferenceInput(v1); }, Change::References,
+              DataChange::References, "setReferenceStateTrajectory");
+  expectMarks([&] { base.setReferenceInput(v1); }, DataChange::References,
               "setReferenceInput");
   expectMarks([&] { base.setReferenceInputControlPoints(VectorXd::Ones(3)); },
-              Change::References, "setReferenceInputControlPoints");
-  expectMarks([&] { base.setInputLimits(-v1, v1); }, Change::Limits,
+              DataChange::References, "setReferenceInputControlPoints");
+  expectMarks([&] { base.setInputLimits(-v1, v1); }, DataChange::Limits,
               "setInputLimits");
-  expectMarks([&] { base.setStateLimits(-v2, v2); }, Change::Limits,
+  expectMarks([&] { base.setStateLimits(-v2, v2); }, DataChange::Limits,
               "setStateLimits");
-  expectMarks([&] { base.setSlewRate(v1); }, Change::Limits, "setSlewRate");
-  expectMarks([&] { base.setSlewRateInitial(v1); }, Change::Limits,
+  expectMarks([&] { base.setSlewRate(v1); }, DataChange::Limits, "setSlewRate");
+  expectMarks([&] { base.setSlewRateInitial(v1); }, DataChange::Limits,
               "setSlewRateInitial");
-  expectMarks([&] { base.setPreviousInput(v1); }, Change::PreviousInput,
+  expectMarks([&] { base.setPreviousInput(v1); }, DataChange::PreviousInput,
               "setPreviousInput");
 
   // categories accumulate until they are applied
   base.setStateWeights(v2);
   base.setReferenceState(v2);
-  EXPECT_EQ(base.getPendingChanges(), Change::Weights | Change::References);
+  EXPECT_EQ(base.getPendingChanges(),
+            DataChange::Weights | DataChange::References);
 }
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)

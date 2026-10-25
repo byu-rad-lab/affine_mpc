@@ -63,21 +63,21 @@ void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj = solution_map_.tail(x_traj_dim_);
 }
 
-ChangeSet SparseMPC::qpApplyChanges(const ChangeSet changes)
+DataChangeSet SparseMPC::qpApplyChanges(const DataChangeSet changes)
 {
-  ChangeSet pending{};
+  DataChangeSet pending{};
 
   // dynamics-row bounds of steps k >= 1 (sent with the x0 rows at every solve)
-  if (changes.has(Change::ModelOffset))
+  if (changes.has(DataChange::ModelOffset))
     setDynamicsOffsetBounds();
 
-  if (changes.has(Change::Model)) {
+  if (changes.has(DataChange::Model)) {
     setDynamicsMatrixBlocks();
     if (isSolverInitialized() && !solver_->updateConstraintMatrix(A_))
-      pending |= Change::Model;
+      pending |= DataChange::Model;
   }
 
-  if (changes.has(Change::Weights)) {
+  if (changes.has(DataChange::Weights)) {
     calcBothCostTerms();
     if (!isSolverInitialized()) {
       // Assembling for initializeSolver(): store every weight position on P's
@@ -88,17 +88,17 @@ ChangeSet SparseMPC::qpApplyChanges(const ChangeSet changes)
       P_.diagonal().tail(x_traj_dim_).setOnes();
       if (opts_.use_input_cost)
         P_.diagonal().head(ctrls_dim_).setOnes();
-      pending |= Change::Weights;
+      pending |= DataChange::Weights;
     } else {
       bool updated{solver_->updateCostMatrix(P_)};
       updated &= solver_->updateCostVector(q_);
       if (!updated)
-        pending |= changes & (Change::Weights | Change::References);
+        pending |= changes & (DataChange::Weights | DataChange::References);
     }
-  } else if (changes.has(Change::References)) {
+  } else if (changes.has(DataChange::References)) {
     calcCostVector();
     if (isSolverInitialized() && !solver_->updateCostVector(q_))
-      pending |= Change::References;
+      pending |= DataChange::References;
   }
 
   // MPCBase wrote the limit, slew, and state rows, which qpApplyX0() sends
@@ -107,7 +107,7 @@ ChangeSet SparseMPC::qpApplyChanges(const ChangeSet changes)
 
 bool SparseMPC::qpApplyX0(const Ref<const VectorXd>& x0)
 {
-  const ProblemData& d{data()};
+  const MPCData& d{data()};
   // separate statements avoid a temporary for the product inside a sum
   l_.head(state_dim_) = -d.wd;
   l_.head(state_dim_).noalias() -= d.Ad * x0;
@@ -117,7 +117,7 @@ bool SparseMPC::qpApplyX0(const Ref<const VectorXd>& x0)
 
 void SparseMPC::setDynamicsMatrixBlocks()
 {
-  const ProblemData& d{data()};
+  const MPCData& d{data()};
 
   // set model constraints that multiply controls
   const Parameterization& param{input_param_.parameterization()};
@@ -150,7 +150,7 @@ void SparseMPC::setDynamicsOffsetBounds()
 
 void SparseMPC::calcBothCostTerms()
 {
-  const ProblemData& d{data()};
+  const MPCData& d{data()};
   P_.diagonal().tail(x_traj_dim_) = d.Q_big.diagonal();
   if (opts_.use_input_cost)
     P_.diagonal().head(ctrls_dim_) = d.R_big.diagonal();
@@ -159,7 +159,7 @@ void SparseMPC::calcBothCostTerms()
 
 void SparseMPC::calcCostVector()
 {
-  const ProblemData& d{data()};
+  const MPCData& d{data()};
   // Products with a DiagonalMatrix copy it (a heap allocation) in Eigen 3.4
   q_.tail(x_traj_dim_).noalias() = -d.Q_big.diagonal().cwiseProduct(d.x_ref);
   if (opts_.use_input_cost)

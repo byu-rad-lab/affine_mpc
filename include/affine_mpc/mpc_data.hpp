@@ -1,10 +1,11 @@
-#ifndef AFFINE_MPC_PROBLEM_DATA_HPP
-#define AFFINE_MPC_PROBLEM_DATA_HPP
+#ifndef AFFINE_MPC_MPC_DATA_HPP
+#define AFFINE_MPC_MPC_DATA_HPP
 
 /**
- * @file problem_data.hpp
- * @brief Defines ProblemData and the change categories, the internal problem
- *   description shared by MPCBase and the formulations.
+ * @file mpc_data.hpp
+ * @brief Defines MPCData and the change categories: the internal MPC data
+ *   (as opposed to the QP data built from it) shared by MPCBase and the
+ *   formulations.
  */
 
 #include <Eigen/Core>
@@ -16,14 +17,14 @@
 namespace affine_mpc {
 
 /**
- * @enum Change
- * @brief Internal: categories of problem data changes. Each category updates
+ * @enum DataChange
+ * @brief Internal: categories of MPC data changes. Each category updates
  *   a different part of the QP, so a setter only marks its category and the
  *   QP is updated once per category in MPCBase::prepare() or MPCBase::solve().
  *
  * The initial state x0 is not a category: solve() applies it every call.
  */
-enum class Change : std::uint8_t
+enum class DataChange : std::uint8_t
 {
   ModelOffset = 1 << 0,   ///< model offset `wd` (QP vectors only)
   Model = 1 << 1,         ///< model matrices `Ad`, `Bd` (QP matrices)
@@ -34,21 +35,21 @@ enum class Change : std::uint8_t
 };
 
 /**
- * @class ChangeSet
- * @brief Internal: a set of Change categories.
+ * @class DataChangeSet
+ * @brief Internal: a set of DataChange categories.
  */
-class ChangeSet
+class DataChangeSet
 {
 public:
-  constexpr ChangeSet() noexcept = default;
-  constexpr ChangeSet(Change change) noexcept :
+  constexpr DataChangeSet() noexcept = default;
+  constexpr DataChangeSet(DataChange change) noexcept :
       bits_{static_cast<std::uint8_t>(change)}
   {}
 
   /// @brief Every category.
-  static constexpr ChangeSet all() noexcept
+  static constexpr DataChangeSet all() noexcept
   {
-    ChangeSet set;
+    DataChangeSet set;
     set.bits_ = (1 << 6) - 1;
     return set;
   }
@@ -57,37 +58,37 @@ public:
   constexpr bool empty() const noexcept { return bits_ == 0; }
 
   /// @brief Whether any category of `other` is in the set.
-  constexpr bool has(ChangeSet other) const noexcept
+  constexpr bool has(DataChangeSet other) const noexcept
   {
     return (bits_ & other.bits_) != 0;
   }
 
-  constexpr ChangeSet operator|(ChangeSet other) const noexcept
+  constexpr DataChangeSet operator|(DataChangeSet other) const noexcept
   {
-    ChangeSet set;
+    DataChangeSet set;
     set.bits_ = bits_ | other.bits_;
     return set;
   }
 
-  constexpr ChangeSet operator&(ChangeSet other) const noexcept
+  constexpr DataChangeSet operator&(DataChangeSet other) const noexcept
   {
-    ChangeSet set;
+    DataChangeSet set;
     set.bits_ = bits_ & other.bits_;
     return set;
   }
 
-  constexpr ChangeSet& operator|=(ChangeSet other) noexcept
+  constexpr DataChangeSet& operator|=(DataChangeSet other) noexcept
   {
     bits_ |= other.bits_;
     return *this;
   }
 
-  constexpr bool operator==(ChangeSet other) const noexcept
+  constexpr bool operator==(DataChangeSet other) const noexcept
   {
     return bits_ == other.bits_;
   }
 
-  constexpr bool operator!=(ChangeSet other) const noexcept
+  constexpr bool operator!=(DataChangeSet other) const noexcept
   {
     return bits_ != other.bits_;
   }
@@ -96,13 +97,13 @@ private:
   std::uint8_t bits_{0};
 };
 
-constexpr ChangeSet operator|(Change lhs, Change rhs) noexcept
+constexpr DataChangeSet operator|(DataChange lhs, DataChange rhs) noexcept
 {
-  return ChangeSet{lhs} | rhs;
+  return DataChangeSet{lhs} | rhs;
 }
 
 /**
- * @struct ProblemData
+ * @struct MPCData
  * @brief Internal: the MPC problem as set through the MPCBase setters (model,
  *   weights, references, limits, and the previous input). Owned by MPCBase,
  *   which validates every value; formulations only read it. Not part of the
@@ -110,7 +111,7 @@ constexpr ChangeSet operator|(Change lhs, Change rhs) noexcept
  *
  * Optional members are allocated only when their option is enabled.
  */
-struct ProblemData
+struct MPCData
 {
   /**
    * @brief Allocate the data and set the defaults (zero model, unit weights,
@@ -121,11 +122,11 @@ struct ProblemData
    * @param num_ctrl_pts Number of control points.
    * @param opts Options enabled at construction.
    */
-  ProblemData(int state_dim,
-              int input_dim,
-              int horizon_steps,
-              int num_ctrl_pts,
-              const Options& opts) :
+  MPCData(int state_dim,
+          int input_dim,
+          int horizon_steps,
+          int num_ctrl_pts,
+          const Options& opts) :
       Ad{Eigen::MatrixXd::Zero(state_dim, state_dim)},
       Bd{Eigen::MatrixXd::Zero(state_dim, input_dim)},
       wd{Eigen::VectorXd::Zero(state_dim)},
@@ -174,4 +175,4 @@ struct ProblemData
 
 } // namespace affine_mpc
 
-#endif // AFFINE_MPC_PROBLEM_DATA_HPP
+#endif // AFFINE_MPC_MPC_DATA_HPP
