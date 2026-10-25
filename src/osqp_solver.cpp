@@ -264,12 +264,13 @@ bool OSQPSolver::isWithinSparsityPattern(
 
 int OSQPSolver::countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat)
 {
+  // the diagonal is always stored (see initializeCostMatrix())
   int count{0};
   for (int col{0}; col < n_; ++col) {
     for (int row{0}; row < n_; ++row) {
       if (row > col)
         break;
-      if (mat(row, col) != 0.0)
+      if (mat(row, col) != 0.0 || row == col)
         ++count;
     }
   }
@@ -284,6 +285,10 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
   P_x_.setZero(P_nnz_);
   P_i_.setZero(P_nnz_);
 
+  // Store the whole diagonal even where it is zero now, so a diagonal weight
+  // that is zero at initialization can become nonzero later. This costs
+  // nothing in solves: OSQP's KKT system always includes P's diagonal (it adds
+  // sigma to it).
   P_nnz_ = 0;
   OSQPFloat val;
   for (int col{0}; col < n_; ++col) {
@@ -292,7 +297,7 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
       if (row > col)
         break;
       val = P(row, col);
-      if (val != 0.0) {
+      if (val != 0.0 || row == col) {
         P_x_(P_nnz_) = val;
         P_i_(P_nnz_++) = row;
       }

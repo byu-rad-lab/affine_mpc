@@ -147,12 +147,13 @@ TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
   bool success = base.testInitializeP(P);
   ASSERT_TRUE(!success); // non-convex test case should fail
 
-  Eigen::Matrix<OSQPFloat, 6, 1> px_true;
-  px_true << 1, 2, 3, 4, 5, 6;
-  Eigen::Matrix<OSQPInt, 6, 1> pi_true;
-  pi_true << 0, 1, 3, 0, 2, 5;
+  // the upper triangle's nonzeros plus the whole diagonal (zeros included)
+  Eigen::Matrix<OSQPFloat, 9, 1> px_true;
+  px_true << 1, 0, 0, 2, 3, 4, 5, 0, 6;
+  Eigen::Matrix<OSQPInt, 9, 1> pi_true;
+  pi_true << 0, 1, 2, 1, 3, 0, 2, 4, 5;
   Eigen::Matrix<OSQPInt, 7, 1> pp_true;
-  pp_true << 0, 1, 1, 1, 3, 5, 6;
+  pp_true << 0, 1, 2, 3, 5, 8, 9;
 
   ASSERT_TRUE(expectEigenNear(px_true, base.getPx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pi_true, base.getPi(), 1e-6));
