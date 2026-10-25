@@ -50,7 +50,8 @@ std::ostream& operator<<(std::ostream& os, const SolveInfo& info)
   os << "SolveInfo(status=" << info.status << ", iterations=" << info.iterations
      << ", objective=" << info.objective
      << ", qp_solve_time=" << info.qp_solve_time
-     << ", mpc_solve_time=" << info.mpc_solve_time << ')';
+     << ", mpc_solve_time=" << info.mpc_solve_time
+     << ", prepare_time=" << info.prepare_time << ')';
   return os;
 }
 

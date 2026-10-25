@@ -114,8 +114,9 @@ getNextInput(), getInputControlPoints(), getInputTrajectory(), or
 getPredictedStateTrajectory() after calling this function to access the results.
 
 The setters only store their values, so solve() first applies every change since
-the last solve() to the QP (rebuilding QP matrices and refactoring for model or
-weight changes), then the terms that depend on x0, then runs the solver.
+the last solve() or prepare() to the QP (rebuilding QP matrices and refactoring
+for model or weight changes), then the terms that depend on x0, then runs the
+solver.
 
 Args:
     x0: Initial (current) state vector.
@@ -138,6 +139,32 @@ Raises:
     ValueError: If x0 does not have size state_dim.
            )doc",
            py::arg("x0"), py::call_guard<py::gil_scoped_release>());
+
+  base.def("prepare", &ampc::MPCBase::prepare,
+           R"doc(
+Optional: apply every pending change that does not depend on the initial state,
+so the next solve() only does the x0-dependent work and the solver iterations.
+
+Setters only store their values; the QP work happens in solve(). For changes of
+the model matrices or the weights, that work (rebuilding QP matrices and
+refactoring) is most of the cost of a solve. Calling prepare() after these
+setters and before the next state measurement (e.g. right after applying the
+previous input) moves that work out of the time between measurement and input.
+Calling it is never required: solve() applies anything still pending. It saves
+little when only the model offset, references, limits, or the previous input
+changed (they only update QP vectors), and has nothing to do when nothing
+changed (e.g. an LTI problem with fixed weights).
+
+Its duration is reported as `prepare_time` by getSolveInfo(). The GIL is
+released during the call.
+
+Returns:
+    status: `Success` if the pending changes were applied, `NotInitialized`
+        before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
+        update (the update stays pending, so the next solve() retries it and
+        reports `UpdateFailed` again while the data is invalid).
+           )doc",
+           py::call_guard<py::gil_scoped_release>());
 
   base.def(
       "getNextInput",
@@ -356,8 +383,8 @@ Args:
     wd: Discrete-time model offset w.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("Ad"), py::arg("Bd"), py::arg("wd"));
   base.def("setModelContinuous2Discrete",
@@ -371,9 +398,9 @@ discrete controllers like MPC) and uses a matrix exponential, which is an exact
 discretization (theoretically).
 
 The discretization runs inside this setter, so its cost is not part of solve()
-(time it as part of your control loop). The QP matrices are rebuilt in the next
-solve(). When only the offset changes, setModelOffsetContinuous2Discrete() is
-much cheaper.
+or prepare() (time it as part of your control loop). The QP matrices are rebuilt
+in the next prepare() or solve(). When only the offset changes,
+setModelOffsetContinuous2Discrete() is much cheaper.
 
 The matrix exponential is computed with scaling and squaring: the step is halved
 `s` times until `||A*h||_1 <= 0.5` (with `h = dt / 2^s`), a Taylor series is
@@ -394,8 +421,8 @@ Args:
         can help when the affine approximation is updated every time step.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
            py::arg("tol") = 1e-10);
@@ -514,8 +541,8 @@ Args:
     x_step: Reference state vector to use for entire trajectory.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("x_step"));
 
@@ -531,8 +558,8 @@ Args:
         in `x_traj.ravel()` to convert it to a vector.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("x_traj"));
 
@@ -547,8 +574,8 @@ Args:
     u_step: Reference input vector to use for entire trajectory.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("u_step"));
 
@@ -566,8 +593,8 @@ Args:
         `control_points.ravel()` to convert it to a vector.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
             )doc",
            py::arg("control_points"));
 
@@ -583,8 +610,8 @@ Args:
     u_max: Upper bound on input vector.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("u_min"), py::arg("u_max"));
   base.def("setStateLimits", &ampc::MPCBase::setStateLimits,
@@ -600,8 +627,8 @@ Args:
     x_max: Upper bound on state vector.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("x_min"), py::arg("x_max"));
   base.def("setSlewRate", &ampc::MPCBase::setSlewRate,
@@ -617,8 +644,8 @@ Args:
     control_point_slew: Slew-rate vector. All values must be positive.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("control_point_slew"));
 
@@ -635,8 +662,8 @@ Args:
     u0_slew: Initial slew-rate vector. All values must be positive.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("u0_slew"));
 
@@ -659,8 +686,8 @@ Args:
     u_prev: Previous input vector.
 
 Returns:
-    success: Always True. The QP is updated in the next solve(), which reports
-        update failures.
+    success: Always True. The QP is updated in the next prepare() or solve(),
+        which report update failures.
            )doc",
            py::arg("u_prev"));
 
@@ -670,9 +697,10 @@ Returns:
 Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
 analysis and debugging.
 
-Reflects the matrix used by the last solve(): setters do not change it, model or
-weight changes are applied by the next solve(), and SparseMPC holds unit
-placeholder weights between initializeSolver() and the first solve().
+Reflects the matrix used by the last solve() or prepare(): setters do not change
+it, model or weight changes are applied by the next prepare() or solve(), and
+SparseMPC holds unit placeholder weights between initializeSolver() and the
+first prepare() or solve().
 
 Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
@@ -761,6 +789,7 @@ and timing).
 
 After a solve() that returned `UpdateFailed`, the solver fields still describe
 the previous solve, while `mpc_solve_time` covers the failed call.
+`prepare_time` is the duration of the last prepare() call.
 
 Returns:
     info (SolveInfo): Default values (status `NotInitialized`) before
@@ -785,9 +814,9 @@ fixed by initializeSolver().
 
 Model or weight updates that add nonzeros outside that pattern are silently
 dropped by the solver, so the MPC solves a different problem than the one you
-set. Call this after solve() (setters do not update the QP) to detect that. It
-scans every entry of the QP matrices, so avoid calling it in time-critical
-loops.
+set. Call this after prepare() or solve() (setters do not update the QP) to
+detect that. It scans every entry of the QP matrices, so avoid calling it in
+time-critical loops.
 
 Returns:
     within_pattern (bool): True if the QP matrices fit the pattern, or if the

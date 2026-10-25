@@ -17,7 +17,8 @@ namespace ampc = affine_mpc;
 
 namespace {
 
-// Exposes the assembled QP (P, A, q, l, u) and the pending change categories.
+// Exposes the assembled QP (P, A, q, l, u) and the pending change categories,
+// and lets tests overwrite the QP matrices held by the MPC object.
 template <class Formulation> class QPInspector : public Formulation
 {
 public:
@@ -32,6 +33,14 @@ public:
   const VectorXd& q() const { return this->q_; }
   const VectorXd& l() const { return this->l_; }
   const VectorXd& u() const { return this->u_; }
+  // Overwrites the local copies of the QP matrices; OSQP keeps its own copy,
+  // so solves are unaffected unless the MPC rebuilds and sends them.
+  void poisonMatrices()
+  {
+    const double nan{std::numeric_limits<double>::quiet_NaN()};
+    this->P_.setConstant(nan);
+    this->A_.setConstant(nan);
+  }
 };
 
 template <class F>
@@ -154,7 +163,7 @@ std::vector<CategoryCase> categoryCases()
 }
 
 // Changing one category of an initialized MPC must give exactly the QP of an
-// MPC built from scratch with the new values.
+// MPC built from scratch with the new values, with or without prepare().
 template <class F> void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
 {
   const int n{2}, m{1};
@@ -162,16 +171,19 @@ template <class F> void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
   const Vector2d x0{0.3, -0.1};
 
   for (const CategoryCase& c : categoryCases()) {
-    {
-      SCOPED_TRACE(c.name);
+    for (const bool use_prepare : {false, true}) {
+      SCOPED_TRACE(c.name + (use_prepare ? " with prepare()" : ""));
       QPInspector<F> mpc{n, m, param, opts};
       configure(mpc, Scales{});
       ASSERT_TRUE(mpc.initializeSolver());
       mpc.assemble(x0);
 
       c.apply(mpc, c.changed);
+      if (use_prepare) {
+        ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+        EXPECT_TRUE(mpc.pending().empty());
+      }
       mpc.assemble(x0);
-      EXPECT_TRUE(mpc.pending().empty());
 
       QPInspector<F> fresh{n, m, param, opts};
       configure(fresh, c.changed);
@@ -246,6 +258,172 @@ TEST(ChangeCategoryTester, givenSetters_DoNotChangeTheQP)
   {
     SCOPED_TRACE("SparseMPC");
     QPInspector<ampc::SparseMPC> sparse{2, 1, param, all_options};
+    check(sparse);
+  }
+}
+
+// ---- prepare() --------------------------------------------------------------
+
+TEST(PrepareTester, givenUninitializedSolver_ReturnsNotInitialized)
+{
+  ampc::CondensedMPC condensed{2, 1, 10};
+  ampc::SparseMPC sparse{2, 1, 10};
+  EXPECT_EQ(condensed.prepare(), ampc::SolveStatus::NotInitialized);
+  EXPECT_EQ(sparse.prepare(), ampc::SolveStatus::NotInitialized);
+  EXPECT_EQ(condensed.getSolveInfo().prepare_time, 0.0);
+}
+
+// prepare() followed by solve(x0) must give exactly the solution of solve(x0)
+// alone, over a sequence of solves that change every category.
+template <class F> void checkPrepareMatchesSolveAlone(const ampc::Options& opts)
+{
+  const int n{2}, m{1}, T{10};
+  const auto param{ampc::Parameterization::bspline(T, 2, 5)};
+  F prepared{n, m, param, opts};
+  F direct{n, m, param, opts};
+  configure(prepared, Scales{});
+  configure(direct, Scales{});
+  ASSERT_TRUE(prepared.initializeSolver());
+  ASSERT_TRUE(direct.initializeSolver());
+
+  Vector2d x0{0.3, -0.1};
+  for (int step{0}; step < 6; ++step) {
+    SCOPED_TRACE(::testing::Message() << "step " << step);
+    // change a different set of categories each step (step 0 only applies the
+    // weights pending after initialization)
+    const double s{1.0 + 0.1 * step};
+    for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&prepared),
+                               static_cast<ampc::MPCBase*>(&direct)}) {
+      if (step == 1 || step == 4)
+        setModel(*mpc, Scales{.model = 1.0 + 0.01 * step, .offset = s});
+      if (step == 2)
+        setWeights(*mpc, Scales{.weights = s});
+      if (step == 3) {
+        setOffset(*mpc, Scales{.offset = s});
+        setRefs(*mpc, Scales{.refs = s});
+        setInputLimits(*mpc, Scales{.input_limits = s});
+      }
+      if (step == 4)
+        setWeights(*mpc, Scales{.weights = 1.0 / s});
+    }
+
+    ASSERT_EQ(prepared.prepare(), ampc::SolveStatus::Success);
+    const ampc::SolveStatus status_prepared{prepared.solve(x0)};
+    const ampc::SolveStatus status_direct{direct.solve(x0)};
+    ASSERT_EQ(status_prepared, ampc::SolveStatus::Success);
+    ASSERT_EQ(status_direct, status_prepared);
+
+    VectorXd z_prepared{m * param.num_control_points};
+    VectorXd z_direct{m * param.num_control_points};
+    prepared.getInputControlPoints(z_prepared);
+    direct.getInputControlPoints(z_direct);
+    EXPECT_TRUE(expectEigenNear(z_prepared, z_direct, 0.0));
+    EXPECT_EQ(prepared.getSolveInfo().iterations,
+              direct.getSolveInfo().iterations);
+    // a model change makes prepare() rebuild matrices, so it takes time
+    if (step == 1 || step == 4) {
+      EXPECT_GT(prepared.getSolveInfo().prepare_time, 0.0);
+    }
+    EXPECT_EQ(direct.getSolveInfo().prepare_time, 0.0);
+
+    VectorXd u0{m};
+    prepared.getNextInput(u0);
+    prepared.propagateModel(x0, u0, x0);
+  }
+}
+
+TEST(PrepareTester, givenPrepareBeforeSolve_CondensedMatchesSolveAlone)
+{
+  for (const ampc::Options& opts : {ampc::Options{}, all_options})
+    checkPrepareMatchesSolveAlone<ampc::CondensedMPC>(opts);
+}
+
+TEST(PrepareTester, givenPrepareBeforeSolve_SparseMatchesSolveAlone)
+{
+  for (const ampc::Options& opts : {ampc::Options{}, all_options})
+    checkPrepareMatchesSolveAlone<ampc::SparseMPC>(opts);
+}
+
+// After prepare(), solve(x0) must not rebuild or send QP matrices: overwriting
+// the MPC's local copies of P and A with NaN must leave them untouched and the
+// solution unchanged (OSQP keeps its own copy of the prepared matrices).
+template <class F> void checkSolveAfterPrepareDoesNoMatrixWork()
+{
+  const int n{2}, m{1}, T{10};
+  const auto param{ampc::Parameterization::bspline(T, 2, 5)};
+  QPInspector<F> prepared{n, m, param, all_options};
+  QPInspector<F> reference{n, m, param, all_options};
+  configure(prepared, Scales{});
+  configure(reference, Scales{});
+  ASSERT_TRUE(prepared.initializeSolver());
+  ASSERT_TRUE(reference.initializeSolver());
+  const Vector2d x0{0.3, -0.1};
+  ASSERT_EQ(prepared.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+
+  // every category, including the matrix ones
+  const Scales changed{.model = 1.1, .offset = 1.2, .weights = 1.3};
+  configure(prepared, changed);
+  configure(reference, changed);
+
+  ASSERT_EQ(prepared.prepare(), ampc::SolveStatus::Success);
+  EXPECT_TRUE(prepared.pending().empty());
+  prepared.poisonMatrices();
+  ASSERT_EQ(prepared.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+
+  EXPECT_TRUE(prepared.P().array().isNaN().all()) << "P was rebuilt";
+  EXPECT_TRUE(prepared.A().array().isNaN().all()) << "A was rebuilt";
+  VectorXd z_prepared{m * param.num_control_points};
+  VectorXd z_reference{m * param.num_control_points};
+  prepared.getInputControlPoints(z_prepared);
+  reference.getInputControlPoints(z_reference);
+  EXPECT_TRUE(expectEigenNear(z_prepared, z_reference, 0.0));
+
+  // control: without prepare(), solve() rebuilds P after a weight change (the
+  // solve itself may fail on the other NaN entries)
+  setWeights(prepared, Scales{});
+  (void)prepared.solve(x0);
+  EXPECT_FALSE(prepared.P().diagonal().array().isNaN().any());
+}
+
+TEST(PrepareTester, givenPrepare_CondensedSolveDoesNoMatrixWork)
+{
+  checkSolveAfterPrepareDoesNoMatrixWork<ampc::CondensedMPC>();
+}
+
+TEST(PrepareTester, givenPrepare_SparseSolveDoesNoMatrixWork)
+{
+  checkSolveAfterPrepareDoesNoMatrixWork<ampc::SparseMPC>();
+}
+
+TEST(PrepareTester, givenNonFiniteUpdate_PrepareReportsUpdateFailed)
+{
+  auto check = [](ampc::MPCBase& mpc) {
+    configure(mpc, Scales{});
+    ASSERT_TRUE(mpc.initializeSolver());
+    const Vector2d x0{0.3, -0.1};
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+
+    const double nan{std::numeric_limits<double>::quiet_NaN()};
+    mpc.setStateWeights(Vector2d{nan, 1.0});
+    EXPECT_EQ(mpc.prepare(), ampc::SolveStatus::UpdateFailed);
+    // the failed update stays pending, so solve() retries and reports it
+    EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::UpdateFailed);
+
+    setWeights(mpc, Scales{});
+    EXPECT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+    EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  };
+  const auto param{ampc::Parameterization::bspline(10, 2, 5)};
+  {
+    SCOPED_TRACE("CondensedMPC");
+    ampc::CondensedMPC condensed{2, 1, param, all_options};
+    check(condensed);
+  }
+  {
+    SCOPED_TRACE("SparseMPC");
+    ampc::SparseMPC sparse{2, 1, param, all_options};
     check(sparse);
   }
 }

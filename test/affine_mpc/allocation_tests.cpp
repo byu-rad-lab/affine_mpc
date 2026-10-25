@@ -94,7 +94,8 @@ template <typename Fn> std::size_t countAllocations(Fn&& fn)
 
 template <typename MPC>
 void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
-                                       const ampc::Options& opts)
+                                       const ampc::Options& opts,
+                                       bool use_prepare)
 {
 #ifndef AMPC_COUNT_ALLOCATIONS
   GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
@@ -124,6 +125,12 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   VectorXd u0{m}, u_traj{m * param.horizon_steps};
   VectorXd x_traj{n * param.horizon_steps};
   auto solve = [&]() {
+    if (use_prepare) {
+      // counted separately below, so only solve() is counted here
+      counting = false;
+      EXPECT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+      counting = true;
+    }
     const ampc::SolveStatus status{mpc.solve(x0)};
     mpc.getNextInput(u0);
     mpc.getInputTrajectory(u_traj);
@@ -138,7 +145,13 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u);
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 
-  // each change category rebuilds a different part of the QP in solve()
+  // each change category rebuilds a different part of the QP in prepare() or
+  // solve()
+  if (use_prepare) {
+    mpc.setStateWeights(Vector2d{1.5, 0.15});
+    mpc.setModelOffsetDiscrete(Vector2d{0.0, 0.01});
+    EXPECT_EQ(countAllocations([&] { (void)mpc.prepare(); }), 0u) << "prepare";
+  }
   mpc.setStateWeights(Vector2d{2.0, 0.2});
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "weights";
   mpc.setModelContinuous2Discrete(1.1 * Ac, Bc, Vector2d{0.0, 0.01}, 0.1);
@@ -161,7 +174,7 @@ struct AllocationCase
 
 // Small problems only: for large condensed problems, Eigen's matrix product
 // heap-allocates blocking buffers when P is rebuilt after a model or weight
-// change (steady-state solves still do not allocate).
+// change, in prepare() or solve() (steady-state solves still do not allocate).
 std::vector<AllocationCase> allocationCases()
 {
   const ampc::Options all{.use_input_cost = true,
@@ -184,13 +197,56 @@ class AllocationTester : public ::testing::TestWithParam<AllocationCase>
 TEST_P(AllocationTester, givenInitializedCondensedMPC_SolveDoesNotAllocate)
 {
   checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
-                                                        GetParam().opts);
+                                                        GetParam().opts, false);
 }
 
 TEST_P(AllocationTester, givenInitializedSparseMPC_SolveDoesNotAllocate)
 {
   checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
-                                                     GetParam().opts);
+                                                     GetParam().opts, false);
+}
+
+TEST_P(AllocationTester,
+       givenInitializedCondensedMPC_PrepareAndSolveDoNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
+                                                        GetParam().opts, true);
+}
+
+TEST_P(AllocationTester, givenInitializedSparseMPC_PrepareAndSolveDoNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
+                                                     GetParam().opts, true);
+}
+
+TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
+{
+#ifndef AMPC_COUNT_ALLOCATIONS
+  GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
+#endif
+  // Large enough that Eigen's matrix product for P may heap-allocate its
+  // blocking buffers. prepare() does that work, so solve() still does not
+  // allocate.
+  const int n{4}, m{2}, T{300}, nc{60};
+  const ampc::Options opts{.use_input_cost = true};
+  ampc::CondensedMPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
+  MatrixXd Ad{MatrixXd::Identity(n, n)};
+  Ad.topRightCorner(n - 1, n - 1).diagonal().setConstant(0.01);
+  MatrixXd Bd{MatrixXd::Zero(n, m)};
+  Bd.bottomRows(m).setConstant(0.01);
+  Bd(0, 0) = 0.001;
+  mpc.setModelDiscrete(Ad, Bd, VectorXd::Zero(n));
+  mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
+  mpc.setReferenceState(VectorXd::Ones(n));
+  ASSERT_TRUE(mpc.initializeSolver());
+  const VectorXd x0{VectorXd::Zero(n)};
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+
+  mpc.setModelDiscrete(1.001 * Ad, Bd, VectorXd::Zero(n));
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+  ampc::SolveStatus status{};
+  EXPECT_EQ(countAllocations([&] { status = mpc.solve(x0); }), 0u);
+  EXPECT_EQ(status, ampc::SolveStatus::Success);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -31,7 +31,8 @@ namespace affine_mpc {
  *
  * Setters only validate and store their values and mark a change category
  * (model offset, model matrices, weights, references, limits, previous input).
- * All QP work happens in solve(), once per changed category. Changes of the model matrices or the weights rebuild QP
+ * All QP work happens in solve(), or earlier in the optional prepare(), once
+ * per changed category. Changes of the model matrices or the weights rebuild QP
  * matrices and make OSQP refactor; the other categories only update vectors.
  *
  * Derived classes read the problem data through data() and implement how the
@@ -86,7 +87,7 @@ public:
    *   results.
    *
    *   The setters only store their values, so solve() first applies every
-   *   change since the last solve() to the QP (rebuilding QP
+   *   change since the last solve() or prepare() to the QP (rebuilding QP
    *   matrices and refactoring for model or weight changes), then the terms
    *   that depend on x0, then runs the solver.
    * @param x0 Initial (current) state vector.
@@ -102,6 +103,30 @@ public:
    *   value.
    */
   [[nodiscard]] SolveStatus solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
+
+  /**
+   * @brief Optional: apply every pending change that does not depend on the
+   *   initial state, so the next solve() only does the x0-dependent work and
+   *   the solver iterations.
+   *
+   *   Setters only store their values; the QP work happens in solve(). For
+   *   changes of the model matrices or the weights, that work (rebuilding QP
+   *   matrices and refactoring) is most of the cost of a solve. Calling
+   *   prepare() after these setters and before the next state measurement
+   *   (e.g. right after applying the previous input) moves that work out of
+   *   the time between measurement and input. Calling it is never required:
+   *   solve() applies anything still pending. It saves little when only the
+   *   model offset, references, limits, or the previous input changed (they
+   *   only update QP vectors), and has nothing to do when nothing changed
+   *   (e.g. an LTI problem with fixed weights).
+   *
+   *   Its duration is reported as `prepare_time` by getSolveInfo().
+   * @return `Success` if the pending changes were applied, `NotInitialized`
+   *   before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
+   *   update (the update stays pending, so the next solve() retries it and
+   *   reports `UpdateFailed` again while the data is invalid).
+   */
+  [[nodiscard]] SolveStatus prepare();
 
   /**
    * @brief Get the next input to apply (initial input from optimized
@@ -139,8 +164,9 @@ public:
    * @brief Get the predicted state trajectory from the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
-   *   CondensedMPC computes it from the QP data of the previous solve, so it
-   *   is unaffected by setters called since.
+   *   CondensedMPC computes it from the model, so after a prepare() that
+   *   applied a model change, call it before prepare() to get the prediction
+   *   of the previous solve.
    * @param x_traj Output vector for state trajectory.
    * @throws std::invalid_argument if x_traj does not have size
    *   state_dim * horizon_steps.
@@ -167,7 +193,8 @@ public:
    * @param Bd Discrete-time input matrix B.
    * @param wd Discrete-time model offset w.
    * @return Always true. The QP matrices are rebuilt (and the solver
-   *   refactors) in the next solve(), which reports update failures.
+   *   refactors) in the next prepare() or solve(), which report update
+   *   failures.
    */
   bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
                         const Eigen::Ref<const Eigen::MatrixXd>& Bd,
@@ -183,8 +210,8 @@ public:
    *   computes it and can also be used on its own.
    *
    *   The discretization runs inside this setter, so its cost is not part of
-   *   solve() (time it as part of your control loop). The QP matrices are
-   *   rebuilt in the next solve(). When only the
+   *   solve() or prepare() (time it as part of your control loop). The QP
+   *   matrices are rebuilt in the next prepare() or solve(). When only the
    *   offset changes, setModelOffsetContinuous2Discrete() is much cheaper.
    * @param Ac Continuous-time state matrix A.
    * @param Bc Continuous-time input matrix B.
@@ -198,7 +225,7 @@ public:
    *   precision. Larger values (e.g., 1e-6) save a few matrix products, which
    *   can help when the affine approximation is updated every time step.
    * @return Always true. QP update failures are reported by the next
-   *   solve().
+   *   prepare() or solve().
    */
   bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
@@ -287,8 +314,8 @@ public:
   /**
    * @brief Set reference state trajectory as a step command.
    * @param x_step Reference state vector to use for entire trajectory.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
 
@@ -298,8 +325,8 @@ public:
    *   Should have length of state_dim * horizon_steps. If you have a matrix
    *   where each column is a state at index k in the horizon, then you can pass
    *   in `x_traj.reshaped()` to convert it to a vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool
   setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
@@ -310,8 +337,8 @@ public:
    *
    *   This method can only be called if `use_input_cost` is enabled.
    * @param u_step Reference input vector to use for entire trajectory.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
 
@@ -324,8 +351,8 @@ public:
    *   Should have length of input_dim * num_control_points. If you have a
    *   matrix where each column is a control point, then you can pass in
    *   `control_points.reshaped()` to convert it to a vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setReferenceInputControlPoints(
       const Eigen::Ref<const Eigen::VectorXd>& control_points);
@@ -337,8 +364,8 @@ public:
    *   be called after if limits change between solves.
    * @param u_min Lower bound on input vector.
    * @param u_max Upper bound on input vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
@@ -351,8 +378,8 @@ public:
    *    limits change between solves.
    * @param x_min Lower bound on state vector.
    * @param x_max Upper bound on state vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
@@ -365,8 +392,8 @@ public:
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
    * @param control_point_slew Slew-rate vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& control_point_slew);
 
@@ -379,8 +406,8 @@ public:
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
    * @param u0_slew Initial slew-rate vector.
-   * @return Always true. The QP is updated in the next solve(), which
-   *   reports update failures.
+   * @return Always true. The QP is updated in the next prepare() or solve(),
+   *   which report update failures.
    */
   bool setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
 
@@ -399,7 +426,7 @@ public:
    *   after if limits change between solves.
    * @param u_prev Previous input vector.
    * @return Always true (invalid sizes throw). The QP is updated in the next
-   *   solve().
+   *   prepare() or solve().
    */
   bool setPreviousInput(const Eigen::Ref<const Eigen::VectorXd>& u_prev);
 
@@ -509,6 +536,7 @@ public:
   {
     SolveInfo info{solver_->getSolveInfo()};
     info.mpc_solve_time = mpc_solve_time_;
+    info.prepare_time = prepare_time_;
     return info;
   }
 
@@ -528,10 +556,10 @@ public:
    * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
    *   analysis and debugging.
    *
-   *   Reflects the matrix used by the last solve(): setters do not change it,
-   *   model or weight changes are applied by the next solve(), and SparseMPC
-   *   holds unit placeholder weights between initializeSolver() and the first
-   *   solve(). The return type
+   *   Reflects the matrix used by the last solve() or prepare(): setters do
+   *   not change it, model or weight changes are applied by the next prepare()
+   *   or solve(), and SparseMPC holds unit placeholder weights between
+   *   initializeSolver() and the first prepare() or solve(). The return type
    *   may change if the internal QP storage changes.
    * @return Reference to the internal QP cost matrix (full symmetric matrix),
    *   valid for the lifetime of this object.
@@ -544,7 +572,7 @@ public:
    *
    *   Model or weight updates that add nonzeros outside that pattern are
    *   silently dropped by the solver, so the MPC solves a different problem
-   *   than the one you set. Call this after solve() (setters do
+   *   than the one you set. Call this after prepare() or solve() (setters do
    *   not update the QP) to detect that. It scans every entry of the
    *   QP matrices, so avoid calling it in time-critical loops.
    * @return True if the QP matrices fit the pattern, or if the solver is not
@@ -612,8 +640,8 @@ private:
   // formulation applies only after initialization.
   virtual ChangeSet qpApplyChanges(ChangeSet changes) = 0;
   // Write the x0-dependent parts of the QP and push them to the solver.
-  // Returns false if a solver update failed. Must not do matrix work: matrix
-  // updates belong to qpApplyChanges().
+  // Returns false if a solver update failed. Must not do matrix work, so that
+  // solve() after prepare() only updates vectors.
   virtual bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
 
   ProblemData data_;
@@ -622,6 +650,7 @@ private:
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
   double mpc_solve_time_;   ///< duration of the last solve() call (seconds)
+  double prepare_time_;     ///< duration of the last prepare() call (seconds)
   Discretizer discretizer_; // for setModelContinuous2Discrete()
 };
 

@@ -720,7 +720,8 @@ class SolveInfo:
     """
     Solver diagnostics from the most recent solve. Obtain with
     MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
-    outside the QP solver (QP assembly, data updates, and refactorization).
+    outside the QP solver (QP assembly, data updates, and refactorization). Work
+    done in MPCBase.prepare() is reported separately in prepare_time.
     """
 
     def __repr__(self) -> str: ...
@@ -740,6 +741,12 @@ class SolveInfo:
     def objective(self) -> float:
         """
         QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
+        """
+
+    @property
+    def prepare_time(self) -> float:
+        """
+        Duration of the last prepare() call (seconds), zero if it was never called. Not reset by solve(), so it is stale if prepare() is no longer called.
         """
 
     @property
@@ -993,9 +1000,10 @@ class MPCBase:
         Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
         analysis and debugging.
 
-        Reflects the matrix used by the last solve(): setters do not change it, model or
-        weight changes are applied by the next solve(), and SparseMPC holds unit
-        placeholder weights between initializeSolver() and the first solve().
+        Reflects the matrix used by the last solve() or prepare(): setters do not change
+        it, model or weight changes are applied by the next prepare() or solve(), and
+        SparseMPC holds unit placeholder weights between initializeSolver() and the
+        first prepare() or solve().
 
         Returns:
             P (matrix): Copy of the full symmetric QP cost matrix.
@@ -1046,6 +1054,7 @@ class MPCBase:
 
         After a solve() that returned `UpdateFailed`, the solver fields still describe
         the previous solve, while `mpc_solve_time` covers the failed call.
+        `prepare_time` is the duration of the last prepare() call.
 
         Returns:
             info (SolveInfo): Default values (status `NotInitialized`) before
@@ -1115,13 +1124,38 @@ class MPCBase:
 
         Model or weight updates that add nonzeros outside that pattern are silently
         dropped by the solver, so the MPC solves a different problem than the one you
-        set. Call this after solve() (setters do not update the QP) to detect that. It
-        scans every entry of the QP matrices, so avoid calling it in time-critical
-        loops.
+        set. Call this after prepare() or solve() (setters do not update the QP) to
+        detect that. It scans every entry of the QP matrices, so avoid calling it in
+        time-critical loops.
 
         Returns:
             within_pattern (bool): True if the QP matrices fit the pattern, or if the
                 solver is not initialized yet. False otherwise.
+        """
+
+    def prepare(self) -> SolveStatus:
+        """
+        Optional: apply every pending change that does not depend on the initial state,
+        so the next solve() only does the x0-dependent work and the solver iterations.
+
+        Setters only store their values; the QP work happens in solve(). For changes of
+        the model matrices or the weights, that work (rebuilding QP matrices and
+        refactoring) is most of the cost of a solve. Calling prepare() after these
+        setters and before the next state measurement (e.g. right after applying the
+        previous input) moves that work out of the time between measurement and input.
+        Calling it is never required: solve() applies anything still pending. It saves
+        little when only the model offset, references, limits, or the previous input
+        changed (they only update QP vectors), and has nothing to do when nothing
+        changed (e.g. an LTI problem with fixed weights).
+
+        Its duration is reported as `prepare_time` by getSolveInfo(). The GIL is
+        released during the call.
+
+        Returns:
+            status: `Success` if the pending changes were applied, `NotInitialized`
+                before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
+                update (the update stays pending, so the next solve() retries it and
+                reports `UpdateFailed` again while the data is invalid).
         """
 
     @typing.overload
@@ -1195,8 +1229,8 @@ class MPCBase:
             u_max: Upper bound on input vector.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setInputWeights(
@@ -1232,9 +1266,9 @@ class MPCBase:
         discretization (theoretically).
 
         The discretization runs inside this setter, so its cost is not part of solve()
-        (time it as part of your control loop). The QP matrices are rebuilt in the next
-        solve(). When only the offset changes, setModelOffsetContinuous2Discrete() is
-        much cheaper.
+        or prepare() (time it as part of your control loop). The QP matrices are rebuilt
+        in the next prepare() or solve(). When only the offset changes,
+        setModelOffsetContinuous2Discrete() is much cheaper.
 
         The matrix exponential is computed with scaling and squaring: the step is halved
         `s` times until `||A*h||_1 <= 0.5` (with `h = dt / 2^s`), a Taylor series is
@@ -1255,8 +1289,8 @@ class MPCBase:
                 can help when the affine approximation is updated every time step.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setModelDiscrete(
@@ -1279,8 +1313,8 @@ class MPCBase:
             wd: Discrete-time model offset w.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setModelOffsetContinuous2Discrete(
@@ -1344,8 +1378,8 @@ class MPCBase:
             u_prev: Previous input vector.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setReferenceInput(
@@ -1361,8 +1395,8 @@ class MPCBase:
             u_step: Reference input vector to use for entire trajectory.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setReferenceInputControlPoints(
@@ -1381,8 +1415,8 @@ class MPCBase:
                 `control_points.ravel()` to convert it to a vector.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setReferenceState(
@@ -1395,8 +1429,8 @@ class MPCBase:
             x_step: Reference state vector to use for entire trajectory.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setReferenceStateTrajectory(
@@ -1412,8 +1446,8 @@ class MPCBase:
                 in `x_traj.ravel()` to convert it to a vector.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setSlewRate(
@@ -1434,8 +1468,8 @@ class MPCBase:
             control_point_slew: Slew-rate vector. All values must be positive.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setSlewRateInitial(
@@ -1453,8 +1487,8 @@ class MPCBase:
             u0_slew: Initial slew-rate vector. All values must be positive.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     def setStateLimits(
@@ -1474,8 +1508,8 @@ class MPCBase:
             x_max: Upper bound on state vector.
 
         Returns:
-            success: Always True. The QP is updated in the next solve(), which reports
-                update failures.
+            success: Always True. The QP is updated in the next prepare() or solve(),
+                which report update failures.
         """
 
     @typing.overload
@@ -1550,8 +1584,9 @@ class MPCBase:
         getPredictedStateTrajectory() after calling this function to access the results.
 
         The setters only store their values, so solve() first applies every change since
-        the last solve() to the QP (rebuilding QP matrices and refactoring for model or
-        weight changes), then the terms that depend on x0, then runs the solver.
+        the last solve() or prepare() to the QP (rebuilding QP matrices and refactoring
+        for model or weight changes), then the terms that depend on x0, then runs the
+        solver.
 
         Args:
             x0: Initial (current) state vector.

@@ -39,7 +39,8 @@ void moduleAddSolveStatus(py::module& m)
                               R"doc(
 Solver diagnostics from the most recent solve. Obtain with
 MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
-outside the QP solver (QP assembly, data updates, and refactorization).
+outside the QP solver (QP assembly, data updates, and refactorization). Work
+done in MPCBase.prepare() is reported separately in prepare_time.
 )doc")
       .def_readonly("status", &ampc::SolveInfo::status,
                     "Result of the solve. NotInitialized before "
@@ -59,6 +60,10 @@ outside the QP solver (QP assembly, data updates, and refactorization).
                     "initialization, including QP assembly, data updates, "
                     "refactorization, and the solver (seconds). Does not "
                     "depend on OSQP profiling.")
+      .def_readonly("prepare_time", &ampc::SolveInfo::prepare_time,
+                    "Duration of the last prepare() call (seconds), zero if "
+                    "it was never called. Not reset by solve(), so it is "
+                    "stale if prepare() is no longer called.")
       .def("__repr__", [](const ampc::SolveInfo& self) {
         std::ostringstream oss;
         oss << self;

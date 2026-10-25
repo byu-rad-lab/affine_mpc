@@ -116,6 +116,7 @@ MPCBase::MPCBase(int state_dim,
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
     mpc_solve_time_{0.0},
+    prepare_time_{0.0},
     discretizer_{state_dim_, input_dim_}
 {
   // allocate QP memory
@@ -239,6 +240,18 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   }
   mpc_solve_time_ = std::chrono::duration<double>(Clock::now() - start).count();
   return status;
+}
+
+SolveStatus MPCBase::prepare()
+{
+  if (!solver_initialized_)
+    return SolveStatus::NotInitialized;
+
+  using Clock = std::chrono::steady_clock;
+  const Clock::time_point start{Clock::now()};
+  const bool applied{applyPendingChanges()};
+  prepare_time_ = std::chrono::duration<double>(Clock::now() - start).count();
+  return applied ? SolveStatus::Success : SolveStatus::UpdateFailed;
 }
 
 bool MPCBase::qpUpdateX0(const Ref<const VectorXd>& x0)

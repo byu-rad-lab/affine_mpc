@@ -66,7 +66,8 @@ inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
  * @brief Solver diagnostics from the most recent solve.
  *
  * `mpc_solve_time - qp_solve_time` is the time the library spends outside the
- * QP solver (QP assembly, data updates, and refactorization).
+ * QP solver (QP assembly, data updates, and refactorization). Work done in
+ * MPCBase::prepare() is reported separately in `prepare_time`.
  */
 struct SolveInfo
 {
@@ -91,6 +92,11 @@ struct SolveInfo
   /// (seconds). Measured with `std::chrono::steady_clock`, so it does not
   /// depend on OSQP profiling.
   double mpc_solve_time{0.0};
+
+  /// Duration of the last MPCBase::prepare() call (seconds), zero if it was
+  /// never called. Not reset by solve(), so it is stale if prepare() is no
+  /// longer called.
+  double prepare_time{0.0};
 };
 
 /**

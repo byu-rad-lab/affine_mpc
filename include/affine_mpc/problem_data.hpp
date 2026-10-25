@@ -19,7 +19,7 @@ namespace affine_mpc {
  * @enum Change
  * @brief Internal: categories of problem data changes. Each category updates
  *   a different part of the QP, so a setter only marks its category and the
- *   QP is updated once per category in MPCBase::solve().
+ *   QP is updated once per category in MPCBase::prepare() or MPCBase::solve().
  *
  * The initial state x0 is not a category: solve() applies it every call.
  */
