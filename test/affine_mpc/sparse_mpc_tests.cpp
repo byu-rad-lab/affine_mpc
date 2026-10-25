@@ -32,14 +32,14 @@ public:
     affine_mpc::SparseMPC::qpUpdateX0(x0);
   }
 
-  const auto getAd() const { return readModel(*this).Ad; }
-  const auto getBd() const { return readModel(*this).Bd; }
-  const auto getWd() const { return readModel(*this).wd; }
-  const auto getP() const { return getQPCostMatrix(); }
-  const auto getQ() const { return this->q_; }
-  const auto getA() const { return this->A_; }
-  const auto getL() const { return this->l_; }
-  const auto getU() const { return this->u_; }
+  auto getAd() const { return readModel(*this).Ad; }
+  auto getBd() const { return readModel(*this).Bd; }
+  auto getWd() const { return readModel(*this).wd; }
+  auto getP() const { return getQPCostMatrix(); }
+  auto getQ() const { return this->q_; }
+  auto getA() const { return this->A_; }
+  auto getL() const { return this->l_; }
+  auto getU() const { return this->u_; }
 };
 
 // ---- Constraint tests ------------------------------------------------------

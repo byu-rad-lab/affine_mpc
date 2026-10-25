@@ -5,6 +5,7 @@
 #include <limits>
 
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include "affine_mpc/condensed_mpc.hpp"
@@ -33,34 +34,35 @@ public:
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> /*x_traj*/) const noexcept override final
   {}
-  const auto getAd() const { return readModel(*this).Ad; }
-  const auto getBd() const { return readModel(*this).Bd; }
-  const auto getWd() const { return readModel(*this).wd; }
+  auto getAd() const { return readModel(*this).Ad; }
+  auto getBd() const { return readModel(*this).Bd; }
+  auto getWd() const { return readModel(*this).wd; }
   // the stacked weights are internal (the public getters return Q, Qf, R)
-  const auto getQbig() const { return data().Q_big; }
-  const auto getRbig() const { return data().R_big; }
-  // the bound rows are written when the pending changes are applied
-  const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
-  const auto getLSlew()
+  auto getQbig() const { return data().Q_big; }
+  auto getRbig() const { return data().R_big; }
+  // the bound rows are written when the pending changes are applied; the
+  // views are read-only so a test can not write into the QP storage
+  auto getASlew() const { return A_.middleRows(slew0_idx_, totalSlewDim()); }
+  auto getLSlew()
   {
     applyChanges();
-    return l_.segment(slew0_idx_, totalSlewDim());
+    return std::as_const(l_).segment(slew0_idx_, totalSlewDim());
   }
-  const auto getUSlew()
+  auto getUSlew()
   {
     applyChanges();
-    return u_.segment(slew0_idx_, totalSlewDim());
+    return std::as_const(u_).segment(slew0_idx_, totalSlewDim());
   }
-  const auto getASatU() { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
-  const auto getLSatU()
+  auto getASatU() const { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
+  auto getLSatU()
   {
     applyChanges();
-    return l_.segment(u_sat_idx_, u_sat_dim_);
+    return std::as_const(l_).segment(u_sat_idx_, u_sat_dim_);
   }
-  const auto getUSatU()
+  auto getUSatU()
   {
     applyChanges();
-    return u_.segment(u_sat_idx_, u_sat_dim_);
+    return std::as_const(u_).segment(u_sat_idx_, u_sat_dim_);
   }
   ampc::ChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
@@ -601,7 +603,7 @@ TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
   Eigen::Matrix<double, 1 * nc, 1> R_big_diag_expected;
 
   base.setInputWeights(R);
-  R_big_diag_expected << R, R, R;
+  R_big_diag_expected.setConstant(R(0));
 
   ASSERT_TRUE(
       expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
@@ -621,7 +623,7 @@ TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
   // Qf = Q when not specified, so all steps should use Q
   base.setWeights(Q, R);
   Q_big_diag_expected << Q, Q, Q, Q;
-  R_big_diag_expected << R, R, R;
+  R_big_diag_expected.setConstant(R(0));
 
   ASSERT_TRUE(
       expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
@@ -631,7 +633,7 @@ TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
   // Specify Qf
   base.setWeights(Q, Qf, R);
   Q_big_diag_expected << Q, Q, Q, Qf;
-  R_big_diag_expected << R, R, R;
+  R_big_diag_expected.setConstant(R(0));
 
   ASSERT_TRUE(
       expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
@@ -1247,8 +1249,8 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
 
   VectorXd u_expected{m * nc}, l_expected{m * nc};
-  u_expected << u_prev + slew, slew, slew;
-  l_expected << u_prev - slew, -slew, -slew;
+  u_expected << u_prev(0) + slew(0), slew(0), slew(0);
+  l_expected << u_prev(0) - slew(0), -slew(0), -slew(0);
 
   ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));

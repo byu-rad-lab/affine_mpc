@@ -38,13 +38,13 @@ public:
     qpUpdateX0(x0);
   }
 
-  const auto getAd() const { return readModel(*this).Ad; }
-  const auto getBd() const { return readModel(*this).Bd; }
-  const auto getWd() const { return readModel(*this).wd; }
-  const auto getS() const { return this->S_; }
-  const auto getV() const { return this->v_; }
-  const auto getP() const { return getQPCostMatrix(); }
-  const auto getQ() const { return this->q_; }
+  auto getAd() const { return readModel(*this).Ad; }
+  auto getBd() const { return readModel(*this).Bd; }
+  auto getWd() const { return readModel(*this).wd; }
+  auto getS() const { return this->S_; }
+  auto getV() const { return this->v_; }
+  auto getP() const { return getQPCostMatrix(); }
+  auto getQ() const { return this->q_; }
 };
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
