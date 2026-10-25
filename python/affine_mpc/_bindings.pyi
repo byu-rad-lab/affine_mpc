@@ -731,6 +731,12 @@ class SolveInfo:
         """
 
     @property
+    def mpc_solve_time(self) -> float:
+        """
+        Duration of the whole last solve() call after initialization, including QP assembly, data updates, refactorization, and the solver (seconds). Does not depend on OSQP profiling.
+        """
+
+    @property
     def objective(self) -> float:
         """
         QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
@@ -746,12 +752,6 @@ class SolveInfo:
     def status(self) -> SolveStatus:
         """
         Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
-        """
-
-    @property
-    def mpc_solve_time(self) -> float:
-        """
-        Duration of the whole last solve() call after initialization, including QP assembly, data updates, refactorization, and the solver (seconds). Does not depend on OSQP profiling.
         """
 
 class MPCBase:
