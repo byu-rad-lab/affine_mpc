@@ -151,9 +151,12 @@ public:
    * @param degree Degree of B-spline polynomials. Must be less than
    *   horizon_steps.
    * @param knots Full knot vector with size in the range [2*(degree+1),
-   *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
-   *   last knot must be horizon_steps-1. The first and last degree+1 knots are
-   *   snapped to these values when within `1e-9 * horizon_steps` (round-off).
+   *   horizon_steps+degree+1]. Must be non-decreasing. The first active knot
+   *   (index degree) must be 0 and the last active knot (index
+   *   knots.size()-degree-1) must be horizon_steps-1; for unclamped splines
+   *   the knots outside them extend beyond [0, horizon_steps-1]. Knots among
+   *   the first and last degree+1 are snapped to 0 and horizon_steps-1 when
+   *   within `1e-9 * horizon_steps` (round-off).
    * @throws std::invalid_argument if the knots are invalid, including when a
    *   control point has no influence on any sampled input (its basis function
    *   is zero at every sample k = 0, ..., horizon_steps-1).

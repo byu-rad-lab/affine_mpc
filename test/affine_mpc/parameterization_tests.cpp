@@ -822,3 +822,31 @@ TEST(ParameterizationKnotRatio, givenInvalidArguments_Throws)
       [] { P::bspline(20, 2, 2, 1.5); },
       "must have at least degree+1 control points");
 }
+
+// ---- Unclamped knots -------------------------------------------------------
+
+TEST(ParameterizationUnclamped, givenUnclampedKnots_EvaluatesLikeSpline)
+{
+  // uniform quadratic with knots extending beyond [0, T-1] on both sides
+  using Spline1d = Spline<double, 1>;
+  const int T{10}, deg{2};
+  VectorXd knots{8};
+  knots << -6, -3, 0, 3, 6, 9, 12, 15;
+  const ampc::Parameterization p{T, deg, knots};
+  ASSERT_EQ(p.num_control_points, 5);
+  EXPECT_EQ(p.knots, knots);
+
+  VectorXd controls{5};
+  controls << 1, -2, 0.5, 3, -1;
+  const Spline1d spline{p.knots, controls.transpose()};
+  const VectorXd u{p.evaluate(1, controls)};
+  for (int k{0}; k < T; ++k)
+    EXPECT_NEAR(u(k), spline(k)(0), 1e-14) << "k = " << k;
+
+  // unlike a clamped spline, the first input is not the first control point
+  EXPECT_NEAR(u(0), 0.5 * (controls(0) + controls(1)), 1e-14);
+
+  // partition of unity still holds on [0, T-1]
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, VectorXd::Constant(5, 2.5)),
+                              VectorXd::Constant(T, 2.5), 1e-14));
+}

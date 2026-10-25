@@ -1354,3 +1354,36 @@ TEST(ConsistencyTester, givenInvalidModelOffsetUpdate_Throws)
       [&] { mpc.setModelOffsetContinuous2Discrete(Vector3d::Zero()); },
       "wc must have size 2");
 }
+
+TEST(ConsistencyTester, givenUnclampedKnots_CondensedAndSparseMPCAgree)
+{
+  const int n{2}, m{1}, T{10};
+  VectorXd knots{8};
+  knots << -6, -3, 0, 3, 6, 9, 12, 15;
+  const ampc::Parameterization param{T, 2, knots};
+  const ampc::Options opts{.slew_initial_input = true};
+
+  ConsistencyTester tester{n, m, param, opts};
+  tester.setup();
+
+  const Vector2d x0{0.5, -0.2};
+  ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+  VectorXd u_condensed{m}, u_sparse{m};
+  tester.condensed.getNextInput(u_condensed);
+  tester.sparse.getNextInput(u_sparse);
+  ASSERT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-4));
+
+  // the first input blends two control points and still obeys the initial
+  // slew limit (previous input 0, limit 0.5)
+  VectorXd ctrls{param.num_control_points};
+  tester.condensed.getInputControlPoints(ctrls);
+  EXPECT_NEAR(u_condensed(0), 0.5 * (ctrls(0) + ctrls(1)), 1e-12);
+  EXPECT_LE(std::abs(u_condensed(0)), 0.5 + 1e-6);
+
+  VectorXd x_traj_condensed{n * T}, x_traj_sparse{n * T};
+  tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
+  tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
+}
