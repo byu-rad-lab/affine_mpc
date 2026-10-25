@@ -38,14 +38,12 @@ public:
     qpUpdateX0(x0);
   }
 
-  const auto getAd() const { return this->Ad_; }
-  const auto getBd() const { return this->Bd_; }
-  const auto getWd() const { return this->wd_; }
-  const auto getQbig() const { return this->Q_big_; }
-  const auto getRbig() const { return this->R_big_; }
+  const auto getAd() const { return readModel(*this).Ad; }
+  const auto getBd() const { return readModel(*this).Bd; }
+  const auto getWd() const { return readModel(*this).wd; }
   const auto getS() const { return this->S_; }
   const auto getV() const { return this->v_; }
-  const auto getP() const { return this->P_; }
+  const auto getP() const { return getQPCostMatrix(); }
   const auto getQ() const { return this->q_; }
 };
 
@@ -129,7 +127,7 @@ TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
   // clang-format on
 
   Eigen::Matrix<double, m * nc, m * nc> P_test;
-  P_test = msd_mpc.getRbig();
+  P_test = R.replicate(nc, 1).asDiagonal();
   P_test += S.transpose() * S;
 
   Eigen::Matrix<double, m * nc, 1> q_test;

@@ -63,8 +63,6 @@ public:
   const char* getClassName() const noexcept override { return "CondensedMPC"; }
 
 protected: // for testing
-  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-
   void updateS();
   void updateV(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
@@ -72,20 +70,11 @@ protected: // for testing
   Eigen::VectorXd v_;
 
 private:
-  bool qpUpdateModel() override final;
-  void qpUpdateModelOffset() override final;
-  bool qpUpdateReferences() override final;
-  bool qpUpdateInputLimits() override final;
-  bool qpUpdateStateLimits() override final;
-  bool qpUpdateSlewRate() override final;
-  void qpUpdateWeights() override final;
+  ChangeSet qpApplyChanges(ChangeSet changes) override final;
+  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
-  Eigen::VectorXd weighted_state_err_; // Q_big_ * (v_ - x_ref_), avoids a temp
-  Eigen::MatrixXd weighted_S_;         // Q_big_ * S_, avoids a temp for P_
-
-  bool model_changed_;
-  bool weights_changed_;
-  bool bounds_changed_;
+  Eigen::VectorXd weighted_state_err_; // Q_big * (v_ - x_ref), avoids a temp
+  Eigen::MatrixXd weighted_S_;         // Q_big * S_, avoids a temp for P_
 };
 
 } // namespace affine_mpc

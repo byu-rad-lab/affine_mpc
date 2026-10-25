@@ -33,36 +33,51 @@ public:
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> /*x_traj*/) const noexcept override final
   {}
-  const auto getAd() { return Ad_; }
-  const auto getBd() { return Bd_; }
-  const auto getWd() { return wd_; }
-  const auto getQbig() { return Q_big_; }
-  const auto getRbig() { return R_big_; }
-  const auto getRefStateTrajectory() { return x_ref_; }
-  const auto getRefInputControlPoints() { return ctrls_ref_; }
+  const auto getAd() const { return readModel(*this).Ad; }
+  const auto getBd() const { return readModel(*this).Bd; }
+  const auto getWd() const { return readModel(*this).wd; }
+  // the stacked weights are internal (the public getters return Q, Qf, R)
+  const auto getQbig() const { return data().Q_big; }
+  const auto getRbig() const { return data().R_big; }
+  // the bound rows are written when the pending changes are applied
   const auto getASlew() { return A_.middleRows(slew0_idx_, totalSlewDim()); }
-  const auto getLSlew() { return l_.segment(slew0_idx_, totalSlewDim()); }
-  const auto getUSlew() { return u_.segment(slew0_idx_, totalSlewDim()); }
+  const auto getLSlew()
+  {
+    applyChanges();
+    return l_.segment(slew0_idx_, totalSlewDim());
+  }
+  const auto getUSlew()
+  {
+    applyChanges();
+    return u_.segment(slew0_idx_, totalSlewDim());
+  }
   const auto getASatU() { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
-  const auto getLSatU() { return l_.segment(u_sat_idx_, u_sat_dim_); }
-  const auto getUSatU() { return u_.segment(u_sat_idx_, u_sat_dim_); }
+  const auto getLSatU()
+  {
+    applyChanges();
+    return l_.segment(u_sat_idx_, u_sat_dim_);
+  }
+  const auto getUSatU()
+  {
+    applyChanges();
+    return u_.segment(u_sat_idx_, u_sat_dim_);
+  }
+  ampc::ChangeSet getPendingChanges() const { return pendingChanges(); }
+  void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
 
-protected:
-  bool
-  qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& /*x0*/) override final
+private:
+  ampc::ChangeSet qpApplyChanges(ampc::ChangeSet changes) override final
+  {
+    applied_changes = applied_changes | changes;
+    return {};
+  }
+  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& /*x0*/) override final
   {
     return true;
   }
-  bool qpUpdateModel() override final { return true; }
-  void qpUpdateModelOffset() override final {}
-  bool qpUpdateReferences() override final { return true; }
-  bool qpUpdateInputLimits() override final { return true; }
-  bool qpUpdateStateLimits() override final { return true; }
-  bool qpUpdateSlewRate() override final { return true; }
-  void qpUpdateWeights() override final { ++num_weight_updates; }
 
 public:
-  int num_weight_updates{0};
+  ampc::ChangeSet applied_changes{};
 
 protected:
   int totalSlewDim() const
@@ -165,24 +180,77 @@ TEST(MPCBaseTester, givenDisabledOptions_OptionalGettersThrow)
                               "Initial slew rate is not enabled");
 }
 
-TEST(MPCBaseTester, givenWeightSetters_CallWeightsHook)
+TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
 {
   const int n{2}, m{1};
-  MPCBaseTester base{n,
-                     m,
-                     ampc::Parameterization::linearInterp(5, 3),
-                     {.use_input_cost = true}};
-  const Vector2d Q{1.0, 2.0};
-  const VectorXd R{VectorXd::Ones(m)};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .slew_control_points = true,
+                           .saturate_states = true};
+  MPCBaseTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
+  using ampc::Change;
+  using ampc::ChangeSet;
 
-  base.setStateWeights(Q);
-  EXPECT_EQ(base.num_weight_updates, 1);
-  base.setStateWeights(Q, Q);
-  EXPECT_EQ(base.num_weight_updates, 2);
-  base.setInputWeights(R);
-  EXPECT_EQ(base.num_weight_updates, 3);
-  base.setWeights(Q, R); // state and input setters each notify
-  EXPECT_EQ(base.num_weight_updates, 5);
+  // nothing is in the QP before the first update, so everything is pending
+  EXPECT_EQ(base.getPendingChanges(), ChangeSet::all());
+  base.applyChanges();
+  EXPECT_EQ(base.applied_changes, ChangeSet::all());
+  EXPECT_TRUE(base.getPendingChanges().empty());
+
+  const Vector2d v2{Vector2d::Ones()};
+  const VectorXd v1{VectorXd::Ones(m)};
+  auto expectMarks = [&](const std::function<void()>& setter,
+                         ChangeSet expected, const char* name) {
+    SCOPED_TRACE(name);
+    setter();
+    EXPECT_EQ(base.getPendingChanges(), expected);
+    base.applied_changes = {};
+    base.applyChanges();
+    EXPECT_EQ(base.applied_changes, expected);
+    EXPECT_TRUE(base.getPendingChanges().empty());
+  };
+
+  const Matrix2d Ad{Matrix2d::Identity()};
+  expectMarks([&] { base.setModelDiscrete(Ad, v2, v2); },
+              Change::Model | Change::ModelOffset, "setModelDiscrete");
+  expectMarks([&] { base.setModelContinuous2Discrete(Ad, v2, v2, 0.1); },
+              Change::Model | Change::ModelOffset,
+              "setModelContinuous2Discrete");
+  expectMarks([&] { base.setModelOffsetDiscrete(v2); }, Change::ModelOffset,
+              "setModelOffsetDiscrete");
+  expectMarks([&] { base.setModelOffsetContinuous2Discrete(v2); },
+              Change::ModelOffset, "setModelOffsetContinuous2Discrete");
+  expectMarks([&] { base.setStateWeights(v2); }, Change::Weights,
+              "setStateWeights");
+  expectMarks([&] { base.setStateWeights(v2, v2); }, Change::Weights,
+              "setStateWeights(Q, Qf)");
+  expectMarks([&] { base.setInputWeights(v1); }, Change::Weights,
+              "setInputWeights");
+  expectMarks([&] { base.setWeights(v2, v1); }, Change::Weights, "setWeights");
+  expectMarks([&] { base.setWeights(v2, v2, v1); }, Change::Weights,
+              "setWeights(Q, Qf, R)");
+  expectMarks([&] { base.setReferenceState(v2); }, Change::References,
+              "setReferenceState");
+  expectMarks([&] { base.setReferenceStateTrajectory(VectorXd::Ones(10)); },
+              Change::References, "setReferenceStateTrajectory");
+  expectMarks([&] { base.setReferenceInput(v1); }, Change::References,
+              "setReferenceInput");
+  expectMarks([&] { base.setReferenceInputControlPoints(VectorXd::Ones(3)); },
+              Change::References, "setReferenceInputControlPoints");
+  expectMarks([&] { base.setInputLimits(-v1, v1); }, Change::Limits,
+              "setInputLimits");
+  expectMarks([&] { base.setStateLimits(-v2, v2); }, Change::Limits,
+              "setStateLimits");
+  expectMarks([&] { base.setSlewRate(v1); }, Change::Limits, "setSlewRate");
+  expectMarks([&] { base.setSlewRateInitial(v1); }, Change::Limits,
+              "setSlewRateInitial");
+  expectMarks([&] { base.setPreviousInput(v1); }, Change::PreviousInput,
+              "setPreviousInput");
+
+  // categories accumulate until they are applied
+  base.setStateWeights(v2);
+  base.setReferenceState(v2);
+  EXPECT_EQ(base.getPendingChanges(), Change::Weights | Change::References);
 }
 
 TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
@@ -494,10 +562,10 @@ TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
   Eigen::Matrix<double, m * nc, 1> u_traj_expected;
   u_traj_expected << u_des, u_des, u_des;
 
-  ASSERT_TRUE(
-      expectEigenNear(x_traj_expected, base.getRefStateTrajectory(), 1e-6));
-  ASSERT_TRUE(
-      expectEigenNear(u_traj_expected, base.getRefInputControlPoints(), 1e-6));
+  ASSERT_TRUE(expectEigenNear(x_traj_expected,
+                              base.getReferenceStateTrajectory(), 1e-6));
+  ASSERT_TRUE(expectEigenNear(u_traj_expected,
+                              base.getReferenceInputControlPoints(), 1e-6));
 }
 
 TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
@@ -1241,8 +1309,8 @@ TEST(MPCBaseTester, givenInputControlPointsReference_SetsUgoalCorrectly)
 
   // ctrls_ref_ should be set verbatim (no replication, unlike
   // setReferenceInput)
-  ASSERT_TRUE(
-      expectEigenNear(base.getRefInputControlPoints(), u_ctrl_pts, 1e-15));
+  ASSERT_TRUE(expectEigenNear(base.getReferenceInputControlPoints(), u_ctrl_pts,
+                              1e-15));
 }
 
 TEST(MPCBaseTester,
@@ -1257,12 +1325,14 @@ TEST(MPCBaseTester,
   VectorXd u_step{m};
   u_step << 2.0;
   base.setReferenceInput(u_step);
-  VectorXd ctrls_ref_replicated = base.getRefInputControlPoints(); // [2, 2, 2]
+  VectorXd ctrls_ref_replicated =
+      base.getReferenceInputControlPoints(); // [2, 2, 2]
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0; // non-uniform
   base.setReferenceInputControlPoints(u_ctrl_pts);
-  VectorXd ctrls_ref_direct = base.getRefInputControlPoints(); // [1, 2, 3]
+  VectorXd ctrls_ref_direct =
+      base.getReferenceInputControlPoints(); // [1, 2, 3]
 
   // They should differ
   ASSERT_GT((ctrls_ref_replicated - ctrls_ref_direct).cwiseAbs().maxCoeff(),

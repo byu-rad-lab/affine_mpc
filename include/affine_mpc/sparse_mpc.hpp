@@ -65,25 +65,16 @@ public:
 
   const char* getClassName() const noexcept override { return "SparseMPC"; }
 
-protected: // for testing
-  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-
 private:
-  bool qpUpdateModel() override final;
-  void qpUpdateModelOffset() override final;
-  bool qpUpdateReferences() override final;
-  bool qpUpdateInputLimits() override final;
-  bool qpUpdateStateLimits() override final;
-  bool qpUpdateSlewRate() override final;
-  void qpUpdateWeights() override final;
+  ChangeSet qpApplyChanges(ChangeSet changes) override final;
+  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
-  // dynamics-row bounds -wd_ for steps k >= 1 (k = 0 also depends on x0)
+  // dynamics-row bounds -wd for steps k >= 1 (k = 0 also depends on x0)
   void setDynamicsOffsetBounds();
+  // dynamics blocks of A (Bd times the basis weights, and Ad)
+  void setDynamicsMatrixBlocks();
   void calcBothCostTerms();
   void calcCostVector();
-
-  bool weights_changed_;
-  bool refs_changed_;
 };
 
 } // namespace affine_mpc

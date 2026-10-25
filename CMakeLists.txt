@@ -143,6 +143,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
+    test/affine_mpc/change_category_tests.cpp
     test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
     test/affine_mpc/allocation_tests.cpp

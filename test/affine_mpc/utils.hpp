@@ -32,6 +32,35 @@ bool expectEigenNear(const Eigen::MatrixBase<Derived1>& mat1,
   return true;
 }
 
+// Discrete model x_next = Ad x + Bd u + wd of an MPC object, read through its
+// public propagateModel() (columns of Ad and Bd are exact up to the rounding of
+// adding and subtracting wd).
+struct DiscreteModel
+{
+  Eigen::MatrixXd Ad, Bd;
+  Eigen::VectorXd wd;
+};
+
+template <typename MPC> DiscreteModel readModel(const MPC& mpc)
+{
+  const int n{mpc.getStateDim()}, m{mpc.getInputDim()};
+  DiscreteModel model{Eigen::MatrixXd{n, n}, Eigen::MatrixXd{n, m},
+                      Eigen::VectorXd{n}};
+  const Eigen::VectorXd x_zero{Eigen::VectorXd::Zero(n)};
+  const Eigen::VectorXd u_zero{Eigen::VectorXd::Zero(m)};
+  mpc.propagateModel(x_zero, u_zero, model.wd);
+  Eigen::VectorXd x_next{n};
+  for (int i{0}; i < n; ++i) {
+    mpc.propagateModel(Eigen::VectorXd::Unit(n, i), u_zero, x_next);
+    model.Ad.col(i) = x_next - model.wd;
+  }
+  for (int j{0}; j < m; ++j) {
+    mpc.propagateModel(x_zero, Eigen::VectorXd::Unit(m, j), x_next);
+    model.Bd.col(j) = x_next - model.wd;
+  }
+  return model;
+}
+
 void expectInvalidArgumentWithMessage(const std::function<void()>& fn,
                                       const std::string& expected_substring)
 {

@@ -25,9 +25,7 @@ SparseMPC::SparseMPC(int state_dim,
             input_dim * param.num_control_points
                 + state_dim * param.horizon_steps,
             // num_custom_constraints (model)
-            state_dim * param.horizon_steps),
-    weights_changed_{false},
-    refs_changed_{true} // ensure q_ updates on first solve
+            state_dim * param.horizon_steps)
 {
   if (opts_.use_input_cost) {
     P_.setIdentity();
@@ -65,45 +63,61 @@ void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj = solution_map_.tail(x_traj_dim_);
 }
 
-bool SparseMPC::qpUpdateX0(const Ref<const VectorXd>& x0)
+ChangeSet SparseMPC::qpApplyChanges(const ChangeSet changes)
 {
-  bool success{true};
-  // separate statements avoid a temporary for the product inside a sum
-  l_.head(state_dim_) = -wd_;
-  l_.head(state_dim_).noalias() -= Ad_ * x0;
-  u_.head(state_dim_) = l_.head(state_dim_);
-  success &= solver_->updateBounds(l_, u_);
+  ChangeSet pending{};
 
-  if (weights_changed_) {
-    refs_changed_ = false;
+  // dynamics-row bounds of steps k >= 1 (sent with the x0 rows at every solve)
+  if (changes.has(Change::ModelOffset))
+    setDynamicsOffsetBounds();
+
+  if (changes.has(Change::Model)) {
+    setDynamicsMatrixBlocks();
+    if (isSolverInitialized() && !solver_->updateConstraintMatrix(A_))
+      pending |= Change::Model;
+  }
+
+  if (changes.has(Change::Weights)) {
     calcBothCostTerms();
-    if (!solver_initialized_) {
+    if (!isSolverInitialized()) {
       // Assembling for initializeSolver(): store every weight position on P's
       // diagonal so a weight that is zero now can become nonzero later. This
       // costs nothing in solves since OSQP's KKT system always includes P's
-      // diagonal. weights_changed_ stays set, so the first solve applies the
-      // actual weights.
+      // diagonal. Weights stay pending, so the first update after
+      // initialization applies the actual weights.
       P_.diagonal().tail(x_traj_dim_).setOnes();
       if (opts_.use_input_cost)
         P_.diagonal().head(ctrls_dim_).setOnes();
-      return true;
+      pending |= Change::Weights;
+    } else {
+      bool updated{solver_->updateCostMatrix(P_)};
+      updated &= solver_->updateCostVector(q_);
+      if (!updated)
+        pending |= changes & (Change::Weights | Change::References);
     }
-    // stays set if the update fails so the next solve retries it
-    weights_changed_ = !solver_->updateCostMatrix(P_);
-    success &= !weights_changed_;
-    success &= solver_->updateCostVector(q_);
-  } else if (refs_changed_) {
-    refs_changed_ = false;
+  } else if (changes.has(Change::References)) {
     calcCostVector();
-    success &= solver_->updateCostVector(q_);
+    if (isSolverInitialized() && !solver_->updateCostVector(q_))
+      pending |= Change::References;
   }
 
-  return success;
+  // MPCBase wrote the limit, slew, and state rows, which qpApplyX0() sends
+  return pending;
 }
 
-bool SparseMPC::qpUpdateModel()
+bool SparseMPC::qpApplyX0(const Ref<const VectorXd>& x0)
 {
-  setDynamicsOffsetBounds();
+  const ProblemData& d{data()};
+  // separate statements avoid a temporary for the product inside a sum
+  l_.head(state_dim_) = -d.wd;
+  l_.head(state_dim_).noalias() -= d.Ad * x0;
+  u_.head(state_dim_) = l_.head(state_dim_);
+  return solver_->updateBounds(l_, u_);
+}
+
+void SparseMPC::setDynamicsMatrixBlocks()
+{
+  const ProblemData& d{data()};
 
   // set model constraints that multiply controls
   const Parameterization& param{input_param_.parameterization()};
@@ -111,91 +125,44 @@ bool SparseMPC::qpUpdateModel()
     for (int i{0}; i < param.band_width; ++i) {
       const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
       A_.block(row, col, state_dim_, input_dim_) =
-          param.band_weights(i, k) * Bd_;
+          param.band_weights(i, k) * d.Bd;
     }
   }
 
   // set model constraints that multiply states
   for (int k{1}, row{state_dim_}, col{ctrls_dim_}; k < horizon_steps_;
        ++k, row += state_dim_, col += state_dim_) {
-    A_.block(row, col, state_dim_, state_dim_) = Ad_;
+    A_.block(row, col, state_dim_, state_dim_) = d.Ad;
   }
-
-  if (!solver_initialized_)
-    return true;
-  const bool updated{solver_->updateConstraintMatrix(A_)};
-  // On failure, the next solve's weights check retries the cost update, which
-  // fails too while OSQP holds invalid data, so solve() reports the failure.
-  if (!updated)
-    weights_changed_ = true;
-  return updated;
 }
-
-void SparseMPC::qpUpdateModelOffset()
-{
-  // The bounds are sent to the solver at every solve
-  setDynamicsOffsetBounds();
-}
-
-bool SparseMPC::qpUpdateReferences()
-{
-  // refs only affect q, but weights also affect q, so this just tells the
-  // updateQP() method to update q without updating P.
-  refs_changed_ = true;
-  return true;
-}
-
-bool SparseMPC::qpUpdateInputLimits()
-{
-  // Don't need to update solver bounds because they are update every solve
-  // already
-  return true;
-}
-
-bool SparseMPC::qpUpdateStateLimits()
-{
-  // Don't need to update solver bounds because they are update every solve
-  // already
-  return true;
-}
-
-bool SparseMPC::qpUpdateSlewRate()
-{
-  // Don't need to update solver bounds because they are update every solve
-  // already
-  return true;
-}
-
-void SparseMPC::qpUpdateWeights() { weights_changed_ = true; }
 
 void SparseMPC::setDynamicsOffsetBounds()
 {
   // Don't need to update 1st state block since it must be updated every solve
   // with x0 anyway. Similarly, don't need to update l/u with solver
+  const VectorXd& wd{data().wd};
   for (Index k{1}, offset{state_dim_}; k < horizon_steps_;
        ++k, offset += state_dim_) {
-    l_.segment(offset, state_dim_) = -wd_;
-    u_.segment(offset, state_dim_) = -wd_;
+    l_.segment(offset, state_dim_) = -wd;
+    u_.segment(offset, state_dim_) = -wd;
   }
 }
 
 void SparseMPC::calcBothCostTerms()
 {
-  P_.diagonal().tail(x_traj_dim_) = Q_big_.diagonal();
-  q_.tail(x_traj_dim_).noalias() = -(Q_big_ * x_ref_);
-
-  if (opts_.use_input_cost) {
-    P_.diagonal().head(ctrls_dim_) = R_big_.diagonal();
-    q_.head(ctrls_dim_).noalias() = -(R_big_ * ctrls_ref_);
-  }
+  const ProblemData& d{data()};
+  P_.diagonal().tail(x_traj_dim_) = d.Q_big.diagonal();
+  if (opts_.use_input_cost)
+    P_.diagonal().head(ctrls_dim_) = d.R_big.diagonal();
+  calcCostVector();
 }
 
 void SparseMPC::calcCostVector()
 {
-  q_.tail(x_traj_dim_).noalias() = -(Q_big_ * x_ref_);
-  if (opts_.use_input_cost) {
-    q_.head(ctrls_dim_).noalias() = -(R_big_ * ctrls_ref_);
-  }
+  const ProblemData& d{data()};
+  q_.tail(x_traj_dim_).noalias() = -(d.Q_big * d.x_ref);
+  if (opts_.use_input_cost)
+    q_.head(ctrls_dim_).noalias() = -(d.R_big * d.ctrls_ref);
 }
 
 } // namespace affine_mpc

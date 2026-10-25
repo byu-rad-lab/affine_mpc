@@ -38,17 +38,14 @@ public:
   ~PyMPCBase() override = default;
 
   // define pure virtual funtions for unit testing
-  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override
+  ampc::ChangeSet qpApplyChanges(ampc::ChangeSet /*changes*/) override
   {
-    PYBIND11_OVERLOAD_PURE(bool, MPCBase, qpUpdateX0, x0);
+    return {};
   }
-  bool qpUpdateModel() override { return true; }
-  void qpUpdateModelOffset() override {}
-  bool qpUpdateReferences() override { return true; }
-  bool qpUpdateInputLimits() override { return true; }
-  bool qpUpdateStateLimits() override { return true; }
-  bool qpUpdateSlewRate() override { return true; }
-  void qpUpdateWeights() override {}
+  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override
+  {
+    PYBIND11_OVERLOAD_PURE(bool, MPCBase, qpApplyX0, x0);
+  }
 };
 
 // The C++ solution getters do not check initialization (hot path), but reading
@@ -115,6 +112,10 @@ Solve optimization problem for the given initial state.
 Must have previously called initializeSolver() prior to calling this. Call
 getNextInput(), getInputControlPoints(), getInputTrajectory(), or
 getPredictedStateTrajectory() after calling this function to access the results.
+
+The setters only store their values, so solve() first applies every change since
+the last solve() to the QP (rebuilding QP matrices and refactoring for model or
+weight changes), then the terms that depend on x0, then runs the solver.
 
 Args:
     x0: Initial (current) state vector.
@@ -355,7 +356,8 @@ Args:
     wd: Discrete-time model offset w.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("Ad"), py::arg("Bd"), py::arg("wd"));
   base.def("setModelContinuous2Discrete",
@@ -367,6 +369,11 @@ discretized. The model being `x_next = Ax + Bu + w`.
 The discretization assumes the input u is constant over the time step (true for
 discrete controllers like MPC) and uses a matrix exponential, which is an exact
 discretization (theoretically).
+
+The discretization runs inside this setter, so its cost is not part of solve()
+(time it as part of your control loop). The QP matrices are rebuilt in the next
+solve(). When only the offset changes, setModelOffsetContinuous2Discrete() is
+much cheaper.
 
 The matrix exponential is computed with scaling and squaring: the step is halved
 `s` times until `||A*h||_1 <= 0.5` (with `h = dt / 2^s`), a Taylor series is
@@ -387,7 +394,8 @@ Args:
         can help when the affine approximation is updated every time step.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
            py::arg("tol") = 1e-10);
@@ -398,9 +406,9 @@ Set only the model offset wd of the discrete-time model x_next = Ad x + Bd u +
 wd, keeping Ad and Bd.
 
 Much cheaper than setModelDiscrete(): the offset only enters vectors of the QP,
-so the QP matrices are not rebuilt and the solver does not refactor. Use it when
-only the offset changes between solves, e.g. a disturbance estimate for
-offset-free tracking or a measured exogenous input.
+so the next solve() does not rebuild the QP matrices and the solver does not
+refactor. Use it when only the offset changes between solves, e.g. a disturbance
+estimate for offset-free tracking or a measured exogenous input.
 
 Args:
     wd: Discrete-time model offset.
@@ -419,7 +427,7 @@ state matrix and time step of the last setModelContinuous2Discrete() call
 (wd = G wc, see Discretizer).
 
 Costs one matrix-vector product (no matrix exponential), and like
-setModelOffsetDiscrete() does not rebuild the QP matrices.
+setModelOffsetDiscrete() does not cause a QP matrix rebuild.
 
 Args:
     wc: Continuous-time model offset.
@@ -506,7 +514,8 @@ Args:
     x_step: Reference state vector to use for entire trajectory.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("x_step"));
 
@@ -522,7 +531,8 @@ Args:
         in `x_traj.ravel()` to convert it to a vector.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("x_traj"));
 
@@ -537,7 +547,8 @@ Args:
     u_step: Reference input vector to use for entire trajectory.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("u_step"));
 
@@ -555,7 +566,8 @@ Args:
         `control_points.ravel()` to convert it to a vector.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
             )doc",
            py::arg("control_points"));
 
@@ -571,7 +583,8 @@ Args:
     u_max: Upper bound on input vector.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("u_min"), py::arg("u_max"));
   base.def("setStateLimits", &ampc::MPCBase::setStateLimits,
@@ -587,7 +600,8 @@ Args:
     x_max: Upper bound on state vector.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("x_min"), py::arg("x_max"));
   base.def("setSlewRate", &ampc::MPCBase::setSlewRate,
@@ -603,7 +617,8 @@ Args:
     control_point_slew: Slew-rate vector. All values must be positive.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("control_point_slew"));
 
@@ -620,7 +635,8 @@ Args:
     u0_slew: Initial slew-rate vector. All values must be positive.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("u0_slew"));
 
@@ -643,7 +659,8 @@ Args:
     u_prev: Previous input vector.
 
 Returns:
-    success: True if the internal QP was updated properly. Unlikely to be False.
+    success: Always True. The QP is updated in the next solve(), which reports
+        update failures.
            )doc",
            py::arg("u_prev"));
 
@@ -653,9 +670,9 @@ Returns:
 Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
 analysis and debugging.
 
-Reflects the matrix used by the last solve(): CondensedMPC rebuilds P at the
-next solve after model or weight changes, and SparseMPC holds unit placeholder
-weights between initializeSolver() and the first solve.
+Reflects the matrix used by the last solve(): setters do not change it, model or
+weight changes are applied by the next solve(), and SparseMPC holds unit
+placeholder weights between initializeSolver() and the first solve().
 
 Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
@@ -768,9 +785,9 @@ fixed by initializeSolver().
 
 Model or weight updates that add nonzeros outside that pattern are silently
 dropped by the solver, so the MPC solves a different problem than the one you
-set. Call this after solve() (some updates are applied to the QP at the next
-solve) to detect that. It scans every entry of the QP matrices, so avoid calling
-it in time-critical loops.
+set. Call this after solve() (setters do not update the QP) to detect that. It
+scans every entry of the QP matrices, so avoid calling it in time-critical
+loops.
 
 Returns:
     within_pattern (bool): True if the QP matrices fit the pattern, or if the
