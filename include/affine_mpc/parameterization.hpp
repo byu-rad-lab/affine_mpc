@@ -14,6 +14,10 @@
 
 namespace affine_mpc {
 
+namespace detail {
+class VectorParameterization;
+}
+
 /**
  * @class Parameterization
  * @brief Encapsulates B-spline input trajectory parameterization for MPC.
@@ -246,7 +250,7 @@ public:
   const Eigen::MatrixXd band_weights;
 
 private:
-  friend class VectorParameterization;
+  friend class detail::VectorParameterization;
 
   // Sample indices whose bounds are equivalent to bounding every sampled
   // input, or empty when bounding the control points is already exact. Not

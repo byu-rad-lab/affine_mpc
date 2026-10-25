@@ -63,7 +63,7 @@ void SparseMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj = solution_map_.tail(x_traj_dim_);
 }
 
-DataChangeSet SparseMPC::qpApplyChanges(const DataChangeSet changes)
+SparseMPC::DataChangeSet SparseMPC::qpApplyChanges(const DataChangeSet changes)
 {
   DataChangeSet pending{};
 

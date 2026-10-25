@@ -18,8 +18,8 @@
 #include <variant>
 #include <vector>
 
+#include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/mpc_base.hpp"
-#include "affine_mpc/vector_parameterization.hpp"
 
 namespace affine_mpc {
 
@@ -210,7 +210,8 @@ private:
 
   const MPCBase* const mpc_;
   const int state_dim_, input_dim_, horizon_steps_, num_ctrls_, spline_degree_;
-  const VectorParameterization input_param_; // evaluates reference inputs
+  const detail::VectorParameterization
+      input_param_; // evaluates reference inputs
   const double ts_;
   const int prediction_stride_;
   const bool log_control_points_;

@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
+#include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-#include "affine_mpc/vector_parameterization.hpp"
 #include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 
 using namespace Eigen;
@@ -41,8 +41,9 @@ constexpr int validateInputDim(int input_dim)
 
 // Sample indices whose inputs are bounded when `saturate_input_trajectory` is
 // enabled. An empty result means the control points are bounded instead.
-std::vector<int> inputSatSamples(const VectorParameterization& input_param,
-                                 const Options& opts)
+std::vector<int>
+inputSatSamples(const detail::VectorParameterization& input_param,
+                const Options& opts)
 {
   if (!opts.saturate_input_trajectory)
     return {};

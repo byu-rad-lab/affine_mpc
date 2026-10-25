@@ -1,4 +1,4 @@
-#include "affine_mpc/vector_parameterization.hpp"
+#include "affine_mpc/detail/vector_parameterization.hpp"
 
 #include <Eigen/Core>
 #include <cassert>
@@ -8,7 +8,7 @@
 
 using namespace Eigen;
 
-namespace affine_mpc {
+namespace affine_mpc::detail {
 
 VectorParameterization::VectorParameterization(int input_dim,
                                                const Parameterization& param) :
@@ -53,4 +53,4 @@ std::vector<int> VectorParameterization::inputSaturationSamples() const
   return param_.inputSaturationSamples();
 }
 
-} // namespace affine_mpc
+} // namespace affine_mpc::detail

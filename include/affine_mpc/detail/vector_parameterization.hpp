@@ -1,10 +1,13 @@
-#ifndef AFFINE_MPC_VECTOR_PARAMETERIZATION_HPP
-#define AFFINE_MPC_VECTOR_PARAMETERIZATION_HPP
+#ifndef AFFINE_MPC_DETAIL_VECTOR_PARAMETERIZATION_HPP
+#define AFFINE_MPC_DETAIL_VECTOR_PARAMETERIZATION_HPP
 
 /**
- * @file vector_parameterization.hpp
+ * @file detail/vector_parameterization.hpp
  * @brief Defines VectorParameterization, the internal map from the control
  *   point vector of the QP to the inputs of every input channel.
+ *
+ * Internal: installed only because public headers include it (MPCBase and
+ * MPCLogger hold it by value); not part of the public API.
  */
 
 #include <Eigen/Core>
@@ -12,7 +15,7 @@
 
 #include "affine_mpc/parameterization.hpp"
 
-namespace affine_mpc {
+namespace affine_mpc::detail {
 
 /**
  * @class VectorParameterization
@@ -85,6 +88,6 @@ private:
   Eigen::VectorXi offsets_, strides_;
 };
 
-} // namespace affine_mpc
+} // namespace affine_mpc::detail
 
-#endif // AFFINE_MPC_VECTOR_PARAMETERIZATION_HPP
+#endif // AFFINE_MPC_DETAIL_VECTOR_PARAMETERIZATION_HPP

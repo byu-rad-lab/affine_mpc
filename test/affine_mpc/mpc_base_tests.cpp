@@ -64,11 +64,11 @@ public:
     applyChanges();
     return std::as_const(u_).segment(u_sat_idx_, u_sat_dim_);
   }
-  ampc::DataChangeSet getPendingChanges() const { return pendingChanges(); }
+  DataChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
 
 private:
-  ampc::DataChangeSet qpApplyChanges(ampc::DataChangeSet changes) override final
+  DataChangeSet qpApplyChanges(DataChangeSet changes) override final
   {
     applied_changes = applied_changes | changes;
     return {};
@@ -79,7 +79,7 @@ private:
   }
 
 public:
-  ampc::DataChangeSet applied_changes{};
+  DataChangeSet applied_changes{};
 
 protected:
   int totalSlewDim() const
@@ -190,8 +190,8 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
                            .slew_control_points = true,
                            .saturate_states = true};
   MPCBaseTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
-  using ampc::DataChange;
-  using ampc::DataChangeSet;
+  using ampc::detail::DataChange;
+  using ampc::detail::DataChangeSet;
 
   // nothing is in the QP before the first update, so everything is pending
   EXPECT_EQ(base.getPendingChanges(), DataChangeSet::all());

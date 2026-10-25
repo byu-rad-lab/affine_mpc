@@ -1,11 +1,14 @@
-#ifndef AFFINE_MPC_MPC_DATA_HPP
-#define AFFINE_MPC_MPC_DATA_HPP
+#ifndef AFFINE_MPC_DETAIL_MPC_DATA_HPP
+#define AFFINE_MPC_DETAIL_MPC_DATA_HPP
 
 /**
- * @file mpc_data.hpp
+ * @file detail/mpc_data.hpp
  * @brief Defines MPCData and the change categories: the internal MPC data
  *   (as opposed to the QP data built from it) shared by MPCBase and the
  *   formulations.
+ *
+ * Internal: installed only because public headers include it (MPCBase holds
+ * these types by value); not part of the public API.
  */
 
 #include <Eigen/Core>
@@ -14,7 +17,7 @@
 
 #include "affine_mpc/options.hpp"
 
-namespace affine_mpc {
+namespace affine_mpc::detail {
 
 /**
  * @enum DataChange
@@ -173,6 +176,6 @@ struct MPCData
   Eigen::VectorXd u_prev;       ///< previous input (`slew_initial_input`)
 };
 
-} // namespace affine_mpc
+} // namespace affine_mpc::detail
 
-#endif // AFFINE_MPC_MPC_DATA_HPP
+#endif // AFFINE_MPC_DETAIL_MPC_DATA_HPP

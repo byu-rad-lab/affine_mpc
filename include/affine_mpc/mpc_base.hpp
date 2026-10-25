@@ -11,13 +11,13 @@
 #include <memory>
 #include <vector>
 
+#include "affine_mpc/detail/mpc_data.hpp"
+#include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/discretizer.hpp"
-#include "affine_mpc/mpc_data.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
-#include "affine_mpc/vector_parameterization.hpp"
 
 namespace affine_mpc {
 
@@ -584,6 +584,13 @@ public:
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 
 protected:
+  // Internal types (affine_mpc/detail) that subclasses use to read the MPC
+  // data and implement qpApplyChanges(); not part of the stable API.
+  using MPCData = detail::MPCData;
+  using DataChange = detail::DataChange;
+  using DataChangeSet = detail::DataChangeSet;
+  using VectorParameterization = detail::VectorParameterization;
+
   const int state_dim_, input_dim_;
   const int horizon_steps_, num_ctrl_pts_;
   const int x_traj_dim_, u_traj_dim_, ctrls_dim_;

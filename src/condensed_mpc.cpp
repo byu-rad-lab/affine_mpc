@@ -52,7 +52,8 @@ void CondensedMPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   x_traj += v_;
 }
 
-DataChangeSet CondensedMPC::qpApplyChanges(const DataChangeSet changes)
+CondensedMPC::DataChangeSet
+CondensedMPC::qpApplyChanges(const DataChangeSet changes)
 {
   const MPCData& d{data()};
   DataChangeSet pending{};
