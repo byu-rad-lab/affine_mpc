@@ -7,6 +7,7 @@
  */
 
 #include <iosfwd>
+#include <vector>
 
 namespace affine_mpc {
 
@@ -14,8 +15,8 @@ namespace affine_mpc {
  * @struct Options
  * @brief Controls which optional features are enabled at MPC construction time.
  *
- * All fields default to false. These options are immutable after constructing
- * an MPC instance.
+ * All flags default to false (and bounded_states to empty, every state). These
+ * options are immutable after constructing an MPC instance.
  *
  * - use_input_cost: Enables input regularization term in the cost function
  *     ((uref_k - u_k)^T R (uref_k - u_k)).
@@ -33,6 +34,11 @@ namespace affine_mpc {
  *     outside of input limits while keeping inputs within limits.
  * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+ * - soft_state_bounds: Makes the state limits soft (requires
+ *     saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
+ *     per bounded state, penalized by l1^T s + s^T diag(l2) s.
+ * - bounded_states: Indices of the states with limits (requires
+ *     saturate_states). Empty (the default) bounds every state.
  */
 struct Options
 {
@@ -56,6 +62,17 @@ struct Options
   /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
   /// starting from the previous input (i.e. u_0 - u_prev)
   bool use_input_rate_cost = false;
+
+  /// Makes the state limits soft (requires saturate_states): one slack per
+  /// bounded state, shared over the horizon, may widen both of its limits at a
+  /// cost set with setStateBoundPenalties()
+  bool soft_state_bounds = false;
+
+  /// Indices of the states that have limits (requires saturate_states;
+  /// strictly increasing, in [0, state_dim)). Empty bounds every state. Each
+  /// bounded state adds a row per horizon step, so bounding only the states
+  /// that need it keeps the QP small.
+  std::vector<int> bounded_states{};
 };
 
 std::ostream&

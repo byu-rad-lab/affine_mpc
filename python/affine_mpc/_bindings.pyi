@@ -2,6 +2,7 @@
 Affine MPC module
 """
 
+import collections.abc
 import enum
 import numpy
 import numpy.typing
@@ -25,7 +26,7 @@ class Options:
     """
     Controls which optional features are enabled at MPC construction time.
 
-    All fields default to false. These options are immutable after constructing an
+    All flags default to false. These options are immutable after constructing an
     MPC instance.
 
     Attributes:
@@ -45,6 +46,11 @@ class Options:
             outside of input limits while keeping inputs within limits.
         use_input_rate_cost: Enables a cost on the change of the sampled inputs
             ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+        soft_state_bounds: Makes the state limits soft (requires
+            saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
+            per bounded state, penalized by l1^T s + s^T diag(l2) s.
+        bounded_states: Indices of the states with limits (requires
+            saturate_states). Empty (the default) bounds every state.
 
     """
 
@@ -52,6 +58,7 @@ class Options:
     saturate_states: bool
     slew_control_points: bool
     slew_initial_input: bool
+    soft_state_bounds: bool
     use_input_cost: bool
     use_input_rate_cost: bool
     def __init__(
@@ -62,6 +69,8 @@ class Options:
         saturate_states: bool = False,
         saturate_input_trajectory: bool = False,
         use_input_rate_cost: bool = False,
+        soft_state_bounds: bool = False,
+        bounded_states: collections.abc.Sequence[int] = [],
     ) -> None:
         """
         Construct an Options struct defining optional MPC configuration features.
@@ -83,10 +92,19 @@ class Options:
                 outside of input limits while keeping inputs within limits.
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+            soft_state_bounds: Makes the state limits soft (requires
+                saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
+                per bounded state, penalized by l1^T s + s^T diag(l2) s.
+            bounded_states: Indices of the states with limits (requires
+                saturate_states). Empty (the default) bounds every state.
         """
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    @property
+    def bounded_states(self) -> list[int]: ...
+    @bounded_states.setter
+    def bounded_states(self, arg0: collections.abc.Sequence[int]) -> None: ...
 
 class Parameterization:
     """
@@ -792,6 +810,12 @@ class MPCBase:
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    def getBoundedStates(self) -> list[int]:
+        """
+        Get the indices of the bounded states (Options.bounded_states, or every state
+        when it is empty; none without `saturate_states`).
+        """
+
     @typing.overload
     def getInputControlPoints(
         self,
@@ -1071,11 +1095,33 @@ class MPCBase:
                 initializeSolver().
         """
 
+    def getStateBoundL1Penalties(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the L1 penalties of the soft state limits (zero until
+        setStateBoundPenalties()).
+
+        Raises:
+            RuntimeError: If `soft_state_bounds` is not enabled.
+        """
+
+    def getStateBoundL2Penalties(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the L2 penalties of the soft state limits (zero until
+        setStateBoundPenalties()).
+
+        Raises:
+            RuntimeError: If `soft_state_bounds` is not enabled.
+        """
+
     def getStateMax(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the upper state limit (+inf until setStateLimits()).
+        Get the upper limits of the bounded states (+inf until setStateLimits()).
 
         Raises:
             RuntimeError: If `saturate_states` is not enabled.
@@ -1085,7 +1131,7 @@ class MPCBase:
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the lower state limit (-inf until setStateLimits()).
+        Get the lower limits of the bounded states (-inf until setStateLimits()).
 
         Raises:
             RuntimeError: If `saturate_states` is not enabled.
@@ -1518,6 +1564,36 @@ class MPCBase:
             failures.
         """
 
+    def setStateBoundPenalties(
+        self,
+        l1: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        l2: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the penalties of the soft state limits: the cost gains
+        l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state (shared
+        over the horizon) that may widen both of its limits.
+
+        This function can only be called if `soft_state_bounds` is enabled, and must be
+        called prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
+        the limit's Lagrange multiplier, the limits are only violated when they can not
+        be met. The L2 penalty alone always allows a small violation; with the L1
+        penalty it does not change the solution while the limits can be met. OSQP
+        converges much faster with an L2 penalty on the scale of the state weights or
+        larger (with a tiny one, soft limits can take 10 to 30 times the iterations of
+        hard limits), and slower with a very large L1 penalty. There is no default: a
+        large enough L1 penalty depends on the problem.
+
+        Args:
+            l1: Linear penalties, one per bounded state (non-negative).
+            l2: Quadratic penalties, one per bounded state (non-negative).
+
+        Raises:
+            RuntimeError: If `soft_state_bounds` is not enabled.
+            ValueError: If a size is not the number of bounded states or a penalty is
+                negative.
+        """
+
     def setStateLimits(
         self,
         x_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
@@ -1528,11 +1604,16 @@ class MPCBase:
 
         This function can only be called if `saturate_states` is enabled. Must be
         called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        change between solves. The limits have one entry per bounded state
+        (Options.bounded_states, all states by default); pass `-inf` or `inf` for a side
+        without a limit.
 
         Args:
-            x_min: Lower bound on state vector.
-            x_max: Upper bound on state vector.
+            x_min: Lower limits of the bounded states.
+            x_max: Upper limits of the bounded states.
+
+        Raises:
+            ValueError: If a size is not the number of bounded states or x_min > x_max.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update

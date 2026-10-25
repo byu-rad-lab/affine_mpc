@@ -1,6 +1,7 @@
 #include "affine_mpc_py_module.hpp"
 
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <sstream>
 
 #include "affine_mpc/options.hpp"
@@ -14,7 +15,7 @@ void moduleAddOptions(py::module& m)
   py::class_<ampc::Options> opt(m, "Options", R"doc(
 Controls which optional features are enabled at MPC construction time.
 
-All fields default to false. These options are immutable after constructing an
+All flags default to false. These options are immutable after constructing an
 MPC instance.
 
 Attributes:
@@ -34,13 +35,19 @@ Attributes:
         outside of input limits while keeping inputs within limits.
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+    soft_state_bounds: Makes the state limits soft (requires
+        saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
+        per bounded state, penalized by l1^T s + s^T diag(l2) s.
+    bounded_states: Indices of the states with limits (requires
+        saturate_states). Empty (the default) bounds every state.
                           )doc");
 
   opt.def(
       py::init([](const bool use_input_cost, const bool slew_initial_input,
                   const bool slew_control_points, const bool saturate_states,
                   const bool saturate_input_trajectory,
-                  const bool use_input_rate_cost) {
+                  const bool use_input_rate_cost, const bool soft_state_bounds,
+                  const std::vector<int>& bounded_states) {
         ampc::Options opts;
         opts.use_input_cost = use_input_cost;
         opts.slew_initial_input = slew_initial_input;
@@ -48,6 +55,8 @@ Attributes:
         opts.saturate_states = saturate_states;
         opts.saturate_input_trajectory = saturate_input_trajectory;
         opts.use_input_rate_cost = use_input_rate_cost;
+        opts.soft_state_bounds = soft_state_bounds;
+        opts.bounded_states = bounded_states;
         return opts;
       }),
       R"doc(
@@ -70,12 +79,19 @@ Args:
         outside of input limits while keeping inputs within limits.
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+    soft_state_bounds: Makes the state limits soft (requires
+        saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
+        per bounded state, penalized by l1^T s + s^T diag(l2) s.
+    bounded_states: Indices of the states with limits (requires
+        saturate_states). Empty (the default) bounds every state.
       )doc",
       py::arg("use_input_cost") = false, py::arg("slew_initial_input") = false,
       py::arg("slew_control_points") = false,
       py::arg("saturate_states") = false,
       py::arg("saturate_input_trajectory") = false,
-      py::arg("use_input_rate_cost") = false);
+      py::arg("use_input_rate_cost") = false,
+      py::arg("soft_state_bounds") = false,
+      py::arg("bounded_states") = std::vector<int>{});
 
   opt.def_readwrite("use_input_cost", &ampc::Options::use_input_cost);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
@@ -84,6 +100,9 @@ Args:
   opt.def_readwrite("saturate_input_trajectory",
                     &ampc::Options::saturate_input_trajectory);
   opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
+  opt.def_readwrite("soft_state_bounds", &ampc::Options::soft_state_bounds);
+  // assign a new list (a copy is returned, so appending to it has no effect)
+  opt.def_readwrite("bounded_states", &ampc::Options::bounded_states);
 
   opt.def("__str__", [](const affine_mpc::Options& opts) {
     std::ostringstream oss;
@@ -108,6 +127,13 @@ Args:
     addField(opts.saturate_states, "saturate_states");
     addField(opts.saturate_input_trajectory, "saturate_input_trajectory");
     addField(opts.use_input_rate_cost, "use_input_rate_cost");
+    addField(opts.soft_state_bounds, "soft_state_bounds");
+    if (!opts.bounded_states.empty()) {
+      oss << (prev ? ", " : "") << "bounded_states=[";
+      for (size_t i{0}; i < opts.bounded_states.size(); ++i)
+        oss << (i ? ", " : "") << opts.bounded_states[i];
+      oss << "]";
+    }
     oss << ")";
     return oss.str();
   });

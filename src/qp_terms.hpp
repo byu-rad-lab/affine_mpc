@@ -210,15 +210,20 @@ private:
   const VectorParameterization& input_param_;
 };
 
-/// x_min <= x_k <= x_max at every step (`saturate_states`).
+/// x_min <= x_{k,i} <= x_max at every step k for each bounded state i
+/// (`saturate_states`; `bounded_states` selects them).
+///
+/// Soft (`soft_state_bounds`): one slack s_j >= 0 per bounded state, shared
+/// over the horizon, widens both of its limits,
+/// x_min,j - s_j <= x_{k,i_j} <= x_max,j + s_j. One row can not hold a slack
+/// on both sides, so each limit is its own one-sided row (2 T rows per
+/// bounded state), plus one row per bounded state for s >= 0.
+/// SoftStatePenalty prices the slacks.
 class StateBounds final : public QPTerm
 {
 public:
-  explicit StateBounds(int num_states) : num_states_{num_states} {}
-  void declare(QPLayout& layout) override
-  {
-    rows_ = layout.addRows(num_states_);
-  }
+  StateBounds(std::vector<int> states, int horizon_steps, bool soft);
+  void declare(QPLayout& layout) override;
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
     return f.stateMatrixDependsOn();
@@ -230,8 +235,41 @@ public:
   void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
   void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
 
+  /// The slack variables (empty unless soft).
+  const VarBlock& slack() const noexcept { return slack_; }
+
 private:
-  const int num_states_; // state_dim * horizon_steps
+  const std::vector<int> states_; // bounded state indices
+  const int T_;
+  const bool soft_;
+  RowBlock upper_, lower_, nonneg_; // soft only: x - s <= max, x + s >= min
+  VarBlock slack_;
+  Eigen::VectorXd minus_inf_, plus_inf_; // the open sides of the soft rows
+};
+
+/// l1^T s + s^T diag(l2) s on the state bound slacks s (`soft_state_bounds`),
+/// in the units of the rest of the cost (so 1/2 of it enters the QP).
+class SoftStatePenalty final : public QPTerm
+{
+public:
+  explicit SoftStatePenalty(const VarBlock& slack) :
+      slack_{slack}, half_l1_{slack.size}
+  {}
+  bool isCost() const noexcept override { return true; }
+  DataChangeSet matrixDependsOn(const Formulation&) const override
+  {
+    return DataChange::Weights;
+  }
+  DataChangeSet vectorDependsOn(const Formulation&) const override
+  {
+    return DataChange::Weights;
+  }
+  void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
+  void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
+
+private:
+  const VarBlock slack_;
+  Eigen::VectorXd half_l1_; // the linear part, l1 / 2
 };
 
 } // namespace affine_mpc::detail

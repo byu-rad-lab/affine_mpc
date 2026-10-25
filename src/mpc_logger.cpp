@@ -165,6 +165,8 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().saturate_input_trajectory));
   addMetadata("opt_use_input_rate_cost",
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
+  addMetadata("opt_soft_state_bounds",
+              static_cast<int>(mpc_->getOptions().soft_state_bounds));
 
   addMetadata("u_min", mpc_->getInputMin());
   addMetadata("u_max", mpc_->getInputMax());
@@ -178,8 +180,16 @@ void MPCLogger::captureMPCSnapshot()
   if (mpc_->getOptions().slew_control_points)
     addMetadata("control_point_slew", mpc_->getSlewRate());
   if (mpc_->getOptions().saturate_states) {
+    // x_min and x_max have one entry per bounded state
+    const std::vector<int>& bounded{mpc_->getBoundedStates()};
+    addMetadata("bounded_states",
+                std::vector<double>(bounded.begin(), bounded.end()));
     addMetadata("x_min", mpc_->getStateMin());
     addMetadata("x_max", mpc_->getStateMax());
+  }
+  if (mpc_->getOptions().soft_state_bounds) {
+    addMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
+    addMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
   }
 }
 

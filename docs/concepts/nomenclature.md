@@ -8,6 +8,7 @@
     | ---    | ---     |
     | $n$    | state dimension |
     | $m$    | input dimension |
+    | $n_b$  | number of bounded states (`bounded_states`; $n_b = n$ by default) |
     | $T$    | number of steps in the prediction horizon |
     | $\eta$ | number of control points that parameterize the input trajectory |
     | $\mathbf{x}_k \in \mathbb{R}^n$ | state vector at horizon step $k$ |

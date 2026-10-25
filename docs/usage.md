@@ -222,7 +222,9 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     if opts.slew_control_points:
         mpc.setSlewRate(u_slew)
     if opts.saturate_states:
-        mpc.setStateLimits(x_min, x_max)
+        mpc.setStateLimits(x_min, x_max)  # one entry per bounded state
+    if opts.soft_state_bounds:
+        mpc.setStateBoundPenalties(l1, l2)  # one entry per bounded state
     ```
 
 === "C++"
@@ -236,9 +238,14 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
       mpc.setSlewRate(u_slew);
     }
     if (opts.saturate_states) {
-      mpc.setStateLimits(x_min, x_max);
+      mpc.setStateLimits(x_min, x_max); // one entry per bounded state
+    }
+    if (opts.soft_state_bounds) {
+      mpc.setStateBoundPenalties(l1, l2); // one entry per bounded state
     }
     ```
+
+To limit only some states, list them in the options, e.g. `bounded_states=[3, 4]` in Python or `opts.bounded_states = {3, 4};` in C++ (see [State Saturation](concepts/problem-formulation.md#state-saturation-constraint)).
 
 #### Set weights
 

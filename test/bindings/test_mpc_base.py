@@ -67,7 +67,7 @@ def test_mpc_base_interface():
 
     assert (
         repr(mpc)
-        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False, soft_state_bounds=False, bounded_states=[]), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
     assert str(mpc).startswith("MPCBase:\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -246,3 +246,51 @@ def test_input_rate_cost(cls):
 
     with pytest.raises(RuntimeError, match="not enabled"):
         cls(n, m, param).setInputRateWeights(np.ones(m))
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_partial_and_soft_state_bounds(cls):
+    param = ampc.Parameterization.bspline(20, 2, 8)
+    settings = ampc.OSQPSettings()
+    settings.polishing = True
+    settings.max_iter = 20000
+
+    def build(opts, x0):
+        mpc = cls(2, 1, param, opts)
+        mpc.setModelContinuous2Discrete(
+            np.array([[0.0, 1.0], [-0.6, -0.1]]), np.array([0.0, 0.2]), np.zeros(2), 0.1
+        )
+        mpc.setStateWeights(np.array([1.0, 0.1]))
+        mpc.setReferenceState(np.array([1.0, 0.0]))
+        mpc.setInputLimits(u_min=np.array([-3.0]), u_max=np.array([3.0]))
+        mpc.setStateLimits(x_min=np.array([-0.5]), x_max=np.array([0.5]))
+        if opts.soft_state_bounds:
+            mpc.setStateBoundPenalties(l1=np.array([10.0]), l2=np.array([100.0]))
+        assert mpc.initializeSolver(settings)
+        return mpc, mpc.solve(x0)
+
+    opts = ampc.Options(saturate_states=True, bounded_states=[0])
+    assert opts.bounded_states == [0]
+    assert "bounded_states=[0]" in repr(opts)
+    hard, status = build(opts, np.zeros(2))
+    assert status == ampc.SolveStatus.Success
+    assert hard.getBoundedStates() == [0]
+    x_traj = hard.getPredictedStateTrajectory().reshape(-1, 2)
+    assert x_traj[:, 0].max() == pytest.approx(0.5, abs=1e-7)
+
+    soft_opts = ampc.Options(saturate_states=True, soft_state_bounds=True, bounded_states=[0])
+    soft, status = build(soft_opts, np.zeros(2))
+    assert status == ampc.SolveStatus.Success
+    np.testing.assert_allclose(
+        soft.getInputControlPoints(), hard.getInputControlPoints(), atol=1e-7
+    )
+    np.testing.assert_array_equal(soft.getStateBoundL2Penalties(), [100.0])
+
+    # starting past the limit: infeasible when hard, solvable when soft
+    _, status = build(opts, np.array([0.9, 0.0]))
+    assert status == ampc.SolveStatus.PrimalInfeasible
+    _, status = build(soft_opts, np.array([0.9, 0.0]))
+    assert status == ampc.SolveStatus.Success
+
+    with pytest.raises(ValueError, match="strictly increasing"):
+        cls(2, 1, param, ampc.Options(saturate_states=True, bounded_states=[1, 0]))

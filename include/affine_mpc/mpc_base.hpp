@@ -9,6 +9,7 @@
 #include <Eigen/Core>
 #include <iosfwd>
 #include <memory>
+#include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -399,14 +400,42 @@ public:
    *
    *    This function can only be called if `saturate_states` is enabled. Must
    *    be called prior to `initializeSolver()`, but can also be called after if
-   *    limits change between solves.
-   * @param x_min Lower bound on state vector.
-   * @param x_max Upper bound on state vector.
+   *    limits change between solves. The limits have one entry per bounded
+   *    state (Options::bounded_states, all states by default); pass `-inf` or
+   *    `inf` for a side without a limit.
+   * @param x_min Lower limits of the bounded states.
+   * @param x_max Upper limits of the bounded states.
+   * @throws std::invalid_argument if a size is not the number of bounded
+   *   states or x_min > x_max.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
+
+  /**
+   * @brief Set the penalties of the soft state limits: the cost gains
+   *   l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state
+   *   (shared over the horizon) that may widen both of its limits.
+   *
+   *   This function can only be called if `soft_state_bounds` is enabled, and
+   *   must be called prior to `initializeSolver()`. The L1 penalty is exact:
+   *   when it exceeds the limit's Lagrange multiplier, the limits are only
+   *   violated when they can not be met. The L2 penalty alone always allows a
+   *   small violation; with the L1 penalty it does not change the solution
+   *   while the limits can be met. OSQP converges much faster with an L2
+   *   penalty on the scale of the state weights or larger (with a tiny one,
+   *   soft limits can take 10 to 30 times the iterations of hard limits), and
+   *   slower with a very large L1 penalty. There is no default: a large enough
+   *   L1 penalty depends on the problem.
+   * @param l1 Linear penalties, one per bounded state (non-negative).
+   * @param l2 Quadratic penalties, one per bounded state (non-negative).
+   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   * @throws std::invalid_argument if a size is not the number of bounded
+   *   states or a penalty is negative.
+   */
+  void setStateBoundPenalties(const Eigen::Ref<const Eigen::VectorXd>& l1,
+                              const Eigen::Ref<const Eigen::VectorXd>& l2);
 
   /**
    * @brief Set slew-rate constraint limits for control points. Control points
@@ -504,16 +533,41 @@ public:
   const Eigen::VectorXd& getInputMax() const noexcept { return data_.u_max; }
 
   /**
-   * @brief Get the lower state limit (-inf until setStateLimits()).
+   * @brief Get the lower limits of the bounded states (-inf until
+   *   setStateLimits()).
    * @throws std::logic_error if `saturate_states` is not enabled.
    */
   const Eigen::VectorXd& getStateMin() const;
 
   /**
-   * @brief Get the upper state limit (+inf until setStateLimits()).
+   * @brief Get the upper limits of the bounded states (+inf until
+   *   setStateLimits()).
    * @throws std::logic_error if `saturate_states` is not enabled.
    */
   const Eigen::VectorXd& getStateMax() const;
+
+  /**
+   * @brief Get the indices of the bounded states (Options::bounded_states, or
+   *   every state when it is empty; none without `saturate_states`).
+   */
+  const std::vector<int>& getBoundedStates() const noexcept
+  {
+    return bounded_states_;
+  }
+
+  /**
+   * @brief Get the L1 penalties of the soft state limits (zero until
+   *   setStateBoundPenalties()).
+   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   */
+  const Eigen::VectorXd& getStateBoundL1Penalties() const;
+
+  /**
+   * @brief Get the L2 penalties of the soft state limits (zero until
+   *   setStateBoundPenalties()).
+   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   */
+  const Eigen::VectorXd& getStateBoundL2Penalties() const;
 
   /**
    * @brief Get the control point slew rate (+inf until setSlewRate()).
@@ -628,6 +682,8 @@ protected:
   const Options opts_;
   /// Maps the control points (first in the QP solution) to the inputs
   const VectorParameterization input_param_;
+  /// Indices of the bounded states (see getBoundedStates())
+  const std::vector<int> bounded_states_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
@@ -676,6 +732,7 @@ private:
   DataChangeSet
       pending_; // categories changed since they were applied to the QP
   bool model_set_, model_from_continuous_, u_lims_set_, x_lims_set_;
+  bool x_penalties_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
   double mpc_solve_time_; ///< duration of the last solve() call (seconds)

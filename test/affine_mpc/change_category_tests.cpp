@@ -84,6 +84,11 @@ void setWeights(ampc::MPCBase& mpc, const Scales& s)
     mpc.setInputWeights(VectorXd::Constant(1, s.weights * 0.1));
   if (mpc.getOptions().use_input_rate_cost)
     mpc.setInputRateWeights(VectorXd::Constant(1, s.weights * 0.5));
+  if (mpc.getOptions().soft_state_bounds) {
+    const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
+    mpc.setStateBoundPenalties(VectorXd::Constant(k, s.weights * 10.0),
+                               VectorXd::Constant(k, s.weights * 2.0));
+  }
 }
 
 void setRefs(ampc::MPCBase& mpc, const Scales& s)
@@ -104,9 +109,17 @@ void setInputLimits(ampc::MPCBase& mpc, const Scales& s)
 
 void setStateLimits(ampc::MPCBase& mpc, const Scales& s)
 {
-  if (mpc.getOptions().saturate_states)
-    mpc.setStateLimits(s.state_limits * Vector2d{-5.0, -6.0},
-                       s.state_limits * Vector2d{7.0, 8.0});
+  if (!mpc.getOptions().saturate_states)
+    return;
+  // one entry per bounded state
+  const Vector2d lo{-5.0, -6.0}, hi{7.0, 8.0};
+  const std::vector<int>& bounded{mpc.getBoundedStates()};
+  VectorXd x_min{static_cast<Index>(bounded.size())}, x_max{x_min.size()};
+  for (size_t j{0}; j < bounded.size(); ++j) {
+    x_min(j) = s.state_limits * lo(bounded[j]);
+    x_max(j) = s.state_limits * hi(bounded[j]);
+  }
+  mpc.setStateLimits(x_min, x_max);
 }
 
 void setSlew(ampc::MPCBase& mpc, const Scales& s)
@@ -207,6 +220,12 @@ const ampc::Options all_options{.use_input_cost = true,
 // the rate cost alone (it then needs the previous input by itself)
 const ampc::Options rate_cost{.use_input_rate_cost = true};
 
+// soft limits on the velocity only (slack variables, selected states)
+const ampc::Options soft_velocity{.use_input_cost = true,
+                                  .saturate_states = true,
+                                  .soft_state_bounds = true,
+                                  .bounded_states = {1}};
+
 const ampc::Options sampled_bounds{.use_input_cost = true,
                                    .saturate_input_trajectory = true};
 
@@ -215,8 +234,8 @@ const ampc::Options sampled_bounds{.use_input_cost = true,
 TEST(ChangeCategoryTester,
      givenEachCategoryChanged_CondensedQPMatchesFreshlyBuiltQP)
 {
-  for (const ampc::Options& opts :
-       {ampc::Options{}, all_options, sampled_bounds, rate_cost}) {
+  for (const ampc::Options& opts : {ampc::Options{}, all_options,
+                                    sampled_bounds, rate_cost, soft_velocity}) {
     checkCategoriesAgainstFreshQP<ampc::CondensedMPC>(opts);
   }
 }
@@ -224,8 +243,8 @@ TEST(ChangeCategoryTester,
 TEST(ChangeCategoryTester,
      givenEachCategoryChanged_SparseQPMatchesFreshlyBuiltQP)
 {
-  for (const ampc::Options& opts :
-       {ampc::Options{}, all_options, sampled_bounds, rate_cost}) {
+  for (const ampc::Options& opts : {ampc::Options{}, all_options,
+                                    sampled_bounds, rate_cost, soft_velocity}) {
     checkCategoriesAgainstFreshQP<ampc::SparseMPC>(opts);
   }
 }

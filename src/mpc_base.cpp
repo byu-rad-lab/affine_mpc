@@ -41,6 +41,26 @@ constexpr int validateInputDim(int input_dim)
   return input_dim;
 }
 
+// The state bound options need saturate_states, and the bounded states must
+// be valid indices
+const Options& validateOptions(const Options& opts, int state_dim)
+{
+  if (!opts.saturate_states
+      && (opts.soft_state_bounds || !opts.bounded_states.empty()))
+    throw std::invalid_argument(
+        "[MPCBase::validateOptions] soft_state_bounds and bounded_states "
+        "require saturate_states.");
+  int previous{-1};
+  for (const int i : opts.bounded_states) {
+    if (i <= previous || i >= state_dim)
+      throw std::invalid_argument(
+          "[MPCBase::validateOptions] bounded_states must be strictly "
+          "increasing state indices in [0, state_dim).");
+    previous = i;
+  }
+  return opts;
+}
+
 // Size checks for setters, which are not on the solve path. The message is
 // only built when the check fails.
 void validateSize(Index size,
@@ -81,8 +101,9 @@ MPCBase::MPCBase(int state_dim,
     x_traj_dim_{state_dim * param.horizon_steps},
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
-    opts_{opts},
+    opts_{validateOptions(opts, state_dim_)},
     input_param_{input_dim_, param},
+    bounded_states_{detail::boundedStates(opts_, state_dim_)},
     solution_map_{nullptr, 0},
     solver_{nullptr},
     data_{state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, opts_},
@@ -92,6 +113,7 @@ MPCBase::MPCBase(int state_dim,
     model_from_continuous_{false},
     u_lims_set_{false},
     x_lims_set_{false},
+    x_penalties_set_{false},
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
@@ -147,6 +169,10 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
     throw std::logic_error(
         "[MPCBase::initializeSolver] State limits must be set before "
         "initializing solver (saturate_states is enabled).");
+  if (opts_.soft_state_bounds && !x_penalties_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] State bound penalties must be set before "
+        "initializing solver (soft_state_bounds is enabled).");
 
   if (solver_initialized_)
     return true;
@@ -509,8 +535,10 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   if (!opts_.saturate_states)
     throw std::logic_error(
         "[MPCBase::setStateLimits] State saturation is not enabled.");
-  validateSize(x_min.size(), state_dim_, "setStateLimits", "x_min");
-  validateSize(x_max.size(), state_dim_, "setStateLimits", "x_max");
+  // one entry per bounded state
+  const Index num_bounded{static_cast<Index>(bounded_states_.size())};
+  validateSize(x_min.size(), num_bounded, "setStateLimits", "x_min");
+  validateSize(x_max.size(), num_bounded, "setStateLimits", "x_max");
   if ((x_max - x_min).minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateLimits] x_min cannot be greater than x_max.");
@@ -518,6 +546,24 @@ void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   data_.x_max = x_max;
   x_lims_set_ = true;
   pending_ |= DataChange::Limits;
+}
+
+void MPCBase::setStateBoundPenalties(const Ref<const VectorXd>& l1,
+                                     const Ref<const VectorXd>& l2)
+{
+  if (!opts_.soft_state_bounds)
+    throw std::logic_error("[MPCBase::setStateBoundPenalties] Soft state "
+                           "bounds are not enabled.");
+  const Index num_bounded{static_cast<Index>(bounded_states_.size())};
+  validateSize(l1.size(), num_bounded, "setStateBoundPenalties", "l1");
+  validateSize(l2.size(), num_bounded, "setStateBoundPenalties", "l2");
+  if (l1.minCoeff() < 0.0 || l2.minCoeff() < 0.0)
+    throw std::invalid_argument("[MPCBase::setStateBoundPenalties] Penalties "
+                                "must be non-negative.");
+  data_.x_soft_l1 = l1;
+  data_.x_soft_l2 = l2;
+  x_penalties_set_ = true;
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
@@ -600,6 +646,22 @@ const VectorXd& MPCBase::getStateMax() const
   return data_.x_max;
 }
 
+const VectorXd& MPCBase::getStateBoundL1Penalties() const
+{
+  if (!opts_.soft_state_bounds)
+    throw std::logic_error("[MPCBase::getStateBoundL1Penalties] Soft state "
+                           "bounds are not enabled.");
+  return data_.x_soft_l1;
+}
+
+const VectorXd& MPCBase::getStateBoundL2Penalties() const
+{
+  if (!opts_.soft_state_bounds)
+    throw std::logic_error("[MPCBase::getStateBoundL2Penalties] Soft state "
+                           "bounds are not enabled.");
+  return data_.x_soft_l2;
+}
+
 const VectorXd& MPCBase::getSlewRate() const
 {
   if (!opts_.slew_control_points)
@@ -658,6 +720,9 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
   if (mpc.getOptions().saturate_states)
     os << "\n  x_min = " << mpc.getStateMin().format(fmt)
        << "\n  x_max = " << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().soft_state_bounds)
+    os << "\n  x_soft_l1 = " << mpc.getStateBoundL1Penalties().format(fmt)
+       << "\n  x_soft_l2 = " << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)
     os << "\n  u0_slew = " << mpc.getSlewRateInitial().format(fmt);
   if (mpc.getOptions().slew_control_points)
@@ -693,6 +758,9 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
   if (mpc.getOptions().saturate_states)
     os << ", x_min=" << mpc.getStateMin().format(fmt)
        << ", x_max=" << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().soft_state_bounds)
+    os << ", x_soft_l1=" << mpc.getStateBoundL1Penalties().format(fmt)
+       << ", x_soft_l2=" << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)
     os << ", u0_slew=" << mpc.getSlewRateInitial().format(fmt);
   if (mpc.getOptions().slew_control_points)

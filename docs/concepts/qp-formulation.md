@@ -764,6 +764,27 @@ $$
     This makes the constraint matrix less sparse.
     Thus, it may be more efficient to use the sparse formulation when saturating states,
     but the best way to find out for your system is to try both!
+    Bounding only the states that need limits (below) keeps only their rows of $S$.
+
+## Selected and Soft State Limits
+
+With `bounded_states` listing $n_b$ of the $n$ states, let $E \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
+The state saturation rows become $(I_T \otimes E)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes E)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
+In the condensed formulation these are the selected rows of $S$, so no product is needed.
+
+Soft limits add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
+A row can not hold one slack on both of its sides, so each limit becomes its own one-sided row:
+
+$$
+(I_T \otimes E)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} \leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}},
+\qquad
+(I_T \otimes E)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} \geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}},
+\qquad
+\mathbf{s} \geq \mathbf{0},
+$$
+
+which is $2 n_b T + n_b$ rows.
+The penalty $J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \mathbf{s}^\top \operatorname{diag}(\boldsymbol{\rho}_2) \mathbf{s}$ is scaled by $\frac{1}{2}$ like the rest of the cost, so the slack block of $P$ is $\operatorname{diag}(\boldsymbol{\rho}_2)$ and the slack part of $\mathbf{q}$ is $\frac{1}{2} \boldsymbol{\rho}_1$.
 
 ## Input Rate Cost
 

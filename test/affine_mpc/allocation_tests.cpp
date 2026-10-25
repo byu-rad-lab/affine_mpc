@@ -117,8 +117,15 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
   if (opts.slew_control_points)
     mpc.setSlewRate(VectorXd::Constant(m, 1.0));
-  if (opts.saturate_states)
-    mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
+  if (opts.saturate_states) {
+    const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
+    mpc.setStateLimits(VectorXd::Constant(k, -10), VectorXd::Constant(k, 10));
+  }
+  if (opts.soft_state_bounds) {
+    const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
+    mpc.setStateBoundPenalties(VectorXd::Constant(k, 10.0),
+                               VectorXd::Constant(k, 100.0));
+  }
   ASSERT_TRUE(mpc.initializeSolver());
 
   const Vector2d x0{0.5, -0.2};
@@ -184,11 +191,16 @@ std::vector<AllocationCase> allocationCases()
                           .use_input_rate_cost = true};
   const ampc::Options sampled{.use_input_cost = true,
                               .saturate_input_trajectory = true};
+  const ampc::Options soft{.use_input_cost = true,
+                           .saturate_states = true,
+                           .soft_state_bounds = true,
+                           .bounded_states = {0}};
   return {
       {"defaults", ampc::Parameterization::linearInterp(10, 4), {}},
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
+      {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
   };
 }
 

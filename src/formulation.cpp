@@ -1,6 +1,7 @@
 #include "formulation.hpp"
 
 #include <Eigen/Core>
+#include <vector>
 
 #include "affine_mpc/parameterization.hpp"
 
@@ -65,7 +66,7 @@ void CondensedFormulation::updateX0(const MPCData& d,
 void CondensedFormulation::predictStates(const Ref<const VectorXd>& z,
                                          Ref<VectorXd> x_traj) const noexcept
 {
-  x_traj.noalias() = S_ * z;
+  x_traj.noalias() = S_ * z.head(nc_);
   x_traj += v_;
 }
 
@@ -78,9 +79,9 @@ void CondensedFormulation::addStateQuadraticMatrix(const Ref<const VectorXd>& Q)
   // so the weights are applied through asDiagonal() of a vector instead.
   weighted_S_.noalias() = Q.asDiagonal() * S_;
   if (P_.stale)
-    qp_.P.noalias() = S_.transpose() * weighted_S_;
+    ownP().noalias() = S_.transpose() * weighted_S_;
   else
-    qp_.P.noalias() += S_.transpose() * weighted_S_;
+    ownP().noalias() += S_.transpose() * weighted_S_;
   P_.stale = false;
   P_.written = true;
 }
@@ -91,9 +92,9 @@ void CondensedFormulation::addStateQuadraticVector(const Ref<const VectorXd>& Q,
   // q = S^T diag(Q) (v - r)
   weighted_state_err_.noalias() = Q.cwiseProduct(v_ - r);
   if (q_.stale)
-    qp_.q.noalias() = S_.transpose() * weighted_state_err_;
+    ownQ().noalias() = S_.transpose() * weighted_state_err_;
   else
-    qp_.q.noalias() += S_.transpose() * weighted_state_err_;
+    ownQ().noalias() += S_.transpose() * weighted_state_err_;
   q_.stale = false;
   q_.written = true;
 }
@@ -101,41 +102,62 @@ void CondensedFormulation::addStateQuadraticVector(const Ref<const VectorXd>& Q,
 void CondensedFormulation::addControlQuadraticMatrix(
     const Ref<const VectorXd>& R)
 {
-  startPartialWrite(P_, qp_.P);
-  qp_.P.diagonal().head(nc_) += R;
+  startPartialWrite(P_, ownP());
+  ownP().diagonal() += R;
 }
 
 void CondensedFormulation::addControlQuadraticVector(
     const Ref<const VectorXd>& R, const Ref<const VectorXd>& c_ref)
 {
-  startPartialWrite(q_, qp_.q);
-  qp_.q.head(nc_).noalias() -= R.cwiseProduct(c_ref);
+  startPartialWrite(q_, ownQ());
+  ownQ().noalias() -= R.cwiseProduct(c_ref);
 }
 
 void CondensedFormulation::addControlMatrix(const Ref<const MatrixXd>& H)
 {
-  startPartialWrite(P_, qp_.P);
-  qp_.P.topLeftCorner(nc_, nc_) += H;
+  startPartialWrite(P_, ownP());
+  ownP() += H;
 }
 
 void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& g)
 {
-  startPartialWrite(q_, qp_.q);
-  qp_.q.head(nc_) += g;
+  startPartialWrite(q_, ownQ());
+  ownQ() += g;
 }
 
-void CondensedFormulation::setStateBoxRows(const RowBlock& block)
+void CondensedFormulation::setStateRows(const RowBlock& block,
+                                        const std::vector<int>& states)
 {
-  qp_.A.middleRows(block.offset, nx_) = S_;
+  // the selected rows of S (states are sorted, so all of them are S itself)
+  const int num_bounded{static_cast<int>(states.size())};
+  if (num_bounded == n_) {
+    qp_.A.block(block.offset, 0, nx_, nc_) = S_;
+    return;
+  }
+  for (int k{0}, row{block.offset}; k < T_; ++k)
+    for (int j{0}; j < num_bounded; ++j, ++row)
+      qp_.A.row(row).head(nc_) = S_.row(k * n_ + states[j]);
 }
 
-void CondensedFormulation::setStateBoxBounds(const RowBlock& block,
-                                             const Ref<const VectorXd>& lo,
-                                             const Ref<const VectorXd>& hi)
+void CondensedFormulation::setStateBounds(const RowBlock& block,
+                                          const std::vector<int>& states,
+                                          const Ref<const VectorXd>& lo,
+                                          const Ref<const VectorXd>& hi)
 {
   // lo <= S c + v <= hi becomes lo - v <= S c <= hi - v
-  qp_.l.segment(block.offset, nx_) = lo.replicate(T_, 1) - v_;
-  qp_.u.segment(block.offset, nx_) = hi.replicate(T_, 1) - v_;
+  const int num_bounded{static_cast<int>(states.size())};
+  if (num_bounded == n_) {
+    qp_.l.segment(block.offset, nx_) = lo.replicate(T_, 1) - v_;
+    qp_.u.segment(block.offset, nx_) = hi.replicate(T_, 1) - v_;
+    return;
+  }
+  for (int k{0}, row{block.offset}; k < T_; ++k) {
+    for (int j{0}; j < num_bounded; ++j, ++row) {
+      const double offset{v_(k * n_ + states[j])};
+      qp_.l(row) = lo(j) - offset;
+      qp_.u(row) = hi(j) - offset;
+    }
+  }
 }
 
 void CondensedFormulation::updateS(const MPCData& d)
@@ -246,10 +268,10 @@ void SparseFormulation::addControlCostPlaceholders(
 void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
                                       Ref<VectorXd> x_traj) const noexcept
 {
-  x_traj = z.tail(nx_);
+  x_traj = z.segment(nc_, nx_);
 }
 
-void SparseFormulation::endCostMatrix()
+void SparseFormulation::endOwnCostMatrix()
 {
   if (P_ctrl_offdiag_ && P_ctrl_.stale && P_ctrl_.written) {
     qp_.P.topLeftCorner(nc_, nc_).setZero();
@@ -259,7 +281,7 @@ void SparseFormulation::endCostMatrix()
   finish(P_state_, qp_.P.diagonal().segment(nc_, nx_));
 }
 
-void SparseFormulation::endCostVector()
+void SparseFormulation::endOwnCostVector()
 {
   finish(q_ctrl_, qp_.q.head(nc_));
   finish(q_state_, qp_.q.segment(nc_, nx_));
@@ -304,17 +326,27 @@ void SparseFormulation::addControlLinear(const Ref<const VectorXd>& g)
   assignOrAdd(q_ctrl_, qp_.q.head(nc_), g);
 }
 
-void SparseFormulation::setStateBoxRows(const RowBlock& block)
+void SparseFormulation::setStateRows(const RowBlock& block,
+                                     const std::vector<int>& states)
 {
-  qp_.A.block(block.offset, nc_, nx_, nx_).diagonal().setOnes();
+  const int num_bounded{static_cast<int>(states.size())};
+  if (num_bounded == n_) {
+    qp_.A.block(block.offset, nc_, nx_, nx_).diagonal().setOnes();
+    return;
+  }
+  for (int k{0}, row{block.offset}; k < T_; ++k)
+    for (int j{0}; j < num_bounded; ++j, ++row)
+      qp_.A(row, nc_ + k * n_ + states[j]) = 1.0;
 }
 
-void SparseFormulation::setStateBoxBounds(const RowBlock& block,
-                                          const Ref<const VectorXd>& lo,
-                                          const Ref<const VectorXd>& hi)
+void SparseFormulation::setStateBounds(const RowBlock& block,
+                                       const std::vector<int>& states,
+                                       const Ref<const VectorXd>& lo,
+                                       const Ref<const VectorXd>& hi)
 {
-  qp_.l.segment(block.offset, nx_) = lo.replicate(T_, 1);
-  qp_.u.segment(block.offset, nx_) = hi.replicate(T_, 1);
+  const int num_bounded{static_cast<int>(states.size())};
+  qp_.l.segment(block.offset, num_bounded * T_) = lo.replicate(T_, 1);
+  qp_.u.segment(block.offset, num_bounded * T_) = hi.replicate(T_, 1);
 }
 
 void SparseFormulation::setDynamicsMatrixBlocks(const MPCData& d)

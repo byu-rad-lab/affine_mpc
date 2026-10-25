@@ -1,6 +1,7 @@
 #include "qp_terms.hpp"
 
 #include <Eigen/Core>
+#include <utility>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -195,14 +196,77 @@ void ControlPointSlew::updateVector(const MPCData& d, Formulation&, QPRef& qp)
 
 // ---- StateBounds ------------------------------------------------------------
 
-void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef&)
+StateBounds::StateBounds(std::vector<int> states,
+                         const int horizon_steps,
+                         const bool soft) :
+    states_{std::move(states)},
+    T_{horizon_steps},
+    soft_{soft},
+    minus_inf_{
+        VectorXd::Constant(static_cast<Index>(states_.size()), -MPCData::inf)},
+    plus_inf_{
+        VectorXd::Constant(static_cast<Index>(states_.size()), MPCData::inf)}
+{}
+
+void StateBounds::declare(QPLayout& layout)
 {
-  f.setStateBoxRows(rows_);
+  const int num_bounded{static_cast<int>(states_.size())};
+  if (!soft_) {
+    rows_ = layout.addRows(num_bounded * T_);
+    return;
+  }
+  slack_ = layout.addVariables(num_bounded);
+  upper_ = layout.addRows(num_bounded * T_);
+  lower_ = layout.addRows(num_bounded * T_);
+  nonneg_ = layout.addRows(num_bounded);
+  rows_ = {upper_.offset, 2 * num_bounded * T_ + num_bounded};
 }
 
-void StateBounds::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef& qp)
 {
-  f.setStateBoxBounds(rows_, d.x_min, d.x_max);
+  if (!soft_) {
+    f.setStateRows(rows_, states_);
+    return;
+  }
+  f.setStateRows(upper_, states_);
+  f.setStateRows(lower_, states_);
+  // the slack columns: -s in the upper rows, +s in the lower rows, s >= 0
+  const int num_bounded{static_cast<int>(states_.size())};
+  for (int k{0}; k < T_; ++k) {
+    for (int j{0}; j < num_bounded; ++j) {
+      qp.A(upper_.offset + k * num_bounded + j, slack_.offset + j) = -1.0;
+      qp.A(lower_.offset + k * num_bounded + j, slack_.offset + j) = 1.0;
+    }
+  }
+  for (int j{0}; j < num_bounded; ++j)
+    qp.A(nonneg_.offset + j, slack_.offset + j) = 1.0;
+}
+
+void StateBounds::updateVector(const MPCData& d, Formulation& f, QPRef& qp)
+{
+  if (!soft_) {
+    f.setStateBounds(rows_, states_, d.x_min, d.x_max);
+    return;
+  }
+  f.setStateBounds(upper_, states_, minus_inf_, d.x_max);
+  f.setStateBounds(lower_, states_, d.x_min, plus_inf_);
+  qp.l.segment(nonneg_.offset, nonneg_.rows).setZero();
+  qp.u.segment(nonneg_.offset, nonneg_.rows) = plus_inf_;
+}
+
+// ---- SoftStatePenalty -------------------------------------------------------
+
+void SoftStatePenalty::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+{
+  // 1/2 of s^T diag(l2) s
+  f.addVariableQuadratic(slack_, d.x_soft_l2);
+}
+
+void SoftStatePenalty::updateVector(const MPCData& d, Formulation& f, QPRef&)
+{
+  // 1/2 of l1^T s
+  half_l1_.noalias() = 0.5 * d.x_soft_l1;
+  f.addVariableLinear(slack_, half_l1_);
 }
 
 } // namespace affine_mpc::detail

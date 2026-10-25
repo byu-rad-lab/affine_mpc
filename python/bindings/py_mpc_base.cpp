@@ -2,6 +2,7 @@
 
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -615,17 +616,49 @@ Set state saturation limits.
 
 This function can only be called if `saturate_states` is enabled. Must be
 called prior to `initializeSolver()`, but can also be called after if limits
-change between solves.
+change between solves. The limits have one entry per bounded state
+(Options.bounded_states, all states by default); pass `-inf` or `inf` for a side
+without a limit.
 
 Args:
-    x_min: Lower bound on state vector.
-    x_max: Upper bound on state vector.
+    x_min: Lower limits of the bounded states.
+    x_max: Upper limits of the bounded states.
+
+Raises:
+    ValueError: If a size is not the number of bounded states or x_min > x_max.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
            )doc",
            py::arg("x_min"), py::arg("x_max"));
+
+  base.def("setStateBoundPenalties", &ampc::MPCBase::setStateBoundPenalties,
+           R"doc(
+Set the penalties of the soft state limits: the cost gains
+l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state (shared
+over the horizon) that may widen both of its limits.
+
+This function can only be called if `soft_state_bounds` is enabled, and must be
+called prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
+the limit's Lagrange multiplier, the limits are only violated when they can not
+be met. The L2 penalty alone always allows a small violation; with the L1
+penalty it does not change the solution while the limits can be met. OSQP
+converges much faster with an L2 penalty on the scale of the state weights or
+larger (with a tiny one, soft limits can take 10 to 30 times the iterations of
+hard limits), and slower with a very large L1 penalty. There is no default: a
+large enough L1 penalty depends on the problem.
+
+Args:
+    l1: Linear penalties, one per bounded state (non-negative).
+    l2: Quadratic penalties, one per bounded state (non-negative).
+
+Raises:
+    RuntimeError: If `soft_state_bounds` is not enabled.
+    ValueError: If a size is not the number of bounded states or a penalty is
+        negative.
+           )doc",
+           py::arg("l1"), py::arg("l2"));
   base.def("setSlewRate", &ampc::MPCBase::setSlewRate,
            R"doc(
 Set slew-rate constraint limits for control points. Control points can vary by
@@ -735,17 +768,40 @@ Raises:
            "Get the upper input limit (+inf until setInputLimits()).");
   base.def("getStateMin", &ampc::MPCBase::getStateMin, copy,
            R"doc(
-Get the lower state limit (-inf until setStateLimits()).
+Get the lower limits of the bounded states (-inf until setStateLimits()).
 
 Raises:
     RuntimeError: If `saturate_states` is not enabled.
            )doc");
   base.def("getStateMax", &ampc::MPCBase::getStateMax, copy,
            R"doc(
-Get the upper state limit (+inf until setStateLimits()).
+Get the upper limits of the bounded states (+inf until setStateLimits()).
 
 Raises:
     RuntimeError: If `saturate_states` is not enabled.
+           )doc");
+  base.def("getBoundedStates", &ampc::MPCBase::getBoundedStates,
+           R"doc(
+Get the indices of the bounded states (Options.bounded_states, or every state
+when it is empty; none without `saturate_states`).
+           )doc");
+  base.def("getStateBoundL1Penalties", &ampc::MPCBase::getStateBoundL1Penalties,
+           copy,
+           R"doc(
+Get the L1 penalties of the soft state limits (zero until
+setStateBoundPenalties()).
+
+Raises:
+    RuntimeError: If `soft_state_bounds` is not enabled.
+           )doc");
+  base.def("getStateBoundL2Penalties", &ampc::MPCBase::getStateBoundL2Penalties,
+           copy,
+           R"doc(
+Get the L2 penalties of the soft state limits (zero until
+setStateBoundPenalties()).
+
+Raises:
+    RuntimeError: If `soft_state_bounds` is not enabled.
            )doc");
   base.def("getSlewRate", &ampc::MPCBase::getSlewRate, copy,
            R"doc(

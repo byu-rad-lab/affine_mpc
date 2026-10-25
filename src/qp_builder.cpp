@@ -46,7 +46,7 @@ QPBuilder::QPBuilder(const FormulationKind kind,
     qp_{qp}, formulation_{makeFormulation(kind, state_dim, input_param, qp)}
 {
   // The options select the terms; each term's rows follow the previous ones
-  QPLayout layout;
+  QPLayout layout{formulation_->numVariables()};
   rows_.dynamics = formulation_->declareRows(layout);
   add<StateCost>(layout);
   // before InputCost, so the sparse formulation assigns its control point
@@ -64,11 +64,19 @@ QPBuilder::QPBuilder(const FormulationKind kind,
     rows_.control_point_slew =
         add<ControlPointSlew>(layout, input_param).rows();
   if (opts.saturate_states) {
-    const int num_states{state_dim
-                         * input_param.parameterization().horizon_steps};
-    rows_.state_bounds = add<StateBounds>(layout, num_states).rows();
+    const StateBounds& bounds{add<StateBounds>(
+        layout, boundedStates(opts, state_dim),
+        input_param.parameterization().horizon_steps, opts.soft_state_bounds)};
+    rows_.state_bounds = bounds.rows();
+    if (opts.soft_state_bounds)
+      add<SoftStatePenalty>(layout, bounds.slack());
   }
   num_constraints_ = layout.numRows();
+  num_variables_ = layout.numVariables();
+  // variables the terms declared (after the formulation's own)
+  const int own_variables{formulation_->numVariables()};
+  formulation_->setExtraVariables(
+      {own_variables, num_variables_ - own_variables});
 
   // Sort the term parts by when they are updated
   bounds_x0_ = formulation_->updateX0WritesBounds();

@@ -24,7 +24,7 @@ struct QPRows
   RowBlock input_bounds;
   RowBlock initial_slew;
   RowBlock control_point_slew;
-  RowBlock state_bounds;
+  RowBlock state_bounds; ///< soft: the upper rows, lower rows, then s >= 0
 };
 
 /**
@@ -43,7 +43,7 @@ public:
             const Options& opts,
             QPRef qp);
 
-  int numVariables() const noexcept { return formulation_->numVariables(); }
+  int numVariables() const noexcept { return num_variables_; }
   int numConstraints() const noexcept { return num_constraints_; }
   const QPRows& rows() const noexcept { return rows_; }
   const Formulation& formulation() const noexcept { return *formulation_; }
@@ -88,7 +88,7 @@ private:
   std::unique_ptr<Formulation> formulation_;
   std::vector<std::unique_ptr<QPTerm>> terms_;
   QPRows rows_;
-  int num_constraints_;
+  int num_variables_, num_constraints_;
 
   // The cost terms are updated together (they accumulate into P and q)
   std::vector<QPTerm*> cost_terms_;

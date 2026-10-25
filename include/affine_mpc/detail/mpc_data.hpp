@@ -14,6 +14,8 @@
 #include <Eigen/Core>
 #include <cstdint>
 #include <limits>
+#include <numeric>
+#include <vector>
 
 #include "affine_mpc/options.hpp"
 
@@ -109,6 +111,22 @@ constexpr DataChangeSet operator|(DataChange lhs, DataChange rhs) noexcept
 }
 
 /**
+ * @brief Internal: the indices of the bounded states with `saturate_states`
+ *   (Options::bounded_states, or every state when it is empty), and none
+ *   without it.
+ */
+inline std::vector<int> boundedStates(const Options& opts, int state_dim)
+{
+  if (!opts.saturate_states)
+    return {};
+  if (!opts.bounded_states.empty())
+    return opts.bounded_states;
+  std::vector<int> all(state_dim);
+  std::iota(all.begin(), all.end(), 0);
+  return all;
+}
+
+/**
  * @struct MPCData
  * @brief Internal: the MPC problem as set through the MPCBase setters (model,
  *   weights, references, limits, and the previous input). Owned by MPCBase,
@@ -155,8 +173,14 @@ struct MPCData
     if (opts.slew_control_points)
       ctrls_slew.setConstant(input_dim, inf);
     if (opts.saturate_states) {
-      x_min.setConstant(state_dim, -inf);
-      x_max.setConstant(state_dim, inf);
+      const int num_bounded{
+          static_cast<int>(boundedStates(opts, state_dim).size())};
+      x_min.setConstant(num_bounded, -inf);
+      x_max.setConstant(num_bounded, inf);
+      if (opts.soft_state_bounds) {
+        x_soft_l1.setZero(num_bounded);
+        x_soft_l2.setZero(num_bounded);
+      }
     }
   }
 
@@ -177,9 +201,13 @@ struct MPCData
   Eigen::VectorXd ctrls_ref; ///< stacked reference control points
 
   Eigen::VectorXd u_min, u_max; ///< input limits
-  Eigen::VectorXd x_min, x_max; ///< state limits (`saturate_states`)
-  Eigen::VectorXd ctrls_slew;   ///< control point slew rate
-  Eigen::VectorXd u0_slew;      ///< initial input slew rate
+  /// limits of the bounded states (`saturate_states`, see boundedStates())
+  Eigen::VectorXd x_min, x_max;
+  /// L1 and L2 penalties on the slack of each bounded state
+  /// (`soft_state_bounds`)
+  Eigen::VectorXd x_soft_l1, x_soft_l2;
+  Eigen::VectorXd ctrls_slew; ///< control point slew rate
+  Eigen::VectorXd u0_slew;    ///< initial input slew rate
   /// previous input (`slew_initial_input` or `use_input_rate_cost`)
   Eigen::VectorXd u_prev;
 };

@@ -5,6 +5,7 @@
 // that map state-space costs and constraints onto the QP variables.
 
 #include <Eigen/Core>
+#include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -29,26 +30,47 @@ struct RowBlock
   int rows{0};
 };
 
-/// Hands out constraint rows in declaration order (construction only).
+/// A contiguous block of QP variables.
+struct VarBlock
+{
+  int offset{0};
+  int size{0};
+};
+
+/// Hands out QP variables (after the formulation's own) and constraint rows in
+/// declaration order (construction only).
 class QPLayout
 {
 public:
+  explicit QPLayout(int formulation_variables) :
+      num_variables_{formulation_variables}
+  {}
+  VarBlock addVariables(int count)
+  {
+    const VarBlock block{num_variables_, count};
+    num_variables_ += count;
+    return block;
+  }
   RowBlock addRows(int rows)
   {
     const RowBlock block{num_rows_, rows};
     num_rows_ += rows;
     return block;
   }
+  int numVariables() const noexcept { return num_variables_; }
   int numRows() const noexcept { return num_rows_; }
 
 private:
+  int num_variables_;
   int num_rows_{0};
 };
 
 /**
  * A formulation chooses the QP variables z, with the control points c first
  * (so control point terms are the same in every formulation), and maps costs
- * and constraints on the predicted states x_k onto them.
+ * and constraints on the predicted states x_k onto them. Terms may declare
+ * extra variables after the formulation's own (e.g. slacks); their cost
+ * entries (diagonal only) are handled here, the same for every formulation.
  *
  * Costs accumulate into P and q between begin...() and end...(). Instead of
  * clearing P or q first, begin...() marks them stale: the first write to a
@@ -64,8 +86,10 @@ public:
   Formulation(const Formulation&) = delete;
   Formulation& operator=(const Formulation&) = delete;
 
-  /// Number of QP variables.
+  /// Number of the formulation's own QP variables (before any extra ones).
   virtual int numVariables() const noexcept = 0;
+  /// The extra variables the terms declared (after the formulation's own).
+  void setExtraVariables(const VarBlock& extra) noexcept { extra_ = extra; }
   /// Declare the formulation's own constraint rows (the first rows of A).
   virtual RowBlock declareRows(QPLayout& layout) = 0;
   /// Write the parts of the own rows that never change (after allocation).
@@ -112,10 +136,42 @@ public:
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept = 0;
 
   // ---- costs (between begin and end) ---------------------------------------
-  virtual void beginCostMatrix() = 0;
-  virtual void endCostMatrix() = 0;
-  virtual void beginCostVector() = 0;
-  virtual void endCostVector() = 0;
+  void beginCostMatrix()
+  {
+    P_extra_.stale = true;
+    beginOwnCostMatrix();
+  }
+  void endCostMatrix()
+  {
+    endOwnCostMatrix();
+    finish(P_extra_, qp_.P.diagonal().segment(extra_.offset, extra_.size));
+  }
+  void beginCostVector()
+  {
+    q_extra_.stale = true;
+    beginOwnCostVector();
+  }
+  void endCostVector()
+  {
+    endOwnCostVector();
+    finish(q_extra_, qp_.q.segment(extra_.offset, extra_.size));
+  }
+
+  /// 1/2 v^T diag(w) v on extra variables v (a block declared by a term).
+  void addVariableQuadratic(const VarBlock& block,
+                            const Eigen::Ref<const Eigen::VectorXd>& w)
+  {
+    startPartialWrite(P_extra_,
+                      qp_.P.diagonal().segment(extra_.offset, extra_.size));
+    qp_.P.diagonal().segment(block.offset, block.size) += w;
+  }
+  /// g^T v on extra variables v.
+  void addVariableLinear(const VarBlock& block,
+                         const Eigen::Ref<const Eigen::VectorXd>& g)
+  {
+    startPartialWrite(q_extra_, qp_.q.segment(extra_.offset, extra_.size));
+    qp_.q.segment(block.offset, block.size) += g;
+  }
 
   /// Matrix part of 1/2 sum_k (x_k - r_k)^T Q_k (x_k - r_k), Q diagonal and
   /// stacked over the horizon.
@@ -138,15 +194,25 @@ public:
   virtual void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) = 0;
 
   // ---- constraint rows -----------------------------------------------------
-  /// Rows x_k for every step, in the block (state_dim rows per step).
-  virtual void setStateBoxRows(const RowBlock& block) = 0;
-  /// Bounds lo <= x_k <= hi for every step (lo and hi have size state_dim).
-  virtual void
-  setStateBoxBounds(const RowBlock& block,
-                    const Eigen::Ref<const Eigen::VectorXd>& lo,
-                    const Eigen::Ref<const Eigen::VectorXd>& hi) = 0;
+  /// Rows x_{k,i} for every step k and every state index i in `states`
+  /// (states.size() rows per step, steps in order). Only the formulation's
+  /// columns of these rows are written, so a term can add entries for its own
+  /// variables.
+  virtual void setStateRows(const RowBlock& block,
+                            const std::vector<int>& states) = 0;
+  /// Bounds lo_j <= x_{k,states[j]} <= hi_j for every step, for the rows of
+  /// setStateRows() (lo and hi have size states.size()).
+  virtual void setStateBounds(const RowBlock& block,
+                              const std::vector<int>& states,
+                              const Eigen::Ref<const Eigen::VectorXd>& lo,
+                              const Eigen::Ref<const Eigen::VectorXd>& hi) = 0;
 
 protected:
+  virtual void beginOwnCostMatrix() = 0;
+  virtual void endOwnCostMatrix() = 0;
+  virtual void beginOwnCostVector() = 0;
+  virtual void endOwnCostVector() = 0;
+
   // A part of P or q that costs accumulate into (see the class comment)
   struct CostPart
   {
@@ -175,6 +241,10 @@ protected:
   }
 
   QPRef qp_;
+
+private:
+  VarBlock extra_{};           // the extra variables (empty without any)
+  CostPart P_extra_, q_extra_; // their cost entries (diagonal of P, and q)
 };
 
 /**
@@ -208,10 +278,6 @@ public:
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
 
-  void beginCostMatrix() override { P_.stale = true; }
-  void endCostMatrix() override { finish(P_, qp_.P); }
-  void beginCostVector() override { q_.stale = true; }
-  void endCostVector() override { finish(q_, qp_.q); }
   void
   addStateQuadraticMatrix(const Eigen::Ref<const Eigen::VectorXd>& Q) override;
   void
@@ -225,15 +291,25 @@ public:
   void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
-  void setStateBoxRows(const RowBlock& block) override;
-  void setStateBoxBounds(const RowBlock& block,
-                         const Eigen::Ref<const Eigen::VectorXd>& lo,
-                         const Eigen::Ref<const Eigen::VectorXd>& hi) override;
+  void setStateRows(const RowBlock& block,
+                    const std::vector<int>& states) override;
+  void setStateBounds(const RowBlock& block,
+                      const std::vector<int>& states,
+                      const Eigen::Ref<const Eigen::VectorXd>& lo,
+                      const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 
   const Eigen::MatrixXd& S() const noexcept { return S_; }
   const Eigen::VectorXd& v() const noexcept { return v_; }
 
 private:
+  // the formulation's own block of P (q): all of it without extra variables
+  auto ownP() { return qp_.P.topLeftCorner(nc_, nc_); }
+  auto ownQ() { return qp_.q.head(nc_); }
+  void beginOwnCostMatrix() override { P_.stale = true; }
+  void endOwnCostMatrix() override { finish(P_, ownP()); }
+  void beginOwnCostVector() override { q_.stale = true; }
+  void endOwnCostVector() override { finish(q_, ownQ()); }
+
   void updateS(const MPCData& d); // from the model matrices
   void updateV(const MPCData& d, const Eigen::Ref<const Eigen::VectorXd>& x0);
 
@@ -243,8 +319,8 @@ private:
   Eigen::VectorXd v_;
   Eigen::MatrixXd weighted_S_;         // diag(Q) S, avoids a temp for P
   Eigen::VectorXd weighted_state_err_; // diag(Q) (v - r), avoids a temp
-  // P and q are dense, so each is one part (the state cost writes all of it,
-  // the control point cost adds to the control point entries)
+  // The own blocks of P and q are dense, so each is one part (the state cost
+  // writes all of it, the control point cost adds to the control points)
   CostPart P_, q_;
 };
 
@@ -280,10 +356,6 @@ public:
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
 
-  void beginCostMatrix() override { P_ctrl_.stale = P_state_.stale = true; }
-  void endCostMatrix() override;
-  void beginCostVector() override { q_ctrl_.stale = q_state_.stale = true; }
-  void endCostVector() override;
   void
   addStateQuadraticMatrix(const Eigen::Ref<const Eigen::VectorXd>& Q) override;
   void
@@ -297,12 +369,18 @@ public:
   void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
-  void setStateBoxRows(const RowBlock& block) override;
-  void setStateBoxBounds(const RowBlock& block,
-                         const Eigen::Ref<const Eigen::VectorXd>& lo,
-                         const Eigen::Ref<const Eigen::VectorXd>& hi) override;
+  void setStateRows(const RowBlock& block,
+                    const std::vector<int>& states) override;
+  void setStateBounds(const RowBlock& block,
+                      const std::vector<int>& states,
+                      const Eigen::Ref<const Eigen::VectorXd>& lo,
+                      const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 
 private:
+  void beginOwnCostMatrix() override { P_ctrl_.stale = P_state_.stale = true; }
+  void endOwnCostMatrix() override;
+  void beginOwnCostVector() override { q_ctrl_.stale = q_state_.stale = true; }
+  void endOwnCostVector() override;
   // dynamics blocks of A (Bd times the basis weights, and Ad)
   void setDynamicsMatrixBlocks(const MPCData& d);
   // dynamics-row bounds -wd for steps k >= 1 (k = 0 also depends on x0)

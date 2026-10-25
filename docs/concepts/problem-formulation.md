@@ -123,11 +123,39 @@ Enable this to set state saturation limits.
 - Your system has physical state limits
 - You want to provide extra stability (e.g., setting roll limits for an aircraft)
 
+Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
+List them in `bounded_states`; the limits then have one entry per listed state.
+Every bounded state adds one constraint row per horizon step, and with `CondensedMPC` each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state limits at all).
+
 !!! danger
 
     If your current state starts outside of the state limits,
     perhaps due to a disturbance,
     then this constraint can cause the solver to immediately fail.
+    Soft state limits avoid this.
+
+### Soft State Limits
+
+$$
+\mathbf{x}_{\min} - \mathbf{s} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} + \mathbf{s}, \quad \mathbf{s} \geq \mathbf{0},
+\qquad
+J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \left\lVert \mathbf{s} \right\rVert^2_{\operatorname{diag}(\boldsymbol{\rho}_2)}
+$$
+
+With `soft_state_bounds`, one slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
+The slack is the largest violation of its state over the horizon.
+
+- The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the limit's Lagrange multiplier, the solution equals the hard-limit solution whenever the limits can be met, and the limits are only violated when they can not.
+- The L2 penalty $\boldsymbol{\rho}_2$ alone always allows a small violation of an active limit (smaller for a larger penalty).
+  With the L1 penalty it does not change the solution while the limits can be met.
+- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 4000 iterations, and with an L2 penalty of 100 it took 250, about the same as hard limits.
+  A very large L1 penalty also slows OSQP.
+- Polishing (in the solver settings) makes the solution match the hard-limit solution to round-off when the limits can be met.
+
+**When you may want to use it:**
+
+- Disturbances or model error can push the state past a limit, where hard limits would make the problem infeasible
+- Some limits are preferences rather than physical boundaries
 
 ### Initial Input Slew Rate Constraint
 

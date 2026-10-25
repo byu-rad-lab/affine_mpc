@@ -25,7 +25,12 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
      << ", saturate_states=" << boolStr(opts.saturate_states)
      << ", saturate_input_trajectory="
      << boolStr(opts.saturate_input_trajectory)
-     << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost) << ')';
+     << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
+     << ", soft_state_bounds=" << boolStr(opts.soft_state_bounds)
+     << ", bounded_states=[";
+  for (size_t i{0}; i < opts.bounded_states.size(); ++i)
+    os << (i ? ", " : "") << opts.bounded_states[i];
+  os << "])";
   return os;
 }
 
