@@ -478,7 +478,9 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
 
 `objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
 `qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
-Setters do little work, but `setModelContinuous2Discrete()` computes a matrix exponential, so time it yourself if the model changes every step.
+Setters only store their values and the QP is updated in `solve()`, so `mpc_solve_time` covers essentially all of the MPC's work.
+The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
+If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement; its duration is `prepare_time` (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
 
 ### 8. (Optional) Logging
 
@@ -579,5 +581,5 @@ You can propagate the internal model one step with:
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
 - If a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` weights are exempt; see [Runtime Updates](concepts/runtime-updates.md)).
-- To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()`.
+- To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()` or `prepare()`.
 - If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.

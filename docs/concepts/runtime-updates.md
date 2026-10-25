@@ -1,6 +1,7 @@
 # Runtime Updates
 
 This page explains which MPC data may change between solves,
+when and at what cost those changes reach the QP,
 why `initializeSolver()` is a structural boundary,
 and how OSQP's fixed sparsity pattern limits runtime updates.
 
@@ -82,7 +83,7 @@ Updates that break these rules are not detected during normal operation,
 because checking would add work to every update.
 Values outside the initialized pattern are silently dropped,
 so the solver solves a different problem than the one you set.
-If you suspect this, call `isWithinSparsityPattern()` after `solve()`;
+If you suspect this, call `isWithinSparsityPattern()` after `solve()` or `prepare()`;
 it returns `false` when the current QP matrices have nonzeros outside the initialized pattern.
 It scans the full QP matrices, so use it for debugging rather than in a control loop.
 
@@ -112,10 +113,68 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{u}_\mathrm{min}$, $\mathbf{u}_\mathrm{max}$ | `setInputLimits()`                                        |
 | $\mathbf{u}_{0,\mathrm{slew}}$                       | `setSlewRateInitial()`                                    |
 | $\mathbf{c}_\mathrm{slew}$                           | `setSlewRate()`                                           |
+| $\mathbf{u}_\mathrm{prev}$                           | `setPreviousInput()` (also set by each successful solve)  |
 
-Updates differ in cost.
-Changing $A$ or $B$ (any call to `setModelDiscrete()` or `setModelContinuous2Discrete()`) rebuilds the QP matrices and makes OSQP refactor its linear system at the next solve, as do weight changes.
-If only the model offset changes, e.g. a disturbance estimate for offset-free tracking, use `setModelOffsetDiscrete()` or `setModelOffsetContinuous2Discrete()` instead: they only update QP vectors, like references and limits, and the continuous variant reuses the last discretization instead of computing a new matrix exponential.
+## When Updates Reach the QP
+
+Setters only validate and store their values and mark a change category.
+All QP work happens in `solve()`, once per changed category, no matter how many setters were called since the last solve.
+Updates that OSQP rejects (often from non-finite values) are reported by `solve()` as `UpdateFailed` and stay pending, so the next solve retries them.
+
+The categories differ in cost:
+
+| Category | Setters | Condensed QP work | Sparse QP work | OSQP refactors |
+| --- | --- | --- | --- | --- |
+| Initial state $\mathbf{x}_0$ | `solve()` | $\mathbf{v}$, $q$, state-limit bounds | first dynamics-row bounds | No |
+| Model offset $\mathbf{w}$ | `setModelOffset*()` | $\mathbf{v}$, $q$, state-limit bounds | dynamics-row bounds | No |
+| Model $A$, $B$ | `setModelDiscrete()`, `setModelContinuous2Discrete()` | $S$, $P$, state rows of $A_\mathrm{qp}$ | dynamics blocks of $A_\mathrm{qp}$ | Yes |
+| Weights | `setWeights()`, `setStateWeights()`, `setInputWeights()` | $P$, $q$ | diagonal of $P$, $q$ | Yes |
+| References | `setReference*()` | $q$ | $q$ | No |
+| Limits and slew rates | `setInputLimits()`, `setStateLimits()`, `setSlewRate()`, `setSlewRateInitial()` | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | No |
+| Previous input | `setPreviousInput()` | initial-slew bounds | initial-slew bounds | No |
+
+The model setters also set $\mathbf{w}$, so they mark both model categories.
+If only the model offset changes, e.g. a disturbance estimate for offset-free tracking, use `setModelOffsetDiscrete()` or `setModelOffsetContinuous2Discrete()` instead: they only update QP vectors, like references and limits.
+
+`setModelContinuous2Discrete()` is the one setter that does real work itself: it computes the exact discretization (a matrix exponential) inside the setter, so that cost is not part of `solve()` or `prepare()` or the reported `mpc_solve_time`.
+Time it as part of your control loop if the model changes every step.
+`setModelOffsetContinuous2Discrete()` reuses that discretization and costs only a matrix-vector product, so it is the cheap path when only $\mathbf{w}$ changes.
+
+## Preparing Before the Measurement
+
+`prepare()` optionally applies every pending change that does not depend on $\mathbf{x}_0$ (all categories in the table above except the initial state).
+The next `solve(x0)` then only does the $\mathbf{x}_0$-dependent vector work and the solver iterations.
+This is the split used by real-time iteration schemes:
+when the model or weights change every step (an affine approximation along the trajectory, or scheduled weights), set them and call `prepare()` right after applying the previous input, while waiting for the next measurement,
+so the matrix rebuild and refactorization no longer add to the delay between measurement and input.
+
+=== "Python"
+
+    ```python
+    while running:
+        mpc.setModelDiscrete(Ad, Bd, wd)  # e.g. about the predicted next state
+        mpc.prepare()  # matrix work and refactorization, before the measurement
+        xk = measure()
+        status = mpc.solve(xk)  # only x0-dependent work and solver iterations
+        apply(mpc.getNextInput())
+    ```
+
+=== "C++"
+
+    ```cpp
+    while (running) {
+      mpc.setModelDiscrete(Ad, Bd, wd); // e.g. about the predicted next state
+      (void)mpc.prepare(); // matrix work and refactorization, before measuring
+      measure(xk);
+      const affine_mpc::SolveStatus status{mpc.solve(xk)};
+      mpc.getNextInput(uk);
+      apply(uk);
+    }
+    ```
+
+Calling `prepare()` is never required, since `solve()` applies anything still pending, and both orders give the same solution.
+It returns `UpdateFailed` like `solve()` if OSQP rejects an update, and its duration is reported as `SolveInfo.prepare_time`.
+For an LTI problem with fixed weights it has nothing to do.
 
 ## MPC to QP Relationship
 
@@ -140,16 +199,16 @@ but the actual cost depends on the formulation and problem structure.
 | MPC Term              | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
 | --------------------- | --- | --------------- | --- | ------------------- | ----------------------- |
 | $\mathbf{x}_0$        |     |                 | ✓   | xsat                | xsat                    |
-| $A$                   | ✓   |                 | ✓   | xsat                | xsat                    |
-| $B$                   | ✓   |                 | ✓   | xsat                | xsat                    |
-| $\mathbf{w}$          | ✓   |                 | ✓   | xsat                | xsat                    |
+| $A$                   | ✓   | xsat            | ✓   | xsat                | xsat                    |
+| $B$                   | ✓   | xsat            | ✓   | xsat                | xsat                    |
+| $\mathbf{w}$          |     |                 | ✓   | xsat                | xsat                    |
 | $Q$, $Q_{\mathrm{f}}$ | ✓   |                 | ✓   |                     |                         |
 | $R$                   | ✓   |                 | ✓   |                     |                         |
 
 !!! note
 
     The model and initial state only affect
-    $\boldsymbol{\ell}$ and $\boldsymbol{\upsilon}$
+    $A_\mathrm{qp}$, $\boldsymbol{\ell}$, and $\boldsymbol{\upsilon}$
     if state saturation constraints are enabled.
 
 **Shared:**
@@ -164,6 +223,7 @@ but the actual cost depends on the formulation and problem structure.
 | $\mathbf{u}_\mathrm{max}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{u}_{0,\mathrm{slew}}$ |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{c}_\mathrm{slew}$     |     |                 |     | ✓                   | ✓                       |
+| $\mathbf{u}_\mathrm{prev}$     |     |                 |     | ✓                   | ✓                       |
 
 ## Related Topics
 
