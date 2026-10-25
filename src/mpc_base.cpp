@@ -346,7 +346,7 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
   x_next = data_.Ad * x0 + data_.Bd * u + data_.wd;
 }
 
-bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
+void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
                                const Ref<const MatrixXd>& Bd,
                                const Ref<const VectorXd>& wd)
 {
@@ -360,10 +360,9 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   model_set_ = true;
   model_from_continuous_ = false;
   pending_ |= Change::Model | Change::ModelOffset;
-  return true;
 }
 
-bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
+void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
                                           double dt,
@@ -380,7 +379,6 @@ bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   model_set_ = true;
   model_from_continuous_ = true;
   pending_ |= Change::Model | Change::ModelOffset;
-  return true;
 }
 
 void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
@@ -458,24 +456,22 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
   pending_ |= Change::Weights;
 }
 
-bool MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
+void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
   data_.x_ref = x_step.replicate(horizon_steps_, 1);
   pending_ |= Change::References;
-  return true;
 }
 
-bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
+void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
   validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
                "x_traj");
   data_.x_ref = x_traj;
   pending_ |= Change::References;
-  return true;
 }
 
-bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
+void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
   if (!opts_.use_input_cost)
     throw std::logic_error(
@@ -483,10 +479,9 @@ bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
   data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
   pending_ |= Change::References;
-  return true;
 }
 
-bool MPCBase::setReferenceInputControlPoints(
+void MPCBase::setReferenceInputControlPoints(
     const Ref<const VectorXd>& control_points)
 {
   if (!opts_.use_input_cost)
@@ -496,10 +491,9 @@ bool MPCBase::setReferenceInputControlPoints(
                "setReferenceInputControlPoints", "control_points");
   data_.ctrls_ref = control_points;
   pending_ |= Change::References;
-  return true;
 }
 
-bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
+void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
                              const Ref<const VectorXd>& u_max)
 {
   validateSize(u_min.size(), input_dim_, "setInputLimits", "u_min");
@@ -511,10 +505,9 @@ bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
   data_.u_max = u_max;
   u_lims_set_ = true;
   pending_ |= Change::Limits;
-  return true;
 }
 
-bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
+void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
                              const Ref<const VectorXd>& x_max)
 {
   if (!opts_.saturate_states)
@@ -529,10 +522,9 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   data_.x_max = x_max;
   x_lims_set_ = true;
   pending_ |= Change::Limits;
-  return true;
 }
 
-bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
+void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
     throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
@@ -544,10 +536,9 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
   data_.ctrls_slew = control_point_slew;
   ctrls_slew_rate_set_ = true;
   pending_ |= Change::Limits;
-  return true;
 }
 
-bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
+void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
@@ -559,10 +550,9 @@ bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
   data_.u0_slew = u0_slew;
   slew0_rate_set_ = true;
   pending_ |= Change::Limits;
-  return true;
 }
 
-bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
+void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
@@ -570,7 +560,6 @@ bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
   validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
   data_.u_prev = u_prev;
   pending_ |= Change::PreviousInput;
-  return true;
 }
 
 VectorXd MPCBase::getStateWeights() const

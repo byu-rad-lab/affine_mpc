@@ -1217,7 +1217,7 @@ class MPCBase:
         self,
         u_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
         u_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> bool:
+    ) -> None:
         """
         Set input saturation limits.
 
@@ -1228,9 +1228,9 @@ class MPCBase:
             u_min: Lower bound on input vector.
             u_max: Upper bound on input vector.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setInputWeights(
@@ -1256,7 +1256,7 @@ class MPCBase:
         wc: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
         dt: float,
         tol: float = 1e-10,
-    ) -> bool:
+    ) -> None:
         """
         Set the internal discrete-time model from a continuous-time model, which will be
         discretized. The model being `x_next = Ax + Bu + w`.
@@ -1288,9 +1288,9 @@ class MPCBase:
                 precision. Larger values (e.g., 1e-6) save a few matrix products, which
                 can help when the affine approximation is updated every time step.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setModelDiscrete(
@@ -1302,7 +1302,7 @@ class MPCBase:
             numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
         ],
         wd: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> bool:
+    ) -> None:
         """
         Set the internal discrete-time model directly from a discrete model. The model
         being `x_next = Ax + Bu + w`.
@@ -1312,9 +1312,9 @@ class MPCBase:
             Bd: Discrete-time input matrix B.
             wd: Discrete-time model offset w.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setModelOffsetContinuous2Discrete(
@@ -1359,7 +1359,7 @@ class MPCBase:
 
     def setPreviousInput(
         self, u_prev: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
-    ) -> bool:
+    ) -> None:
         """
         Set the previous input, which is only used with the `slew_initial_input`
         constraint option. Defaults to zeros, but should be set prior to first solve if
@@ -1377,14 +1377,14 @@ class MPCBase:
         Args:
             u_prev: Previous input vector.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setReferenceInput(
         self, u_step: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
-    ) -> bool:
+    ) -> None:
         """
         Set reference input trajectory as a step command (reference for all control
         points set to this value).
@@ -1394,15 +1394,15 @@ class MPCBase:
         Args:
             u_step: Reference input vector to use for entire trajectory.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setReferenceInputControlPoints(
         self,
         control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> bool:
+    ) -> None:
         """
         Set reference control points that parameterize the reference input trajectory.
 
@@ -1414,28 +1414,28 @@ class MPCBase:
                 matrix where each row is a control point, then you can pass in
                 `control_points.ravel()` to convert it to a vector.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setReferenceState(
         self, x_step: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
-    ) -> bool:
+    ) -> None:
         """
         Set reference state trajectory as a step command.
 
         Args:
             x_step: Reference state vector to use for entire trajectory.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setReferenceStateTrajectory(
         self, x_traj: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
-    ) -> bool:
+    ) -> None:
         """
         Set reference state trajectory.
 
@@ -1445,9 +1445,9 @@ class MPCBase:
                 where each row is the state at index k in the horizon, then you can pass
                 in `x_traj.ravel()` to convert it to a vector.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setSlewRate(
@@ -1455,7 +1455,7 @@ class MPCBase:
         control_point_slew: typing.Annotated[
             numpy.typing.NDArray[numpy.float64], "[m, 1]"
         ],
-    ) -> bool:
+    ) -> None:
         """
         Set slew-rate constraint limits for control points. Control points can vary by
         up to this magnitude from one index to the next.
@@ -1467,14 +1467,14 @@ class MPCBase:
         Args:
             control_point_slew: Slew-rate vector. All values must be positive.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setSlewRateInitial(
         self, u0_slew: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
-    ) -> bool:
+    ) -> None:
         """
         Set initial slew-rate constraint limits for control points. Initial input can
         vary by up to this magnitude from the previous input. See `setPreviousInput()`.
@@ -1486,16 +1486,16 @@ class MPCBase:
         Args:
             u0_slew: Initial slew-rate vector. All values must be positive.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setStateLimits(
         self,
         x_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
         x_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
-    ) -> bool:
+    ) -> None:
         """
         Set state saturation limits.
 
@@ -1507,9 +1507,9 @@ class MPCBase:
             x_min: Lower bound on state vector.
             x_max: Upper bound on state vector.
 
-        Returns:
-            success: Always True. The QP is updated in the next prepare() or solve(),
-                which report update failures.
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     @typing.overload

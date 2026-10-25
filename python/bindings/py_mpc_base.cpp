@@ -382,9 +382,9 @@ Args:
     Bd: Discrete-time input matrix B.
     wd: Discrete-time model offset w.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("Ad"), py::arg("Bd"), py::arg("wd"));
   base.def("setModelContinuous2Discrete",
@@ -420,9 +420,9 @@ Args:
         precision. Larger values (e.g., 1e-6) save a few matrix products, which
         can help when the affine approximation is updated every time step.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("Ac"), py::arg("Bc"), py::arg("wc"), py::arg("dt"),
            py::arg("tol") = 1e-10);
@@ -540,9 +540,9 @@ Set reference state trajectory as a step command.
 Args:
     x_step: Reference state vector to use for entire trajectory.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("x_step"));
 
@@ -557,9 +557,9 @@ Args:
         where each row is the state at index k in the horizon, then you can pass
         in `x_traj.ravel()` to convert it to a vector.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("x_traj"));
 
@@ -573,9 +573,9 @@ This method can only be called if `use_input_cost` is enabled.
 Args:
     u_step: Reference input vector to use for entire trajectory.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("u_step"));
 
@@ -592,9 +592,9 @@ Args:
         matrix where each row is a control point, then you can pass in
         `control_points.ravel()` to convert it to a vector.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
             )doc",
            py::arg("control_points"));
 
@@ -609,9 +609,9 @@ Args:
     u_min: Lower bound on input vector.
     u_max: Upper bound on input vector.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("u_min"), py::arg("u_max"));
   base.def("setStateLimits", &ampc::MPCBase::setStateLimits,
@@ -626,9 +626,9 @@ Args:
     x_min: Lower bound on state vector.
     x_max: Upper bound on state vector.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("x_min"), py::arg("x_max"));
   base.def("setSlewRate", &ampc::MPCBase::setSlewRate,
@@ -643,9 +643,9 @@ change between solves.
 Args:
     control_point_slew: Slew-rate vector. All values must be positive.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("control_point_slew"));
 
@@ -661,9 +661,9 @@ change between solves.
 Args:
     u0_slew: Initial slew-rate vector. All values must be positive.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("u0_slew"));
 
@@ -685,9 +685,9 @@ change between solves.
 Args:
     u_prev: Previous input vector.
 
-Returns:
-    success: Always True. The QP is updated in the next prepare() or solve(),
-        which report update failures.
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
            )doc",
            py::arg("u_prev"));
 

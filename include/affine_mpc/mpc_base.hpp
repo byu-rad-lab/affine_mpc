@@ -192,11 +192,10 @@ public:
    * @param Ad Discrete-time state matrix A.
    * @param Bd Discrete-time input matrix B.
    * @param wd Discrete-time model offset w.
-   * @return Always true. The QP matrices are rebuilt (and the solver
-   *   refactors) in the next prepare() or solve(), which report update
-   *   failures.
+   * @note The QP matrices are rebuilt (and the solver refactors) in the next
+   *   prepare() or solve(), which report update failures.
    */
-  bool setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
+  void setModelDiscrete(const Eigen::Ref<const Eigen::MatrixXd>& Ad,
                         const Eigen::Ref<const Eigen::MatrixXd>& Bd,
                         const Eigen::Ref<const Eigen::VectorXd>& wd);
 
@@ -224,10 +223,10 @@ public:
    *   magnitude smaller than `tol`. The default gives results close to machine
    *   precision. Larger values (e.g., 1e-6) save a few matrix products, which
    *   can help when the affine approximation is updated every time step.
-   * @return Always true. QP update failures are reported by the next
-   *   prepare() or solve().
+   * @note QP update failures are reported by the next prepare() or
+   *   solve().
    */
-  bool setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
+  void setModelContinuous2Discrete(const Eigen::Ref<const Eigen::MatrixXd>& Ac,
                                    const Eigen::Ref<const Eigen::MatrixXd>& Bc,
                                    const Eigen::Ref<const Eigen::VectorXd>& wc,
                                    double dt,
@@ -314,10 +313,10 @@ public:
   /**
    * @brief Set reference state trajectory as a step command.
    * @param x_step Reference state vector to use for entire trajectory.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
+  void setReferenceState(const Eigen::Ref<const Eigen::VectorXd>& x_step);
 
   /**
    * @brief Set reference state trajectory for tracking.
@@ -325,10 +324,10 @@ public:
    *   Should have length of state_dim * horizon_steps. If you have a matrix
    *   where each column is a state at index k in the horizon, then you can pass
    *   in `x_traj.reshaped()` to convert it to a vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool
+  void
   setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
 
   /**
@@ -337,10 +336,10 @@ public:
    *
    *   This method can only be called if `use_input_cost` is enabled.
    * @param u_step Reference input vector to use for entire trajectory.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
+  void setReferenceInput(const Eigen::Ref<const Eigen::VectorXd>& u_step);
 
   /**
    * @brief Set reference control points that parameterize the reference input
@@ -351,10 +350,10 @@ public:
    *   Should have length of input_dim * num_control_points. If you have a
    *   matrix where each column is a control point, then you can pass in
    *   `control_points.reshaped()` to convert it to a vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setReferenceInputControlPoints(
+  void setReferenceInputControlPoints(
       const Eigen::Ref<const Eigen::VectorXd>& control_points);
 
   /**
@@ -364,10 +363,10 @@ public:
    *   be called after if limits change between solves.
    * @param u_min Lower bound on input vector.
    * @param u_max Upper bound on input vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
+  void setInputLimits(const Eigen::Ref<const Eigen::VectorXd>& u_min,
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
 
   /**
@@ -378,10 +377,10 @@ public:
    *    limits change between solves.
    * @param x_min Lower bound on state vector.
    * @param x_max Upper bound on state vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
+  void setStateLimits(const Eigen::Ref<const Eigen::VectorXd>& x_min,
                       const Eigen::Ref<const Eigen::VectorXd>& x_max);
 
   /**
@@ -392,10 +391,10 @@ public:
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
    * @param control_point_slew Slew-rate vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& control_point_slew);
+  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& control_point_slew);
 
   /**
    * @brief Set initial slew-rate constraint limits for control points. Initial
@@ -406,10 +405,10 @@ public:
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
    * @param u0_slew Initial slew-rate vector.
-   * @return Always true. The QP is updated in the next prepare() or solve(),
-   *   which report update failures.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
    */
-  bool setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
+  void setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
 
   /**
    * @brief Set the previous input, which is only used with the
@@ -425,10 +424,9 @@ public:
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
    * @param u_prev Previous input vector.
-   * @return Always true (invalid sizes throw). The QP is updated in the next
-   *   prepare() or solve().
+   * @note The QP is updated in the next prepare() or solve().
    */
-  bool setPreviousInput(const Eigen::Ref<const Eigen::VectorXd>& u_prev);
+  void setPreviousInput(const Eigen::Ref<const Eigen::VectorXd>& u_prev);
 
   /// @brief Get state dimension.
   constexpr int getStateDim() const noexcept { return state_dim_; };

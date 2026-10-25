@@ -152,9 +152,9 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   Eigen::Vector2d x0{1, 1}, x_goal{1, 0};
   msd_mpc.setReferenceState(x_goal);
   Eigen::Matrix<double, m, 1> u_goal{0}, u_min{0}, u_max{3}, slew{1};
-  ASSERT_TRUE(msd_mpc.setInputLimits(u_min, u_max));
+  msd_mpc.setInputLimits(u_min, u_max);
   msd_mpc.setReferenceInput(u_goal);
-  ASSERT_TRUE(msd_mpc.setSlewRate(slew));
+  msd_mpc.setSlewRate(slew);
 
   auto settings{ampc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
