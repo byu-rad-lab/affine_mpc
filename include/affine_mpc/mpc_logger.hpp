@@ -122,8 +122,8 @@ public:
    *   MPCBase does not store this).
    * @param loop_time Optional user-measured time (seconds), e.g. of the whole
    *   control loop iteration on hardware. Logged as `loop_time` (-1 when not
-   *   provided). The `mpc_solve_time` and `qp_solve_time` of the last solve
-   *   (see SolveInfo) are logged automatically.
+   *   provided). The `mpc_solve_time`, `qp_solve_time`, and `prepare_time`
+   *   of the last solve (see SolveInfo) are logged automatically.
    * @throws std::logic_error if the MPC solver has not been initialized.
    * @throws std::invalid_argument if x0 does not have size state_dim.
    */
@@ -227,7 +227,7 @@ private:
   std::vector<std::string> metadata_keys_;
   std::map<std::string, MetadataEntry> metadata_registry_;
 
-  double loop_time_, mpc_solve_time_, qp_solve_time_;
+  double loop_time_, mpc_solve_time_, qp_solve_time_, prepare_time_;
   Eigen::VectorXd x_traj_buf_, u_traj_buf_;
   Eigen::VectorXd states_out_buf_, inputs_out_buf_;
   Eigen::VectorXd ref_states_out_buf_, ref_inputs_out_buf_;
@@ -236,6 +236,7 @@ private:
   std::ofstream loop_time_bin_;
   std::ofstream mpc_solve_time_bin_;
   std::ofstream qp_solve_time_bin_;
+  std::ofstream prepare_time_bin_;
   std::ofstream states_bin_;
   std::ofstream inputs_bin_;
   std::ofstream ref_states_bin_;

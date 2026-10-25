@@ -155,8 +155,8 @@ little when only the model offset, references, limits, or the previous input
 changed (they only update QP vectors), and has nothing to do when nothing
 changed (e.g. an LTI problem with fixed weights).
 
-Its duration is reported as `prepare_time` by getSolveInfo(). The GIL is
-released during the call.
+Its duration is added to the `prepare_time` that the next solve() reports in
+getSolveInfo(). The GIL is released during the call.
 
 Returns:
     status: `Success` if the pending changes were applied, `NotInitialized`
@@ -789,7 +789,8 @@ and timing).
 
 After a solve() that returned `UpdateFailed`, the solver fields still describe
 the previous solve, while `mpc_solve_time` covers the failed call.
-`prepare_time` is the duration of the last prepare() call.
+`prepare_time` covers the prepare() calls between the previous solve() and
+the last one.
 
 Returns:
     info (SolveInfo): Default values (status `NotInitialized`) before

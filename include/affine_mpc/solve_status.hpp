@@ -93,9 +93,10 @@ struct SolveInfo
   /// depend on OSQP profiling.
   double mpc_solve_time{0.0};
 
-  /// Duration of the last MPCBase::prepare() call (seconds), zero if it was
-  /// never called. Not reset by solve(), so it is stale if prepare() is no
-  /// longer called.
+  /// Total duration of the MPCBase::prepare() calls between the previous
+  /// solve() and this one (seconds), zero if there were none. This is work
+  /// done before the measurement, so `prepare_time + mpc_solve_time` is the
+  /// MPC's work for the step while `mpc_solve_time` alone is its latency.
   double prepare_time{0.0};
 };
 

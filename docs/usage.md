@@ -480,7 +480,8 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
 `qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
 Setters only store their values and the QP is updated in `solve()`, so `mpc_solve_time` covers essentially all of the MPC's work.
 The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
-If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement; its duration is `prepare_time` (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
+If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
+`prepare_time` is the total time of the `prepare()` calls since the previous solve (zero if there were none), so `prepare_time + mpc_solve_time` is the MPC's work for the step while `mpc_solve_time` alone is its latency.
 
 ### 8. (Optional) Logging
 

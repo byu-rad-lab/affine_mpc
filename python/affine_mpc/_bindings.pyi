@@ -746,7 +746,7 @@ class SolveInfo:
     @property
     def prepare_time(self) -> float:
         """
-        Duration of the last prepare() call (seconds), zero if it was never called. Not reset by solve(), so it is stale if prepare() is no longer called.
+        Total duration of the prepare() calls between the previous solve() and this one (seconds), zero if there were none. prepare_time + mpc_solve_time is the MPC's work for the step; mpc_solve_time alone is its latency.
         """
 
     @property
@@ -1054,7 +1054,8 @@ class MPCBase:
 
         After a solve() that returned `UpdateFailed`, the solver fields still describe
         the previous solve, while `mpc_solve_time` covers the failed call.
-        `prepare_time` is the duration of the last prepare() call.
+        `prepare_time` covers the prepare() calls between the previous solve() and
+        the last one.
 
         Returns:
             info (SolveInfo): Default values (status `NotInitialized`) before
@@ -1148,8 +1149,8 @@ class MPCBase:
         changed (they only update QP vectors), and has nothing to do when nothing
         changed (e.g. an LTI problem with fixed weights).
 
-        Its duration is reported as `prepare_time` by getSolveInfo(). The GIL is
-        released during the call.
+        Its duration is added to the `prepare_time` that the next solve() reports in
+        getSolveInfo(). The GIL is released during the call.
 
         Returns:
             status: `Success` if the pending changes were applied, `NotInitialized`
@@ -1839,8 +1840,8 @@ class MPCLogger:
                 not store this).
             loop_time: Optional user-measured time (seconds), e.g. of the whole control
                 loop iteration on hardware. Logged as `loop_time` (-1 when not
-                provided). The `mpc_solve_time` and `qp_solve_time` of the last solve
-                (see SolveInfo) are logged automatically.
+                provided). The `mpc_solve_time`, `qp_solve_time`, and `prepare_time`
+                of the last solve (see SolveInfo) are logged automatically.
 
         Raises:
             RuntimeError: If the MPC solver has not been initialized.

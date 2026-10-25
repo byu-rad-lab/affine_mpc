@@ -94,6 +94,7 @@ MPCLogger::MPCLogger(const MPCBase* const mpc,
     loop_time_{-1.0},
     mpc_solve_time_{0.0},
     qp_solve_time_{0.0},
+    prepare_time_{0.0},
     x_traj_buf_{state_dim_ * horizon_steps_},
     u_traj_buf_{log_control_points ? input_dim_ * num_ctrls_
                                    : input_dim_ * horizon_steps_}
@@ -202,6 +203,7 @@ void MPCLogger::logStep(double t,
   loop_time_ = loop_time;
   mpc_solve_time_ = info.mpc_solve_time;
   qp_solve_time_ = info.qp_solve_time;
+  prepare_time_ = info.prepare_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);
   const bool has_input_ref{mpc_->getOptions().use_input_cost};
@@ -291,6 +293,7 @@ void MPCLogger::initRawFiles()
   open_bin(loop_time_bin_, "loop_time");
   open_bin(mpc_solve_time_bin_, "mpc_solve_time");
   open_bin(qp_solve_time_bin_, "qp_solve_time");
+  open_bin(prepare_time_bin_, "prepare_time");
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
   open_bin(ref_states_bin_, "ref_states");
@@ -304,6 +307,7 @@ void MPCLogger::closeRawFiles()
   loop_time_bin_.close();
   mpc_solve_time_bin_.close();
   qp_solve_time_bin_.close();
+  prepare_time_bin_.close();
   states_bin_.close();
   inputs_bin_.close();
   ref_states_bin_.close();
@@ -321,7 +325,8 @@ std::vector<MPCLogger::PayloadEntry> MPCLogger::buildPayloadEntries() const
 
   std::vector<PayloadEntry> payloads;
   payloads.push_back({"time", rawDataPath("time"), rawHeaderPath("time"), {N}});
-  for (const char* name : {"loop_time", "mpc_solve_time", "qp_solve_time"})
+  for (const char* name :
+       {"loop_time", "mpc_solve_time", "qp_solve_time", "prepare_time"})
     payloads.push_back({name, rawDataPath(name), rawHeaderPath(name), {N}});
 
   if (K == 1) {
@@ -575,6 +580,8 @@ void MPCLogger::writeStep(double t)
                             sizeof(double));
   qp_solve_time_bin_.write(reinterpret_cast<const char*>(&qp_solve_time_),
                            sizeof(double));
+  prepare_time_bin_.write(reinterpret_cast<const char*>(&prepare_time_),
+                          sizeof(double));
   writeBinary(states_bin_, states_out_buf_);
   writeBinary(inputs_bin_, inputs_out_buf_);
   writeBinary(ref_states_bin_, ref_states_out_buf_);

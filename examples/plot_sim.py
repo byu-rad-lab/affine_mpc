@@ -40,6 +40,7 @@ def main():
     loop_time: ArrayF = data["loop_time"] * 1000.0
     mpc_solve_time: ArrayF = data["mpc_solve_time"] * 1000.0
     qp_solve_time: ArrayF = data["qp_solve_time"] * 1000.0
+    prepare_time: ArrayF = data["prepare_time"] * 1000.0
     t_pred: ArrayF = data["meta_t_pred"]  # (K,)
     log_ctrl_pts = bool(data["meta_log_control_points"])
 
@@ -161,6 +162,10 @@ def main():
         time, mpc_solve_time, label=f"solve() (avg: {np.mean(mpc_solve_time):.3f}ms)"
     )
     ax_st.plot(time, qp_solve_time, label=f"OSQP (avg: {np.mean(qp_solve_time):.3f}ms)")
+    if np.any(prepare_time > 0.0):  # zero when prepare() is not used
+        ax_st.plot(
+            time, prepare_time, label=f"prepare() (avg: {np.mean(prepare_time):.3f}ms)"
+        )
     ax_st.set_ylabel("time (ms)")
     ax_st.set_xlabel("sim time (s)")
     ax_st.grid(True)

@@ -104,8 +104,8 @@ Args:
         not store this).
     loop_time: Optional user-measured time (seconds), e.g. of the whole control
         loop iteration on hardware. Logged as `loop_time` (-1 when not
-        provided). The `mpc_solve_time` and `qp_solve_time` of the last solve
-        (see SolveInfo) are logged automatically.
+        provided). The `mpc_solve_time`, `qp_solve_time`, and `prepare_time`
+        of the last solve (see SolveInfo) are logged automatically.
 
 Raises:
     RuntimeError: If the MPC solver has not been initialized.

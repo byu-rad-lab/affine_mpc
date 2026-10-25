@@ -120,7 +120,8 @@ public:
    *   only update QP vectors), and has nothing to do when nothing changed
    *   (e.g. an LTI problem with fixed weights).
    *
-   *   Its duration is reported as `prepare_time` by getSolveInfo().
+   *   Its duration is added to the `prepare_time` that the next solve()
+   *   reports in getSolveInfo().
    * @return `Success` if the pending changes were applied, `NotInitialized`
    *   before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
    *   update (the update stays pending, so the next solve() retries it and
@@ -526,7 +527,8 @@ public:
    *
    *   After a solve() that returned `UpdateFailed`, the solver fields still
    *   describe the previous solve, while `mpc_solve_time` covers the failed
-   *   call.
+   *   call. `prepare_time` covers the prepare() calls between the previous
+   *   solve() and the last one.
    * @return SolveInfo with default values (status `NotInitialized`) before
    *   initializeSolver().
    */
@@ -647,9 +649,10 @@ private:
   bool model_set_, model_from_continuous_, u_lims_set_, x_lims_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
-  double mpc_solve_time_;   ///< duration of the last solve() call (seconds)
-  double prepare_time_;     ///< duration of the last prepare() call (seconds)
-  Discretizer discretizer_; // for setModelContinuous2Discrete()
+  double mpc_solve_time_; ///< duration of the last solve() call (seconds)
+  double prepare_time_;   ///< prepare() time reported by the last solve() (s)
+  double unsolved_prepare_time_; ///< prepare() time since the last solve() (s)
+  Discretizer discretizer_;      // for setModelContinuous2Discrete()
 };
 
 /**

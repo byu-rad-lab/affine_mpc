@@ -99,6 +99,8 @@ def test_mpc_logger_logs_timing():
         x0 = np.array([1.0, 0.5])
         infos = []
         for k in range(3):
+            if k == 1:
+                assert mpc.prepare() == ampc.SolveStatus.Success
             assert mpc.solve(x0) == ampc.SolveStatus.Success
             infos.append(mpc.getSolveInfo())
             logger.logStep(t=0.1 * k, x0=x0, loop_time=0.01 * (k + 1))
@@ -115,6 +117,11 @@ def test_mpc_logger_logs_timing():
             np.testing.assert_array_equal(
                 data["qp_solve_time"], [info.qp_solve_time for info in infos]
             )
+            np.testing.assert_array_equal(
+                data["prepare_time"], [info.prepare_time for info in infos]
+            )
+            # only the step after prepare() has prepare work
+            assert data["prepare_time"][0] == 0.0 and data["prepare_time"][2] == 0.0
             assert np.all(data["mpc_solve_time"] > 0.0)
 
 

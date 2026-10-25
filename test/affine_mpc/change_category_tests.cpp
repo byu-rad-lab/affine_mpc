@@ -273,6 +273,33 @@ TEST(PrepareTester, givenUninitializedSolver_ReturnsNotInitialized)
   EXPECT_EQ(condensed.getSolveInfo().prepare_time, 0.0);
 }
 
+TEST(PrepareTester, givenPrepareCalls_SolveReportsTheirTimeOnce)
+{
+  const int n{2}, m{1}, T{10};
+  const auto param{ampc::Parameterization::bspline(T, 2, 5)};
+  ampc::CondensedMPC mpc{n, m, param};
+  configure(mpc, Scales{});
+  ASSERT_TRUE(mpc.initializeSolver());
+  const Vector2d x0{0.3, -0.1};
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  EXPECT_EQ(mpc.getSolveInfo().prepare_time, 0.0);
+
+  // a model change makes prepare() rebuild matrices; its time is reported by
+  // the next solve, not before
+  setModel(mpc, Scales{.model = 1.01});
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+  EXPECT_EQ(mpc.getSolveInfo().prepare_time, 0.0);
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success); // nothing pending
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  const double prepared{mpc.getSolveInfo().prepare_time};
+  EXPECT_GT(prepared, 0.0);
+  EXPECT_EQ(mpc.getSolveInfo().prepare_time, prepared); // stable until a solve
+
+  // the next solve without prepare() reports zero again
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  EXPECT_EQ(mpc.getSolveInfo().prepare_time, 0.0);
+}
+
 // prepare() followed by solve(x0) must give exactly the solution of solve(x0)
 // alone, over a sequence of solves that change every category.
 template <class F> void checkPrepareMatchesSolveAlone(const ampc::Options& opts)

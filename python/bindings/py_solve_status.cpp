@@ -61,9 +61,10 @@ done in MPCBase.prepare() is reported separately in prepare_time.
                     "refactorization, and the solver (seconds). Does not "
                     "depend on OSQP profiling.")
       .def_readonly("prepare_time", &ampc::SolveInfo::prepare_time,
-                    "Duration of the last prepare() call (seconds), zero if "
-                    "it was never called. Not reset by solve(), so it is "
-                    "stale if prepare() is no longer called.")
+                    "Total duration of the prepare() calls between the "
+                    "previous solve() and this one (seconds), zero if there "
+                    "were none. prepare_time + mpc_solve_time is the MPC's "
+                    "work for the step; mpc_solve_time alone is its latency.")
       .def("__repr__", [](const ampc::SolveInfo& self) {
         std::ostringstream oss;
         oss << self;

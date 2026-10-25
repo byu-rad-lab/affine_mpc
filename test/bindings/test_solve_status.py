@@ -76,11 +76,33 @@ def test_prepare_then_solve_matches_solve_alone():
                     np.zeros(2),
                 )
                 mpc.setStateWeights(np.array([1.0, scale]))
+            # prepare_time is reported by the solve that follows prepare()
+            before = prepared.getSolveInfo().prepare_time
             assert prepared.prepare() == ampc.SolveStatus.Success
-            assert prepared.getSolveInfo().prepare_time > 0.0
+            assert prepared.getSolveInfo().prepare_time == before
             assert prepared.solve(x0) == ampc.SolveStatus.Success
+            assert prepared.getSolveInfo().prepare_time > 0.0
             assert direct.solve(x0) == ampc.SolveStatus.Success
             np.testing.assert_array_equal(
                 prepared.getInputControlPoints(), direct.getInputControlPoints()
             )
             assert direct.getSolveInfo().prepare_time == 0.0
+
+
+def test_prepare_time_covers_one_cycle():
+    import numpy as np
+
+    mpc = _configured_mpc(ampc.CondensedMPC)
+    assert mpc.initializeSolver()
+    x0 = np.array([0.3, -0.1])
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getSolveInfo().prepare_time == 0.0
+
+    mpc.setStateWeights(np.array([1.0, 2.0]))
+    assert mpc.prepare() == ampc.SolveStatus.Success
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getSolveInfo().prepare_time > 0.0
+
+    # the next solve without prepare() reports zero again
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getSolveInfo().prepare_time == 0.0

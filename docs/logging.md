@@ -120,10 +120,13 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `ref_inputs`: same general shape as `inputs` when input reference data is applicable
 - `mpc_solve_time`: `(N,)` duration of each whole `solve()` call (`SolveInfo.mpc_solve_time`)
 - `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
+- `prepare_time`: `(N,)` total time of the `prepare()` calls before each solve (`SolveInfo.prepare_time`, zero when `prepare()` is not used)
 - `loop_time`: `(N,)` optional user-measured time passed to `logStep()`, e.g. of the whole control loop on hardware (`-1` when not provided)
 - `meta_*`: metadata arrays copied into the NPZ container
 
 The logged `states` start at the current state `x0` passed to `logStep()` (prediction step $k = 0$), followed by the predicted states.
+
+The timing arrays nest: `qp_solve_time` is part of `mpc_solve_time`, which is the MPC's latency after the measurement; `prepare_time` is separate work done before the measurement, so `prepare_time + mpc_solve_time` is the MPC's work per step; and `loop_time`, if you pass it, covers your whole loop, including model computation and discretization.
 This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
 `meta_t_pred` holds the prediction times of the logged samples relative to the time of each step.
 

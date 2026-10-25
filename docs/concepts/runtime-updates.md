@@ -173,7 +173,8 @@ so the matrix rebuild and refactorization no longer add to the delay between mea
     ```
 
 Calling `prepare()` is never required, since `solve()` applies anything still pending, and both orders give the same solution.
-It returns `UpdateFailed` like `solve()` if OSQP rejects an update, and its duration is reported as `SolveInfo.prepare_time`.
+It returns `UpdateFailed` like `solve()` if OSQP rejects an update.
+The next `solve()` reports the total time of the `prepare()` calls since the previous solve as `SolveInfo.prepare_time`, so `mpc_solve_time` stays the latency after the measurement.
 For an LTI problem with fixed weights it has nothing to do.
 
 ## MPC to QP Relationship
