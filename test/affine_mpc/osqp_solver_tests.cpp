@@ -1,3 +1,4 @@
+#include <Eigen/Cholesky>
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 #include <limits>
@@ -48,7 +49,7 @@ public:
 
 TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base(n, m);
 
   Eigen::Matrix<OSQPFloat, n, n> P;
@@ -72,7 +73,7 @@ TEST(OSQPSolverProtectedTester, givenIdentityP_FormsCscPCorrectly)
 
 TEST(OSQPSolverProtectedTester, givenIdentityA_FormsCscACorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6}, A_nnz_max{4};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -136,7 +137,7 @@ TEST(OSQPSolverProtectedTester, givenFullA_FormsCscACorrectly)
 
 TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
 {
-  const int n{6}, m{4}, P_nnz_max{6};
+  const int n{6}, m{4};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, n, n> P;
@@ -160,7 +161,7 @@ TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
 
 TEST(OSQPSolverProtectedTester, givenExampleA_FormsCscACorrectly)
 {
-  const int n{2}, m{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -179,7 +180,7 @@ TEST(OSQPSolverProtectedTester, givenExampleA_FormsCscACorrectly)
 
 TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
 {
-  const int n{6}, m{2}, P_nnz_max{6};
+  const int n{6}, m{2};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -219,7 +220,7 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
 
 TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
 {
-  const int n{6}, m{2}, P_nnz_max{6}, A_nnz_max{2};
+  const int n{6}, m{2}, A_nnz_max{2};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -309,7 +310,7 @@ TEST(OSQPSolverProtectedTester,
 
 TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -340,7 +341,7 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -392,7 +393,7 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
 
 TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
 {
-  const int n{2}, m{3}, P_nnz_max{3}, A_nnz_max{4};
+  const int n{2}, m{3};
   OSQPSolverProtectedTester base{n, m};
 
   Eigen::Matrix<OSQPFloat, m, n> A;
@@ -512,8 +513,9 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_EQ(info.status, affine_mpc::SolveStatus::Success);
   EXPECT_GT(info.iterations, 0);
   EXPECT_NEAR(info.objective, 1.88, 1e-5);
-  EXPECT_GE(info.solve_time, 0.0);
-  EXPECT_GE(info.run_time, info.solve_time);
+  EXPECT_GE(info.qp_solve_time, 0.0);
+  // only MPCBase::solve() measures the whole call
+  EXPECT_EQ(info.mpc_solve_time, 0.0);
 
   std::ostringstream oss;
   oss << info;
@@ -637,4 +639,33 @@ TEST(OSQPSolverProtectedTester,
   Eigen::Vector2d solution;
   ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
   expectEigenNear(solution, Eigen::Vector2d{0.3, 0.7}, 1e-6);
+}
+
+TEST(OSQPSolverProtectedTester, givenInfiniteBounds_ConvergesToUnconstrainedMin)
+{
+  // OSQP marks unbounded rows by |bound| >= OSQP_INFTY; IEEE infinities are
+  // valid inputs too but kept OSQP from detecting convergence
+  const int n{2}, m{2};
+  OSQPSolverProtectedTester base{n, m};
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P << 4, 1, 1, 2;
+  const Eigen::Matrix<OSQPFloat, m, n> A{Eigen::Matrix2d::Identity()};
+  const Eigen::Matrix<OSQPFloat, n, 1> q{1.0, 1.0};
+  const double inf{std::numeric_limits<double>::infinity()};
+  const Eigen::Matrix<OSQPFloat, m, 1> l{-inf, -inf}, u{inf, inf};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+
+  const Eigen::Vector2d expected{P.ldlt().solve(-q)};
+  Eigen::Vector2d solution;
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+  EXPECT_TRUE(expectEigenNear(solution, expected, 1e-5));
+
+  // finite bounds first, then infinite ones through an update
+  const Eigen::Matrix<OSQPFloat, m, 1> l_finite{-1.0, -1.0}, u_finite{0, 0};
+  ASSERT_TRUE(base.updateBounds(l_finite, u_finite));
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+  ASSERT_TRUE(base.updateBounds(l, u));
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+  EXPECT_TRUE(expectEigenNear(solution, expected, 1e-5));
 }

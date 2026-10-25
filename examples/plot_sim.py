@@ -36,7 +36,11 @@ def main():
     states: ArrayF = data["states"]  # (N, K, n) or (N, n)
     ref_states: ArrayF = data["ref_states"]  # same shape as states
     inputs: ArrayF = data["inputs"]  # (N, K, m) or (N, nc, m) or (N, m)
-    solve_times: ArrayF = data["solve_times"] * 1000.0  # (N, 2) and convert to ms
+    # (N,) each, converted to ms
+    loop_time: ArrayF = data["loop_time"] * 1000.0
+    mpc_solve_time: ArrayF = data["mpc_solve_time"] * 1000.0
+    qp_solve_time: ArrayF = data["qp_solve_time"] * 1000.0
+    prepare_time: ArrayF = data["prepare_time"] * 1000.0
     t_pred: ArrayF = data["meta_t_pred"]  # (K,)
     log_ctrl_pts = bool(data["meta_log_control_points"])
 
@@ -152,10 +156,17 @@ def main():
     # Plot Solve Times
     fig2 = window.add_figure_tab("solve times")
     ax_st = fig2.add_subplot()
-    usr_mean, osqp_mean = np.mean(solve_times, axis=0)
-    ax_st.plot(time, solve_times[:, 0], label=f"user (avg: {usr_mean:.3f}ms)")
-    ax_st.plot(time, solve_times[:, 1], label=f"OSQP (avg: {osqp_mean:.3f}ms)")
-    ax_st.set_ylabel("solve time (ms)")
+    if np.all(loop_time >= 0.0):  # -1 when logStep() was not given a loop_time
+        ax_st.plot(time, loop_time, label=f"loop (avg: {np.mean(loop_time):.3f}ms)")
+    ax_st.plot(
+        time, mpc_solve_time, label=f"solve() (avg: {np.mean(mpc_solve_time):.3f}ms)"
+    )
+    ax_st.plot(time, qp_solve_time, label=f"OSQP (avg: {np.mean(qp_solve_time):.3f}ms)")
+    if np.any(prepare_time > 0.0):  # zero when prepare() is not used
+        ax_st.plot(
+            time, prepare_time, label=f"prepare() (avg: {np.mean(prepare_time):.3f}ms)"
+        )
+    ax_st.set_ylabel("time (ms)")
     ax_st.set_xlabel("sim time (s)")
     ax_st.grid(True)
     ax_st.legend()

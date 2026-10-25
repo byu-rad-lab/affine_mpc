@@ -3,6 +3,7 @@
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
 
+#include <Eigen/Cholesky>
 #include <Eigen/Core>
 #include <cmath>
 #include <cstdlib>
@@ -39,7 +40,7 @@ public:
     const double ts{0.1};
 
     auto setup = [&](auto& mpc) {
-      mpc.setModelContinuous2Discrete(A, B, w, 0.1);
+      mpc.setModelContinuous2Discrete(A, B, w, ts);
       mpc.setInputLimits(VectorXd::Constant(m, 0.0),
                          VectorXd::Constant(m, 3.0));
       mpc.setStateWeights(Vector2d{1.0, 0.1});
@@ -159,6 +160,10 @@ TEST(ConsistencyTester,
 
   ASSERT_TRUE(expectEigenNear(u_condensed, 2 * slew, 1e-4));
   ASSERT_TRUE(expectEigenNear(u_sparse, 2 * slew, 1e-4));
+  // the previous input follows the applied input
+  ASSERT_TRUE(
+      expectEigenNear(tester.condensed.getPreviousInput(), u_condensed, 0.0));
+  ASSERT_TRUE(expectEigenNear(tester.sparse.getPreviousInput(), u_sparse, 0.0));
 
   // testing manually-set u_prev
   VectorXd u_prev = VectorXd::Constant(m, 0.1);
@@ -183,10 +188,10 @@ TEST(ConsistencyTester, initializeSolverWithoutModel_Throws)
 
   // model not set
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Model must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Model must be set before initializing solver");
 }
 
@@ -198,10 +203,10 @@ TEST(ConsistencyTester, initializeSolverWithoutInputLimits_Throws)
   tester.setModel();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Input limits must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Input limits must be set before initializing solver");
 }
 
@@ -214,10 +219,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingInitialSlewRate_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Initial slew rate must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Initial slew rate must be set before initializing solver");
 }
 
@@ -230,10 +235,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingSlewRate_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "Slew rate must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "Slew rate must be set before initializing solver");
 }
 
@@ -246,10 +251,10 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingStateLimits_Throws)
   tester.setInputLimits();
 
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.condensed.initializeSolver(); },
+      [&tester]() { (void)tester.condensed.initializeSolver(); },
       "State limits must be set before initializing solver");
   expectLogicErrorWithMessage(
-      [&tester]() { bool blah = tester.sparse.initializeSolver(); },
+      [&tester]() { (void)tester.sparse.initializeSolver(); },
       "State limits must be set before initializing solver");
 }
 
@@ -602,6 +607,19 @@ void setMsdModel(ampc::MPCBase& mpc)
   mpc.setModelContinuous2Discrete(A, B, w, 0.1);
 }
 
+// Everything but the model
+void configureMsdLimits(ampc::MPCBase& mpc, const ampc::Options& opts)
+{
+  mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  if (opts.use_input_cost)
+    mpc.setReferenceInput(VectorXd::Zero(1));
+  if (opts.slew_initial_input)
+    mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
+  if (opts.saturate_states)
+    mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
+}
+
 void configureMsd(ampc::MPCBase& mpc, const ampc::Options& opts)
 {
   setMsdModel(mpc);
@@ -727,7 +745,10 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
     EXPECT_EQ(info.status, status);
     EXPECT_GT(info.iterations, 0);
     EXPECT_TRUE(std::isfinite(info.objective));
-    EXPECT_GE(info.run_time, info.solve_time);
+    EXPECT_GE(info.qp_solve_time, 0.0);
+    // measured with steady_clock, so nonzero even without OSQP profiling
+    EXPECT_GT(info.mpc_solve_time, 0.0);
+    EXPECT_GE(info.mpc_solve_time, info.qp_solve_time);
   };
 
   ampc::CondensedMPC condensed{n, m, param, opts};
@@ -735,6 +756,59 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
 
   ampc::SparseMPC sparse{n, m, param, opts};
   check(sparse);
+}
+
+TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.slew_initial_input = true};
+  const VectorXd u_prev{VectorXd::Constant(m, 0.2)};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
+    auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+    settings.max_iter = 1;
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+    const Vector2d x0{0.5, -0.2};
+
+    // the iterate after one iteration is not a solution
+    mpc.setPreviousInput(u_prev);
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::MaxIterReached);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u_prev, 0.0));
+  };
+
+  auto check_infeasible = [&](ampc::MPCBase& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
+    ASSERT_TRUE(mpc.initializeSolver());
+    const Vector2d x0{0.5, -0.2};
+
+    // u_0 must be in [2, 3] and within 0.5 of u_prev = 0.2
+    mpc.setPreviousInput(u_prev);
+    mpc.setInputLimits(VectorXd::Constant(m, 2.0), VectorXd::Constant(m, 3.0));
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::PrimalInfeasible);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u_prev, 0.0));
+
+    // a successful solve updates it again
+    mpc.setInputLimits(VectorXd::Constant(m, 0.0), VectorXd::Constant(m, 3.0));
+    mpc.resetWarmStart();
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    VectorXd u0{m};
+    mpc.getNextInput(u0);
+    EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u0, 0.0));
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  check(condensed);
+  ampc::SparseMPC sparse{n, m, param, opts};
+  check(sparse);
+
+  ampc::CondensedMPC condensed_infeasible{n, m, param, opts};
+  check_infeasible(condensed_infeasible);
+  ampc::SparseMPC sparse_infeasible{n, m, param, opts};
+  check_infeasible(sparse_infeasible);
 }
 
 TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
@@ -1071,4 +1145,245 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
       }
     }
   }
+}
+
+// ---- closed-loop and closed-form checks ------------------------------------
+
+TEST(ConsistencyTester, givenClosedLoopSimulation_ConvergesToReference)
+{
+  const int n{2}, m{1}, T{20};
+  const Vector2d x_ref{1.0, 0.0};
+  const ampc::Options opts{.use_input_cost = true, .slew_initial_input = true};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    setMsdModel(mpc);
+    mpc.setInputLimits(VectorXd::Constant(m, -5.0), VectorXd::Constant(m, 5.0));
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
+    mpc.setWeights(Vector2d{10.0, 1.0}, VectorXd::Constant(m, 1e-3));
+    mpc.setReferenceState(x_ref);
+    mpc.setReferenceInput(VectorXd::Constant(m, 3.0)); // holds x = x_ref
+    ASSERT_TRUE(mpc.initializeSolver());
+
+    Vector2d x{Vector2d::Zero()};
+    VectorXd u{m};
+    for (int k{0}; k < 200; ++k) {
+      ASSERT_EQ(mpc.solve(x), ampc::SolveStatus::Success) << "step " << k;
+      mpc.getNextInput(u);
+      mpc.propagateModel(x, u, x);
+    }
+    EXPECT_TRUE(expectEigenNear(x, x_ref, 1e-3));
+    EXPECT_TRUE(expectEigenNear(u, VectorXd::Constant(m, 3.0), 1e-2));
+  };
+
+  for (const auto& param : {ampc::Parameterization::moveBlocking(T, 5),
+                            ampc::Parameterization::linearInterp(T, 5),
+                            ampc::Parameterization::bspline(T, 3, 6)}) {
+    ampc::CondensedMPC condensed{n, m, param, opts};
+    check(condensed);
+    ampc::SparseMPC sparse{n, m, param, opts};
+    check(sparse);
+  }
+}
+
+TEST(ConsistencyTester, givenNoActiveConstraints_SolutionMatchesLeastSquares)
+{
+  // Builds the unconstrained least-squares problem from simulation alone, so it
+  // does not share any QP assembly code with the library.
+  const int n{2}, m{2}, T{12};
+  const auto param{ampc::Parameterization::bspline(T, 2, 6)};
+  const int nc{param.num_control_points};
+  Matrix2d A, B;
+  A << 0.9, 0.1, -0.2, 0.95;
+  B << 0.0, 0.1, 0.2, 0.05;
+  const Vector2d w{0.01, -0.02}, x0{0.5, -0.2};
+  const Vector2d Q{2.0, 0.5}, Qf{5.0, 1.0}, R{0.1, 0.3};
+  VectorXd x_ref{n * T}, c_ref{m * nc};
+  for (int k{0}; k < T; ++k)
+    x_ref.segment(n * k, n) = Vector2d{1.0, 0.1 * k};
+  for (int i{0}; i < nc; ++i)
+    c_ref.segment(m * i, m) = Vector2d{0.2 * i, -0.1};
+
+  // predicted states x = S c + v, with column j of S the response to control
+  // point coefficient j from x0 = 0 and w = 0
+  auto simulate = [&](const VectorXd& c, const Vector2d& x_init, bool with_w) {
+    const VectorXd u{param.evaluate(m, c)};
+    VectorXd x_traj{n * T};
+    Vector2d x{x_init};
+    for (int k{0}; k < T; ++k) {
+      x = A * x + B * u.segment(m * k, m) + (with_w ? w : Vector2d::Zero());
+      x_traj.segment(n * k, n) = x;
+    }
+    return x_traj;
+  };
+  MatrixXd S{n * T, m * nc};
+  for (int j{0}; j < m * nc; ++j)
+    S.col(j) = simulate(VectorXd::Unit(m * nc, j), Vector2d::Zero(), false);
+  const VectorXd v{simulate(VectorXd::Zero(m * nc), x0, true)};
+
+  VectorXd Q_big{n * T};
+  for (int k{0}; k < T; ++k)
+    Q_big.segment(n * k, n) = k < T - 1 ? Q : Qf;
+  const VectorXd R_big{R.replicate(nc, 1)};
+  const MatrixXd H{S.transpose() * Q_big.asDiagonal() * S
+                   + MatrixXd(R_big.asDiagonal())};
+  const VectorXd g{S.transpose() * Q_big.asDiagonal() * (x_ref - v)
+                   + R_big.asDiagonal() * c_ref};
+  const VectorXd c_expected{H.ldlt().solve(g)};
+
+  auto check = [&](ampc::MPCBase& mpc) {
+    mpc.setModelDiscrete(A, B, w);
+    const double inf{std::numeric_limits<double>::infinity()};
+    mpc.setInputLimits(VectorXd::Constant(m, -inf), VectorXd::Constant(m, inf));
+    mpc.setWeights(Q, Qf, R);
+    mpc.setReferenceStateTrajectory(x_ref);
+    mpc.setReferenceInputControlPoints(c_ref);
+    auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+    settings.eps_abs = settings.eps_rel = 1e-8;
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd c{m * nc}, x_traj{n * T};
+    mpc.getInputControlPoints(c);
+    mpc.getPredictedStateTrajectory(x_traj);
+    EXPECT_TRUE(expectEigenNear(c, c_expected, 1e-6));
+    EXPECT_TRUE(expectEigenNear(x_traj, S * c_expected + v, 1e-6));
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, {.use_input_cost = true}};
+  check(condensed);
+  ampc::SparseMPC sparse{n, m, param, {.use_input_cost = true}};
+  check(sparse);
+}
+
+// ---- model offset updates --------------------------------------------------
+
+TEST(ConsistencyTester, givenModelOffsetUpdate_MatchesModelSetWithThatOffset)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.use_input_cost = true,
+                           .slew_initial_input = true,
+                           .saturate_states = true};
+  Matrix2d Ad;
+  Ad << 0.99, 0.1, -0.06, 0.98;
+  const Vector2d Bd{0.001, 0.02}, w1{0.0, 0.0}, w2{0.002, -0.01};
+  const Vector2d x0{0.5, -0.2};
+
+  auto configure = [&](ampc::MPCBase& mpc, const Vector2d& w) {
+    mpc.setModelDiscrete(Ad, Bd, w);
+    configureMsdLimits(mpc, opts);
+    ASSERT_TRUE(mpc.initializeSolver());
+  };
+  auto check = [&](ampc::MPCBase& updated, ampc::MPCBase& reference) {
+    configure(updated, w1);
+    ASSERT_EQ(updated.solve(x0), ampc::SolveStatus::Success);
+    updated.setModelOffsetDiscrete(w2);
+    updated.resetWarmStart();
+    ASSERT_EQ(updated.solve(x0), ampc::SolveStatus::Success);
+
+    configure(reference, w2);
+    ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd u_updated{m * T}, u_reference{m * T};
+    updated.getInputTrajectory(u_updated);
+    reference.getInputTrajectory(u_reference);
+    EXPECT_TRUE(expectEigenNear(u_updated, u_reference, 1e-9));
+    VectorXd x_updated{n * T}, x_reference{n * T};
+    updated.getPredictedStateTrajectory(x_updated);
+    reference.getPredictedStateTrajectory(x_reference);
+    EXPECT_TRUE(expectEigenNear(x_updated, x_reference, 1e-9));
+
+    // the model used for propagation has the new offset too
+    VectorXd x_next{n};
+    updated.propagateModel(x0, VectorXd::Ones(m), x_next);
+    EXPECT_TRUE(expectEigenNear(x_next, Vector2d{Ad * x0 + Bd + w2}, 1e-15));
+  };
+
+  ampc::CondensedMPC condensed{n, m, param, opts},
+      condensed_ref{n, m, param, opts};
+  check(condensed, condensed_ref);
+  ampc::SparseMPC sparse{n, m, param, opts}, sparse_ref{n, m, param, opts};
+  check(sparse, sparse_ref);
+}
+
+TEST(ConsistencyTester, givenContinuousModelOffsetUpdate_ReusesDiscretization)
+{
+  const int n{2}, m{1};
+  Matrix2d Ac;
+  Ac << 0, 1, -0.6, -0.1;
+  const Vector2d Bc{0, 0.2}, wc1{0, 0}, wc2{0.3, -0.4};
+  const double dt{0.1};
+  const Vector2d x{0.5, -0.2};
+  const VectorXd u{VectorXd::Constant(m, 1.5)};
+
+  ampc::CondensedMPC updated{n, m, 10}, reference{n, m, 10};
+  updated.setModelContinuous2Discrete(Ac, Bc, wc1, dt);
+  updated.setModelOffsetContinuous2Discrete(wc2);
+  reference.setModelContinuous2Discrete(Ac, Bc, wc2, dt);
+
+  VectorXd x_updated{n}, x_reference{n};
+  updated.propagateModel(x, u, x_updated);
+  reference.propagateModel(x, u, x_reference);
+  EXPECT_TRUE(expectEigenNear(x_updated, x_reference, 0.0));
+}
+
+TEST(ConsistencyTester, givenInvalidModelOffsetUpdate_Throws)
+{
+  ampc::SparseMPC mpc{2, 1, 10};
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetDiscrete(Vector2d::Zero()); },
+      "Model must be set");
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector2d::Zero()); },
+      "setModelContinuous2Discrete");
+
+  mpc.setModelDiscrete(Matrix2d::Identity(), Vector2d{0, 1}, Vector2d::Zero());
+  expectInvalidArgumentWithMessage(
+      [&] { mpc.setModelOffsetDiscrete(Vector3d::Zero()); },
+      "wd must have size 2");
+  // the continuous variant needs the G of a continuous model
+  expectLogicErrorWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector2d::Zero()); },
+      "setModelContinuous2Discrete");
+
+  Matrix2d Ac;
+  Ac << 0, 1, -0.6, -0.1;
+  mpc.setModelContinuous2Discrete(Ac, Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
+  EXPECT_NO_THROW(mpc.setModelOffsetContinuous2Discrete(Vector2d::Ones()));
+  expectInvalidArgumentWithMessage(
+      [&] { mpc.setModelOffsetContinuous2Discrete(Vector3d::Zero()); },
+      "wc must have size 2");
+}
+
+TEST(ConsistencyTester, givenUnclampedKnots_CondensedAndSparseMPCAgree)
+{
+  const int n{2}, m{1}, T{10};
+  VectorXd knots{8};
+  knots << -6, -3, 0, 3, 6, 9, 12, 15;
+  const ampc::Parameterization param{T, 2, knots};
+  const ampc::Options opts{.slew_initial_input = true};
+
+  ConsistencyTester tester{n, m, param, opts};
+  tester.setup();
+
+  const Vector2d x0{0.5, -0.2};
+  ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+  VectorXd u_condensed{m}, u_sparse{m};
+  tester.condensed.getNextInput(u_condensed);
+  tester.sparse.getNextInput(u_sparse);
+  ASSERT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-4));
+
+  // the first input blends two control points and still obeys the initial
+  // slew limit (previous input 0, limit 0.5)
+  VectorXd ctrls{param.num_control_points};
+  tester.condensed.getInputControlPoints(ctrls);
+  EXPECT_NEAR(u_condensed(0), 0.5 * (ctrls(0) + ctrls(1)), 1e-12);
+  EXPECT_LE(std::abs(u_condensed(0)), 0.5 + 1e-6);
+
+  VectorXd x_traj_condensed{n * T}, x_traj_sparse{n * T};
+  tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
+  tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
+  ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }

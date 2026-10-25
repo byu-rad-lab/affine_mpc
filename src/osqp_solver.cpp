@@ -18,6 +18,8 @@ OSQPSolver::OSQPSolver(int num_variables, int num_constraints) :
     initialized_{false},
     P_is_set_{false},
     A_is_set_{false},
+    l_buf_{num_constraints},
+    u_buf_{num_constraints},
     n_{num_variables},
     m_{num_constraints},
     P_p_{num_variables + 1},
@@ -80,9 +82,13 @@ SolveInfo OSQPSolver::getSolveInfo() const noexcept
   if (!initialized_)
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
+  // mpc_solve_time and prepare_time are only known to MPCBase
   return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
-                   static_cast<int>(info.iter), info.obj_val, info.solve_time,
-                   info.run_time};
+                   static_cast<int>(info.iter),
+                   info.obj_val,
+                   info.solve_time + info.polish_time,
+                   0.0,
+                   0.0};
 }
 
 SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
@@ -119,10 +125,11 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
   assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
   initializeCostMatrix(P);
   initializeConstraintMatrix(A);
+  clampBounds(l, u);
 
   ::OSQPSolver* raw_solver = nullptr;
   OSQPInt exitflag{osqp_setup(&raw_solver, P_.get(), q.data(), A_.get(),
-                              l.data(), u.data(), m_, n_, &settings)};
+                              l_buf_.data(), u_buf_.data(), m_, n_, &settings)};
   solver_.reset(raw_solver);
   if (exitflag == 0)
     initialized_ = true;
@@ -213,9 +220,17 @@ bool OSQPSolver::updateBounds(const Eigen::Ref<const VectorXF>& l,
   if (!initialized_)
     return false;
 
-  OSQPInt exit_status{
-      osqp_update_data_vec(solver_.get(), OSQP_NULL, l.data(), u.data())};
+  clampBounds(l, u);
+  OSQPInt exit_status{osqp_update_data_vec(solver_.get(), OSQP_NULL,
+                                           l_buf_.data(), u_buf_.data())};
   return exit_status == 0;
+}
+
+void OSQPSolver::clampBounds(const Eigen::Ref<const VectorXF>& l,
+                             const Eigen::Ref<const VectorXF>& u)
+{
+  l_buf_ = l.cwiseMax(-OSQP_INFTY);
+  u_buf_ = u.cwiseMin(OSQP_INFTY);
 }
 
 bool OSQPSolver::isWithinSparsityPattern(

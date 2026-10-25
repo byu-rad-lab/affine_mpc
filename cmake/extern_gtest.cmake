@@ -10,6 +10,8 @@ if(NOT TARGET GTest::gtest)
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG v${gtest_fetch_version}
   )
+  # MSVC: link GTest against the same (shared) C runtime as the tests
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(gtest_extern)
 
   message(STATUS "GTest version: ${gtest_fetch_version}")

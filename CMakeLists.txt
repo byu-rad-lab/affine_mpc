@@ -31,6 +31,7 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
+include(cmake/compiler_warnings.cmake)
 
 # Internal flag for building python bindings
 if(NOT DEFINED AFFINE_MPC_BUILD_BINDINGS)
@@ -52,6 +53,8 @@ add_library(${PROJECT_NAME}
   src/parameterization.cpp
   src/solve_status.cpp
   src/osqp_solver.cpp
+  src/vector_parameterization.cpp
+  src/discretizer.cpp
   src/mpc_base.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
@@ -99,6 +102,7 @@ endif()
 
 # C++ standard
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+affine_mpc_enable_warnings(${PROJECT_NAME})
 
 # --------------------------------------------------
 # Examples
@@ -108,6 +112,7 @@ if(AFFINE_MPC_BUILD_EXAMPLES)
   target_link_libraries(example_sim PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
   # the library is C++17; the example uses C++20 designated initializers
   target_compile_features(example_sim PRIVATE cxx_std_20)
+  affine_mpc_enable_warnings(example_sim)
 endif()
 
 # --------------------------------------------------
@@ -133,12 +138,15 @@ if(AFFINE_MPC_BUILD_TESTS)
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/parameterization_tests.cpp
+    test/affine_mpc/discretizer_tests.cpp
     test/affine_mpc/mpc_base_tests.cpp
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
+    test/affine_mpc/change_category_tests.cpp
     test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
+    test/affine_mpc/allocation_tests.cpp
   )
 
   add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
@@ -149,6 +157,7 @@ if(AFFINE_MPC_BUILD_TESTS)
   target_include_directories(np_writer_fixture
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
+  affine_mpc_enable_warnings(np_writer_fixture)
 
   if(Python_Interpreter_FOUND)
     execute_process(
@@ -165,7 +174,7 @@ if(AFFINE_MPC_BUILD_TESTS)
       )
       set(python_npz_tests_env
         "PYTHONPATH=${CMAKE_BINARY_DIR}"
-        "AFFINE_MPC_NP_WRITER_FIXTURE=${CMAKE_BINARY_DIR}/np_writer_fixture"
+        "AFFINE_MPC_NP_WRITER_FIXTURE=$<TARGET_FILE:np_writer_fixture>"
         "AFFINE_MPC_HAS_ZLIB=$<IF:$<BOOL:${ZLIB_FOUND}>,1,0>"
       )
       set_tests_properties(python_npz_tests PROPERTIES
@@ -186,6 +195,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER tests)
     # the library is C++17; the tests use C++20 designated initializers
     target_compile_features(${TEST_NAME} PRIVATE cxx_std_20)
+    affine_mpc_enable_warnings(${TEST_NAME})
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}

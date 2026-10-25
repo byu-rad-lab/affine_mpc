@@ -10,8 +10,13 @@
 
 #include <Eigen/Core>
 #include <iosfwd>
+#include <vector>
 
 namespace affine_mpc {
+
+namespace detail {
+class VectorParameterization;
+}
 
 /**
  * @class Parameterization
@@ -28,22 +33,34 @@ class Parameterization
 {
 public:
   /**
-   * @brief Factory method for uniform move-blocking parameterization.
+   * @brief Factory method for move-blocking parameterization with uniform or
+   *   geometrically spaced blocks.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest block is shorter than one
+   *   sample, or if any argument is invalid.
    * @return Parameterization instance.
    *
    * Piecewise constant inputs set from previous change point.
    */
   static Parameterization moveBlocking(int horizon_steps,
-                                       int num_control_points);
+                                       int num_control_points,
+                                       double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for move-blocking parameterization with custom change
    *   points.
    * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param change_points Vector of change point locations.
+   * @param change_points Increasing start times of the blocks. The first must
+   *   be 0 and the last at most horizon_steps - 1. horizon_steps - 1 is
+   *   appended to close the last block, so 0, 1, ..., horizon_steps - 1 gives
+   *   one control point per step.
    * @return Parameterization instance.
    */
   static Parameterization
@@ -51,16 +68,25 @@ public:
                const Eigen::Ref<const Eigen::VectorXd>& change_points);
 
   /**
-   * @brief Factory method for uniform linear interpolation parameterization.
+   * @brief Factory method for linear interpolation parameterization with
+   *   uniform or geometrically spaced endpoints.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest segment is shorter than one
+   *   sample, or if any argument is invalid.
    * @return Parameterization instance.
    *
-   * Change points are evenly spaced between 0 and horizon_steps - 1.
+   * Endpoints span 0 to horizon_steps - 1.
    */
   static Parameterization linearInterp(int horizon_steps,
-                                       int num_control_points);
+                                       int num_control_points,
+                                       double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for linear interpolation parameterization with custom
@@ -75,16 +101,26 @@ public:
                const Eigen::Ref<const Eigen::VectorXd>& endpoints);
 
   /**
-   * @brief Factory method for uniform clamped B-spline parameterization.
+   * @brief Factory method for clamped B-spline parameterization with uniform
+   *   or geometrically spaced active knots.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param degree Degree of B-spline polynomials. Must be less than
    *   num_control_points.
    * @param num_control_points Number of B-spline control points. Cannot be
    *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest knot interval is shorter
+   *   than one sample, or if any argument is invalid.
    * @return Parameterization instance.
    */
-  static Parameterization
-  bspline(int horizon_steps, int degree, int num_control_points);
+  static Parameterization bspline(int horizon_steps,
+                                  int degree,
+                                  int num_control_points,
+                                  double knot_ratio = 1.0);
 
   /**
    * @brief Factory method for clamped B-spline parameterization with custom
@@ -119,8 +155,15 @@ public:
    * @param degree Degree of B-spline polynomials. Must be less than
    *   horizon_steps.
    * @param knots Full knot vector with size in the range [2*(degree+1),
-   *   horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0 and
-   *   last knot must be horizon_steps-1.
+   *   horizon_steps+degree+1]. Must be non-decreasing. The first active knot
+   *   (index degree) must be 0 and the last active knot (index
+   *   knots.size()-degree-1) must be horizon_steps-1; for unclamped splines
+   *   the knots outside them extend beyond [0, horizon_steps-1]. Knots among
+   *   the first and last degree+1 are snapped to 0 and horizon_steps-1 when
+   *   within `1e-9 * horizon_steps` (round-off).
+   * @throws std::invalid_argument if the knots are invalid, including when a
+   *   control point has no influence on any sampled input (its basis function
+   *   is zero at every sample k = 0, ..., horizon_steps-1).
    */
   Parameterization(int horizon_steps,
                    int degree,
@@ -130,6 +173,9 @@ public:
 
   /**
    * @brief Evaluate an input trajectory from provided control_points.
+   *
+   *   Uses the stored banded basis (see band_weights), so it only touches the
+   *   control points that affect each step.
    * @param input_dim Dimension of input vector.
    * @param control_points Parameterized input trajectory as a vector of size
    *   input_dim*num_control_points.
@@ -138,6 +184,30 @@ public:
   Eigen::VectorXd
   evaluate(int input_dim,
            const Eigen::Ref<const Eigen::VectorXd>& control_points) const;
+
+  /**
+   * @brief Static method for generating a clamped knot vector with uniform or
+   *   geometrically spaced active knots (the knots used by the factories).
+   *   Useful for generating a starting point that can be modified for custom
+   *   parameterizations.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param degree Degree of B-spline polynomials. Must be less than
+   *   num_control_points.
+   * @param num_control_points Number of B-spline control points. Cannot be
+   *   greater than horizon_steps.
+   * @param knot_ratio Ratio of consecutive knot interval lengths (positive):
+   *   the intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+   *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+   *   ratio above 1 puts short intervals (more flexibility) at the start of
+   *   the horizon and a ratio below 1 puts them at the end.
+   * @throws std::invalid_argument if the shortest knot interval is shorter
+   *   than one sample, or if any argument is invalid.
+   * @return knots The clamped knot vector.
+   */
+  static Eigen::VectorXd makeClampedKnots(int horizon_steps,
+                                          int degree,
+                                          int num_control_points,
+                                          double knot_ratio = 1.0);
 
   /**
    * @brief Static method for generating a uniform clamped knot vector. Useful
@@ -165,6 +235,27 @@ public:
 
   /// Full knot vector of size num_control_points + degree + 1.
   const Eigen::VectorXd knots;
+
+  /// Number of consecutive control points that can affect one sampled input
+  /// (degree + 1 for B-splines).
+  const int band_width;
+
+  /// Index of the first control point that affects the input at each step k
+  /// (size horizon_steps).
+  const Eigen::VectorXi band_start;
+
+  /// Basis weights in banded form (size band_width x horizon_steps). The input
+  /// at step k is the sum over i of `band_weights(i, k)` times control point
+  /// `band_start(k) + i`.
+  const Eigen::MatrixXd band_weights;
+
+private:
+  friend class detail::VectorParameterization;
+
+  // Sample indices whose bounds are equivalent to bounding every sampled
+  // input, or empty when bounding the control points is already exact. Not
+  // public until the interface for input bound rows is settled.
+  std::vector<int> inputSaturationSamples() const;
 };
 
 /**

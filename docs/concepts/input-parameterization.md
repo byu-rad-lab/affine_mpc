@@ -119,6 +119,8 @@ The first creates a uniform parameterization with equally sized blocks.
 The second uses explicitly specified change points and therefore allows variable block widths.
 The first change point must be $0$ and the minimum number of change points is 1, where the input trajectory would be constant.
 When using the move-blocking factory method, the right boundary knot is internally appended to the list of change points to create the full knot vector.
+The change points are the start indices of the blocks, so each one may be any sample from $0$ to $T-1$.
+For example, `moveBlocking(10, [0, 1, 2])` gives one free input for each of the first three steps and holds the third until the end of the horizon, and change points $0, 1, \dots, T-1$ give one free input per step.
 
 ### Linear Interpolation
 
@@ -171,6 +173,33 @@ The two overloads are:
 The first creates a uniform clamped spline.
 The second accepts custom active knots, which allows nonuniform knot spacing.
 The active knot vector must include at least the two boundary entries $0$ and $T-1$ so that the spline is valid over the MPC horizon.
+Boundary knots within $10^{-9} T$ of $0$ or $T-1$ (round-off from computing the knots) are snapped to those values.
+
+### Geometric Knots
+
+The factories that take a number of control points (`moveBlocking()`, `linearInterp()`, and `bspline()`) accept an optional `knot_ratio` $g > 0$.
+The knot intervals then have lengths proportional to $1, g, g^2, \dots$, scaled so the active knots span $[0, T-1]$.
+
+=== "Python"
+
+    ```python
+    param = Parameterization.bspline(horizon_steps, degree, num_control_points, knot_ratio=1.5)
+    param = Parameterization.moveBlocking(horizon_steps, num_control_points, knot_ratio=1.5)
+    ```
+
+=== "C++"
+
+    ```cpp
+    auto param = Parameterization::bspline(horizon_steps, degree, num_control_points, 1.5)
+    auto param = Parameterization::moveBlocking(horizon_steps, num_control_points, 1.5)
+    ```
+
+With $g > 1$, the short intervals (and so the most flexibility) are at the start of the horizon, whose inputs are applied first, and the long intervals are at the end.
+$g < 1$ does the opposite, and the default $g = 1$ gives uniform knots.
+With `moveBlocking()`, this gives geometric move blocking.
+A good ratio depends on the horizon and the number of control points; tuned geometric knots performed best in the B-spline parameterization experiments.
+The shortest interval must be at least one sample long, which limits $g$ for a given horizon and number of control points.
+`makeClampedKnots(horizon_steps, degree, num_control_points, knot_ratio)` returns the same knot vector, as a starting point for custom knots.
 
 ## Tradeoffs and Interpretation
 
@@ -194,6 +223,15 @@ Changing the active-knot locations redistributes where the trajectory can vary m
 
 - Uniform knots distribute flexibility evenly across the horizon.
 - Custom knots or change points concentrate flexibility where it is most needed.
+
+Knots do not have to be integers or at least one sample apart, but every control point must affect at least one sampled input.
+A control point whose basis function is zero at every sample $k = 0, \dots, T-1$ would only add a direction the QP can not see, so construction throws `std::invalid_argument` (`ValueError` in Python).
+For example, `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` is rejected because control point 2 is only nonzero on $(3.2, 3.22)$, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
+
+Clustered or very short knot intervals make the QP worse conditioned, because nearby control points affect almost the same samples.
+In the knot optimization experiments, degree 0 with optimized (clustered) knots had a median QP condition number of $1.45 \times 10^5$, compared with about $10^3$ for uniform or geometric knots.
+OSQP then needs more iterations and may stop at `MaxIterReached`.
+A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
 
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
 

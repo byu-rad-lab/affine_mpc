@@ -96,11 +96,20 @@ content = re.sub(r"from __future__ import annotations", "", content)
 #     content,
 #     count=1,
 # )
+if not re.search(r"^import os$", content, flags=re.MULTILINE):
+    content = re.sub(
+        r"import typing",
+        "import typing\nimport os",
+        content,
+        count=1,
+    )
+# pybind11-stubgen 3 copies the unannotated runtime Enum.__new__ into every
+# enum, which hides typeshed's typed signature from type checkers.
 content = re.sub(
-    r"import typing",
-    "import typing\nimport os",
+    r"^[ \t]*@classmethod\n[ \t]*def __new__\(cls, value\):\n[ \t]*\.\.\.\n",
+    "",
     content,
-    count=1,
+    flags=re.MULTILINE,
 )
 content = re.sub("PathLike ", "PathLike[str] ", content)
 # content = re.sub("typing.SupportsInt . typing.SupportsIndex", "int", content)

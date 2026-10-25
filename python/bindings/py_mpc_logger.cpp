@@ -102,14 +102,16 @@ Args:
     t: Current simulation time (time of solve).
     x0: Current state at time t (same as provided to solve() since MPCBase does
         not store this).
-    solve_time: Optional user-calculated solve time (likely to include setup
-        time). The solve time reported by OSQP is also logged separately.
+    loop_time: Optional user-measured time (seconds), e.g. of the whole control
+        loop iteration on hardware. Logged as `loop_time` (-1 when not
+        provided). The `mpc_solve_time`, `qp_solve_time`, and `prepare_time`
+        of the last solve (see SolveInfo) are logged automatically.
 
 Raises:
     RuntimeError: If the MPC solver has not been initialized.
     ValueError: If x0 does not have size state_dim.
           )doc",
-          py::arg("t"), py::arg("x0"), py::arg("solve_time") = -1.0);
+          py::arg("t"), py::arg("x0"), py::arg("loop_time") = -1.0);
 
   log.def(
       "addMetadata",

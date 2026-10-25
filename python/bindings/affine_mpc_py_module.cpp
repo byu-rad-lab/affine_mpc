@@ -11,6 +11,7 @@ PYBIND11_MODULE(_bindings, m)
 
   moduleAddOptions(m);
   moduleAddParameterization(m);
+  moduleAddDiscretizer(m);
   moduleAddOsqpSettings(m);
   moduleAddSolveStatus(m);
   moduleAddMPCBase(m);

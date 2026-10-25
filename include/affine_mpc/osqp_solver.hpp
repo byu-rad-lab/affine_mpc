@@ -10,10 +10,18 @@
 #include <iosfwd>
 #include <memory>
 #include <osqp.h>
+#include <type_traits>
 
 #include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
+
+// The MPC classes store the QP as double precision Eigen objects, which would
+// be silently converted at every update by a single precision OSQP build
+// (OSQP_USE_FLOAT). Fail at compile time instead.
+static_assert(std::is_same_v<OSQPFloat, double>,
+              "affine_mpc requires OSQP built with double precision "
+              "(OSQPFloat must be double; do not define OSQP_USE_FLOAT).");
 
 /**
  * @class OSQPSolver
@@ -203,6 +211,10 @@ private:
    */
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
 
+  // Copy l and u into l_buf_ and u_buf_ with infinities clamped to OSQP_INFTY.
+  void clampBounds(const Eigen::Ref<const VectorXF>& l,
+                   const Eigen::Ref<const VectorXF>& u);
+
   // Choosing to modernize even though OSQP documentation uses raw pointers
   std::unique_ptr<::OSQPSolver, decltype(&osqp_cleanup)> solver_;
   std::unique_ptr<OSQPCscMatrix, decltype(&OSQPCscMatrix_free)> P_;
@@ -210,6 +222,9 @@ private:
   bool initialized_;
   bool P_is_set_;
   bool A_is_set_;
+  // OSQP only treats bounds beyond OSQP_INFTY as unbounded; with IEEE
+  // infinities it can not detect convergence, so bounds are clamped here.
+  VectorXF l_buf_, u_buf_;
 
 protected:          // Not private for unit tests
   const OSQPInt n_; ///< Number of decision variables.

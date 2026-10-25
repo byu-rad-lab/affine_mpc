@@ -1,6 +1,7 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <sstream>
 
 #include "affine_mpc/parameterization.hpp"
@@ -390,7 +391,7 @@ TEST(ParameterizationMoveBlocking,
      givenCustomChangePoints_SplineEvaluatesProperly)
 {
   using Spline1d = Spline<double, 1>;
-  const int T{10}, nc{3};
+  const int T{10};
   const Vector3d controls{0, 1, -1}, change_pts{0, 2, 5};
 
   VectorXd vals{T}, vals_expected{T};
@@ -414,7 +415,7 @@ TEST(ParameterizationMoveBlocking,
      givenLenHorizonCustomChangePoints_SplineEvaluatesProperly)
 {
   using Spline1d = Spline<double, 1>;
-  const int T{3}, nc{3};
+  const int T{3};
   const Vector3d controls{0, 1, -1}, change_pts{0, 1, 2};
 
   VectorXd vals{T}, vals_expected{T};
@@ -428,6 +429,32 @@ TEST(ParameterizationMoveBlocking,
   }
 
   ASSERT_TRUE(expectEigenNear(vals, vals_expected, 1e-15));
+}
+
+TEST(ParameterizationMoveBlocking, givenEveryStepChangePoints_OneInputPerStep)
+{
+  // change points 0, 1, ..., T-1 give every sample its own control point
+  const int T{5};
+  const VectorXd change_pts{VectorXd::LinSpaced(T, 0, T - 1)};
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  ASSERT_EQ(p.num_control_points, T);
+
+  VectorXd controls{T};
+  controls << 10, 20, 30, 40, 50;
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, controls), controls, 0.0));
+}
+
+TEST(ParameterizationMoveBlocking, givenFreeStepsThenTail_EvaluatesProperly)
+{
+  // one free input for each of the first 3 steps, then constant to the end
+  const int T{10};
+  const Vector3d change_pts{0, 1, 2}, controls{10, 20, 30};
+  const auto p{ampc::Parameterization::moveBlocking(T, change_pts)};
+  ASSERT_EQ(p.num_control_points, 3);
+
+  VectorXd u_expected{T};
+  u_expected << 10, 20, 30, 30, 30, 30, 30, 30, 30, 30;
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, controls), u_expected, 0.0));
 }
 
 TEST(ParameterizationMoveBlocking, givenRepeatedChangePoint_Throws)
@@ -544,7 +571,7 @@ TEST(ParameterizationBspline, givenUniformParams_FormsKnotsCorrectly)
 TEST(ParameterizationBspline, givenCustomActiveKnots_FormsKnotsCorrectly)
 {
   // nc=5, deg=2: num_active = nc - deg + 1 = 4 internal knots expected
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   VectorXd active_knots{4};
   active_knots << 0, 2, 5, 9; // first must be 0, last must be T-1 = 9
   const ampc::Parameterization p{
@@ -568,7 +595,7 @@ TEST(ParameterizationBspline, givenWrongActiveKnotsCount_Throws)
 
 TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
 {
-  const int T{10}, nc{5}, deg{2};
+  const int T{10}, deg{2};
   // nc - deg + 1 = 4 active knots required
   VectorXd active_knots{4};
 
@@ -583,4 +610,243 @@ TEST(ParameterizationBspline, givenActiveKnotsOutOfRange_Throws)
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
       "Last active knot must equal horizon_steps-1");
+}
+
+// ---- zero-influence control points -----------------------------------------
+
+TEST(ParameterizationBspline, givenControlPointWithoutInfluence_Throws)
+{
+  // the hat function of control point 2 is nonzero only on (3.2, 3.22), which
+  // contains no sample
+  VectorXd active_knots{5};
+  active_knots << 0, 3.2, 3.21, 3.22, 9;
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(10, 1, active_knots); },
+      "control point 2 has no influence on any sampled input");
+}
+
+TEST(ParameterizationMoveBlocking, givenBlockWithoutSample_Throws)
+{
+  // block [3.2, 3.5) contains no integer sample
+  const Vector3d change_points{0, 3.2, 3.5};
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::moveBlocking(10, change_points); },
+      "control point 1 has no influence on any sampled input");
+}
+
+TEST(ParameterizationBspline, givenSubSampleKnotsWithInfluence_Succeeds)
+{
+  // knots closer than one sample are fine as long as every control point
+  // influences some sample
+  VectorXd active_knots{4};
+  active_knots << 0, 0.5, 1.2, 9;
+  EXPECT_NO_THROW(ampc::Parameterization::bspline(10, 1, active_knots));
+  EXPECT_NO_THROW(ampc::Parameterization::bspline(10, 2, active_knots));
+
+  const Vector3d change_points{0, 0.5, 1.2};
+  EXPECT_NO_THROW(ampc::Parameterization::moveBlocking(10, change_points));
+}
+
+// ---- end-knot tolerance ----------------------------------------------------
+
+TEST(ParameterizationBspline, givenEndKnotsWithRoundOff_SnapsToBoundaries)
+{
+  // e.g. knots computed by scaling fractions to [0, T-1]
+  const int T{10}, deg{2};
+  const Vector3d active_knots{1e-13, 4.0, T - 1 - 1e-13};
+  const auto p{ampc::Parameterization::bspline(T, deg, active_knots)};
+
+  VectorXd knots_expected{7};
+  knots_expected << 0, 0, 0, 4, 9, 9, 9;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 0.0));
+}
+
+TEST(ParameterizationDirectConstructor,
+     givenEndKnotsWithRoundOff_SnapsToBoundaries)
+{
+  const int T{10}, deg{1};
+  VectorXd knots{5};
+  knots << -1e-13, 1e-13, 4.0, T - 1 - 1e-13, T - 1 + 1e-13;
+  const ampc::Parameterization p{T, deg, knots};
+
+  VectorXd knots_expected{5};
+  knots_expected << 0, 0, 4, 9, 9;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 0.0));
+}
+
+TEST(ParameterizationBspline, givenEndKnotOutsideTolerance_PrintsFullPrecision)
+{
+  const int T{10}, deg{2};
+  const Vector3d active_knots{0.0, 4.0, T - 1 - 1e-6};
+  // the default stream precision would print "Got 9"
+  expectInvalidArgumentWithMessage(
+      [&]() { ampc::Parameterization::bspline(T, deg, active_knots); },
+      "Got 8.999999");
+}
+
+// ---- banded basis ----------------------------------------------------------
+
+TEST(ParameterizationBand, givenBspline_StoresBandOfBasisFunctions)
+{
+  const int T{10}, nc{5}, deg{2};
+  const auto p{ampc::Parameterization::bspline(T, deg, nc)};
+
+  ASSERT_EQ(p.band_width, deg + 1);
+  VectorXi start_expected{T};
+  start_expected << 0, 0, 0, 1, 1, 1, 2, 2, 2, 2;
+  EXPECT_TRUE(expectEigenNear(p.band_start, start_expected, 0.0));
+  ASSERT_EQ(p.band_weights.rows(), deg + 1);
+  ASSERT_EQ(p.band_weights.cols(), T);
+
+  using Spline1d = Spline<double, 1>;
+  const VectorXd ctrls{{0, 1, 1, -1, 0}};
+  const Spline1d spline{p.knots, ctrls.transpose()};
+  for (int k{0}; k < T; ++k) {
+    const double t = k;
+    const RowVectorXd weights_expected{
+        Spline1d::BasisFunctions(t, deg, p.knots)};
+    EXPECT_TRUE(expectEigenNear(p.band_weights.col(k).transpose(),
+                                weights_expected, 0.0));
+    const double u{p.band_weights.col(k).dot(
+        ctrls.segment(p.band_start(k), p.band_width))};
+    EXPECT_DOUBLE_EQ(u, spline(t)(0));
+  }
+}
+
+TEST(ParameterizationBand, givenAnyParameterization_BandReproducesEvaluate)
+{
+  const int m{2};
+  for (const auto& p : {ampc::Parameterization::moveBlocking(12, 4),
+                        ampc::Parameterization::linearInterp(12, 5),
+                        ampc::Parameterization::bspline(12, 3, 7),
+                        ampc::Parameterization{12, 2, 12}}) {
+    ASSERT_EQ(p.band_width, p.degree + 1);
+    const VectorXd ctrls{VectorXd::LinSpaced(m * p.num_control_points, -1, 2)};
+    const VectorXd u_traj{p.evaluate(m, ctrls)};
+    const Map<const MatrixXd> c{ctrls.data(), m, p.num_control_points};
+    for (int k{0}; k < p.horizon_steps; ++k) {
+      ASSERT_LE(p.band_start(k) + p.band_width, p.num_control_points);
+      const VectorXd uk{c.middleCols(p.band_start(k), p.band_width)
+                        * p.band_weights.col(k)};
+      EXPECT_TRUE(expectEigenNear(u_traj.segment(m * k, m), uk, 0.0));
+    }
+  }
+}
+
+// ---- Factory option: knot_ratio --------------------------------------------
+
+TEST(ParameterizationKnotRatio, givenRatio_SpacesActiveKnotsGeometrically)
+{
+  // interval lengths 1, g, g^2, g^3 scaled to span [0, T-1]
+  const int T{20}, deg{2}, nc{6};
+  const double g{1.5};
+  const auto p{ampc::Parameterization::bspline(T, deg, nc, g)};
+  ASSERT_EQ(p.degree, deg);
+  ASSERT_EQ(p.num_control_points, nc);
+
+  const double scale{(T - 1) / (1 + g + g * g + g * g * g)};
+  VectorXd knots_expected{nc + deg + 1};
+  knots_expected << 0, 0, 0, scale, scale * (1 + g), scale * (1 + g + g * g),
+      T - 1, T - 1, T - 1;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+  // the last active knot is exact, not a round-off away from T-1
+  EXPECT_EQ(p.knots(nc), T - 1);
+}
+
+TEST(ParameterizationKnotRatio, givenRatioBelowOne_MoveBlockingShrinksBlocks)
+{
+  const int T{20}, nc{4};
+  const auto p{ampc::Parameterization::moveBlocking(T, nc, 0.5)};
+  ASSERT_EQ(p.degree, 0);
+  // blocks 8/15, 4/15, 2/15, 1/15 of 19
+  VectorXd knots_expected{nc + 1};
+  knots_expected << 0, 19 * 8.0 / 15, 19 * 12.0 / 15, 19 * 14.0 / 15, 19;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+}
+
+TEST(ParameterizationKnotRatio, givenRatio_LinearInterpSpacesEndpoints)
+{
+  const int T{15}, nc{4};
+  const double g{2.0};
+  const auto p{ampc::Parameterization::linearInterp(T, nc, g)};
+  ASSERT_EQ(p.degree, 1);
+  // segments 1, 2, 4 sevenths of 14
+  VectorXd knots_expected{nc + 2};
+  knots_expected << 0, 0, 2, 6, 14, 14;
+  EXPECT_TRUE(expectEigenNear(p.knots, knots_expected, 1e-12));
+}
+
+TEST(ParameterizationKnotRatio, givenRatioOne_MatchesUniformKnotsExactly)
+{
+  const int T{15};
+  using P = ampc::Parameterization;
+  EXPECT_EQ(P::bspline(T, 3, 8, 1.0).knots,
+            P::makeUniformClampedKnots(T, 3, 8));
+  EXPECT_EQ(P::moveBlocking(T, 4, 1.0).knots,
+            P::makeUniformClampedKnots(T, 0, 4));
+  EXPECT_EQ(P::linearInterp(T, 5, 1.0).knots,
+            P::makeUniformClampedKnots(T, 1, 5));
+}
+
+TEST(ParameterizationKnotRatio, givenRatio_MakeClampedKnotsMatchesFactories)
+{
+  const int T{20};
+  const double g{1.4};
+  using P = ampc::Parameterization;
+  EXPECT_EQ(P::makeClampedKnots(T, 2, 6, g), P::bspline(T, 2, 6, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 0, 5, g), P::moveBlocking(T, 5, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 1, 5, g), P::linearInterp(T, 5, g).knots);
+  EXPECT_EQ(P::makeClampedKnots(T, 3, 8), P::makeUniformClampedKnots(T, 3, 8));
+  expectInvalidArgumentWithMessage(
+      [] { P::makeClampedKnots(20, 1, 5, 3.0); },
+      "[Parameterization::makeClampedKnots] shortest knot interval");
+}
+
+TEST(ParameterizationKnotRatio, givenInvalidArguments_Throws)
+{
+  using P = ampc::Parameterization;
+  expectInvalidArgumentWithMessage([] { P::bspline(20, 1, 5, 0.0); },
+                                   "knot_ratio must be positive and finite");
+  expectInvalidArgumentWithMessage(
+      [] { P::moveBlocking(20, 5, std::numeric_limits<double>::infinity()); },
+      "knot_ratio must be positive and finite");
+  // first interval 19 / (1 + 3 + 9 + 27) < 1 sample
+  expectInvalidArgumentWithMessage(
+      [] { P::bspline(20, 1, 5, 3.0); },
+      "shortest knot interval must be at least one sample");
+  // ratio below 1: the last interval is the shortest
+  expectInvalidArgumentWithMessage(
+      [] { P::linearInterp(20, 5, 1.0 / 3.0); },
+      "shortest knot interval must be at least one sample");
+  expectInvalidArgumentWithMessage(
+      [] { P::bspline(20, 2, 2, 1.5); },
+      "must have at least degree+1 control points");
+}
+
+// ---- Unclamped knots -------------------------------------------------------
+
+TEST(ParameterizationUnclamped, givenUnclampedKnots_EvaluatesLikeSpline)
+{
+  // uniform quadratic with knots extending beyond [0, T-1] on both sides
+  using Spline1d = Spline<double, 1>;
+  const int T{10}, deg{2};
+  VectorXd knots{8};
+  knots << -6, -3, 0, 3, 6, 9, 12, 15;
+  const ampc::Parameterization p{T, deg, knots};
+  ASSERT_EQ(p.num_control_points, 5);
+  EXPECT_EQ(p.knots, knots);
+
+  VectorXd controls{5};
+  controls << 1, -2, 0.5, 3, -1;
+  const Spline1d spline{p.knots, controls.transpose()};
+  const VectorXd u{p.evaluate(1, controls)};
+  for (int k{0}; k < T; ++k)
+    EXPECT_NEAR(u(k), spline(k)(0), 1e-14) << "k = " << k;
+
+  // unlike a clamped spline, the first input is not the first control point
+  EXPECT_NEAR(u(0), 0.5 * (controls(0) + controls(1)), 1e-14);
+
+  // partition of unity still holds on [0, T-1]
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, VectorXd::Constant(5, 2.5)),
+                              VectorXd::Constant(T, 2.5), 1e-14));
 }

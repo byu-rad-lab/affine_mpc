@@ -1,6 +1,5 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
-#include <unsupported/Eigen/Splines>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
@@ -39,18 +38,13 @@ public:
     qpUpdateX0(x0);
   }
 
-  const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
-  const auto getSplineKnots() const { return this->spline_knots_; }
-  const auto getSplineWeights() const { return this->spline_weights_; }
-  const auto getAd() const { return this->Ad_; }
-  const auto getBd() const { return this->Bd_; }
-  const auto getWd() const { return this->wd_; }
-  const auto getQbig() const { return this->Q_big_; }
-  const auto getRbig() const { return this->R_big_; }
-  const auto getS() const { return this->S_; }
-  const auto getV() const { return this->v_; }
-  const auto getP() const { return this->P_; }
-  const auto getQ() const { return this->q_; }
+  auto getAd() const { return readModel(*this).Ad; }
+  auto getBd() const { return readModel(*this).Bd; }
+  auto getWd() const { return readModel(*this).wd; }
+  auto getS() const { return this->S_; }
+  auto getV() const { return this->v_; }
+  auto getP() const { return getQPCostMatrix(); }
+  auto getQ() const { return this->q_; }
 };
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
@@ -133,7 +127,7 @@ TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
   // clang-format on
 
   Eigen::Matrix<double, m * nc, m * nc> P_test;
-  P_test = msd_mpc.getRbig();
+  P_test = R.replicate(nc, 1).asDiagonal();
   P_test += S.transpose() * S;
 
   Eigen::Matrix<double, m * nc, 1> q_test;
@@ -158,9 +152,9 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   Eigen::Vector2d x0{1, 1}, x_goal{1, 0};
   msd_mpc.setReferenceState(x_goal);
   Eigen::Matrix<double, m, 1> u_goal{0}, u_min{0}, u_max{3}, slew{1};
-  ASSERT_TRUE(msd_mpc.setInputLimits(u_min, u_max));
+  msd_mpc.setInputLimits(u_min, u_max);
   msd_mpc.setReferenceInput(u_goal);
-  ASSERT_TRUE(msd_mpc.setSlewRate(slew));
+  msd_mpc.setSlewRate(slew);
 
   auto settings{ampc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;

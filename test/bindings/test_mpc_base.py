@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import affine_mpc as ampc
 
@@ -82,3 +83,135 @@ def test_mpc_base_interface():
 if __name__ == "__main__":
     test_mpc_base_interface()
     print("All tests passed!")
+
+
+def _all_options_mpc(n=2, m=2, T=6, nc=3):
+    param = ampc.Parameterization.linearInterp(horizon_steps=T, num_control_points=nc)
+    opts = ampc.Options(
+        use_input_cost=True,
+        slew_initial_input=True,
+        slew_control_points=True,
+        saturate_states=True,
+    )
+    return ampc.CondensedMPC(n, m, param, opts), param, opts
+
+
+def test_mpc_base_getters_return_set_values():
+    n, m, T, nc = 2, 2, 6, 3
+    mpc, param, opts = _all_options_mpc(n, m, T, nc)
+
+    assert str(mpc.getOptions()) == str(opts)
+    stored = mpc.getParameterization()
+    assert stored.num_control_points == nc
+    np.testing.assert_array_equal(stored.knots, param.knots)
+    np.testing.assert_array_equal(stored.band_weights, param.band_weights)
+    assert np.all(mpc.getInputMin() == -np.inf)
+    assert np.all(mpc.getSlewRate() == np.inf)
+
+    Q, Qf, R = np.array([1.0, 2.0]), np.array([3.0, 4.0]), np.array([0.5, 0.6])
+    mpc.setWeights(Q_diag=Q, Qf_diag=Qf, R_diag=R)
+    np.testing.assert_array_equal(mpc.getStateWeights(), Q)
+    # the 3-argument setWeights used to drop Qf_diag
+    np.testing.assert_array_equal(mpc.getTerminalStateWeights(), Qf)
+    np.testing.assert_array_equal(mpc.getInputWeights(), R)
+
+    mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
+    mpc.setStateLimits(x_min=-5 * np.ones(n), x_max=5 * np.ones(n))
+    mpc.setSlewRate(control_point_slew=np.array([0.1, 0.2]))
+    mpc.setSlewRateInitial(u0_slew=np.array([0.3, 0.4]))
+    mpc.setPreviousInput(u_prev=np.array([0.7, 0.8]))
+    np.testing.assert_array_equal(mpc.getInputMin(), -np.ones(m))
+    np.testing.assert_array_equal(mpc.getInputMax(), np.ones(m))
+    np.testing.assert_array_equal(mpc.getStateMin(), -5 * np.ones(n))
+    np.testing.assert_array_equal(mpc.getStateMax(), 5 * np.ones(n))
+    np.testing.assert_array_equal(mpc.getSlewRate(), [0.1, 0.2])
+    np.testing.assert_array_equal(mpc.getSlewRateInitial(), [0.3, 0.4])
+    np.testing.assert_array_equal(mpc.getPreviousInput(), [0.7, 0.8])
+
+    x_ref = np.linspace(0, 1, n * T)
+    ctrls_ref = np.linspace(-1, 1, m * nc)
+    mpc.setReferenceStateTrajectory(x_traj=x_ref)
+    mpc.setReferenceInputControlPoints(control_points=ctrls_ref)
+    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref)
+    np.testing.assert_array_equal(mpc.getReferenceInputControlPoints(), ctrls_ref)
+
+    # getters return copies, so editing one does not change the MPC
+    u_min = mpc.getInputMin()
+    u_min[:] = 0.0
+    np.testing.assert_array_equal(mpc.getInputMin(), -np.ones(m))
+
+
+def test_mpc_base_optional_getters_raise_when_disabled():
+    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 3))
+    for getter in (
+        mpc.getInputWeights,
+        mpc.getReferenceInputControlPoints,
+        mpc.getStateMin,
+        mpc.getStateMax,
+        mpc.getSlewRate,
+        mpc.getSlewRateInitial,
+        mpc.getPreviousInput,
+    ):
+        with pytest.raises(RuntimeError, match="not enabled"):
+            getter()
+
+
+def _msd_mpc(cls):
+    n, m, T = 2, 1, 20
+    mpc = cls(n, m, ampc.Parameterization.linearInterp(T, 5))
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
+    mpc.setInputLimits(np.zeros(m), 3.0 * np.ones(m))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    assert mpc.initializeSolver()
+    return mpc
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_solve_in_threads_matches_sequential_solve(cls):
+    # solve() releases the GIL, so independent MPC objects can solve in parallel
+    from concurrent.futures import ThreadPoolExecutor
+
+    x0s = [np.array([0.1 * i, -0.05 * i]) for i in range(8)]
+
+    def solve(x0):
+        mpc = _msd_mpc(cls)
+        assert mpc.solve(x0) == ampc.SolveStatus.Success
+        return mpc.getInputTrajectory()
+
+    expected = [solve(x0) for x0 in x0s]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        got = list(pool.map(solve, x0s))
+    for u_got, u_expected in zip(got, expected):
+        np.testing.assert_array_equal(u_got, u_expected)
+
+    # exceptions still propagate with the GIL released during the call
+    with pytest.raises(ValueError, match="x0"):
+        _msd_mpc(cls).solve(np.zeros(3))
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_model_offset_setters(cls):
+    n, m = 2, 1
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    Bc = np.array([0.0, 0.2])
+    x, u = np.array([0.5, -0.2]), np.array([1.5])
+
+    mpc = cls(n, m, ampc.Parameterization.linearInterp(20, 5))
+    with pytest.raises(RuntimeError, match="Model must be set"):
+        mpc.setModelOffsetDiscrete(wd=np.zeros(n))
+
+    mpc.setModelContinuous2Discrete(Ac, Bc, np.zeros(n), 0.1)
+    wc = np.array([0.3, -0.4])
+    mpc.setModelOffsetContinuous2Discrete(wc=wc)
+    Ad, Bd, wd = ampc.Discretizer(n, m).discretize(Ac, Bc, wc, 0.1)
+    np.testing.assert_allclose(mpc.propagateModel(x, u), Ad @ x + Bd @ u + wd, atol=1e-15)
+
+    mpc.setModelOffsetDiscrete(wd=np.array([0.01, 0.02]))
+    np.testing.assert_allclose(
+        mpc.propagateModel(x, u), Ad @ x + Bd @ u + [0.01, 0.02], atol=1e-15
+    )
+
+    mpc.setModelDiscrete(Ad, Bd, wd)
+    with pytest.raises(RuntimeError, match="setModelContinuous2Discrete"):
+        mpc.setModelOffsetContinuous2Discrete(wc)

@@ -31,75 +31,90 @@ Attributes:
     knots: Full knot vector of size num_control_points + degree + 1.
 
 Static Methods:
+    makeClampedKnots: Generate a uniform or geometric knot vector to modify.
     makeUniformClampedKnots: Generate a knot vector that can be modified.
     moveBlocking: Factory method for move-blocking parameterization.
     linearInterp: Factory method for linear interpolation parameterization.
     bspline: Factory method for clamped B-spline parameterization.
                                          )doc");
 
-  param.def_static(
-      "moveBlocking",
-      [](int horizon_steps, int num_control_points) {
-        return ampc::Parameterization::moveBlocking(horizon_steps,
-                                                    num_control_points);
-      },
-      R"doc(
-Factory method for uniform move-blocking parameterization.
+  param.def_static("moveBlocking",
+                   py::overload_cast<int, int, double>(
+                       &ampc::Parameterization::moveBlocking),
+                   R"doc(
+Factory method for move-blocking parameterization with uniform or
+geometrically spaced blocks.
 
 Args:
     horizon_steps: Number of discrete steps in the MPC horizon.
     num_control_points: Number of B-spline control points. Cannot be greater
         than horizon_steps.
+    knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+        intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+        span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+        ratio above 1 puts short intervals (more flexibility) at the start of
+        the horizon and a ratio below 1 puts them at the end.
+
+Raises:
+    ValueError: If the shortest block is shorter than one sample, or
+        if any argument is invalid.
 
 returns:
-    out: Parameterization instance with uniform move-blocking structure.
+    out: Parameterization instance with move-blocking structure.
 )doc",
-      py::arg("horizon_steps"), py::arg("num_control_points"));
+                   py::arg("horizon_steps"), py::arg("num_control_points"),
+                   py::arg("knot_ratio") = 1.0);
 
   param.def_static(
       "moveBlocking",
-      [](int horizon_steps,
-         const Eigen::Ref<const Eigen::VectorXd>& change_points) {
-        return ampc::Parameterization::moveBlocking(horizon_steps,
-                                                    change_points);
-      },
+      py::overload_cast<int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::moveBlocking),
       R"doc(
 Factory method for move-blocking parameterization with custom change points.
 
 Args:
     horizon_steps: Number of discrete steps in the MPC horizon.
-    change_points: Vector of change point locations.
+    change_points: Increasing start times of the blocks. The first must be 0
+        and the last at most horizon_steps - 1. horizon_steps - 1 is appended
+        to close the last block, so 0, 1, ..., horizon_steps - 1 gives one
+        control point per step.
 
 returns:
     out: Parameterization instance with move-blocking structure.
 )doc",
       py::arg("horizon_steps"), py::arg("change_points"));
 
-  param.def_static(
-      "linearInterp",
-      [](int horizon_steps, int num_control_points) {
-        return ampc::Parameterization::linearInterp(horizon_steps,
-                                                    num_control_points);
-      },
-      R"doc(
-Factory method for uniform linear interpolation parameterization.
+  param.def_static("linearInterp",
+                   py::overload_cast<int, int, double>(
+                       &ampc::Parameterization::linearInterp),
+                   R"doc(
+Factory method for linear interpolation parameterization with uniform or
+geometrically spaced endpoints.
 
 Args:
     horizon_steps: Number of discrete steps in the MPC horizon.
     num_control_points: Number of B-spline control points. Cannot be greater
         than horizon_steps.
+    knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+        intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+        span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+        ratio above 1 puts short intervals (more flexibility) at the start of
+        the horizon and a ratio below 1 puts them at the end.
+
+Raises:
+    ValueError: If the shortest segment is shorter than one sample, or
+        if any argument is invalid.
 
 returns:
-    out: Parameterization instance with uniform linear interpolation structure.
+    out: Parameterization instance with linear interpolation structure.
 )doc",
-      py::arg("horizon_steps"), py::arg("num_control_points"));
+                   py::arg("horizon_steps"), py::arg("num_control_points"),
+                   py::arg("knot_ratio") = 1.0);
 
   param.def_static(
       "linearInterp",
-      [](int horizon_steps,
-         const Eigen::Ref<const Eigen::VectorXd>& endpoints) {
-        return ampc::Parameterization::linearInterp(horizon_steps, endpoints);
-      },
+      py::overload_cast<int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::linearInterp),
       R"doc(
 Factory method for linear interpolation parameterization with custom endpoints.
 
@@ -113,34 +128,38 @@ returns:
 )doc",
       py::arg("horizon_steps"), py::arg("endpoints"));
 
-  param.def_static(
-      "bspline",
-      [](int horizon_steps, int degree, int num_control_points) {
-        return ampc::Parameterization::bspline(horizon_steps, degree,
-                                               num_control_points);
-      },
-      R"doc(
-Factory method for uniform clamped B-spline parameterization.
+  param.def_static("bspline",
+                   py::overload_cast<int, int, int, double>(
+                       &ampc::Parameterization::bspline),
+                   R"doc(
+Factory method for clamped B-spline parameterization with uniform or
+geometrically spaced active knots.
 
 Args:
     horizon_steps: Number of discrete steps in the MPC horizon.
     degree: Degree of B-spline polynomials. Must be less than num_control_points.
     num_control_points: Number of B-spline control points. Cannot be greater
         than horizon_steps.
+    knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+        intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+        span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+        ratio above 1 puts short intervals (more flexibility) at the start of
+        the horizon and a ratio below 1 puts them at the end.
+
+Raises:
+    ValueError: If the shortest knot interval is shorter than one sample, or
+        if any argument is invalid.
 
 returns:
-    out: Parameterization instance with uniform clamped B-spline structure.
+    out: Parameterization instance with clamped B-spline structure.
 )doc",
-      py::arg("horizon_steps"), py::arg("degree"),
-      py::arg("num_control_points"));
+                   py::arg("horizon_steps"), py::arg("degree"),
+                   py::arg("num_control_points"), py::arg("knot_ratio") = 1.0);
 
   param.def_static(
       "bspline",
-      [](int horizon_steps, int degree,
-         const Eigen::Ref<const Eigen::VectorXd>& active_knots) {
-        return ampc::Parameterization::bspline(horizon_steps, degree,
-                                               active_knots);
-      },
+      py::overload_cast<int, int, const Eigen::Ref<const Eigen::VectorXd>&>(
+          &ampc::Parameterization::bspline),
       R"doc(
 Factory method for clamped B-spline parameterization with custom active knots.
 
@@ -177,8 +196,15 @@ Args:
     horizon_steps: Number of discrete steps in the MPC horizon.
     degree: Degree of B-spline polynomials. Must be less than horizon_steps.
     knots: Full knot vector with size in the range [2*(degree+1),
-        horizon_steps+degree+1]. Must be non-decreasing. First knot must be 0
-        and last knot must be horizon_steps-1.
+        horizon_steps+degree+1]. Must be non-decreasing. The first active
+        knot (index degree) must be 0 and the last active knot (index
+        len(knots)-degree-1) must be horizon_steps-1; for unclamped splines
+        the knots outside them extend beyond [0, horizon_steps-1]. Knots
+        among the first and last degree+1 are snapped to 0 and
+        horizon_steps-1 when within 1e-9 * horizon_steps (round-off). Every
+        control point must influence at least one sampled input (its basis
+        function can not be zero at every sample k = 0, ...,
+        horizon_steps-1).
           )doc",
             py::arg("horizon_steps"), py::arg("degree"), py::arg("knots"));
 
@@ -195,6 +221,34 @@ Returns:
     input_traj (vector): The evaluated input trajectory.
             )doc",
             py::arg("input_dim"), py::arg("control_points"));
+
+  param.def_static("makeClampedKnots",
+                   &ampc::Parameterization::makeClampedKnots,
+                   R"doc(
+Static method for generating a clamped knot vector with uniform or
+geometrically spaced active knots (the knots used by the factories). Useful for
+generating a starting point that can be modified for custom parameterizations.
+
+Args:
+    horizon_steps: Number of discrete steps in the MPC horizon.
+    degree: Degree of B-spline polynomials. Must be less than num_control_points.
+    num_control_points: Number of B-spline control points. Cannot be greater
+        than horizon_steps.
+    knot_ratio: Ratio of consecutive knot interval lengths (positive): the
+        intervals are proportional to 1, knot_ratio, knot_ratio^2, ... and
+        span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
+        ratio above 1 puts short intervals (more flexibility) at the start of
+        the horizon and a ratio below 1 puts them at the end.
+
+Raises:
+    ValueError: If the shortest knot interval is shorter than one sample, or
+        if any argument is invalid.
+
+Returns:
+    knots: The clamped knot vector.
+)doc",
+                   py::arg("horizon_steps"), py::arg("degree"),
+                   py::arg("num_control_points"), py::arg("knot_ratio") = 1.0);
 
   param.def_static("makeUniformClampedKnots",
                    &ampc::Parameterization::makeUniformClampedKnots,
@@ -219,6 +273,17 @@ Returns:
   param.def_readonly("num_control_points",
                      &ampc::Parameterization::num_control_points);
   param.def_readonly("knots", &ampc::Parameterization::knots);
+  param.def_readonly("band_width", &ampc::Parameterization::band_width,
+                     "Number of consecutive control points that can affect "
+                     "one sampled input (degree + 1 for B-splines).");
+  param.def_readonly("band_start", &ampc::Parameterization::band_start,
+                     "Index of the first control point that affects the input "
+                     "at each step k (size horizon_steps).");
+  param.def_readonly("band_weights", &ampc::Parameterization::band_weights,
+                     "Basis weights in banded form (band_width x "
+                     "horizon_steps). The input at step k is "
+                     "sum_i band_weights[i, k] * control_point[band_start[k] "
+                     "+ i].");
 
   param.def("__str__", [](const ampc::Parameterization& self) {
     std::ostringstream os;

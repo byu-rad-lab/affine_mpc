@@ -14,6 +14,7 @@ except ModuleNotFoundError:
 from ._bindings import (
     Options,
     Parameterization,
+    Discretizer,
     OSQPSettings,
     SolveStatus,
     SolveInfo,
@@ -26,6 +27,7 @@ from ._bindings import (
 __all__ = [
     "Options",
     "Parameterization",
+    "Discretizer",
     "OSQPSettings",
     "SolveStatus",
     "SolveInfo",

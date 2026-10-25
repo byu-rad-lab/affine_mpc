@@ -60,10 +60,9 @@ public:
   void getPredictedStateTrajectory(
       Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
 
-protected: // for testing
   const char* getClassName() const noexcept override { return "CondensedMPC"; }
-  bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
+protected: // for testing
   void updateS();
   void updateV(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
@@ -71,16 +70,11 @@ protected: // for testing
   Eigen::VectorXd v_;
 
 private:
-  bool qpUpdateModel() override final;
-  bool qpUpdateReferences() override final;
-  bool qpUpdateInputLimits() override final;
-  bool qpUpdateStateLimits() override final;
-  bool qpUpdateSlewRate() override final;
+  DataChangeSet qpApplyChanges(DataChangeSet changes) override final;
+  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
 
-  Eigen::VectorXd weighted_state_err_; // Q_big_ * (v_ - x_ref_), avoids a temp
-
-  bool model_changed_;
-  bool bounds_changed_;
+  Eigen::VectorXd weighted_state_err_; // Q_big * (v_ - x_ref), avoids a temp
+  Eigen::MatrixXd weighted_S_;         // Q_big * S_, avoids a temp for P_
 };
 
 } // namespace affine_mpc

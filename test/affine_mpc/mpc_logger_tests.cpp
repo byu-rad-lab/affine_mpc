@@ -59,7 +59,10 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
   EXPECT_TRUE(fs::exists(raw_dir / "time.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "states.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "inputs.bin"));
-  EXPECT_TRUE(fs::exists(raw_dir / "solve_times.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "loop_time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "mpc_solve_time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "qp_solve_time.bin"));
+  EXPECT_TRUE(fs::exists(raw_dir / "prepare_time.bin"));
 }
 
 TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
@@ -67,7 +70,7 @@ TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
   ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "conv_log");
 
   Eigen::Vector2d x0{1.0, 0.5};
-  const auto status = mpc_->solve(x0);
+  ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
   logger.logStep(0.0, x0, 0.001);
   logger.finalize();
 

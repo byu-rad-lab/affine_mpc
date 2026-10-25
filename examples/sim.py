@@ -73,15 +73,16 @@ def run_example():
     t = 0.0
     tf = 10.0
     while t < tf:
+        # The logger records the solve() timing from SolveInfo automatically.
+        # loop_time is for timing your own loop, e.g. on hardware.
         start = perf_counter()
         status = msd_mpc.solve(xk)
-        elapsed = perf_counter() - start
 
         if status != ampc.SolveStatus.Success:
             print("Solver status:", status)
 
         uk = msd_mpc.getNextInput()
-        logger.logStep(t, xk, elapsed)
+        logger.logStep(t, xk, loop_time=perf_counter() - start)
 
         # Simulate system
         xk = msd_mpc.propagateModel(xk, uk)

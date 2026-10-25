@@ -76,8 +76,8 @@ The main difference between two formulations is the choice of design vector $\ma
 Sparse uses the control points and state trajectory while condensed only uses the control points:
 
 $$
-\mathbf{z}_c
-    = \mathbf{c} \quad \quad \quad \mathbf{z}_s
+\mathbf{z}_{\mathrm{c}}
+    = \mathbf{c} \quad \quad \quad \mathbf{z}_{\mathrm{s}}
     = \begin{bmatrix} \mathbf{c} \\ \mathbf{x} \end{bmatrix}
 $$
 
@@ -95,9 +95,9 @@ The rest of this page describes how to convert the MPC optimization problem into
 The MPC cost is
 
 $$
-J = \left\lVert \bar{\mathbf{x}}_T - \mathbf{x}_T \right\rVert^2_{Q_f}
-    + \sum_{k=1}^{T-1} \left\lVert \bar{\mathbf{x}}_k - \mathbf{x}_k \right\rVert^2_Q
-    + \sum_{i=0}^{\eta-1} \left\lVert \bar{\mathbf{c}}_i - \mathbf{c}_i \right\rVert^2_R
+J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
+    + \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
 $$
 
 Since we're optimizing a norm, it doesn't matter which term is being subtracted.
@@ -107,15 +107,15 @@ but it can be done either way.
 First, we will create block diagonal matrices using the weights:
 
 $$
-\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_f)
-    \quad \quad \quad \bar{R} = R \otimes I_\eta
+\bar{Q} = \mathrm{blkdiag}(Q, \dots, Q, Q_{\mathrm{f}})
+    \quad \quad \quad \bar{R} = I_\eta \otimes R
 $$
 
 Now the cost function can be written as
 
 $$
-J = (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}})
+J = (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})
 $$
 
 We will use this form of the cost function as the starting point for both the sparse and condensed formulations,
@@ -143,7 +143,7 @@ $$
 $$
 
 we need to rearrange it slightly to fit into a QP form.
-The design variable $\mathbf{z}_s$ has states and inputs
+The design variable $\mathbf{z}_{\mathrm{s}}$ has states and inputs
 (excluding $\mathbf{x}_0$ since it is fixed and not optimized),
 so we group all of those on one side of the equation:
 
@@ -173,7 +173,7 @@ $$
         \mathbf{0} &        & B
     \end{bmatrix}
     \begin{bmatrix}
-        \mathbf{u}_1 \\ \vdots \\ \mathbf{u}_T
+        \mathbf{u}_0 \\ \vdots \\ \mathbf{u}_{T-1}
     \end{bmatrix},
 $$
 
@@ -181,16 +181,16 @@ $$\Downarrow$$
 
 $$
 -\underbrace{
-    (\mathbf{w} \otimes \mathbf{1}_T + A \mathbf{x}_0 \otimes \mathbf{e}_1)
+    (\mathbf{1}_T \otimes \mathbf{w} + \mathbf{e}_1 \otimes A \mathbf{x}_0)
 }_{\mathbf{s}_w}
     =
     \underbrace{
-        ( A \otimes I_T^{(-1)} - I_{nT} )
+        ( I_T^{(-1)} \otimes A - I_{nT} )
     }_{S_x}
     \mathbf{x}
     +
     \underbrace{
-        ( B \otimes I_T )
+        ( I_T \otimes B )
     }_{S_u}
     \mathbf{u}.
 $$
@@ -215,7 +215,7 @@ $$
     \underbrace{
         \begin{bmatrix} S_u \Psi^p(\boldsymbol{\tau}) & S_x \end{bmatrix}
     }_{A_{\mathrm{model}}}
-    \mathbf{z}_s
+    \mathbf{z}_{\mathrm{s}}
     =
     \underbrace{-\mathbf{s}_w}_{\boldsymbol{\upsilon}_{\mathrm{model}}}
 $$
@@ -226,29 +226,35 @@ Starting with the cost function we derived above:
 
 $$
 \begin{align}
-J &= (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}}) \\
-  &=(\mathbf{z}_s - \bar{\mathbf{z}}_s)^\top
+J &= (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
+  &=(\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}})^\top
         \underbrace{
             \begin{bmatrix} \bar{R} & \mathbf{0} \\ \mathbf{0} & \bar{Q} \end{bmatrix}
         }_{P}
-    (\mathbf{z}_s - \bar{\mathbf{z}}_s) \\
-  &= \mathbf{z}_s^\top P \mathbf{z}_s
-    -2 \bar{\mathbf{z}}_s^\top P \mathbf{z}_s
-    + \underbrace{\bar{\mathbf{z}}_s^\top P \bar{\mathbf{z}}_s}_{\text{drop}} \\
-  &= \frac{1}{2} \mathbf{z}_s^\top P \mathbf{z}_s
-    + (\underbrace{-P \bar{\mathbf{z}}_s}_{\mathbf{q}})^\top \mathbf{z}_s
+    (\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}}) \\
+  &= \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
+    -2 \mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s}}
+    + \underbrace{\mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\text{drop}}
 \end{align}
 $$
 
 Here we see the last term has no design variables in it,
 so it is constant in terms of the optimization and can be dropped since we only care about the argmin.
-Now we have the definition of the QP cost terms
-(note that the 2 is constant and can also be dropped):
+Scaling the cost by $\frac{1}{2}$ also leaves the argmin unchanged and matches the QP form:
+
+$$
+\frac{1}{2} J
+    = \frac{1}{2} \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
+    + (\, \underbrace{-P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\mathbf{q}} \,)^\top \mathbf{z}_{\mathrm{s}}
+    + \text{const}
+$$
+
+Now we have the definition of the QP cost terms:
 
 $$
 P = \mathrm{blkdiag}(\bar{R}, \bar{Q})
-    \quad \quad \quad \mathbf{q} = -P \bar{\mathbf{z}}_s
+    \quad \quad \quad \mathbf{q} = -P \mathbf{z}_{\mathrm{s},\mathrm{ref}}
 $$
 
 ### Input Saturation
@@ -272,13 +278,13 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{\mathrm{min}} \otimes \mathbf{1}_\eta}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
     \begin{bmatrix} I_{m\eta} & \mathbf{0}_{m\eta \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_s
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_\eta}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
 **Saturate input trajectory:**
@@ -300,13 +306,13 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{\mathrm{min}} \otimes \mathbf{1}_T}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
     \begin{bmatrix} \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{mT \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_s
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_T}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
@@ -323,15 +329,15 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
+\underbrace{\mathbf{u}_{-1} - \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
 \leq
 \underbrace{
     \begin{bmatrix}
-        I_{m \times mT} \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{m \times nT}
+        (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{m \times nT}
     \end{bmatrix}
-}_{A_{\mathrm{slew0}}} \mathbf{z}_s
+}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
+\underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
 $$
 
 ### Slew Control Points
@@ -345,16 +351,32 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{c}_{\mathrm{slew}} \otimes \mathbf{1}_{\eta-1}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
+\underbrace{-\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
 \leq
 \underbrace{
     \begin{bmatrix}
-        -I_{m(\eta-1)} + I_{m(\eta-1)}^{(1)} & \mathbf{0}_{m(\eta-1) \times nT} \\
+        D_\eta \otimes I_m & \mathbf{0}_{m(\eta-1) \times nT} \\
     \end{bmatrix}
-}_{A_{\mathrm{slew}}} \mathbf{z}_s
+}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{c}_{\mathrm{slew}} \otimes \mathbf{1}_{\eta-1}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
+\underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
 $$
+
+where
+
+$$
+D_\eta
+    = \begin{bmatrix} \mathbf{0}_{(\eta-1) \times 1} & I_{\eta-1} \end{bmatrix}
+    - \begin{bmatrix} I_{\eta-1} & \mathbf{0}_{(\eta-1) \times 1} \end{bmatrix}
+    = \begin{bmatrix}
+        -1     & 1      &        &    \\
+               & \ddots & \ddots &    \\
+               &        & -1     & 1
+    \end{bmatrix}
+    \in \mathbb{R}^{(\eta-1) \times \eta}
+$$
+
+is the first-difference matrix, so the row blocks of $(D_\eta \otimes I_m) \mathbf{c}$ are $\mathbf{c}_i - \mathbf{c}_{i-1}$ for $i = 1, \dots, \eta-1$.
 
 ### State Saturation
 
@@ -375,13 +397,13 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{x}_{\mathrm{min}} \otimes \mathbf{1}_T}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
 \leq
 \underbrace{
     \begin{bmatrix} \mathbf{0}_{nT \times m\eta} & I_{nT} \end{bmatrix}
-}_{A_{\mathrm{xsat}}} \mathbf{z}_s
+}_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{x}_{\mathrm{max}} \otimes \mathbf{1}_T}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
 $$
 
 ## Condensed Formulation
@@ -450,26 +472,26 @@ $$\Downarrow$$
 $$
 \mathbf{x}
     =
-    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
-    \sum_{i=1}^{T}(A^i \mathbf{x}_0 \otimes \mathbf{e}_i)
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \mathbf{x}_0)
+    \sum_{i=1}^{T}(\mathbf{e}_i \otimes A^i \mathbf{x}_0)
     +
-    \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right)
-    \left( (B \otimes I_T) \mathbf{u} + \mathbf{w} \otimes \mathbf{1}_T \right)
+    \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right)
+    \left( (I_T \otimes B) \mathbf{u} + \mathbf{1}_T \otimes \mathbf{w} \right)
 $$
 
 Now if we let
 
 $$
-S = \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right) (B \otimes I_T) \Psi^p(\boldsymbol{\tau})
+S = \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (I_T \otimes B) \Psi^p(\boldsymbol{\tau})
 $$
 
 $$
 \mathbf{v}
     =
-    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{x}_0 \otimes \mathbf{1}_T)
-    \sum_{i=1}^{T}(A^i \mathbf{x}_0 \otimes \mathbf{e}_i)
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \mathbf{x}_0)
+    \sum_{i=1}^{T}(\mathbf{e}_i \otimes A^i \mathbf{x}_0)
     +
-    \left( \sum_{i=0}^{T-1} A^i \otimes I_T^{(-i)} \right) (\mathbf{w} \otimes \mathbf{1}_T)
+    \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (\mathbf{1}_T \otimes \mathbf{w})
 $$
 
 ??? info "Alternate Expanded Visual Form"
@@ -498,7 +520,7 @@ $$
 then the final condensed form is
 
 $$
-\mathbf{x} = S \mathbf{z}_c + \mathbf{v}.
+\mathbf{x} = S \mathbf{z}_{\mathrm{c}} + \mathbf{v}.
 $$
 
 This gives us a model function we can use to substitute out predicted states from the cost function.
@@ -515,20 +537,20 @@ $$
 \begin{align}
 J
     &=
-    (\mathbf{x} - \bar{\mathbf{x}})^\top \bar{Q} (\mathbf{x} - \bar{\mathbf{x}})
-    + (\mathbf{c} - \bar{\mathbf{c}})^\top \bar{R} (\mathbf{c} - \bar{\mathbf{c}}) \\
+    (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
+    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
     &=
     \mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \bar{\mathbf{x}}
-    + \underbrace{\bar{\mathbf{x}}^\top \bar{Q} \bar{\mathbf{x}}}_{\text{drop}}
+    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}
+    + \underbrace{\mathbf{x}_{\mathrm{ref}}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}}
     + \mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \mathbf{c}^\top \bar{R} \bar{\mathbf{c}}
-    + \underbrace{\bar{\mathbf{c}}^\top \bar{R} \bar{\mathbf{c}}}_{\text{drop}} \\
+    - 2 \mathbf{c}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}
+    + \underbrace{\mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
     \underbrace{\mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \bar{\mathbf{x}}}_{J_x}
+    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{J_x}
     + \underbrace{\mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{c}}_{J_c}
+    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}}_{J_c}
 \end{align}
 $$
 
@@ -538,17 +560,18 @@ $$
 \begin{align}
 J_x
     &=
-    (S \mathbf{z}_c + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_c + \mathbf{v})
-    - 2 (S \mathbf{z}_c + \mathbf{v})^\top \bar{Q} \bar{\mathbf{x}} \\
+    (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})
+    - 2 (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} \mathbf{x}_{\mathrm{ref}} \\
     &=
-    \mathbf{z}_c^\top (S^T \bar{Q} S) \mathbf{z}_c
-    + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_c
+    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
+    + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
     + \underbrace{\mathbf{v}^\top \bar{Q} \mathbf{v}}_{\text{drop}}
-    - 2 \bar{\mathbf{x}}^\top \bar{Q} S \mathbf{z}_c
-    - \underbrace{2 \mathbf{v}^\top \bar{Q} \bar{\mathbf{x}}}_{\text{drop}} \\
+    - 2 \mathbf{x}_{\mathrm{ref}}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
+    - \underbrace{2 \mathbf{v}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
-    \frac{1}{2} \mathbf{z}_c^\top (S^T \bar{Q} S) \mathbf{z}_c
-    + (S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}))^\top \mathbf{z}_c
+    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
+    + 2 (S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}))^\top \mathbf{z}_{\mathrm{c}}
+    + \text{const}
 \end{align}
 $$
 
@@ -558,38 +581,40 @@ $$
 \begin{align}
 J_c
     &=
-    \mathbf{z}_c^\top \bar{R} \mathbf{z}_c
-    - 2 \bar{\mathbf{c}}^\top \bar{R} \mathbf{z}_c \\
+    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
+    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{z}_{\mathrm{c}} \\
     &=
-    \frac{1}{2} \mathbf{z}_c^\top \bar{R} \mathbf{z}_c
-    - (\bar{R} \bar{\mathbf{c}})^\top \mathbf{z}_c \\
+    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
+    - 2 (\bar{R} \mathbf{c}_{\mathrm{ref}})^\top \mathbf{z}_{\mathrm{c}} \\
 \end{align}
 $$
 
-Combining $J_x$ and $J_c$ back together gives the final form
+Combining $J_x$ and $J_c$ back together and scaling by $\frac{1}{2}$
+(which, like dropping constants, leaves the argmin unchanged) gives the final form
 
 $$
 \begin{align}
-J
+\frac{1}{2} J
     &=
-    \frac{1}{2} \mathbf{z}_c^\top
-    \underbrace{(S^T \bar{Q} S + \bar{R})}_{P}
-    \mathbf{z}_c
+    \frac{1}{2} \mathbf{z}_{\mathrm{c}}^\top
+    \underbrace{(S^\top \bar{Q} S + \bar{R})}_{P}
+    \mathbf{z}_{\mathrm{c}}
     +
     (\underbrace{
-        S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
-    }_{\mathbf{q}})^\top \mathbf{z}_c
+        S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
+    }_{\mathbf{q}})^\top \mathbf{z}_{\mathrm{c}}
+    + \text{const}
 \end{align}
 $$
 
 where we see that
 
 $$
-P = (S^T \bar{Q} S + \bar{R})
+P = (S^\top \bar{Q} S + \bar{R})
 $$
 
 $$
-\mathbf{q} =  S^\top \bar{Q} (\mathbf{v} - \bar{\mathbf{x}}) - \bar{R} \bar{\mathbf{c}}
+\mathbf{q} =  S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
 $$
 
 ### Input Saturation
@@ -613,11 +638,11 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{\mathrm{min}} \otimes \mathbf{1}_\eta}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \mathbf{z}_c
+\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_\eta}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
 **Saturate input trajectory:**
@@ -639,11 +664,11 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{\mathrm{min}} \otimes \mathbf{1}_T}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{ \Psi^p(\boldsymbol{\tau}) }_{A_{\mathrm{usat}}} \mathbf{z}_c
+\underbrace{ \Psi^p(\boldsymbol{\tau}) }_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{u}_{\mathrm{max}} \otimes \mathbf{1}_T}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
@@ -660,13 +685,13 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
+\underbrace{\mathbf{u}_{-1} - \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
 \leq
 \underbrace{
-        I_{m \times mT} \Psi^p(\boldsymbol{\tau})
-}_{A_{\mathrm{slew0}}} \mathbf{z}_c
+        (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau})
+}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
+\underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
 $$
 
 ### Slew Control Points
@@ -680,16 +705,16 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{c}_{\mathrm{slew}} \otimes \mathbf{1}_{\eta-1}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
+\underbrace{-\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
 \leq
 \underbrace{
-    \begin{bmatrix}
-        -I_{m(\eta-1)} + I_{m(\eta-1)}^{(1)}
-    \end{bmatrix}
-}_{A_{\mathrm{slew}}} \mathbf{z}_c
+    (D_\eta \otimes I_m)
+}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{c}_{\mathrm{slew}} \otimes \mathbf{1}_{\eta-1}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
+\underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
 $$
+
+where $D_\eta$ is the first-difference matrix defined in the [sparse formulation](#slew-control-points).
 
 ### State Saturation
 
@@ -714,7 +739,7 @@ $$
     \mathbf{x}_{\mathrm{min}} \\ \vdots \\ \mathbf{x}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-S \mathbf{z}_c + \mathbf{v}
+S \mathbf{z}_{\mathrm{c}} + \mathbf{v}
 \leq
 \begin{bmatrix}
     \mathbf{x}_{\mathrm{max}} \\ \vdots \\ \mathbf{x}_{\mathrm{max}}
@@ -726,11 +751,11 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{x}_{\mathrm{min}} \otimes \mathbf{1}_T - \mathbf{v}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}} - \mathbf{v}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
 \leq
-\underbrace{ S }_{A_{\mathrm{xsat}}} \mathbf{z}_c
+\underbrace{ S }_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{x}_{\mathrm{max}} \otimes \mathbf{1}_T - \mathbf{v}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}} - \mathbf{v}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
 $$
 
 !!! note

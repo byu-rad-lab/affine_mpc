@@ -16,6 +16,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     The most important names exported by `affine_mpc` are:
 
     - `Parameterization`
+    - `Discretizer`
     - `Options`
     - `OSQPSettings`
     - `CondensedMPC`
@@ -31,6 +32,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     The most important types in the `affine_mpc` namespace are:
 
     - `Parameterization`
+    - `Discretizer`
     - `Options`
     - `MPCBase`
     - `CondensedMPC`
@@ -51,7 +53,7 @@ Factory methods are provided for
 - Linear interpolation (`linearInterp()`)
 - Clamped B-splines (`bspline()`)
 
-When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots are used) or you can supply a custom knot vector.
+When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots by default, or geometrically spaced knots with `knot_ratio`) or you can supply a custom knot vector.
 For unclamped splines, you must use the regular constructor directly.
 
 If you are unsure what to use, linear interpolation is a good default:
@@ -102,7 +104,7 @@ See [Concepts](concepts/index.md) for more details on options.
 Choose between `CondensedMPC` and `SparseMPC` (they have the same interfaces).
 
 - `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
-- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems
+- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
 
 The best way to know which is faster for your problem is to try them both.
 
@@ -176,7 +178,24 @@ The continuous model is discretized exactly under a zero-order hold on the input
 The matrix exponential is computed with scaling and squaring, so the result stays accurate even when the dynamics are fast relative to `dt`.
 An optional fifth argument, `tol` (default `1e-10`), sets the truncation tolerance of the underlying Taylor series.
 The default gives results close to machine precision.
-If you relinearize and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
+If you update the affine approximation and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
+If only the model offset changes between solves (with $A$ and $B$ fixed), set it with `setModelOffsetDiscrete(wd)` or `setModelOffsetContinuous2Discrete(wc)` instead, which avoids rebuilding and refactoring the QP (see [Runtime Updates](concepts/runtime-updates.md#what-can-change-between-solves)).
+
+The same discretization is available on its own as `Discretizer`, e.g. to simulate the plant or to discretize a model before passing it to several MPC objects:
+
+=== "Python"
+
+    ```python
+    disc = affine_mpc.Discretizer(state_dim, input_dim)
+    Ad, Bd, wd = disc.discretize(Ac, Bc, wc, dt)
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::Discretizer disc{state_dim, input_dim};
+    disc.discretize(Ac, Bc, wc, dt, Ad, Bd, wd); // writes into Ad, Bd, wd
+    ```
 
 #### Set input limits
 
@@ -265,6 +284,10 @@ With input cost:
     mpc.setInputWeights(R_diag);
     ```
 
+The input weight `R` weights the control points, not the sampled inputs.
+With non-uniform knots, a control point on a short early interval is weighted the same as one on a long late interval, even though it affects fewer samples.
+Keep this in mind when comparing input penalties across parameterizations.
+
 #### Set references
 
 State step reference:
@@ -331,6 +354,24 @@ If input cost is enabled, input references can also be configured:
     ```
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+`getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
+Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached` (the paper experiments use 20000):
+
+=== "Python"
+
+    ```python
+    settings = affine_mpc.OSQPSettings()  # recommended settings
+    settings.max_iter = 20000
+    mpc.initializeSolver(settings)
+    ```
+
+=== "C++"
+
+    ```cpp
+    OSQPSettings settings = affine_mpc::OSQPSolver::getRecommendedSettings();
+    settings.max_iter = 20000;
+    if (!mpc.initializeSolver(settings)) { /* handle the error */ }
+    ```
 
 ### 6. Solve in the control loop
 
@@ -344,10 +385,14 @@ is in the main runtime loop. Common cases include:
 
 How to respond to a failed solve depends on the application.
 For example, you could reuse the previously applied input or have a fallback control law like LQR.
-After a failure, `solve()` has still stored the first input of the failed solution as the previous input used by `slew_initial_input`,
-so call `setPreviousInput()` with the input you actually applied.
+After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return OSQP's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
+The previous input used by `slew_initial_input` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
 The failed solve's iterates may also have diverged, which would slow down the next solve since OSQP warm starts from them,
 so call `resetWarmStart()` to start the next solve from zero.
+
+`MaxIterReached` is a partial exception.
+With B-spline parameterizations its iterate is usually close to the solution: in the paper experiments the applied input violated the input limits by at most $8.7 \times 10^{-6}$ of `u_max`.
+Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
 === "Python"
 
@@ -420,17 +465,23 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
 
     ```python
     info = mpc.getSolveInfo()
-    print(info.iterations, info.solve_time)
+    print(info.iterations, info.qp_solve_time, info.mpc_solve_time)
     ```
 
 === "C++"
 
     ```cpp
     const affine_mpc::SolveInfo info = mpc.getSolveInfo();
-    std::cout << info.iterations << ' ' << info.solve_time << '\n';
+    std::cout << info.iterations << ' ' << info.qp_solve_time << ' '
+              << info.mpc_solve_time << '\n';
     ```
 
 `objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
+`qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
+Setters only store their values and the QP is updated in `solve()`, so `mpc_solve_time` covers essentially all of the MPC's work.
+The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
+If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
+`prepare_time` is the total time of the `prepare()` calls since the previous solve (zero if there were none), so `prepare_time + mpc_solve_time` is the MPC's work for the step while `mpc_solve_time` alone is its latency.
 
 ### 8. (Optional) Logging
 
@@ -461,13 +512,13 @@ Inside the control loop:
 === "Python"
 
     ```python
-    logger.logStep(t, xk, solve_time)
+    logger.logStep(t, xk)  # or logStep(t, xk, loop_time) to log your own timing
     ```
 
 === "C++"
 
     ```cpp
-    logger.logStep(t, xk, user_solve_time);
+    logger.logStep(t, xk); // or logStep(t, xk, loop_time) for your own timing
     ```
 
 See [Logging](logging.md) for output format and workflow details.
@@ -531,5 +582,5 @@ You can propagate the internal model one step with:
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
 - If a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` weights are exempt; see [Runtime Updates](concepts/runtime-updates.md)).
-- To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()`.
-- If you enable `slew_initial_input`, provide the previous input before solving; after initial solve, it is automatically set from the previous solve.
+- To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()` or `prepare()`.
+- If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.

@@ -3,14 +3,14 @@
 #include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
-#include <numeric>
 #include <osqp.h>
 #include <stdexcept>
 #include <string>
-#include <unsupported/Eigen/Splines>
 #include <vector>
 
+#include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
 #include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
@@ -39,50 +39,15 @@ constexpr int validateInputDim(int input_dim)
   return input_dim;
 }
 
-/**
- * @brief Sample indices whose inputs are bounded when
- * `saturate_input_trajectory` is enabled. An empty result means the control
- * points are bounded instead.
- *
- * - degree 0: control points (each one equals the sampled inputs on its
- *   interval, so this is already exact).
- * - degree 1: floor(t) and ceil(t) of every active knot t, without
- *   duplicates. The spline is linear between knots, so every other sample lies
- *   between the first and last samples of its segment, and bounding these (at
- *   most 2*num_control_points-2) samples is exactly equivalent to bounding all
- *   of them. Active knots can not repeat, so the spline is continuous.
- * - degree > 1: every sample.
- */
-std::vector<int> inputSatSamples(const Parameterization& param,
-                                 const Options& opts)
+// Sample indices whose inputs are bounded when `saturate_input_trajectory` is
+// enabled. An empty result means the control points are bounded instead.
+std::vector<int>
+inputSatSamples(const detail::VectorParameterization& input_param,
+                const Options& opts)
 {
-  if (!opts.saturate_input_trajectory || param.degree == 0)
+  if (!opts.saturate_input_trajectory)
     return {};
-
-  std::vector<int> samples;
-  if (param.degree > 1) {
-    samples.resize(param.horizon_steps);
-    std::iota(samples.begin(), samples.end(), 0);
-    return samples;
-  }
-
-  // degree 1: active knots are knots(1), ..., knots(size-2) and span [0, T-1]
-  constexpr double snap_tol{1e-9}; // treat round-off from integers as integers
-  const VectorXd& knots{param.knots};
-  samples.reserve(2 * (knots.size() - 2));
-  for (Index i{1}; i < knots.size() - 1; ++i) {
-    const double t{knots(i)};
-    const double t_round{std::round(t)};
-    if (std::abs(t - t_round) <= snap_tol) {
-      samples.push_back(static_cast<int>(t_round));
-    } else {
-      samples.push_back(static_cast<int>(std::floor(t)));
-      samples.push_back(static_cast<int>(std::ceil(t)));
-    }
-  }
-  std::sort(samples.begin(), samples.end());
-  samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
-  return samples;
+  return input_param.inputSaturationSamples();
 }
 
 // Size checks for setters, which are not on the solve path. The message is
@@ -123,12 +88,12 @@ MPCBase::MPCBase(int state_dim,
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
     num_ctrl_pts_{param.num_control_points},
-    spline_degree_{param.degree},
     x_traj_dim_{state_dim * param.horizon_steps},
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
-    u_sat_samples_{inputSatSamples(param, opts)},
+    input_param_{input_dim_, param},
+    u_sat_samples_{inputSatSamples(input_param_, opts)},
     num_u_sat_cons_{u_sat_samples_.empty()
                         ? param.num_control_points
                         : static_cast<int>(u_sat_samples_.size())},
@@ -139,26 +104,22 @@ MPCBase::MPCBase(int state_dim,
     slew0_idx_{u_sat_idx_ + u_sat_dim_},
     slew_idx_{slew0_idx_ + input_dim * opts.slew_initial_input},
     x_sat_idx_{slew_idx_ + slew_dim_},
+    solution_map_{nullptr, 0},
+    solver_{nullptr},
+    data_{state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, opts_},
+    // nothing is in the QP yet, so initializeSolver() assembles everything
+    pending_{DataChangeSet::all()},
     model_set_{false},
+    model_from_continuous_{false},
     u_lims_set_{false},
     x_lims_set_{false},
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
-    weights_changed_{false},
-    Ad_{state_dim, state_dim},
-    Bd_{state_dim, input_dim},
-    wd_{state_dim},
-    Q_big_{state_dim * param.horizon_steps},
-    x_ref_{state_dim * param.horizon_steps},
-    u_min_{input_dim},
-    u_max_{input_dim},
-    solution_map_{nullptr, 0},
-    solver_{nullptr},
-    spline_segment_idxs_{param.horizon_steps},
-    // spline_knots_{param.num_control_points + param.degree + 1},
-    spline_knots_{param.knots},
-    spline_weights_{param.degree + 1, param.horizon_steps}
+    mpc_solve_time_{0.0},
+    prepare_time_{0.0},
+    unsolved_prepare_time_{0.0},
+    discretizer_{state_dim_, input_dim_}
 {
   // allocate QP memory
   const int slew0_dim{input_dim * opts.slew_initial_input};
@@ -171,26 +132,19 @@ MPCBase::MPCBase(int state_dim,
   l_.resize(num_constraints);
   u_.resize(num_constraints);
 
-  // set defaults
-  Q_big_.setIdentity();
-  u_min_.setConstant(-std::numeric_limits<double>::infinity());
-  u_max_.setConstant(std::numeric_limits<double>::infinity());
-
-  calcSplineParams();
-
   // initialize common constraint matrix blocks
   A_.setZero();
 
   if (!u_sat_samples_.empty()) {
     // saturate sampled inputs (each a weighted sum of control points)
-    const int num_weights{spline_degree_ + 1};
     int row{u_sat_idx_};
     for (const int k : u_sat_samples_) {
-      for (int i{0}, col{input_dim_ * spline_segment_idxs_(k)}; i < num_weights;
-           ++i, col += input_dim_) {
+      for (int i{0}; i < param.band_width; ++i) {
+        const int col{
+            input_param_.coefficientIndex(0, param.band_start(k) + i)};
         A_.block(row, col, input_dim_, input_dim_)
             .diagonal()
-            .setConstant(spline_weights_(i, k));
+            .setConstant(param.band_weights(i, k));
       }
       row += input_dim_;
     }
@@ -199,33 +153,19 @@ MPCBase::MPCBase(int state_dim,
     A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();
   }
 
-  // allocate memory needed based on options
-  if (opts_.use_input_cost) {
-    R_big_.setIdentity(ctrls_dim_);
-    ctrls_ref_.setZero(ctrls_dim_);
-  }
   if (opts.slew_initial_input) {
-    for (int i{0}, col{0}; i < spline_degree_ + 1; ++i, col += input_dim_) {
+    // the first sampled input u_0
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(0) + i)};
       A_.block(slew0_idx_, col, input_dim_, input_dim_)
           .diagonal()
-          .setConstant(spline_weights_(i, 0));
+          .setConstant(param.band_weights(i, 0));
     }
-    u_prev_.setZero(input_dim_);
-    u0_slew_.resize(input_dim);
-    u0_slew_.setConstant(std::numeric_limits<double>::infinity());
   }
   if (opts.slew_control_points) {
     const int slew_cp_dim{input_dim * (param.num_control_points - 1)};
     A_.middleRows(slew_idx_, slew_cp_dim).diagonal().setConstant(-1.0);
     A_.middleRows(slew_idx_, slew_cp_dim).diagonal(input_dim).setOnes();
-    ctrls_slew_.resize(input_dim);
-    ctrls_slew_.setConstant(std::numeric_limits<double>::infinity());
-  }
-  if (opts_.saturate_states) {
-    x_min_.resize(state_dim);
-    x_max_.resize(state_dim);
-    x_min_.setConstant(-std::numeric_limits<double>::infinity());
-    x_max_.setConstant(std::numeric_limits<double>::infinity());
   }
 }
 
@@ -281,17 +221,84 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   if (!solver_initialized_)
     return SolveStatus::NotInitialized;
 
-  if (!qpUpdateX0(x0))
+  // SolveInfo describes one cycle: the prepare() calls since the last solve
+  // and this solve
+  prepare_time_ = unsolved_prepare_time_;
+  unsolved_prepare_time_ = 0.0;
+
+  using Clock = std::chrono::steady_clock;
+  const Clock::time_point start{Clock::now()};
+  if (!applyPendingChanges() || !qpApplyX0(x0)) {
+    mpc_solve_time_ =
+        std::chrono::duration<double>(Clock::now() - start).count();
     return SolveStatus::UpdateFailed;
+  }
   const SolveStatus status{solver_->solve()};
 
   // update u_prev after solve rather than before so user can manually
-  // overwrite it between solves if desired
-  if (opts_.slew_initial_input) {
-    getNextInput(u_prev_);
-    setPreviousInput(u_prev_);
+  // overwrite it between solves if desired. Other statuses leave an iterate
+  // that is not a solution (e.g. an infeasibility certificate), which would
+  // corrupt the initial slew constraint of every later solve.
+  if (opts_.slew_initial_input
+      && (status == SolveStatus::Success
+          || status == SolveStatus::SolvedInaccurate)) {
+    getNextInput(data_.u_prev);
+    pending_ |= DataChange::PreviousInput;
   }
+  mpc_solve_time_ = std::chrono::duration<double>(Clock::now() - start).count();
   return status;
+}
+
+SolveStatus MPCBase::prepare()
+{
+  if (!solver_initialized_)
+    return SolveStatus::NotInitialized;
+
+  using Clock = std::chrono::steady_clock;
+  const Clock::time_point start{Clock::now()};
+  const bool applied{applyPendingChanges()};
+  unsolved_prepare_time_ +=
+      std::chrono::duration<double>(Clock::now() - start).count();
+  return applied ? SolveStatus::Success : SolveStatus::UpdateFailed;
+}
+
+bool MPCBase::qpUpdateX0(const Ref<const VectorXd>& x0)
+{
+  const bool applied{applyPendingChanges()};
+  return qpApplyX0(x0) && applied;
+}
+
+bool MPCBase::applyPendingChanges()
+{
+  // Nothing changed is the common case, which costs only this check
+  if (pending_.empty())
+    return true;
+  writeBounds(pending_);
+  pending_ = qpApplyChanges(pending_);
+  return pending_.empty();
+}
+
+void MPCBase::writeBounds(const DataChangeSet changes)
+{
+  const MPCData& d{data_};
+  if (changes.has(DataChange::Limits)) {
+    l_.segment(u_sat_idx_, u_sat_dim_) = d.u_min.replicate(num_u_sat_cons_, 1);
+    u_.segment(u_sat_idx_, u_sat_dim_) = d.u_max.replicate(num_u_sat_cons_, 1);
+    if (opts_.slew_control_points) {
+      u_.segment(slew_idx_, slew_dim_) =
+          d.ctrls_slew.replicate(num_ctrl_pts_ - 1, 1);
+      l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
+    }
+    if (opts_.saturate_states) {
+      l_.tail(x_sat_dim_) = d.x_min.replicate(horizon_steps_, 1);
+      u_.tail(x_sat_dim_) = d.x_max.replicate(horizon_steps_, 1);
+    }
+  }
+  if (opts_.slew_initial_input
+      && changes.has(DataChange::Limits | DataChange::PreviousInput)) {
+    l_.segment(slew0_idx_, input_dim_) = d.u_prev - d.u0_slew;
+    u_.segment(slew0_idx_, input_dim_) = d.u_prev + d.u0_slew;
+  }
 }
 
 bool MPCBase::isWithinSparsityPattern() const
@@ -306,7 +313,7 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const
   assert(solver_initialized_);
   validateSize(u0.size(), input_dim_, "getNextInput", "u0");
   // Assumes that the control points are first elements of solution
-  getInput(0, solution_map_, u0);
+  input_param_.evaluate(0, solution_map_, u0);
 }
 
 void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const
@@ -323,7 +330,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
   assert(solver_initialized_);
   validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
   // Assumes that the control points are first elements of solution
-  evaluateControlPoints(solution_map_, u_traj);
+  input_param_.evaluateTrajectory(solution_map_, u_traj);
 }
 
 void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
@@ -344,10 +351,10 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
   validateSize(u.size(), input_dim_, "propagateModel", "u");
   validateSize(x_next.size(), state_dim_, "propagateModel", "x_next");
   // do not use noalias here since x_next could be an alias of x0
-  x_next = Ad_ * x0 + Bd_ * u + wd_;
+  x_next = data_.Ad * x0 + data_.Bd * u + data_.wd;
 }
 
-bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
+void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
                                const Ref<const MatrixXd>& Bd,
                                const Ref<const VectorXd>& wd)
 {
@@ -355,14 +362,15 @@ bool MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   validateShape(Bd, state_dim_, input_dim_, "setModelDiscrete", "Bd");
   validateSize(wd.size(), state_dim_, "setModelDiscrete", "wd");
 
-  Ad_ = Ad;
-  Bd_ = Bd;
-  wd_ = wd;
+  data_.Ad = Ad;
+  data_.Bd = Bd;
+  data_.wd = wd;
   model_set_ = true;
-  return qpUpdateModel();
+  model_from_continuous_ = false;
+  pending_ |= DataChange::Model | DataChange::ModelOffset;
 }
 
-bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
+void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
                                           const Ref<const MatrixXd>& Bc,
                                           const Ref<const VectorXd>& wc,
                                           double dt,
@@ -373,63 +381,35 @@ bool MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   validateShape(Bc, state_dim_, input_dim_, "setModelContinuous2Discrete",
                 "Bc");
   validateSize(wc.size(), state_dim_, "setModelContinuous2Discrete", "wc");
-  if (!(dt > 0.0))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] dt must be positive.");
-  if (!(tol > 0.0))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] tol must be positive.");
-
-  // Computes Ad = E(dt) = exp(A*dt) and G(dt) = integral_0^dt exp(A*s) ds via
-  // scaling and squaring. The Taylor series is only evaluated at h = dt / 2^s
-  // where ||A*h||_1 <= 0.5, which keeps terms small and avoids the
-  // cancellation that ruins the series for large ||A*dt||. Then
-  // E(2h) = E(h)^2 and G(2h) = G(h) + E(h) G(h) recover dt.
-
-  // allocates memory first time only (since sizes are constant)
-  At_.resize(state_dim_, state_dim_);
-  At_.noalias() = Ac * dt;
-  const double At_norm{At_.cwiseAbs().colwise().sum().maxCoeff()};
-  if (!std::isfinite(At_norm))
-    throw std::invalid_argument(
-        "[MPCBase::setModelContinuous2Discrete] Ac*dt must be finite.");
-
-  constexpr double max_norm{0.5};
-  const int num_squarings{
-      At_norm > max_norm
-          ? static_cast<int>(std::ceil(std::log2(At_norm / max_norm)))
-          : 0};
-  const double scale{std::ldexp(1.0, -num_squarings)};
-  At_ *= scale;
-
-  At_pow_.setIdentity(state_dim_, state_dim_);
-  Ad_.setIdentity(state_dim_, state_dim_);
-  G_.setIdentity(state_dim_, state_dim_);
-
-  // term_bound is an upper bound on ||(A*h)^i / i!||, the next term to add
-  double factorial{1.0};
-  double term_bound{At_norm * scale};
-  for (int i{1}; term_bound >= tol; ++i) {
-    disc_tmp_.noalias() = At_pow_ * At_;
-    At_pow_.swap(disc_tmp_);
-    factorial *= i;
-    Ad_ += At_pow_ / factorial;
-    G_ += At_pow_ / (factorial * (i + 1));
-    term_bound *= At_norm * scale / (i + 1);
-  }
-  G_ *= dt * scale;
-
-  for (int j{0}; j < num_squarings; ++j) {
-    disc_tmp_.noalias() = Ad_ * G_;
-    G_ += disc_tmp_; // G(2h) = G(h) + E(h) G(h), uses E(h) before squaring
-    disc_tmp_.noalias() = Ad_ * Ad_;
-    Ad_.swap(disc_tmp_); // E(2h) = E(h)^2
-  }
-
-  Bd_.noalias() = G_ * Bc;
-  wd_.noalias() = G_ * wc;
+  // Discretization stays in the setter: it is needed once per call anyway, and
+  // the user controls when the setter runs. Only the QP work is deferred.
+  discretizer_.discretize(Ac, Bc, wc, dt, data_.Ad, data_.Bd, data_.wd, tol);
   model_set_ = true;
-  return qpUpdateModel();
+  model_from_continuous_ = true;
+  pending_ |= DataChange::Model | DataChange::ModelOffset;
+}
+
+void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
+{
+  validateSize(wd.size(), state_dim_, "setModelOffsetDiscrete", "wd");
+  if (!model_set_)
+    throw std::logic_error("[MPCBase::setModelOffsetDiscrete] Model must be "
+                           "set before its offset.");
+  data_.wd = wd;
+  pending_ |= DataChange::ModelOffset;
+}
+
+void MPCBase::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
+{
+  validateSize(wc.size(), state_dim_, "setModelOffsetContinuous2Discrete",
+               "wc");
+  if (!model_from_continuous_)
+    throw std::logic_error(
+        "[MPCBase::setModelOffsetContinuous2Discrete] The model must be last "
+        "set with setModelContinuous2Discrete(), whose discretization is "
+        "reused.");
+  discretizer_.discretizeOffset(wc, data_.wd);
+  pending_ |= DataChange::ModelOffset;
 }
 
 void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
@@ -453,8 +433,8 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
   if (Q_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
-  Q_big_.diagonal() = Q_diag.replicate(horizon_steps_, 1);
-  weights_changed_ = true;
+  data_.Q_big.diagonal() = Q_diag.replicate(horizon_steps_, 1);
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
@@ -465,10 +445,10 @@ void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
   if (Q_diag.minCoeff() < 0.0 || Qf_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateWeights] State weights must be non-negative.");
-  Q_big_.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
+  data_.Q_big.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
       Q_diag.replicate(horizon_steps_ - 1, 1);
-  Q_big_.diagonal().tail(state_dim_) = Qf_diag;
-  weights_changed_ = true;
+  data_.Q_big.diagonal().tail(state_dim_) = Qf_diag;
+  pending_ |= DataChange::Weights;
 }
 
 void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
@@ -480,36 +460,36 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setInputWeights] Input weights must be non-negative.");
-  R_big_.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
-  weights_changed_ = true;
+  data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
+  pending_ |= DataChange::Weights;
 }
 
-bool MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
+void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
-  x_ref_ = x_step.replicate(horizon_steps_, 1);
-  return qpUpdateReferences();
+  data_.x_ref = x_step.replicate(horizon_steps_, 1);
+  pending_ |= DataChange::References;
 }
 
-bool MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
+void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
   validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
                "x_traj");
-  x_ref_ = x_traj;
-  return qpUpdateReferences();
+  data_.x_ref = x_traj;
+  pending_ |= DataChange::References;
 }
 
-bool MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
+void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
   if (!opts_.use_input_cost)
     throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
-  ctrls_ref_ = u_step.replicate(num_ctrl_pts_, 1);
-  return qpUpdateReferences();
+  data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
+  pending_ |= DataChange::References;
 }
 
-bool MPCBase::setReferenceInputControlPoints(
+void MPCBase::setReferenceInputControlPoints(
     const Ref<const VectorXd>& control_points)
 {
   if (!opts_.use_input_cost)
@@ -517,11 +497,11 @@ bool MPCBase::setReferenceInputControlPoints(
                            "Input cost is not enabled.");
   validateSize(control_points.size(), ctrls_dim_,
                "setReferenceInputControlPoints", "control_points");
-  ctrls_ref_ = control_points;
-  return qpUpdateReferences();
+  data_.ctrls_ref = control_points;
+  pending_ |= DataChange::References;
 }
 
-bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
+void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
                              const Ref<const VectorXd>& u_max)
 {
   validateSize(u_min.size(), input_dim_, "setInputLimits", "u_min");
@@ -529,16 +509,13 @@ bool MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
   if ((u_max - u_min).minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setInputLimits] u_min cannot be greater than u_max.");
-  u_min_ = u_min;
-  u_max_ = u_max;
+  data_.u_min = u_min;
+  data_.u_max = u_max;
   u_lims_set_ = true;
-
-  l_.segment(u_sat_idx_, u_sat_dim_) = u_min_.replicate(num_u_sat_cons_, 1);
-  u_.segment(u_sat_idx_, u_sat_dim_) = u_max_.replicate(num_u_sat_cons_, 1);
-  return qpUpdateInputLimits();
+  pending_ |= DataChange::Limits;
 }
 
-bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
+void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
                              const Ref<const VectorXd>& x_max)
 {
   if (!opts_.saturate_states)
@@ -549,16 +526,13 @@ bool MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
   if ((x_max - x_min).minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setStateLimits] x_min cannot be greater than x_max.");
-  x_min_ = x_min;
-  x_max_ = x_max;
+  data_.x_min = x_min;
+  data_.x_max = x_max;
   x_lims_set_ = true;
-
-  l_.tail(x_sat_dim_) = x_min_.replicate(horizon_steps_, 1);
-  u_.tail(x_sat_dim_) = x_max_.replicate(horizon_steps_, 1);
-  return qpUpdateStateLimits();
+  pending_ |= DataChange::Limits;
 }
 
-bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
+void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
     throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
@@ -567,16 +541,12 @@ bool MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
   if (control_point_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setSlewRate] Slew rate must be non-negative.");
-  ctrls_slew_ = control_point_slew;
+  data_.ctrls_slew = control_point_slew;
   ctrls_slew_rate_set_ = true;
-
-  u_.segment(slew_idx_, slew_dim_) =
-      ctrls_slew_.replicate(num_ctrl_pts_ - 1, 1);
-  l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
-  return qpUpdateSlewRate();
+  pending_ |= DataChange::Limits;
 }
 
-bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
+void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
@@ -585,129 +555,148 @@ bool MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
   if (u0_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPCBase::setSlewRateInitial] Slew rate must be non-negative.");
-  u0_slew_ = u0_slew;
+  data_.u0_slew = u0_slew;
   slew0_rate_set_ = true;
-
-  l_.segment(slew0_idx_, input_dim_) = u_prev_ - u0_slew_;
-  u_.segment(slew0_idx_, input_dim_) = u_prev_ + u0_slew_;
-  return qpUpdateSlewRate();
+  pending_ |= DataChange::Limits;
 }
 
-bool MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
+void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
         "[MPCBase::setPreviousInput] Initial slew rate is not enabled.");
   validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
-  u_prev_ = u_prev;
-
-  l_.segment(slew0_idx_, input_dim_) = u_prev_ - u0_slew_;
-  u_.segment(slew0_idx_, input_dim_) = u_prev_ + u0_slew_;
-  return qpUpdateSlewRate();
+  data_.u_prev = u_prev;
+  pending_ |= DataChange::PreviousInput;
 }
 
-void MPCBase::calcSplineParams()
+VectorXd MPCBase::getStateWeights() const
 {
-  using Spline1d = Spline<double, 1>;
-  for (int k{0}; k < horizon_steps_; ++k) {
-    const double t = k;
-    const int span = Spline1d::Span(t, spline_degree_, spline_knots_);
-    spline_segment_idxs_(k) = span - spline_degree_;
-
-    spline_weights_.col(k) =
-        Spline1d::BasisFunctions(t, spline_degree_, spline_knots_);
-  }
+  return data_.Q_big.diagonal().head(state_dim_);
 }
 
-void MPCBase::evaluateControlPoints(const Ref<const VectorXd>& ctrl_pts,
-                                    Ref<VectorXd> u_traj) const noexcept
+VectorXd MPCBase::getTerminalStateWeights() const
 {
-  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
-  Map<MatrixXd> u_traj_mat{u_traj.data(), input_dim_, horizon_steps_};
-
-  // same as Parameterization::evaluate except uses pre-computed weights
-  const int order{spline_degree_ + 1};
-  for (int k{0}; k < horizon_steps_; ++k) {
-    const int seg{spline_segment_idxs_(k)};
-    u_traj_mat.col(k).noalias() =
-        ctrls.middleCols(seg, order) * spline_weights_.col(k);
-  }
+  return data_.Q_big.diagonal().tail(state_dim_);
 }
 
-void MPCBase::getInput(const int k,
-                       const Ref<const VectorXd>& ctrl_pts,
-                       Ref<VectorXd> uk) const noexcept
+VectorXd MPCBase::getInputWeights() const
 {
-  const Map<const MatrixXd> ctrls{ctrl_pts.data(), input_dim_, num_ctrl_pts_};
-  const int order{spline_degree_ + 1};
-  const int seg{spline_segment_idxs_(k)};
-  uk.noalias() = ctrls.middleCols(seg, order) * spline_weights_.col(k);
+  if (!opts_.use_input_cost)
+    throw std::logic_error(
+        "[MPCBase::getInputWeights] Input cost is not enabled.");
+  return data_.R_big.diagonal().head(input_dim_);
+}
+
+const VectorXd& MPCBase::getStateMin() const
+{
+  if (!opts_.saturate_states)
+    throw std::logic_error(
+        "[MPCBase::getStateMin] State saturation is not enabled.");
+  return data_.x_min;
+}
+
+const VectorXd& MPCBase::getStateMax() const
+{
+  if (!opts_.saturate_states)
+    throw std::logic_error(
+        "[MPCBase::getStateMax] State saturation is not enabled.");
+  return data_.x_max;
+}
+
+const VectorXd& MPCBase::getSlewRate() const
+{
+  if (!opts_.slew_control_points)
+    throw std::logic_error("[MPCBase::getSlewRate] Slew rate is not enabled.");
+  return data_.ctrls_slew;
+}
+
+const VectorXd& MPCBase::getSlewRateInitial() const
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::getSlewRateInitial] Initial slew rate is not enabled.");
+  return data_.u0_slew;
+}
+
+const VectorXd& MPCBase::getPreviousInput() const
+{
+  if (!opts_.slew_initial_input)
+    throw std::logic_error(
+        "[MPCBase::getPreviousInput] Initial slew rate is not enabled.");
+  return data_.u_prev;
+}
+
+const VectorXd& MPCBase::getReferenceInputControlPoints() const
+{
+  if (!opts_.use_input_cost)
+    throw std::logic_error("[MPCBase::getReferenceInputControlPoints] "
+                           "Input cost is not enabled.");
+  return data_.ctrls_ref;
 }
 
 std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
-  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
-                               mpc.spline_knots_};
+  const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << ":\n  state_dim = " << mpc.state_dim_
-     << "\n  input_dim = " << mpc.input_dim_
+  os << mpc.getClassName() << ":\n  state_dim = " << mpc.getStateDim()
+     << "\n  input_dim = " << mpc.getInputDim()
      << "\n  parameterization = " << param << "\n  options = ";
-  print(os, mpc.opts_, capitalize_bools);
+  print(os, mpc.getOptions(), capitalize_bools);
   os << "\n  solver_initialized = ";
   if (capitalize_bools)
-    os << (mpc.solver_initialized_ ? "True" : "False");
+    os << (mpc.isSolverInitialized() ? "True" : "False");
   else
-    os << (mpc.solver_initialized_ ? "true" : "false");
+    os << (mpc.isSolverInitialized() ? "true" : "false");
 
   const IOFormat fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
-  os << "\n  Q = " << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
-     << "\n  Qf = " << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
-  if (mpc.opts_.use_input_cost)
-    os << "\n  R = " << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
-  os << "\n  u_min = " << mpc.u_min_.format(fmt)
-     << "\n  u_max = " << mpc.u_max_.format(fmt);
-  if (mpc.opts_.saturate_states)
-    os << "\n  x_min = " << mpc.x_min_.format(fmt)
-       << "\n  x_max = " << mpc.x_max_.format(fmt);
-  if (mpc.opts_.slew_initial_input)
-    os << "\n  u0_slew = " << mpc.u0_slew_.format(fmt);
-  if (mpc.opts_.slew_control_points)
-    os << "\n  control_point_slew = " << mpc.ctrls_slew_.format(fmt);
+  os << "\n  Q = " << mpc.getStateWeights().format(fmt)
+     << "\n  Qf = " << mpc.getTerminalStateWeights().format(fmt);
+  if (mpc.getOptions().use_input_cost)
+    os << "\n  R = " << mpc.getInputWeights().format(fmt);
+  os << "\n  u_min = " << mpc.getInputMin().format(fmt)
+     << "\n  u_max = " << mpc.getInputMax().format(fmt);
+  if (mpc.getOptions().saturate_states)
+    os << "\n  x_min = " << mpc.getStateMin().format(fmt)
+       << "\n  x_max = " << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().slew_initial_input)
+    os << "\n  u0_slew = " << mpc.getSlewRateInitial().format(fmt);
+  if (mpc.getOptions().slew_control_points)
+    os << "\n  control_point_slew = " << mpc.getSlewRate().format(fmt);
   return os;
 }
 
 std::ostream&
 printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 {
-  const Parameterization param{mpc.horizon_steps_, mpc.spline_degree_,
-                               mpc.spline_knots_};
+  const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << "(state_dim=" << mpc.state_dim_
-     << ", input_dim=" << mpc.input_dim_ << ", parameterization=" << param
+  os << mpc.getClassName() << "(state_dim=" << mpc.getStateDim()
+     << ", input_dim=" << mpc.getInputDim() << ", parameterization=" << param
      << ", options=";
-  print(os, mpc.opts_, capitalize_bools);
+  print(os, mpc.getOptions(), capitalize_bools);
   os << ", solver_initialized=";
   if (capitalize_bools)
-    os << (mpc.solver_initialized_ ? "True" : "False");
+    os << (mpc.isSolverInitialized() ? "True" : "False");
   else
-    os << (mpc.solver_initialized_ ? "true" : "false");
+    os << (mpc.isSolverInitialized() ? "true" : "false");
 
   const IOFormat fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
-  os << ", Q=" << mpc.Q_big_.diagonal().head(mpc.state_dim_).format(fmt)
-     << ", Qf=" << mpc.Q_big_.diagonal().tail(mpc.state_dim_).format(fmt);
-  if (mpc.opts_.use_input_cost)
-    os << ", R=" << mpc.R_big_.diagonal().head(mpc.input_dim_).format(fmt);
-  os << ", u_min=" << mpc.u_min_.format(fmt)
-     << ", u_max=" << mpc.u_max_.format(fmt);
-  if (mpc.opts_.saturate_states)
-    os << ", x_min=" << mpc.x_min_.format(fmt)
-       << ", x_max=" << mpc.x_max_.format(fmt);
-  if (mpc.opts_.slew_initial_input)
-    os << ", u0_slew=" << mpc.u0_slew_.format(fmt);
-  if (mpc.opts_.slew_control_points)
-    os << ", control_point_slew=" << mpc.ctrls_slew_.format(fmt);
+  os << ", Q=" << mpc.getStateWeights().format(fmt)
+     << ", Qf=" << mpc.getTerminalStateWeights().format(fmt);
+  if (mpc.getOptions().use_input_cost)
+    os << ", R=" << mpc.getInputWeights().format(fmt);
+  os << ", u_min=" << mpc.getInputMin().format(fmt)
+     << ", u_max=" << mpc.getInputMax().format(fmt);
+  if (mpc.getOptions().saturate_states)
+    os << ", x_min=" << mpc.getStateMin().format(fmt)
+       << ", x_max=" << mpc.getStateMax().format(fmt);
+  if (mpc.getOptions().slew_initial_input)
+    os << ", u0_slew=" << mpc.getSlewRateInitial().format(fmt);
+  if (mpc.getOptions().slew_control_points)
+    os << ", control_point_slew=" << mpc.getSlewRate().format(fmt);
   os << ')';
   return os;
 }

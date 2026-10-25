@@ -157,6 +157,8 @@ std::vector<std::uint8_t> makeNpyPayload(const T* data,
   return payload;
 }
 
+#if !AFFINE_MPC_HAS_ZLIB
+// CRC-32 for builds without zlib
 std::uint32_t crc32Fallback(const std::uint8_t* data, size_t size)
 {
   static std::array<std::uint32_t, 256> table{};
@@ -197,6 +199,7 @@ crc32FallbackUpdate(std::uint32_t crc, const std::uint8_t* data, size_t size)
     crc = table[(crc ^ data[i]) & 0xffu] ^ (crc >> 8);
   return crc ^ 0xffffffffu;
 }
+#endif
 
 std::uint32_t computeCrc32(const std::vector<std::uint8_t>& bytes)
 {
@@ -394,6 +397,7 @@ streamCompressedFilePayload(const std::vector<std::uint8_t>& header,
 
 FilePayloadInfo analyzeDoubleFilePayload(const std::filesystem::path& raw_path,
                                          const std::vector<size_t>& shape,
+                                         [[maybe_unused]] // only used with zlib
                                          NpzWriter::CompressionMode mode)
 {
   const std::vector<std::uint8_t> header = makeNpyHeader<double>(shape);
@@ -469,6 +473,7 @@ void streamStoredFilePayload(std::ofstream& out,
 void streamFilePayloadToArchive(std::ofstream& out,
                                 const std::vector<std::uint8_t>& header,
                                 const std::filesystem::path& raw_path,
+                                [[maybe_unused]] // only used with zlib
                                 std::uint16_t compression_method)
 {
 #if AFFINE_MPC_HAS_ZLIB

@@ -32,18 +32,14 @@ public:
     affine_mpc::SparseMPC::qpUpdateX0(x0);
   }
 
-  const auto getAd() const { return this->Ad_; }
-  const auto getBd() const { return this->Bd_; }
-  const auto getWd() const { return this->wd_; }
-  const auto getQbig() const { return this->Q_big_; }
-  const auto getRbig() const { return this->R_big_; }
-  const auto getP() const { return this->P_; }
-  const auto getQ() const { return this->q_; }
-  const auto getA() const { return this->A_; }
-  const auto getL() const { return this->l_; }
-  const auto getU() const { return this->u_; }
-  const auto getSplineWeights() const { return this->spline_weights_; }
-  const auto getSplineSegmentIdxs() const { return this->spline_segment_idxs_; }
+  auto getAd() const { return readModel(*this).Ad; }
+  auto getBd() const { return readModel(*this).Bd; }
+  auto getWd() const { return readModel(*this).wd; }
+  auto getP() const { return getQPCostMatrix(); }
+  auto getQ() const { return this->q_; }
+  auto getA() const { return this->A_; }
+  auto getL() const { return this->l_; }
+  auto getU() const { return this->u_; }
 };
 
 // ---- Constraint tests ------------------------------------------------------
@@ -54,6 +50,7 @@ TEST(SparseMPCProtectedTester, givenModel_FormsModelConstraintsCorrectly)
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
+  mpc.updateQPTerms(Vector2d::Zero()); // the setter only stores the model
 
   const MatrixXd A = mpc.getA();
   const int ctrls_dim = m * nc;
@@ -147,6 +144,8 @@ TEST(SparseMPCProtectedTester,
   SparseMPCProtectedTester mpc_no_sat{n, m, param};
   mpc.setModel();
   mpc_no_sat.setModel();
+  mpc.updateQPTerms(Vector2d::Zero()); // the setter only stores the model
+  mpc_no_sat.updateQPTerms(Vector2d::Zero());
 
   const int x_traj_dim{n * T}, ctrls_dim{m * nc};
   const MatrixXd A = mpc.getA();
@@ -160,7 +159,8 @@ TEST(SparseMPCProtectedTester,
   // this only works for m = 1 and nc = deg+1, otherwise each weight is
   // multiplied by I(m,m) or 0(m,m)
   const MatrixXd A_sat = A.bottomRows(m * T);
-  const MatrixXd A_sat_expected = mpc.getSplineWeights().transpose();
+  const MatrixXd A_sat_expected =
+      mpc.getParameterization().band_weights.transpose();
   const MatrixXd A_sat_ctrls = A_sat.leftCols(ctrls_dim);
   ASSERT_TRUE(expectEigenNear(A_sat_ctrls, A_sat_expected, 1e-15));
   ASSERT_TRUE(A_sat.rightCols(x_traj_dim).isZero());
@@ -401,8 +401,8 @@ TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
 TEST(SparseMPCProtectedTester,
      givenWeightsAndReferenceUpdatedSimultaneously_QvectorIsCorrect)
 {
-  // Verifies the refs_changed_ flag is not lost when weights_changed_ fires
-  // first. Both updates must be reflected in q_ after a single qpUpdateX0 call.
+  // Verifies the References change is not lost when the Weights change is
+  // applied with it. Both must be reflected in q_ after a single update.
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc),
@@ -427,11 +427,11 @@ TEST(SparseMPCProtectedTester,
   const VectorXd R_diag2 = VectorXd::Constant(m, 4.0);
   const Vector2d x_goal_step2{0.5, -0.5};
   const VectorXd u_goal2 = VectorXd::Constant(m, 0.5);
-  mpc.setWeights(Q_diag2, R_diag2);    // sets weights_changed_ = true
-  mpc.setReferenceState(x_goal_step2); // sets refs_changed_ = true
-  mpc.setReferenceInput(u_goal2);      // sets refs_changed_ = true
+  mpc.setWeights(Q_diag2, R_diag2);    // marks Weights
+  mpc.setReferenceState(x_goal_step2); // marks References
+  mpc.setReferenceInput(u_goal2);      // marks References
 
-  // weights_changed_ branch fires, must use new x_goal_ and u_goal_
+  // the Weights update recomputes q, which must use the new references
   mpc.updateQPTerms(x0);
 
   const VectorXd q = mpc.getQ();
@@ -452,7 +452,6 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 {
   const int n{2}, m{1}, T{10}, nc{10};
-  const bool use_input_cost{true};
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc),
                                ampc::Options{.use_input_cost = true}};
