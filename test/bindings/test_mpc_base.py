@@ -67,7 +67,7 @@ def test_mpc_base_interface():
 
     assert (
         repr(mpc)
-        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
     assert str(mpc).startswith("MPCBase:\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -216,3 +216,33 @@ def test_model_offset_setters(cls):
     mpc.setModelDiscrete(Ad, Bd, wd)
     with pytest.raises(RuntimeError, match="setModelContinuous2Discrete"):
         mpc.setModelOffsetContinuous2Discrete(wc)
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_input_rate_cost(cls):
+    n, m, T = 2, 1, 20
+    param = ampc.Parameterization.bspline(T, 2, 8)
+
+    def solve(rate_weight):
+        mpc = cls(n, m, param, ampc.Options(use_input_rate_cost=True))
+        mpc.setModelContinuous2Discrete(
+            np.array([[0.0, 1.0], [-0.6, -0.1]]), np.array([0.0, 0.2]), np.zeros(n), 0.1
+        )
+        mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
+        mpc.setReferenceState(np.array([1.0, 0.0]))
+        mpc.setInputRateWeights(R_rate_diag=np.full(m, rate_weight))
+        np.testing.assert_array_equal(mpc.getInputRateWeights(), [rate_weight])
+        assert mpc.initializeSolver()
+        assert mpc.solve(np.zeros(n)) == ampc.SolveStatus.Success
+        # the previous input follows the solves without slew_initial_input
+        np.testing.assert_array_equal(mpc.getPreviousInput(), mpc.getNextInput())
+        assert "R_rate=" in repr(mpc)
+        return mpc.getInputTrajectory()
+
+    def variation(u):
+        return np.abs(np.diff(np.concatenate(([0.0], u)))).sum()
+
+    assert variation(solve(100.0)) < 0.5 * variation(solve(0.01))
+
+    with pytest.raises(RuntimeError, match="not enabled"):
+        cls(n, m, param).setInputRateWeights(np.ones(m))

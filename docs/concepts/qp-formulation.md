@@ -765,6 +765,33 @@ $$
     Thus, it may be more efficient to use the sparse formulation when saturating states,
     but the best way to find out for your system is to try both!
 
+## Input Rate Cost
+
+The input rate cost only involves the control points, which come first in both $\mathbf{z}_{\mathrm{s}}$ and $\mathbf{z}_{\mathrm{c}}$, so it adds the same terms to both formulations.
+With the difference matrix $D = (I_T - I_T^{(-1)}) \otimes I_m$, the input changes are
+
+$$
+\begin{bmatrix} \mathbf{u}_0 - \mathbf{u}_{-1} \\ \vdots \\ \mathbf{u}_{T-1} - \mathbf{u}_{T-2} \end{bmatrix}
+= D \Psi^p(\boldsymbol{\tau}) \, \mathbf{c} - \mathbf{e}_1 \otimes \mathbf{u}_{-1},
+$$
+
+so with $\bar{R}_\Delta = I_T \otimes R_\Delta$,
+
+$$
+J_{\Delta u}
+    =
+    \mathbf{c}^\top (D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) \, \mathbf{c}
+    - 2 \left( \Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) \right)^\top \mathbf{c}
+    + \text{const},
+$$
+
+using $D^\top (\mathbf{e}_1 \otimes \mathbf{v}) = \mathbf{e}_1 \otimes \mathbf{v}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)$ and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
+
+With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) = G \otimes R_\Delta$ with $G = (D_1 \Phi)^\top (D_1 \Phi)$, where $\Phi$ is the $T \times \eta$ basis and $D_1 = I_T - I_T^{(-1)}$.
+$G$ is banded and depends only on the knots, so it is computed once; a weight change only rescales it.
+The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
+
 ## Implementation Mapping
 
 At a high level,

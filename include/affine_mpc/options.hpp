@@ -31,6 +31,8 @@ namespace affine_mpc {
  *     2*num_control_points-2 rows), which is exact for non-integer knots. For
  *     degree > 1 every sample is constrained. Allows control points to be
  *     outside of input limits while keeping inputs within limits.
+ * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
+ *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  */
 struct Options
 {
@@ -50,6 +52,10 @@ struct Options
   /// Enables saturation of the sampled input trajectory rather than just the
   /// control points (ignored for degree 0; knot-adjacent samples for degree 1)
   bool saturate_input_trajectory = false;
+
+  /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
+  /// starting from the previous input (i.e. u_0 - u_prev)
+  bool use_input_rate_cost = false;
 };
 
 std::ostream&

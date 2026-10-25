@@ -172,8 +172,11 @@ TEST(MPCBaseTester, givenDisabledOptions_OptionalGettersThrow)
                               "Slew rate is not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getSlewRateInitial(); },
                               "Initial slew rate is not enabled");
-  expectLogicErrorWithMessage([&]() { (void)base.getPreviousInput(); },
-                              "Initial slew rate is not enabled");
+  expectLogicErrorWithMessage(
+      [&]() { (void)base.getPreviousInput(); },
+      "The initial slew rate and the input rate cost are not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getInputRateWeights(); },
+                              "Input rate cost is not enabled");
 }
 
 TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
@@ -482,7 +485,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
             "  options = Options(use_input_cost=true, slew_initial_input=true, "
             "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false)\n"
+            "saturate_input_trajectory=false, use_input_rate_cost=false)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
             "  Qf = [3, 4]\n"
@@ -502,7 +505,8 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
             "options=Options(use_input_cost=true, slew_initial_input=true, "
             "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false), solver_initialized=false, "
+            "saturate_input_trajectory=false, use_input_rate_cost=false), "
+            "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
             "control_point_slew=[13])");
@@ -517,7 +521,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
             "  options = Options(use_input_cost=true, slew_initial_input=true, "
             "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false)\n"
+            "saturate_input_trajectory=false, use_input_rate_cost=false)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
             "  Qf = [3, 4]\n"
@@ -537,7 +541,8 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
             "options=Options(use_input_cost=true, slew_initial_input=true, "
             "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false), solver_initialized=false, "
+            "saturate_input_trajectory=false, use_input_rate_cost=false), "
+            "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
             "control_point_slew=[13])");
@@ -684,7 +689,7 @@ TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
       "Initial slew rate is not enabled");
   expectLogicErrorWithMessage(
       [&base, &ctrls_slew]() { base.setPreviousInput(ctrls_slew); },
-      "Initial slew rate is not enabled");
+      "The initial slew rate and the input rate cost are not enabled");
 }
 
 TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)

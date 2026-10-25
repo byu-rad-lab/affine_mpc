@@ -38,6 +38,10 @@ public:
   virtual DataChangeSet vectorDependsOn(const Formulation& f) const = 0;
   virtual void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) = 0;
   virtual void updateVector(const MPCData& d, Formulation& f, QPRef& qp) = 0;
+  /// For formulations with cost placeholders (see
+  /// Formulation::usesCostPlaceholders()): mark the cost entries the term can
+  /// write beyond those the formulation's primitives already cover.
+  virtual void writeCostPlaceholders(Formulation& /*f*/) {}
 
   /// The rows declared by declare() (empty for costs).
   const RowBlock& rows() const noexcept { return rows_; }
@@ -80,6 +84,51 @@ public:
   }
   void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
   void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
+};
+
+/// 1/2 sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
+/// with u_{-1} = u_prev (`use_input_rate_cost`).
+///
+/// Per input channel, the differences are D Phi c - e_0 u_prev, where Phi maps
+/// the channel's control points to its samples and D takes differences (its
+/// first row is e_0^T). So the matrix part is G = (D Phi)^T (D Phi) times the
+/// channel's weight, and the linear part is -Phi_0^T R_rate u_prev (Phi_0 is
+/// the first row of Phi, the basis weights of u_0). G is banded and depends
+/// only on the basis, so it is computed once.
+class InputRateCost final : public QPTerm
+{
+public:
+  explicit InputRateCost(const VectorParameterization& input_param);
+  bool isCost() const noexcept override { return true; }
+  DataChangeSet matrixDependsOn(const Formulation&) const override
+  {
+    return DataChange::Weights;
+  }
+  DataChangeSet vectorDependsOn(const Formulation&) const override
+  {
+    return DataChange::Weights | DataChange::PreviousInput;
+  }
+  void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
+  void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
+  void writeCostPlaceholders(Formulation& f) override;
+
+private:
+  struct GEntry // a nonzero G(i, j) between control points i and j
+  {
+    int i, j;
+    double value;
+  };
+  struct Phi0Entry // a nonzero Phi_0(i)
+  {
+    int i;
+    double value;
+  };
+
+  const VectorParameterization& input_param_;
+  std::vector<GEntry> G_;
+  std::vector<Phi0Entry> phi0_;
+  Eigen::MatrixXd H_; // G times the weights, on all coefficients
+  Eigen::VectorXd g_; // the linear part, on all coefficients
 };
 
 /// u_min <= input <= u_max, on the control points or, with

@@ -46,6 +46,66 @@ void InputCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
   f.addControlQuadraticVector(d.R_big.diagonal(), d.ctrls_ref);
 }
 
+// ---- InputRateCost ----------------------------------------------------------
+
+InputRateCost::InputRateCost(const VectorParameterization& input_param) :
+    input_param_{input_param},
+    H_{MatrixXd::Zero(input_param.numCoefficients(),
+                      input_param.numCoefficients())},
+    g_{VectorXd::Zero(input_param.numCoefficients())}
+{
+  // Construction only: the dense basis Phi (one row per sample), the
+  // differences D Phi, and G = (D Phi)^T (D Phi)
+  const Parameterization& param{input_param.parameterization()};
+  const int T{param.horizon_steps}, ncp{param.num_control_points};
+  MatrixXd Phi{MatrixXd::Zero(T, ncp)};
+  for (int k{0}; k < T; ++k)
+    for (int i{0}; i < param.band_width; ++i)
+      Phi(k, param.band_start(k) + i) = param.band_weights(i, k);
+  MatrixXd DPhi{Phi};
+  DPhi.bottomRows(T - 1) -= Phi.topRows(T - 1);
+  const MatrixXd G{DPhi.transpose() * DPhi};
+
+  for (int j{0}; j < ncp; ++j)
+    for (int i{0}; i < ncp; ++i)
+      if (G(i, j) != 0.0)
+        G_.push_back({i, j, G(i, j)});
+  for (int i{0}; i < ncp; ++i)
+    if (Phi(0, i) != 0.0)
+      phi0_.push_back({i, Phi(0, i)});
+}
+
+void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+{
+  // G times each channel's weight (H_ stays zero outside these entries)
+  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
+    for (const GEntry& e : G_)
+      H_(input_param_.coefficientIndex(ch, e.i),
+         input_param_.coefficientIndex(ch, e.j)) = e.value * d.R_rate(ch);
+  f.addControlMatrix(H_);
+}
+
+void InputRateCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
+{
+  // the u_0 - u_prev difference: -Phi_0^T R_rate u_prev
+  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
+    for (const Phi0Entry& e : phi0_)
+      g_(input_param_.coefficientIndex(ch, e.i)) =
+          -e.value * d.R_rate(ch) * d.u_prev(ch);
+  f.addControlLinear(g_);
+}
+
+void InputRateCost::writeCostPlaceholders(Formulation& f)
+{
+  // G on every channel (the cost with unit weights, positive semidefinite),
+  // so its entries are in the pattern even where a weight is zero now
+  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
+    for (const GEntry& e : G_)
+      H_(input_param_.coefficientIndex(ch, e.i),
+         input_param_.coefficientIndex(ch, e.j)) = e.value;
+  f.addControlCostPlaceholders(H_);
+}
+
 // ---- InputBounds ------------------------------------------------------------
 
 InputBounds::InputBounds(const VectorParameterization& input_param,

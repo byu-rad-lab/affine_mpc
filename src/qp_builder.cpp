@@ -49,6 +49,10 @@ QPBuilder::QPBuilder(const FormulationKind kind,
   QPLayout layout;
   rows_.dynamics = formulation_->declareRows(layout);
   add<StateCost>(layout);
+  // before InputCost, so the sparse formulation assigns its control point
+  // block once instead of zeroing it first for InputCost's diagonal
+  if (opts.use_input_rate_cost)
+    add<InputRateCost>(layout, input_param);
   if (opts.use_input_cost)
     add<InputCost>(layout);
   rows_.input_bounds =
@@ -89,6 +93,16 @@ QPBuilder::QPBuilder(const FormulationKind kind,
     }
   }
   cost_vector_x0_ = cost_vector_deps_.has(DataChange::X0);
+}
+
+DataChangeSet QPBuilder::writeCostPattern()
+{
+  if (!formulation_->usesCostPlaceholders())
+    return {};
+  formulation_->writeCostPlaceholders();
+  for (QPTerm* term : cost_terms_)
+    term->writeCostPlaceholders(*formulation_);
+  return DataChange::Weights;
 }
 
 void QPBuilder::writeConstantParts(const MPCData& d)

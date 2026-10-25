@@ -163,6 +163,8 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().saturate_states));
   addMetadata("opt_saturate_input_trajectory",
               static_cast<int>(mpc_->getOptions().saturate_input_trajectory));
+  addMetadata("opt_use_input_rate_cost",
+              static_cast<int>(mpc_->getOptions().use_input_rate_cost));
 
   addMetadata("u_min", mpc_->getInputMin());
   addMetadata("u_max", mpc_->getInputMax());
@@ -171,6 +173,8 @@ void MPCLogger::captureMPCSnapshot()
 
   if (mpc_->getOptions().use_input_cost)
     addMetadata("R_diag", mpc_->getInputWeights());
+  if (mpc_->getOptions().use_input_rate_cost)
+    addMetadata("R_rate_diag", mpc_->getInputRateWeights());
   if (mpc_->getOptions().slew_control_points)
     addMetadata("control_point_slew", mpc_->getSlewRate());
   if (mpc_->getOptions().saturate_states) {

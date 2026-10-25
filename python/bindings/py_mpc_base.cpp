@@ -512,6 +512,22 @@ Args:
            )doc",
            py::arg("R_diag"));
 
+  base.def("setInputRateWeights", &ampc::MPCBase::setInputRateWeights,
+           R"doc(
+Set the weights of the input rate cost
+sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
+where u_{-1} is the previous input (see setPreviousInput()). Defaults to ones.
+
+This method can only be called if `use_input_rate_cost` is enabled. Unlike `R`
+(which weights the control points), the rate cost acts on the sampled inputs,
+so it penalizes the same input change equally for every basis.
+
+Args:
+    R_rate_diag: Diagonal of the input rate weight matrix (size input_dim,
+        non-negative).
+           )doc",
+           py::arg("R_rate_diag"));
+
   base.def("setReferenceState", &ampc::MPCBase::setReferenceState,
            R"doc(
 Set reference state trajectory as a step command.
@@ -648,18 +664,17 @@ Note:
 
   base.def("setPreviousInput", &ampc::MPCBase::setPreviousInput,
            R"doc(
-Set the previous input, which is only used with the `slew_initial_input`
-constraint option. Defaults to zeros, but should be set prior to first solve if
-a different value is desired.
+Set the previous input, which is used by the `slew_initial_input` constraint
+and the `use_input_rate_cost` cost. Defaults to zeros, but should be set prior
+to first solve if a different value is desired.
 
 This value is automatically set to the next input after each solve that returns
 `Success` or `SolvedInaccurate`, so you really only need to call this function
 once before the first solve, or after a failed solve (which leaves it unchanged)
 if you apply an input other than the stored one.
 
-This function can only be called if `slew_initial_input` is enabled. Must be
-called prior to `initializeSolver()`, but can also be called after if limits
-change between solves.
+This function can only be called if `slew_initial_input` or
+`use_input_rate_cost` is enabled.
 
 Args:
     u_prev: Previous input vector.
@@ -707,6 +722,13 @@ Get the diagonal of the input weight matrix R (size input_dim).
 Raises:
     RuntimeError: If `use_input_cost` is not enabled.
            )doc");
+  base.def("getInputRateWeights", &ampc::MPCBase::getInputRateWeights, copy,
+           R"doc(
+Get the diagonal of the input rate weight matrix R_rate (size input_dim).
+
+Raises:
+    RuntimeError: If `use_input_rate_cost` is not enabled.
+           )doc");
   base.def("getInputMin", &ampc::MPCBase::getInputMin, copy,
            "Get the lower input limit (-inf until setInputLimits()).");
   base.def("getInputMax", &ampc::MPCBase::getInputMax, copy,
@@ -741,11 +763,13 @@ Raises:
            )doc");
   base.def("getPreviousInput", &ampc::MPCBase::getPreviousInput, copy,
            R"doc(
-Get the previous input used by the initial slew rate constraint. Updated
-automatically after each solve that returns `Success` or `SolvedInaccurate`.
+Get the previous input used by the initial slew rate constraint and the input
+rate cost. Updated automatically after each solve that returns `Success` or
+`SolvedInaccurate`.
 
 Raises:
-    RuntimeError: If `slew_initial_input` is not enabled.
+    RuntimeError: If neither `slew_initial_input` nor `use_input_rate_cost` is
+        enabled.
            )doc");
   base.def("getReferenceStateTrajectory",
            &ampc::MPCBase::getReferenceStateTrajectory, copy,

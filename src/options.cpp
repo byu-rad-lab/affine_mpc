@@ -24,7 +24,8 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
      << ", slew_control_points=" << boolStr(opts.slew_control_points)
      << ", saturate_states=" << boolStr(opts.saturate_states)
      << ", saturate_input_trajectory="
-     << boolStr(opts.saturate_input_trajectory) << ')';
+     << boolStr(opts.saturate_input_trajectory)
+     << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost) << ')';
   return os;
 }
 

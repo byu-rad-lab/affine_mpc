@@ -146,10 +146,12 @@ struct MPCData
       R_big.setIdentity(input_dim * num_ctrl_pts);
       ctrls_ref.setZero(input_dim * num_ctrl_pts);
     }
-    if (opts.slew_initial_input) {
+    if (opts.slew_initial_input)
       u0_slew.setConstant(input_dim, inf);
+    if (opts.slew_initial_input || opts.use_input_rate_cost)
       u_prev.setZero(input_dim);
-    }
+    if (opts.use_input_rate_cost)
+      R_rate.setOnes(input_dim);
     if (opts.slew_control_points)
       ctrls_slew.setConstant(input_dim, inf);
     if (opts.saturate_states) {
@@ -168,6 +170,8 @@ struct MPCData
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big;
   /// input weights for every control point (`use_input_cost`)
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> R_big;
+  /// diagonal input rate weights, one per input (`use_input_rate_cost`)
+  Eigen::VectorXd R_rate;
 
   Eigen::VectorXd x_ref;     ///< stacked reference states over the horizon
   Eigen::VectorXd ctrls_ref; ///< stacked reference control points
@@ -176,7 +180,8 @@ struct MPCData
   Eigen::VectorXd x_min, x_max; ///< state limits (`saturate_states`)
   Eigen::VectorXd ctrls_slew;   ///< control point slew rate
   Eigen::VectorXd u0_slew;      ///< initial input slew rate
-  Eigen::VectorXd u_prev;       ///< previous input (`slew_initial_input`)
+  /// previous input (`slew_initial_input` or `use_input_rate_cost`)
+  Eigen::VectorXd u_prev;
 };
 
 } // namespace affine_mpc::detail

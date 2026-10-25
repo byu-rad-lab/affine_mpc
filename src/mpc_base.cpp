@@ -198,7 +198,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   // overwrite it between solves if desired. Other statuses leave an iterate
   // that is not a solution (e.g. an infeasibility certificate), which would
   // corrupt the initial slew constraint of every later solve.
-  if (opts_.slew_initial_input
+  if (usesPreviousInput()
       && (status == SolveStatus::Success
           || status == SolveStatus::SolvedInaccurate)) {
     getNextInput(data_.u_prev);
@@ -438,6 +438,20 @@ void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
   pending_ |= DataChange::Weights;
 }
 
+void MPCBase::setInputRateWeights(const Ref<const VectorXd>& R_rate_diag)
+{
+  if (!opts_.use_input_rate_cost)
+    throw std::logic_error(
+        "[MPCBase::setInputRateWeights] Input rate cost is not enabled.");
+  validateSize(R_rate_diag.size(), input_dim_, "setInputRateWeights",
+               "R_rate_diag");
+  if (R_rate_diag.minCoeff() < 0.0)
+    throw std::invalid_argument("[MPCBase::setInputRateWeights] Input rate "
+                                "weights must be non-negative.");
+  data_.R_rate = R_rate_diag;
+  pending_ |= DataChange::Weights;
+}
+
 void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
@@ -536,9 +550,9 @@ void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
 
 void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
 {
-  if (!opts_.slew_initial_input)
-    throw std::logic_error(
-        "[MPCBase::setPreviousInput] Initial slew rate is not enabled.");
+  if (!usesPreviousInput())
+    throw std::logic_error("[MPCBase::setPreviousInput] The initial slew rate "
+                           "and the input rate cost are not enabled.");
   validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
   data_.u_prev = u_prev;
   pending_ |= DataChange::PreviousInput;
@@ -560,6 +574,14 @@ VectorXd MPCBase::getInputWeights() const
     throw std::logic_error(
         "[MPCBase::getInputWeights] Input cost is not enabled.");
   return data_.R_big.diagonal().head(input_dim_);
+}
+
+const VectorXd& MPCBase::getInputRateWeights() const
+{
+  if (!opts_.use_input_rate_cost)
+    throw std::logic_error(
+        "[MPCBase::getInputRateWeights] Input rate cost is not enabled.");
+  return data_.R_rate;
 }
 
 const VectorXd& MPCBase::getStateMin() const
@@ -595,9 +617,9 @@ const VectorXd& MPCBase::getSlewRateInitial() const
 
 const VectorXd& MPCBase::getPreviousInput() const
 {
-  if (!opts_.slew_initial_input)
-    throw std::logic_error(
-        "[MPCBase::getPreviousInput] Initial slew rate is not enabled.");
+  if (!usesPreviousInput())
+    throw std::logic_error("[MPCBase::getPreviousInput] The initial slew rate "
+                           "and the input rate cost are not enabled.");
   return data_.u_prev;
 }
 
@@ -629,6 +651,8 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
      << "\n  Qf = " << mpc.getTerminalStateWeights().format(fmt);
   if (mpc.getOptions().use_input_cost)
     os << "\n  R = " << mpc.getInputWeights().format(fmt);
+  if (mpc.getOptions().use_input_rate_cost)
+    os << "\n  R_rate = " << mpc.getInputRateWeights().format(fmt);
   os << "\n  u_min = " << mpc.getInputMin().format(fmt)
      << "\n  u_max = " << mpc.getInputMax().format(fmt);
   if (mpc.getOptions().saturate_states)
@@ -662,6 +686,8 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
      << ", Qf=" << mpc.getTerminalStateWeights().format(fmt);
   if (mpc.getOptions().use_input_cost)
     os << ", R=" << mpc.getInputWeights().format(fmt);
+  if (mpc.getOptions().use_input_rate_cost)
+    os << ", R_rate=" << mpc.getInputRateWeights().format(fmt);
   os << ", u_min=" << mpc.getInputMin().format(fmt)
      << ", u_max=" << mpc.getInputMax().format(fmt);
   if (mpc.getOptions().saturate_states)

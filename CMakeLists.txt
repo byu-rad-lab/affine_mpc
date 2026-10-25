@@ -150,6 +150,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
     test/affine_mpc/allocation_tests.cpp
+    test/affine_mpc/input_rate_cost_tests.cpp
   )
 
   add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)

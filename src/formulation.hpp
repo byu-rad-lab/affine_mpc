@@ -91,10 +91,20 @@ public:
   /// Whether updateX0() writes bounds (those are then sent at every solve).
   virtual bool updateX0WritesBounds() const noexcept = 0;
 
-  /// Before initializeSolver(): write the cost entries that must be in the
-  /// solver's sparsity pattern even if zero now, and return the categories to
-  /// re-apply after initialization (they overwrite those placeholders).
-  virtual DataChangeSet writeCostPattern() { return {}; }
+  /// Whether the cost entries hold unit placeholders at initializeSolver(), so
+  /// that a weight that is zero then is still in the solver's sparsity
+  /// pattern (the weights are re-applied after initialization).
+  virtual bool usesCostPlaceholders() const noexcept { return false; }
+  /// Write unit placeholders on the cost entries the formulation's own
+  /// primitives use (see usesCostPlaceholders()).
+  virtual void writeCostPlaceholders() {}
+  /// Add a term's placeholder block to the control point block of P (for costs
+  /// whose structure the formulation does not know). The block must be
+  /// positive semidefinite, like the cost itself, or OSQP rejects P as
+  /// nonconvex: the term's cost with unit weights is the natural choice.
+  virtual void addControlCostPlaceholders(
+      const Eigen::Ref<const Eigen::MatrixXd>& /*placeholders*/)
+  {}
 
   /// Predicted states x = (x_1, ..., x_T) for the QP solution z.
   virtual void
@@ -122,6 +132,10 @@ public:
   virtual void
   addControlQuadraticVector(const Eigen::Ref<const Eigen::VectorXd>& R,
                             const Eigen::Ref<const Eigen::VectorXd>& c_ref) = 0;
+  /// 1/2 c^T H c for a general (symmetric) H on the control points.
+  virtual void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) = 0;
+  /// g^T c on the control points.
+  virtual void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) = 0;
 
   // ---- constraint rows -----------------------------------------------------
   /// Rows x_k for every step, in the block (state_dim rows per step).
@@ -208,6 +222,8 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
+  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
+  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
   void setStateBoxRows(const RowBlock& block) override;
   void setStateBoxBounds(const RowBlock& block,
@@ -256,7 +272,10 @@ public:
   void updateX0(const MPCData& d,
                 const Eigen::Ref<const Eigen::VectorXd>& x0) override;
   bool updateX0WritesBounds() const noexcept override { return true; }
-  DataChangeSet writeCostPattern() override;
+  bool usesCostPlaceholders() const noexcept override { return true; }
+  void writeCostPlaceholders() override;
+  void addControlCostPlaceholders(
+      const Eigen::Ref<const Eigen::MatrixXd>& placeholders) override;
   void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
@@ -275,6 +294,8 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
+  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
+  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
   void setStateBoxRows(const RowBlock& block) override;
   void setStateBoxBounds(const RowBlock& block,
@@ -289,9 +310,13 @@ private:
 
   const int n_, m_, T_, nx_, nc_; // the states start at column nc_
   const VectorParameterization& input_param_;
-  // The cost only has diagonal entries in P, so the control point and state
-  // blocks of the diagonal (and of q) are separate parts, each written whole
+  // The state cost only has diagonal entries in P, so the cost parts are the
+  // control point block of P, the state block of P's diagonal, and the two
+  // blocks of q. The control point block is often only written on its
+  // diagonal; P_ctrl_offdiag_ records whether its off-diagonal entries may
+  // hold values (then a stale block is zeroed whole, not just its diagonal).
   CostPart P_ctrl_, P_state_, q_ctrl_, q_state_;
+  bool P_ctrl_offdiag_{false};
 };
 
 } // namespace affine_mpc::detail

@@ -60,8 +60,11 @@ public:
   bool applyX0WritesCostVector() const noexcept { return cost_vector_x0_; }
   bool applyX0WritesBounds() const noexcept { return bounds_x0_; }
 
-  /// See Formulation::writeCostPattern().
-  DataChangeSet writeCostPattern() { return formulation_->writeCostPattern(); }
+  /// Before initializeSolver(): write unit placeholders on every cost entry
+  /// that must be in the solver's sparsity pattern even if zero now, if the
+  /// formulation uses them, and return the categories to re-apply after
+  /// initialization (they overwrite the placeholders).
+  DataChangeSet writeCostPattern();
 
   /// Predicted states for the QP solution z.
   void predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,

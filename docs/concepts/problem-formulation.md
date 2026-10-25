@@ -62,6 +62,21 @@ whereas MPC can also enforce hard input limits directly without an input regular
 
     If you need that functionality then please submit an issue or, better yet, a pull request!
 
+### Input Rate Cost
+
+$$
+J_{\Delta u} = \sum_{k=0}^{T-1} \left\lVert \mathbf{u}_k - \mathbf{u}_{k-1} \right\rVert^2_{R_\Delta}
+$$
+
+This penalizes changes of the sampled inputs, starting from the previous input $\mathbf{u}_{-1}$.
+Enable it with `use_input_rate_cost` and set $R_\Delta$ with `setInputRateWeights()` (it defaults to ones).
+The previous input is stored after every solve that returns `Success` or `SolvedInaccurate`; call `setPreviousInput()` before the first solve, or after a failed solve if you applied a different input.
+
+**When you may want to use it:**
+
+- You want smooth inputs, e.g. to limit actuator wear or excite fewer high-frequency modes, without the hard limit of a slew rate constraint
+- You compare parameterizations: unlike $R$, which weights the control points, $R_\Delta$ acts on the sampled inputs, so it penalizes the same input change equally for every basis
+
 ### Input Trajectory Saturation Constraint
 
 $$

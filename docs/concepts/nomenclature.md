@@ -22,6 +22,7 @@
     | $Q \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal state weights |
     | $Q_{\mathrm{f}} \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal terminal state weights |
     | $R \in \mathbb{R}^{m \times m} \succeq 0$ | diagonal input (control point) weights |
+    | $R_\Delta \in \mathbb{R}^{m \times m} \succeq 0$ | diagonal input rate weights |
 
 <!-- --8<-- [end:mpc-terms] -->
 

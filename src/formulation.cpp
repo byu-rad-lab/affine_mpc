@@ -112,6 +112,18 @@ void CondensedFormulation::addControlQuadraticVector(
   qp_.q.head(nc_).noalias() -= R.cwiseProduct(c_ref);
 }
 
+void CondensedFormulation::addControlMatrix(const Ref<const MatrixXd>& H)
+{
+  startPartialWrite(P_, qp_.P);
+  qp_.P.topLeftCorner(nc_, nc_) += H;
+}
+
+void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& g)
+{
+  startPartialWrite(q_, qp_.q);
+  qp_.q.head(nc_) += g;
+}
+
 void CondensedFormulation::setStateBoxRows(const RowBlock& block)
 {
   qp_.A.middleRows(block.offset, nx_) = S_;
@@ -210,16 +222,25 @@ void SparseFormulation::updateX0(const MPCData& d,
   qp_.u.head(n_) = qp_.l.head(n_);
 }
 
-DataChangeSet SparseFormulation::writeCostPattern()
+void SparseFormulation::writeCostPlaceholders()
 {
   // Store every weight position on P's diagonal so a weight that is zero now
   // can become nonzero later. This costs nothing in solves since OSQP's KKT
   // system always includes P's diagonal. The weights are re-applied after
   // initialization.
   qp_.P.diagonal().segment(nc_, nx_).setOnes();
+  // terms then add their own placeholder blocks, so drop the assembled
+  // off-diagonal values first
+  if (P_ctrl_offdiag_)
+    qp_.P.topLeftCorner(nc_, nc_).setZero();
   if (P_ctrl_.written)
     qp_.P.diagonal().head(nc_).setOnes();
-  return DataChange::Weights;
+}
+
+void SparseFormulation::addControlCostPlaceholders(
+    const Ref<const MatrixXd>& placeholders)
+{
+  qp_.P.topLeftCorner(nc_, nc_) += placeholders;
 }
 
 void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
@@ -230,6 +251,10 @@ void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
 
 void SparseFormulation::endCostMatrix()
 {
+  if (P_ctrl_offdiag_ && P_ctrl_.stale && P_ctrl_.written) {
+    qp_.P.topLeftCorner(nc_, nc_).setZero();
+    P_ctrl_offdiag_ = false;
+  }
   finish(P_ctrl_, qp_.P.diagonal().head(nc_));
   finish(P_state_, qp_.P.diagonal().segment(nc_, nx_));
 }
@@ -254,6 +279,11 @@ void SparseFormulation::addStateQuadraticVector(const Ref<const VectorXd>& Q,
 
 void SparseFormulation::addControlQuadraticMatrix(const Ref<const VectorXd>& R)
 {
+  // a diagonal write into a stale block must not leave old off-diagonals
+  if (P_ctrl_.stale && P_ctrl_offdiag_) {
+    qp_.P.topLeftCorner(nc_, nc_).setZero();
+    P_ctrl_offdiag_ = false;
+  }
   assignOrAdd(P_ctrl_, qp_.P.diagonal().head(nc_), R);
 }
 
@@ -261,6 +291,17 @@ void SparseFormulation::addControlQuadraticVector(
     const Ref<const VectorXd>& R, const Ref<const VectorXd>& c_ref)
 {
   assignOrAdd(q_ctrl_, qp_.q.head(nc_), -R.cwiseProduct(c_ref));
+}
+
+void SparseFormulation::addControlMatrix(const Ref<const MatrixXd>& H)
+{
+  assignOrAdd(P_ctrl_, qp_.P.topLeftCorner(nc_, nc_), H);
+  P_ctrl_offdiag_ = true;
+}
+
+void SparseFormulation::addControlLinear(const Ref<const VectorXd>& g)
+{
+  assignOrAdd(q_ctrl_, qp_.q.head(nc_), g);
 }
 
 void SparseFormulation::setStateBoxRows(const RowBlock& block)

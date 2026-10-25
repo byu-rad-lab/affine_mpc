@@ -9,6 +9,7 @@ def test_options_interface():
         opts = ampc.Options(slew_control_points=False)
         opts = ampc.Options(saturate_states=False)
         opts = ampc.Options(saturate_input_trajectory=False)
+        opts = ampc.Options(use_input_rate_cost=False)
     except:
         assert False
 

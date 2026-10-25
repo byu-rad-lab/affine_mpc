@@ -180,7 +180,8 @@ std::vector<AllocationCase> allocationCases()
   const ampc::Options all{.use_input_cost = true,
                           .slew_initial_input = true,
                           .slew_control_points = true,
-                          .saturate_states = true};
+                          .saturate_states = true,
+                          .use_input_rate_cost = true};
   const ampc::Options sampled{.use_input_cost = true,
                               .saturate_input_trajectory = true};
   return {

@@ -82,6 +82,8 @@ void setWeights(ampc::MPCBase& mpc, const Scales& s)
                       s.weights * Vector2d{3.0, 0.4});
   if (mpc.getOptions().use_input_cost)
     mpc.setInputWeights(VectorXd::Constant(1, s.weights * 0.1));
+  if (mpc.getOptions().use_input_rate_cost)
+    mpc.setInputRateWeights(VectorXd::Constant(1, s.weights * 0.5));
 }
 
 void setRefs(ampc::MPCBase& mpc, const Scales& s)
@@ -121,7 +123,8 @@ void setSlew0(ampc::MPCBase& mpc, const Scales& s)
 
 void setPreviousInput(ampc::MPCBase& mpc, const Scales& s)
 {
-  if (mpc.getOptions().slew_initial_input)
+  if (mpc.getOptions().slew_initial_input
+      || mpc.getOptions().use_input_rate_cost)
     mpc.setPreviousInput(VectorXd::Constant(1, 0.1 * s.u_prev));
 }
 
@@ -198,7 +201,11 @@ template <class F> void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
 const ampc::Options all_options{.use_input_cost = true,
                                 .slew_initial_input = true,
                                 .slew_control_points = true,
-                                .saturate_states = true};
+                                .saturate_states = true,
+                                .use_input_rate_cost = true};
+
+// the rate cost alone (it then needs the previous input by itself)
+const ampc::Options rate_cost{.use_input_rate_cost = true};
 
 const ampc::Options sampled_bounds{.use_input_cost = true,
                                    .saturate_input_trajectory = true};
@@ -209,7 +216,7 @@ TEST(ChangeCategoryTester,
      givenEachCategoryChanged_CondensedQPMatchesFreshlyBuiltQP)
 {
   for (const ampc::Options& opts :
-       {ampc::Options{}, all_options, sampled_bounds}) {
+       {ampc::Options{}, all_options, sampled_bounds, rate_cost}) {
     checkCategoriesAgainstFreshQP<ampc::CondensedMPC>(opts);
   }
 }
@@ -218,7 +225,7 @@ TEST(ChangeCategoryTester,
      givenEachCategoryChanged_SparseQPMatchesFreshlyBuiltQP)
 {
   for (const ampc::Options& opts :
-       {ampc::Options{}, all_options, sampled_bounds}) {
+       {ampc::Options{}, all_options, sampled_bounds, rate_cost}) {
     checkCategoriesAgainstFreshQP<ampc::SparseMPC>(opts);
   }
 }

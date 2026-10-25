@@ -32,18 +32,22 @@ Attributes:
         2*num_control_points-2 rows), which is exact for non-integer knots. For
         degree > 1 every sample is constrained. Allows control points to be
         outside of input limits while keeping inputs within limits.
+    use_input_rate_cost: Enables a cost on the change of the sampled inputs
+        ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
                           )doc");
 
   opt.def(
       py::init([](const bool use_input_cost, const bool slew_initial_input,
                   const bool slew_control_points, const bool saturate_states,
-                  const bool saturate_input_trajectory) {
+                  const bool saturate_input_trajectory,
+                  const bool use_input_rate_cost) {
         ampc::Options opts;
         opts.use_input_cost = use_input_cost;
         opts.slew_initial_input = slew_initial_input;
         opts.slew_control_points = slew_control_points;
         opts.saturate_states = saturate_states;
         opts.saturate_input_trajectory = saturate_input_trajectory;
+        opts.use_input_rate_cost = use_input_rate_cost;
         return opts;
       }),
       R"doc(
@@ -64,11 +68,14 @@ Args:
         2*num_control_points-2 rows), which is exact for non-integer knots. For
         degree > 1 every sample is constrained. Allows control points to be
         outside of input limits while keeping inputs within limits.
+    use_input_rate_cost: Enables a cost on the change of the sampled inputs
+        ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
       )doc",
       py::arg("use_input_cost") = false, py::arg("slew_initial_input") = false,
       py::arg("slew_control_points") = false,
       py::arg("saturate_states") = false,
-      py::arg("saturate_input_trajectory") = false);
+      py::arg("saturate_input_trajectory") = false,
+      py::arg("use_input_rate_cost") = false);
 
   opt.def_readwrite("use_input_cost", &ampc::Options::use_input_cost);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
@@ -76,6 +83,7 @@ Args:
   opt.def_readwrite("saturate_states", &ampc::Options::saturate_states);
   opt.def_readwrite("saturate_input_trajectory",
                     &ampc::Options::saturate_input_trajectory);
+  opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
 
   opt.def("__str__", [](const affine_mpc::Options& opts) {
     std::ostringstream oss;
@@ -99,6 +107,7 @@ Args:
     addField(opts.slew_control_points, "slew_control_points");
     addField(opts.saturate_states, "saturate_states");
     addField(opts.saturate_input_trajectory, "saturate_input_trajectory");
+    addField(opts.use_input_rate_cost, "use_input_rate_cost");
     oss << ")";
     return oss.str();
   });

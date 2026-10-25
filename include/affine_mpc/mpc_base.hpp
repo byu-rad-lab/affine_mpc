@@ -320,6 +320,22 @@ public:
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
 
   /**
+   * @brief Set the weights of the input rate cost
+   *   sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled
+   *   inputs, where u_{-1} is the previous input (see setPreviousInput()).
+   *   Defaults to ones.
+   *
+   *   This method can only be called if `use_input_rate_cost` is enabled.
+   *   Unlike `R` (which weights the control points), the rate cost acts on
+   *   the sampled inputs, so it penalizes the same input change equally for
+   *   every basis.
+   * @param R_rate_diag Diagonal of the input rate weight matrix (size
+   *   input_dim, non-negative).
+   */
+  void
+  setInputRateWeights(const Eigen::Ref<const Eigen::VectorXd>& R_rate_diag);
+
+  /**
    * @brief Set reference state trajectory as a step command.
    * @param x_step Reference state vector to use for entire trajectory.
    * @note The QP is updated in the next prepare() or solve(), which report
@@ -420,18 +436,17 @@ public:
   void setSlewRateInitial(const Eigen::Ref<const Eigen::VectorXd>& u0_slew);
 
   /**
-   * @brief Set the previous input, which is only used with the
-   *   `slew_initial_input` constraint option. Defaults to zeros, but should be
-   *   set prior to first solve if a different value is desired.
+   * @brief Set the previous input, which is used by the `slew_initial_input`
+   *   constraint and the `use_input_rate_cost` cost. Defaults to zeros, but
+   *   should be set prior to first solve if a different value is desired.
    *
    *   This value is automatically set to the next input after each solve that
    *   returns `Success` or `SolvedInaccurate`, so you really only need to call
    *   this function once before the first solve, or after a failed solve (which
    *   leaves it unchanged) if you apply an input other than the stored one.
    *
-   *   This function can only be called if `slew_initial_input` is enabled.
-   *   Must be called prior to `initializeSolver()`, but can also be called
-   *   after if limits change between solves.
+   *   This function can only be called if `slew_initial_input` or
+   *   `use_input_rate_cost` is enabled.
    * @param u_prev Previous input vector.
    * @note The QP is updated in the next prepare() or solve().
    */
@@ -476,6 +491,13 @@ public:
    */
   Eigen::VectorXd getInputWeights() const;
 
+  /**
+   * @brief Get the diagonal of the input rate weight matrix R_rate.
+   * @throws std::logic_error if `use_input_rate_cost` is not enabled.
+   * @return Vector of size input_dim.
+   */
+  const Eigen::VectorXd& getInputRateWeights() const;
+
   /// @brief Get the lower input limit (-inf until setInputLimits()).
   const Eigen::VectorXd& getInputMin() const noexcept { return data_.u_min; }
   /// @brief Get the upper input limit (+inf until setInputLimits()).
@@ -506,10 +528,11 @@ public:
   const Eigen::VectorXd& getSlewRateInitial() const;
 
   /**
-   * @brief Get the previous input used by the initial slew rate constraint.
-   *   Updated automatically after each solve that returns `Success` or
-   *   `SolvedInaccurate`.
-   * @throws std::logic_error if `slew_initial_input` is not enabled.
+   * @brief Get the previous input used by the initial slew rate constraint
+   *   and the input rate cost. Updated automatically after each solve that
+   *   returns `Success` or `SolvedInaccurate`.
+   * @throws std::logic_error if neither `slew_initial_input` nor
+   *   `use_input_rate_cost` is enabled.
    */
   const Eigen::VectorXd& getPreviousInput() const;
 
@@ -554,7 +577,7 @@ public:
    *
    *   Useful after a failed solve, whose iterates may have diverged and would
    *   slow down or prevent convergence of the next solve. Does not change the
-   *   problem data, the previous input used by `slew_initial_input`, or the
+   *   problem data, the previous input, or the
    *   results returned by the solution getters. No-op before
    *   initializeSolver().
    */
@@ -639,6 +662,11 @@ private:
   // false if a solver update failed, in which case the categories behind it
   // stay pending.
   bool applyPendingChanges();
+  // Whether an option uses the previous input u_prev
+  bool usesPreviousInput() const noexcept
+  {
+    return opts_.slew_initial_input || opts_.use_input_rate_cost;
+  }
   // Write the x0-dependent parts of the QP and push them to the solver.
   // Returns false if a solver update failed. Does no matrix work, so that
   // solve() after prepare() only updates vectors.

@@ -288,6 +288,20 @@ The input weight `R` weights the control points, not the sampled inputs.
 With non-uniform knots, a control point on a short early interval is weighted the same as one on a long late interval, even though it affects fewer samples.
 Keep this in mind when comparing input penalties across parameterizations.
 
+With input rate cost (`use_input_rate_cost`), which penalizes changes of the sampled inputs instead:
+
+=== "Python"
+
+    ```python
+    mpc.setInputRateWeights(R_rate_diag)  # defaults to ones
+    ```
+
+=== "C++"
+
+    ```cpp
+    mpc.setInputRateWeights(R_rate_diag); // defaults to ones
+    ```
+
 #### Set references
 
 State step reference:

@@ -43,6 +43,8 @@ class Options:
             2*num_control_points-2 rows), which is exact for non-integer knots. For
             degree > 1 every sample is constrained. Allows control points to be
             outside of input limits while keeping inputs within limits.
+        use_input_rate_cost: Enables a cost on the change of the sampled inputs
+            ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
 
     """
 
@@ -51,6 +53,7 @@ class Options:
     slew_control_points: bool
     slew_initial_input: bool
     use_input_cost: bool
+    use_input_rate_cost: bool
     def __init__(
         self,
         use_input_cost: bool = False,
@@ -58,6 +61,7 @@ class Options:
         slew_control_points: bool = False,
         saturate_states: bool = False,
         saturate_input_trajectory: bool = False,
+        use_input_rate_cost: bool = False,
     ) -> None:
         """
         Construct an Options struct defining optional MPC configuration features.
@@ -77,6 +81,8 @@ class Options:
                 2*num_control_points-2 rows), which is exact for non-integer knots. For
                 degree > 1 every sample is constrained. Allows control points to be
                 outside of input limits while keeping inputs within limits.
+            use_input_rate_cost: Enables a cost on the change of the sampled inputs
+                ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
         """
 
     def __repr__(self) -> str: ...
@@ -840,6 +846,16 @@ class MPCBase:
         Get the lower input limit (-inf until setInputLimits()).
         """
 
+    def getInputRateWeights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the diagonal of the input rate weight matrix R_rate (size input_dim).
+
+        Raises:
+            RuntimeError: If `use_input_rate_cost` is not enabled.
+        """
+
     @typing.overload
     def getInputTrajectory(
         self,
@@ -977,11 +993,13 @@ class MPCBase:
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the previous input used by the initial slew rate constraint. Updated
-        automatically after each solve that returns `Success` or `SolvedInaccurate`.
+        Get the previous input used by the initial slew rate constraint and the input
+        rate cost. Updated automatically after each solve that returns `Success` or
+        `SolvedInaccurate`.
 
         Raises:
-            RuntimeError: If `slew_initial_input` is not enabled.
+            RuntimeError: If neither `slew_initial_input` nor `use_input_rate_cost` is
+                enabled.
         """
 
     def getQPCostMatrix(
@@ -1225,6 +1243,24 @@ class MPCBase:
             failures.
         """
 
+    def setInputRateWeights(
+        self,
+        R_rate_diag: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the weights of the input rate cost
+        sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
+        where u_{-1} is the previous input (see setPreviousInput()). Defaults to ones.
+
+        This method can only be called if `use_input_rate_cost` is enabled. Unlike `R`
+        (which weights the control points), the rate cost acts on the sampled inputs,
+        so it penalizes the same input change equally for every basis.
+
+        Args:
+            R_rate_diag: Diagonal of the input rate weight matrix (size input_dim,
+                non-negative).
+        """
+
     def setInputWeights(
         self, R_diag: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
@@ -1353,18 +1389,17 @@ class MPCBase:
         self, u_prev: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set the previous input, which is only used with the `slew_initial_input`
-        constraint option. Defaults to zeros, but should be set prior to first solve if
-        a different value is desired.
+        Set the previous input, which is used by the `slew_initial_input` constraint
+        and the `use_input_rate_cost` cost. Defaults to zeros, but should be set prior
+        to first solve if a different value is desired.
 
         This value is automatically set to the next input after each solve that returns
         `Success` or `SolvedInaccurate`, so you really only need to call this function
         once before the first solve, or after a failed solve (which leaves it unchanged)
         if you apply an input other than the stored one.
 
-        This function can only be called if `slew_initial_input` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        This function can only be called if `slew_initial_input` or
+        `use_input_rate_cost` is enabled.
 
         Args:
             u_prev: Previous input vector.
