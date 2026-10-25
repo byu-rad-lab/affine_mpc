@@ -14,38 +14,21 @@ namespace affine_mpc_py {
 namespace ampc = affine_mpc;
 namespace py = pybind11;
 
-// see Pybind11 docs:
-// Classes -> Overriding virtual functions in Python
-// Classes -> Binding protected member functions
+// MPCBase's constructor is protected; this subclass makes it constructible
+// for unit tests of the shared methods (it uses the condensed formulation)
 class PyMPCBase : public ampc::MPCBase
 {
 public:
   PyMPCBase(int state_dim,
             int input_dim,
             const ampc::Parameterization& parameterization,
-            const ampc::Options& opts,
-            int num_design_vars,
-            int num_custom_constraints) :
+            const ampc::Options& opts) :
       MPCBase(state_dim,
               input_dim,
               parameterization,
               opts,
-              num_design_vars,
-              num_custom_constraints)
-  {
-    // Allow creation for unit tests. Still abstract and unusable.
-  }
-  ~PyMPCBase() override = default;
-
-  // define pure virtual funtions for unit testing
-  DataChangeSet qpApplyChanges(DataChangeSet /*changes*/) override
-  {
-    return {};
-  }
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override
-  {
-    PYBIND11_OVERLOAD_PURE(bool, MPCBase, qpApplyX0, x0);
-  }
+              ampc::detail::FormulationKind::Condensed)
+  {}
 };
 
 // The C++ solution getters do not check initialization (hot path), but reading
@@ -62,29 +45,25 @@ static void requireSolverInitialized(const ampc::MPCBase& self,
 void moduleAddMPCBase(py::module& m)
 {
   py::class_<ampc::MPCBase, PyMPCBase> base(
-      m, "MPCBase", "Abstract class. Not usable on its own.");
+      m, "MPCBase", "Base class. Use CondensedMPC or SparseMPC.");
   base.def(py::init<const int, const int, const ampc::Parameterization&,
-                    const ampc::Options&, const int, const int>(),
+                    const ampc::Options&>(),
            R"doc(
 Constructor for MPCBase.
 
-This is an abstract class and not meant to be used directly. It is defined
-here for testing and so derived classes share its methods. Subclassing it in
-Python to define a custom formulation is not supported.
+This is a base class and not meant to be used directly (use CondensedMPC or
+SparseMPC). It is constructible for testing and so derived classes share its
+methods. Subclassing it in Python to define a custom formulation is not
+supported.
 
 Args:
     state_dim: Dimension of state vector.
     input_dim: Dimension of input vector.
     parameterization: Input trajectory parameterization.
     opts: Optional MPC configuration features to enable.
-    num_design_vars: Number of decision variables in the optimization problem.
-    num_custom_constraints: Number of custom constraints in the optimization
-        problem (beyond those implemented by MPCBase: input/state limits, slew
-        rates, and input trajectory saturation).
            )doc",
            py::arg("state_dim"), py::arg("input_dim"), py::arg("param"),
-           py::arg("opts"), py::arg("num_design_vars"),
-           py::arg("num_custom_constraints"));
+           py::arg("opts"));
 
   base.def("initializeSolver", &ampc::MPCBase::initializeSolver,
            R"doc(

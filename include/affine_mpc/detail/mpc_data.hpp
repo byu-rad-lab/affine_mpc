@@ -25,7 +25,9 @@ namespace affine_mpc::detail {
  *   a different part of the QP, so a setter only marks its category and the
  *   QP is updated once per category in MPCBase::prepare() or MPCBase::solve().
  *
- * The initial state x0 is not a category: solve() applies it every call.
+ * The initial state x0 is never pending: solve() applies it every call. It is
+ * still a category (X0, not part of DataChangeSet::all()) so the QP terms can
+ * declare which of their parts depend on it.
  */
 enum class DataChange : std::uint8_t
 {
@@ -35,6 +37,7 @@ enum class DataChange : std::uint8_t
   References = 1 << 3,    ///< state and input references (cost vector)
   Limits = 1 << 4,        ///< input and state limits, slew rates (bounds)
   PreviousInput = 1 << 5, ///< `u_prev` of the initial slew rate (bounds)
+  X0 = 1 << 6,            ///< initial state (applied by every solve())
 };
 
 /**
@@ -49,7 +52,7 @@ public:
       bits_{static_cast<std::uint8_t>(change)}
   {}
 
-  /// @brief Every category.
+  /// @brief Every category that can be pending (all but X0).
   static constexpr DataChangeSet all() noexcept
   {
     DataChangeSet set;

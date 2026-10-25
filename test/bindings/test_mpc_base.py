@@ -23,7 +23,7 @@ def test_mpc_base_interface():
         opts.slew_control_points = True
         opts.slew_initial_input = True
         opts.saturate_states = True
-        mpc = ampc.MPCBase(n, m, param, opts, m * nc, 0)
+        mpc = ampc.MPCBase(n, m, param, opts)
 
         mpc.setModelDiscrete(Ad=np.eye(n), Bd=np.ones(n), wd=np.zeros(n))
         mpc.setModelContinuous2Discrete(
@@ -72,7 +72,8 @@ def test_mpc_base_interface():
     assert str(mpc).startswith("MPCBase:\n  state_dim = 2\n  input_dim = 1\n")
 
     assert function_fails(mpc.initializeSolver, solver_settings=None)
-    assert function_fails(mpc.initializeSolver, solver_settings=ampc.OSQPSettings())
+    # MPCBase on its own builds the condensed QP
+    assert mpc.initializeSolver(solver_settings=ampc.OSQPSettings())
 
     assert function_fails(mpc.getNextInput, u0=None)
     assert function_fails(mpc.getInputControlPoints, control_points=None)

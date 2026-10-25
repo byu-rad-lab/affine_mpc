@@ -352,11 +352,16 @@ TEST(SparseMPCProtectedTester,
                                ampc::Options{.use_input_cost = true}};
   mpc.setModel();
   mpc.setWeights(Vector2d{1.0, 0.0}, VectorXd::Zero(m));
+  mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
 
-  // initializeSolver() assembles P this way before handing it to OSQP
-  mpc.updateQPTerms(Vector2d::Zero());
-  const MatrixXd P = mpc.getP();
-  ASSERT_TRUE(P.isIdentity());
+  // initializeSolver() hands P to OSQP with unit weights, which stay until the
+  // first prepare() or solve() applies the actual weights
+  ASSERT_TRUE(mpc.initializeSolver());
+  ASSERT_TRUE(mpc.getP().isIdentity());
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+  MatrixXd P_expected{MatrixXd::Zero(n * T + m * nc, n * T + m * nc)};
+  P_expected.diagonal().tail(n * T) = Vector2d{1.0, 0.0}.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(mpc.getP(), P_expected, 0.0));
 }
 
 TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)

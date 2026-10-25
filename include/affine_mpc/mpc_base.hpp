@@ -9,7 +9,6 @@
 #include <Eigen/Core>
 #include <iosfwd>
 #include <memory>
-#include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -21,9 +20,21 @@
 
 namespace affine_mpc {
 
+namespace detail {
+class QPBuilder;
+
+/// Internal: how the QP represents the predicted states (see CondensedMPC
+/// and SparseMPC).
+enum class FormulationKind
+{
+  Condensed, ///< states eliminated with the model
+  Sparse,    ///< states are QP variables, the model is equality rows
+};
+} // namespace detail
+
 /**
  * @class MPCBase
- * @brief Abstract base class for affine MPC formulations.
+ * @brief Base class for affine MPC formulations.
  *
  * Defines the common interface and shared logic for condensed and sparse MPC
  * variants. Manages OSQP solver, input parameterization via B-splines, and
@@ -35,32 +46,30 @@ namespace affine_mpc {
  * per changed category. Changes of the model matrices or the weights rebuild QP
  * matrices and make OSQP refactor; the other categories only update vectors.
  *
- * Derived classes read the MPC data through data() and implement how the
- * QP depends on each change category and on the initial state.
+ * Internally, the QP is built by one QP term per feature (cost or constraint
+ * rows) on top of the formulation, which maps the costs and constraints on the
+ * predicted states onto the QP variables.
  */
 class MPCBase
 {
 protected:
   /**
    * @brief Construct MPCBase with dimensions, parameterization, options, and
-   *   constraint counts.
+   *   formulation.
    * @param state_dim State vector dimension.
    * @param input_dim Input vector dimension.
    * @param parameterization Input trajectory parameterization.
    * @param opts Optional MPC configuration features to enable.
-   * @param num_design_vars Number of QP decision variables.
-   * @param num_custom_constraints Number of custom constraints (other than
-   *   input saturation, slew rate constraints, and state saturation).
+   * @param formulation How the QP represents the predicted states.
    */
   MPCBase(int state_dim,
           int input_dim,
           const Parameterization& parameterization,
           const Options& opts,
-          int num_design_vars,
-          int num_custom_constraints);
+          detail::FormulationKind formulation);
 
 public:
-  virtual ~MPCBase() = default;
+  virtual ~MPCBase();
 
   /**
    * @brief Initialize OSQP solver after configuring MPC setup. Calling this
@@ -172,8 +181,7 @@ public:
    * @throws std::invalid_argument if x_traj does not have size
    *   state_dim * horizon_steps.
    */
-  virtual void
-  getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
+  void getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
 
   /**
    * @brief Propagate the internal discrete-time model for one step.
@@ -584,8 +592,8 @@ public:
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 
 protected:
-  // Internal types (affine_mpc/detail) that subclasses use to read the MPC
-  // data and implement qpApplyChanges(); not part of the stable API.
+  // Internal types (affine_mpc/detail), used by tests that read the QP; not
+  // part of the stable API.
   using MPCData = detail::MPCData;
   using DataChange = detail::DataChange;
   using DataChangeSet = detail::DataChangeSet;
@@ -597,19 +605,14 @@ protected:
   const Options opts_;
   /// Maps the control points (first in the QP solution) to the inputs
   const VectorParameterization input_param_;
-  /// Sample indices with input saturation rows (empty: control points instead)
-  const std::vector<int> u_sat_samples_;
-  const int num_u_sat_cons_, u_sat_dim_, slew_dim_, x_sat_dim_;
-  const int u_sat_idx_, slew0_idx_, slew_idx_, x_sat_idx_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
   // OSQP variables - see https://osqp.org/docs/solver/index.html
+  // The QP terms and the formulation write them (see qpBuilder()).
   std::unique_ptr<OSQPSolver> solver_;
   Eigen::MatrixXd P_; // osqp cost matrix
   Eigen::MatrixXd A_; // osqp constraint matrix
   Eigen::VectorXd q_; // osqp cost vector
-  // osqp constraint bounds: MPCBase writes the input saturation, slew, and
-  // state saturation rows; formulations write their own rows
   Eigen::VectorXd l_; // osqp constraint lower bound
   Eigen::VectorXd u_; // osqp constraint upper bound
 
@@ -618,6 +621,9 @@ protected:
 
   /// @brief Change categories not yet applied to the QP.
   DataChangeSet pendingChanges() const noexcept { return pending_; }
+
+  /// @brief The internal QP builder (formulation, terms, and row layout).
+  const detail::QPBuilder& qpBuilder() const noexcept;
 
   /**
    * @brief Bring the whole QP up to date for x0: apply the pending changes,
@@ -628,28 +634,15 @@ protected:
   bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
 private:
-  // Apply the pending changes (x0-independent work). Returns false if a solver
-  // update failed, in which case the failed categories stay pending.
+  // Apply the pending changes (x0-independent work) and push what changed to
+  // the solver (except the parts applyX0() writes, which it pushes). Returns
+  // false if a solver update failed, in which case the categories behind it
+  // stay pending.
   bool applyPendingChanges();
-  // Write the bound rows owned by MPCBase for the given changes
-  void writeBounds(DataChangeSet changes);
-
-  // need to be implemented by derived classes (they define how the QP depends
-  // on the MPC data)
-
-  // Write the parts of the QP that depend on the changed categories but not on
-  // x0 (e.g. P and A after model or weight changes), and push the changed
-  // matrices to the solver (and any changed vectors that qpApplyX0() does not
-  // push anyway).
-  // MPCBase has already written its own bound rows. Before initializeSolver()
-  // the QP is only assembled. Returns the categories that are still pending:
-  // those whose solver update failed (retried at the next call), plus any the
-  // formulation applies only after initialization.
-  virtual DataChangeSet qpApplyChanges(DataChangeSet changes) = 0;
   // Write the x0-dependent parts of the QP and push them to the solver.
-  // Returns false if a solver update failed. Must not do matrix work, so that
+  // Returns false if a solver update failed. Does no matrix work, so that
   // solve() after prepare() only updates vectors.
-  virtual bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  bool applyX0(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
   MPCData data_;
   DataChangeSet
@@ -661,6 +654,8 @@ private:
   double prepare_time_;   ///< prepare() time reported by the last solve() (s)
   double unsolved_prepare_time_; ///< prepare() time since the last solve() (s)
   Discretizer discretizer_;      // for setModelContinuous2Discrete()
+  // builds the QP into P_, A_, q_, l_, u_ (declared after them)
+  std::unique_ptr<detail::QPBuilder> qp_builder_;
 };
 
 /**

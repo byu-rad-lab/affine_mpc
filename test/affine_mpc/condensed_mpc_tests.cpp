@@ -3,6 +3,8 @@
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "formulation.hpp" // internal (src/): the condensed state map
+#include "qp_builder.hpp"
 #include "utils.hpp"
 
 using namespace Eigen;
@@ -27,10 +29,10 @@ public:
     setModelContinuous2Discrete(A, B, w, ts);
   }
 
+  // assembling the QP computes the condensed state map x = S c + v
   void findSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0)
   {
-    updateS();
-    updateV(x0);
+    (void)qpUpdateX0(x0);
   }
 
   void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0)
@@ -41,10 +43,17 @@ public:
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
   auto getWd() const { return readModel(*this).wd; }
-  auto getS() const { return this->S_; }
-  auto getV() const { return this->v_; }
+  auto getS() const { return formulation().S(); }
+  auto getV() const { return formulation().v(); }
   auto getP() const { return getQPCostMatrix(); }
   auto getQ() const { return this->q_; }
+
+private:
+  const ampc::detail::CondensedFormulation& formulation() const
+  {
+    return static_cast<const ampc::detail::CondensedFormulation&>(
+        qpBuilder().formulation());
+  }
 };
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)

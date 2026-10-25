@@ -56,6 +56,9 @@ add_library(${PROJECT_NAME}
   src/vector_parameterization.cpp
   src/discretizer.cpp
   src/mpc_base.cpp
+  src/formulation.cpp
+  src/qp_terms.cpp
+  src/qp_builder.cpp
   src/condensed_mpc.cpp
   src/sparse_mpc.cpp
   src/mpc_logger.cpp
@@ -200,7 +203,8 @@ if(AFFINE_MPC_BUILD_TESTS)
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
-    if(TEST_NAME STREQUAL "npz_writer_tests")
+    # tests of internal headers (src/)
+    if(TEST_NAME MATCHES "^(npz_writer|mpc_base|condensed_mpc)_tests$")
       target_include_directories(${TEST_NAME}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )

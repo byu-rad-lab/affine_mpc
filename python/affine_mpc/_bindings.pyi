@@ -763,34 +763,25 @@ class SolveInfo:
 
 class MPCBase:
     """
-    Abstract class. Not usable on its own.
+    Base class. Use CondensedMPC or SparseMPC.
     """
 
     def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options,
-        num_design_vars: int,
-        num_custom_constraints: int,
+        self, state_dim: int, input_dim: int, param: Parameterization, opts: Options
     ) -> None:
         """
         Constructor for MPCBase.
 
-        This is an abstract class and not meant to be used directly. It is defined
-        here for testing and so derived classes share its methods. Subclassing it in
-        Python to define a custom formulation is not supported.
+        This is a base class and not meant to be used directly (use CondensedMPC or
+        SparseMPC). It is constructible for testing and so derived classes share its
+        methods. Subclassing it in Python to define a custom formulation is not
+        supported.
 
         Args:
             state_dim: Dimension of state vector.
             input_dim: Dimension of input vector.
             parameterization: Input trajectory parameterization.
             opts: Optional MPC configuration features to enable.
-            num_design_vars: Number of decision variables in the optimization problem.
-            num_custom_constraints: Number of custom constraints in the optimization
-                problem (beyond those implemented by MPCBase: input/state limits, slew
-                rates, and input trajectory saturation).
         """
 
     def __repr__(self) -> str: ...

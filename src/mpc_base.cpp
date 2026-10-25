@@ -14,6 +14,8 @@
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/solve_status.hpp"
 #include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
+#include "formulation.hpp"
+#include "qp_builder.hpp"
 
 using namespace Eigen;
 // revert back to this once Eigen 3.5 is required
@@ -37,17 +39,6 @@ constexpr int validateInputDim(int input_dim)
     throw std::invalid_argument(
         "[MPCBase::validateInputDim] input_dim must be positive.");
   return input_dim;
-}
-
-// Sample indices whose inputs are bounded when `saturate_input_trajectory` is
-// enabled. An empty result means the control points are bounded instead.
-std::vector<int>
-inputSatSamples(const detail::VectorParameterization& input_param,
-                const Options& opts)
-{
-  if (!opts.saturate_input_trajectory)
-    return {};
-  return input_param.inputSaturationSamples();
 }
 
 // Size checks for setters, which are not on the solve path. The message is
@@ -82,8 +73,7 @@ MPCBase::MPCBase(int state_dim,
                  int input_dim,
                  const Parameterization& param,
                  const Options& opts,
-                 int num_design_vars,
-                 int num_custom_constraints) :
+                 detail::FormulationKind formulation) :
     state_dim_{validateStateDim(state_dim)},
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
@@ -93,17 +83,6 @@ MPCBase::MPCBase(int state_dim,
     ctrls_dim_{input_dim * param.num_control_points},
     opts_{opts},
     input_param_{input_dim_, param},
-    u_sat_samples_{inputSatSamples(input_param_, opts)},
-    num_u_sat_cons_{u_sat_samples_.empty()
-                        ? param.num_control_points
-                        : static_cast<int>(u_sat_samples_.size())},
-    u_sat_dim_{input_dim_ * num_u_sat_cons_},
-    slew_dim_{(ctrls_dim_ - input_dim_) * opts.slew_control_points},
-    x_sat_dim_{x_traj_dim_ * opts.saturate_states},
-    u_sat_idx_{num_custom_constraints},
-    slew0_idx_{u_sat_idx_ + u_sat_dim_},
-    slew_idx_{slew0_idx_ + input_dim * opts.slew_initial_input},
-    x_sat_idx_{slew_idx_ + slew_dim_},
     solution_map_{nullptr, 0},
     solver_{nullptr},
     data_{state_dim_, input_dim_, horizon_steps_, num_ctrl_pts_, opts_},
@@ -119,54 +98,31 @@ MPCBase::MPCBase(int state_dim,
     mpc_solve_time_{0.0},
     prepare_time_{0.0},
     unsolved_prepare_time_{0.0},
-    discretizer_{state_dim_, input_dim_}
+    discretizer_{state_dim_, input_dim_},
+    qp_builder_{
+        std::make_unique<detail::QPBuilder>(formulation,
+                                            state_dim_,
+                                            input_param_,
+                                            opts_,
+                                            detail::QPRef{P_, A_, q_, l_, u_})}
 {
-  // allocate QP memory
-  const int slew0_dim{input_dim * opts.slew_initial_input};
-  const int num_constraints{num_custom_constraints + u_sat_dim_ + slew0_dim
-                            + slew_dim_ + x_sat_dim_};
-  solver_ = std::make_unique<OSQPSolver>(num_design_vars, num_constraints);
-  P_.resize(num_design_vars, num_design_vars);
-  A_.resize(num_constraints, num_design_vars);
-  q_.resize(num_design_vars);
-  l_.resize(num_constraints);
-  u_.resize(num_constraints);
+  // allocate QP memory (the options decided the terms and so the sizes)
+  const int num_vars{qp_builder_->numVariables()};
+  const int num_constraints{qp_builder_->numConstraints()};
+  solver_ = std::make_unique<OSQPSolver>(num_vars, num_constraints);
+  P_.setZero(num_vars, num_vars);
+  A_.setZero(num_constraints, num_vars);
+  q_.setZero(num_vars);
+  l_.setZero(num_constraints);
+  u_.setZero(num_constraints);
+  qp_builder_->writeConstantParts(data_);
+}
 
-  // initialize common constraint matrix blocks
-  A_.setZero();
+MPCBase::~MPCBase() = default;
 
-  if (!u_sat_samples_.empty()) {
-    // saturate sampled inputs (each a weighted sum of control points)
-    int row{u_sat_idx_};
-    for (const int k : u_sat_samples_) {
-      for (int i{0}; i < param.band_width; ++i) {
-        const int col{
-            input_param_.coefficientIndex(0, param.band_start(k) + i)};
-        A_.block(row, col, input_dim_, input_dim_)
-            .diagonal()
-            .setConstant(param.band_weights(i, k));
-      }
-      row += input_dim_;
-    }
-  } else {
-    // saturate control points directly (much fewer constraints)
-    A_.middleRows(u_sat_idx_, u_sat_dim_).diagonal().setOnes();
-  }
-
-  if (opts.slew_initial_input) {
-    // the first sampled input u_0
-    for (int i{0}; i < param.band_width; ++i) {
-      const int col{input_param_.coefficientIndex(0, param.band_start(0) + i)};
-      A_.block(slew0_idx_, col, input_dim_, input_dim_)
-          .diagonal()
-          .setConstant(param.band_weights(i, 0));
-    }
-  }
-  if (opts.slew_control_points) {
-    const int slew_cp_dim{input_dim * (param.num_control_points - 1)};
-    A_.middleRows(slew_idx_, slew_cp_dim).diagonal().setConstant(-1.0);
-    A_.middleRows(slew_idx_, slew_cp_dim).diagonal(input_dim).setOnes();
-  }
+const detail::QPBuilder& MPCBase::qpBuilder() const noexcept
+{
+  return *qp_builder_;
 }
 
 bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
@@ -201,6 +157,9 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   VectorXd x_full{state_dim_};
   x_full.setOnes();
   (void)qpUpdateX0(x_full);
+  // entries that must be in the sparsity pattern even if zero now; the
+  // categories that overwrite them are applied by the first solve
+  pending_ |= qp_builder_->writeCostPattern();
 
   solver_initialized_ =
       solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
@@ -228,7 +187,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
 
   using Clock = std::chrono::steady_clock;
   const Clock::time_point start{Clock::now()};
-  if (!applyPendingChanges() || !qpApplyX0(x0)) {
+  if (!applyPendingChanges() || !applyX0(x0)) {
     mpc_solve_time_ =
         std::chrono::duration<double>(Clock::now() - start).count();
     return SolveStatus::UpdateFailed;
@@ -265,7 +224,7 @@ SolveStatus MPCBase::prepare()
 bool MPCBase::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
   const bool applied{applyPendingChanges()};
-  return qpApplyX0(x0) && applied;
+  return applyX0(x0) && applied;
 }
 
 bool MPCBase::applyPendingChanges()
@@ -273,32 +232,46 @@ bool MPCBase::applyPendingChanges()
   // Nothing changed is the common case, which costs only this check
   if (pending_.empty())
     return true;
-  writeBounds(pending_);
-  pending_ = qpApplyChanges(pending_);
+  const detail::Formulation::Update written{
+      qp_builder_->apply(pending_, data_)};
+  pending_ = {};
+  // Before initializeSolver() the QP is only assembled
+  if (!solver_initialized_)
+    return true;
+
+  // Send only the changed parts. When both matrices changed, one combined
+  // update rescales and refactors once instead of twice. The parts that
+  // applyX0() writes are sent there.
+  if (!written.P.empty() && !written.A.empty()) {
+    if (!solver_->updateMatrices(P_, A_))
+      pending_ |= written.P | written.A;
+  } else if (!written.P.empty()) {
+    if (!solver_->updateCostMatrix(P_))
+      pending_ |= written.P;
+  } else if (!written.A.empty()) {
+    if (!solver_->updateConstraintMatrix(A_))
+      pending_ |= written.A;
+  }
+  if (!written.q.empty() && !qp_builder_->applyX0WritesCostVector()
+      && !solver_->updateCostVector(q_))
+    pending_ |= written.q;
+  if (!written.bounds.empty() && !qp_builder_->applyX0WritesBounds()
+      && !solver_->updateBounds(l_, u_))
+    pending_ |= written.bounds;
   return pending_.empty();
 }
 
-void MPCBase::writeBounds(const DataChangeSet changes)
+bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
 {
-  const MPCData& d{data_};
-  if (changes.has(DataChange::Limits)) {
-    l_.segment(u_sat_idx_, u_sat_dim_) = d.u_min.replicate(num_u_sat_cons_, 1);
-    u_.segment(u_sat_idx_, u_sat_dim_) = d.u_max.replicate(num_u_sat_cons_, 1);
-    if (opts_.slew_control_points) {
-      u_.segment(slew_idx_, slew_dim_) =
-          d.ctrls_slew.replicate(num_ctrl_pts_ - 1, 1);
-      l_.segment(slew_idx_, slew_dim_) = -u_.segment(slew_idx_, slew_dim_);
-    }
-    if (opts_.saturate_states) {
-      l_.tail(x_sat_dim_) = d.x_min.replicate(horizon_steps_, 1);
-      u_.tail(x_sat_dim_) = d.x_max.replicate(horizon_steps_, 1);
-    }
-  }
-  if (opts_.slew_initial_input
-      && changes.has(DataChange::Limits | DataChange::PreviousInput)) {
-    l_.segment(slew0_idx_, input_dim_) = d.u_prev - d.u0_slew;
-    u_.segment(slew0_idx_, input_dim_) = d.u_prev + d.u0_slew;
-  }
+  qp_builder_->applyX0(data_, x0);
+  if (!solver_initialized_)
+    return true;
+  bool success{true};
+  if (qp_builder_->applyX0WritesCostVector())
+    success &= solver_->updateCostVector(q_);
+  if (qp_builder_->applyX0WritesBounds())
+    success &= solver_->updateBounds(l_, u_);
+  return success;
 }
 
 bool MPCBase::isWithinSparsityPattern() const
@@ -338,6 +311,7 @@ void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   assert(solver_initialized_);
   validateSize(x_traj.size(), x_traj_dim_, "getPredictedStateTrajectory",
                "x_traj");
+  qp_builder_->predictStates(solution_map_, x_traj);
 }
 
 void MPCBase::propagateModel(const Ref<const VectorXd>& x0,

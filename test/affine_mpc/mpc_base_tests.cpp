@@ -13,6 +13,7 @@
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
+#include "qp_builder.hpp" // internal (src/): the row layout
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
@@ -20,7 +21,8 @@ using namespace Eigen;
 using ampc::operator<<;
 
 // Tests use varying parameters for the MPCBase class, so a GTest fixture is not
-// used
+// used. The shared rows (input bounds and slew rates) are the same in every
+// formulation; the condensed one has no rows of its own.
 class MPCBaseTester : public ampc::MPCBase
 {
 public:
@@ -28,11 +30,7 @@ public:
                 const int m,
                 const ampc::Parameterization& param,
                 const ampc::Options& opts = {}) :
-      MPCBase{n, m, param, opts, m * param.num_control_points, 0}
-  {}
-  virtual ~MPCBaseTester() = default;
-  void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> /*x_traj*/) const noexcept override final
+      MPCBase{n, m, param, opts, ampc::detail::FormulationKind::Condensed}
   {}
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
@@ -42,49 +40,45 @@ public:
   auto getRbig() const { return data().R_big; }
   // the bound rows are written when the pending changes are applied; the
   // views are read-only so a test can not write into the QP storage
-  auto getASlew() const { return A_.middleRows(slew0_idx_, totalSlewDim()); }
+  auto getASlew() const { return A_.middleRows(slewOffset(), slewRows()); }
   auto getLSlew()
   {
     applyChanges();
-    return std::as_const(l_).segment(slew0_idx_, totalSlewDim());
+    return std::as_const(l_).segment(slewOffset(), slewRows());
   }
   auto getUSlew()
   {
     applyChanges();
-    return std::as_const(u_).segment(slew0_idx_, totalSlewDim());
+    return std::as_const(u_).segment(slewOffset(), slewRows());
   }
-  auto getASatU() const { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
+  auto getASatU() const
+  {
+    return A_.middleRows(inputBounds().offset, inputBounds().rows);
+  }
   auto getLSatU()
   {
     applyChanges();
-    return std::as_const(l_).segment(u_sat_idx_, u_sat_dim_);
+    return std::as_const(l_).segment(inputBounds().offset, inputBounds().rows);
   }
   auto getUSatU()
   {
     applyChanges();
-    return std::as_const(u_).segment(u_sat_idx_, u_sat_dim_);
+    return std::as_const(u_).segment(inputBounds().offset, inputBounds().rows);
   }
   DataChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
 
-private:
-  DataChangeSet qpApplyChanges(DataChangeSet changes) override final
-  {
-    applied_changes = applied_changes | changes;
-    return {};
-  }
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& /*x0*/) override final
-  {
-    return true;
-  }
-
-public:
-  DataChangeSet applied_changes{};
-
 protected:
-  int totalSlewDim() const
+  ampc::detail::RowBlock inputBounds() const
   {
-    return slew_dim_ + input_dim_ * opts_.slew_initial_input;
+    return qpBuilder().rows().input_bounds;
+  }
+  // the initial slew rows directly precede the control point slew rows
+  int slewOffset() const { return inputBounds().offset + inputBounds().rows; }
+  int slewRows() const
+  {
+    const ampc::detail::QPRows& rows{qpBuilder().rows()};
+    return rows.initial_slew.rows + rows.control_point_slew.rows;
   }
 };
 
@@ -196,7 +190,6 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
   // nothing is in the QP before the first update, so everything is pending
   EXPECT_EQ(base.getPendingChanges(), DataChangeSet::all());
   base.applyChanges();
-  EXPECT_EQ(base.applied_changes, DataChangeSet::all());
   EXPECT_TRUE(base.getPendingChanges().empty());
 
   const Vector2d v2{Vector2d::Ones()};
@@ -206,9 +199,7 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
     SCOPED_TRACE(name);
     setter();
     EXPECT_EQ(base.getPendingChanges(), expected);
-    base.applied_changes = {};
     base.applyChanges();
-    EXPECT_EQ(base.applied_changes, expected);
     EXPECT_TRUE(base.getPendingChanges().empty());
   };
 

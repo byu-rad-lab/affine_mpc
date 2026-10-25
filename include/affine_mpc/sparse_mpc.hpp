@@ -54,27 +54,9 @@ public:
             int horizon_steps,
             const Options& opts = Options{});
 
-  virtual ~SparseMPC() = default;
-
-  /**
-   * @brief Get the predicted state trajectory over the horizon.
-   * @param x_traj Output vector for state trajectory.
-   */
-  void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
+  ~SparseMPC() override = default;
 
   const char* getClassName() const noexcept override { return "SparseMPC"; }
-
-private:
-  DataChangeSet qpApplyChanges(DataChangeSet changes) override final;
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-
-  // dynamics-row bounds -wd for steps k >= 1 (k = 0 also depends on x0)
-  void setDynamicsOffsetBounds();
-  // dynamics blocks of A (Bd times the basis weights, and Ad)
-  void setDynamicsMatrixBlocks();
-  void calcBothCostTerms();
-  void calcCostVector();
 };
 
 } // namespace affine_mpc

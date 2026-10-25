@@ -51,30 +51,9 @@ public:
                int horizon_steps,
                const Options& opts = Options{});
 
-  virtual ~CondensedMPC() = default;
-
-  /**
-   * @brief Get the predicted state trajectory over the horizon.
-   * @param x_traj Output vector for state trajectory.
-   */
-  void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
+  ~CondensedMPC() override = default;
 
   const char* getClassName() const noexcept override { return "CondensedMPC"; }
-
-protected: // for testing
-  void updateS();
-  void updateV(const Eigen::Ref<const Eigen::VectorXd>& x0);
-
-  Eigen::MatrixXd S_;
-  Eigen::VectorXd v_;
-
-private:
-  DataChangeSet qpApplyChanges(DataChangeSet changes) override final;
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-
-  Eigen::VectorXd weighted_state_err_; // Q_big * (v_ - x_ref), avoids a temp
-  Eigen::MatrixXd weighted_S_;         // Q_big * S_, avoids a temp for P_
 };
 
 } // namespace affine_mpc
