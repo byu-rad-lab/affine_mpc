@@ -40,30 +40,33 @@ public:
   auto getRbig() const { return data().R_big; }
   // the bound rows are written when the pending changes are applied; the
   // views are read-only so a test can not write into the QP storage
-  auto getASlew() const { return A_.middleRows(slewOffset(), slewRows()); }
+  auto getASlew() const
+  {
+    return this->qp().A.middleRows(slewOffset(), slewRows());
+  }
   auto getLSlew()
   {
     applyChanges();
-    return std::as_const(l_).segment(slewOffset(), slewRows());
+    return this->qp().l.segment(slewOffset(), slewRows());
   }
   auto getUSlew()
   {
     applyChanges();
-    return std::as_const(u_).segment(slewOffset(), slewRows());
+    return this->qp().u.segment(slewOffset(), slewRows());
   }
   auto getASatU() const
   {
-    return A_.middleRows(inputBounds().offset, inputBounds().rows);
+    return this->qp().A.middleRows(inputBounds().offset, inputBounds().rows);
   }
   auto getLSatU()
   {
     applyChanges();
-    return std::as_const(l_).segment(inputBounds().offset, inputBounds().rows);
+    return this->qp().l.segment(inputBounds().offset, inputBounds().rows);
   }
   auto getUSatU()
   {
     applyChanges();
-    return std::as_const(u_).segment(inputBounds().offset, inputBounds().rows);
+    return this->qp().u.segment(inputBounds().offset, inputBounds().rows);
   }
   DataChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }

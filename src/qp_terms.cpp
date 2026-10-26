@@ -25,24 +25,24 @@ std::vector<int> boundedSamples(const VectorParameterization& input_param,
 
 // ---- StateCost --------------------------------------------------------------
 
-void StateCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+void StateCost::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   f.addStateQuadraticMatrix(d.Q_big.diagonal());
 }
 
-void StateCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void StateCost::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   f.addStateQuadraticVector(d.Q_big.diagonal(), d.x_ref);
 }
 
 // ---- InputCost --------------------------------------------------------------
 
-void InputCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+void InputCost::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   f.addControlQuadraticMatrix(d.R_big.diagonal());
 }
 
-void InputCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void InputCost::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   f.addControlQuadraticVector(d.R_big.diagonal(), d.ctrls_ref);
 }
@@ -76,7 +76,7 @@ InputRateCost::InputRateCost(const VectorParameterization& input_param) :
       phi0_.push_back({i, Phi(0, i)});
 }
 
-void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   // G times each channel's weight (P_c_ stays zero outside these entries)
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
@@ -86,7 +86,7 @@ void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
   f.addControlMatrix(P_c_);
 }
 
-void InputRateCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void InputRateCost::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   // the u_0 - u_prev difference: -Phi_0^T R_rate u_prev
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
@@ -123,7 +123,7 @@ void InputBounds::declare(QPLayout& layout)
   rows_ = layout.addRows(input_param_.inputDim() * num_bounded_);
 }
 
-void InputBounds::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
+void InputBounds::updateMatrix(const MPCData&, Formulation&, QP& qp)
 {
   // The control points come first in every formulation, so these rows do not
   // depend on it
@@ -147,7 +147,7 @@ void InputBounds::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
   }
 }
 
-void InputBounds::updateVector(const MPCData& d, Formulation&, QPRef& qp)
+void InputBounds::updateVector(const MPCData& d, Formulation&, QP& qp)
 {
   qp.l.segment(rows_.offset, rows_.rows) = d.u_min.replicate(num_bounded_, 1);
   qp.u.segment(rows_.offset, rows_.rows) = d.u_max.replicate(num_bounded_, 1);
@@ -155,7 +155,7 @@ void InputBounds::updateVector(const MPCData& d, Formulation&, QPRef& qp)
 
 // ---- InitialSlew ------------------------------------------------------------
 
-void InitialSlew::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
+void InitialSlew::updateMatrix(const MPCData&, Formulation&, QP& qp)
 {
   // the first sampled input u_0
   const Parameterization& param{input_param_.parameterization()};
@@ -168,7 +168,7 @@ void InitialSlew::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
   }
 }
 
-void InitialSlew::updateVector(const MPCData& d, Formulation&, QPRef& qp)
+void InitialSlew::updateVector(const MPCData& d, Formulation&, QP& qp)
 {
   qp.l.segment(rows_.offset, rows_.rows) = d.u_prev - d.u0_slew;
   qp.u.segment(rows_.offset, rows_.rows) = d.u_prev + d.u0_slew;
@@ -176,7 +176,7 @@ void InitialSlew::updateVector(const MPCData& d, Formulation&, QPRef& qp)
 
 // ---- ControlPointSlew -------------------------------------------------------
 
-void ControlPointSlew::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
+void ControlPointSlew::updateMatrix(const MPCData&, Formulation&, QP& qp)
 {
   // c_{i+1} - c_i
   auto rows{qp.A.middleRows(rows_.offset, rows_.rows)};
@@ -184,7 +184,7 @@ void ControlPointSlew::updateMatrix(const MPCData&, Formulation&, QPRef& qp)
   rows.diagonal(input_param_.inputDim()).setOnes();
 }
 
-void ControlPointSlew::updateVector(const MPCData& d, Formulation&, QPRef& qp)
+void ControlPointSlew::updateVector(const MPCData& d, Formulation&, QP& qp)
 {
   const int num_differences{input_param_.parameterization().num_control_points
                             - 1};
@@ -221,7 +221,7 @@ void StateBounds::declare(QPLayout& layout)
   rows_ = {upper_.offset, 2 * num_bounded * T_ + num_bounded};
 }
 
-void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef& qp)
+void StateBounds::updateMatrix(const MPCData&, Formulation& f, QP& qp)
 {
   if (!soft_) {
     f.setStateRows(rows_, states_, 1, T_);
@@ -241,7 +241,7 @@ void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef& qp)
     qp.A(nonneg_.offset + j, slack_.offset + j) = 1.0;
 }
 
-void StateBounds::updateVector(const MPCData& d, Formulation& f, QPRef& qp)
+void StateBounds::updateVector(const MPCData& d, Formulation& f, QP& qp)
 {
   if (!soft_) {
     f.setStateBounds(rows_, states_, 1, T_, d.x_min, d.x_max);
@@ -273,7 +273,7 @@ void GeneralConstraints::declare(QPLayout& layout)
 }
 
 void GeneralConstraints::addInputPart(const MPCData& d,
-                                      QPRef& qp,
+                                      QP& qp,
                                       const int k,
                                       const int row) const
 {
@@ -285,9 +285,7 @@ void GeneralConstraints::addInputPart(const MPCData& d,
   }
 }
 
-void GeneralConstraints::updateMatrix(const MPCData& d,
-                                      Formulation& f,
-                                      QPRef& qp)
+void GeneralConstraints::updateMatrix(const MPCData& d, Formulation& f, QP& qp)
 {
   Hx_.assign(d.Hx);
   // k = 0: Hu u_0 only (x_0 is not a QP variable in any formulation)
@@ -300,9 +298,7 @@ void GeneralConstraints::updateMatrix(const MPCData& d,
     addInputPart(d, qp, k, rows_.offset + k * p_);
 }
 
-void GeneralConstraints::updateVector(const MPCData& d,
-                                      Formulation& f,
-                                      QPRef& qp)
+void GeneralConstraints::updateVector(const MPCData& d, Formulation& f, QP& qp)
 {
   // Hx_ was refreshed by updateMatrix(), which runs first on every change of
   // Hx (ConstraintMatrices is in both parts' dependencies)
@@ -316,13 +312,13 @@ void GeneralConstraints::updateVector(const MPCData& d,
 
 // ---- TerminalConstraints ----------------------------------------------------
 
-void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   Hf_.assign(d.Hf);
   f.setStateRows(rows_, Hf_, T_, 1);
 }
 
-void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   assert(Hf_.matches(
       d.Hf)); // refreshed by updateMatrix(), as for the general rows
@@ -331,13 +327,13 @@ void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QPRef&)
 
 // ---- SoftStatePenalty -------------------------------------------------------
 
-void SoftStatePenalty::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+void SoftStatePenalty::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   // 1/2 of s^T diag(l2) s
   f.addVariableQuadratic(slack_, d.x_soft_l2);
 }
 
-void SoftStatePenalty::updateVector(const MPCData& d, Formulation& f, QPRef&)
+void SoftStatePenalty::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   // 1/2 of l1^T s
   half_l1_.noalias() = 0.5 * d.x_soft_l1;

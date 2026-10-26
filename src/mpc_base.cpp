@@ -127,26 +127,23 @@ MPCBase::MPCBase(int state_dim,
     prepare_time_{0.0},
     unsolved_prepare_time_{0.0},
     discretizer_{state_dim_, input_dim_},
-    qp_builder_{
-        std::make_unique<detail::QPBuilder>(formulation,
-                                            state_dim_,
-                                            input_param_,
-                                            opts_,
-                                            detail::QPRef{P_, A_, q_, l_, u_})}
+    qp_builder_{std::make_unique<detail::QPBuilder>(
+        formulation, state_dim_, input_param_, opts_)}
 {
-  // allocate QP memory (the options decided the terms and so the sizes)
-  const int num_vars{qp_builder_->numVariables()};
-  const int num_constraints{qp_builder_->numConstraints()};
-  solver_ = std::make_unique<OSQPSolver>(num_vars, num_constraints);
-  P_.setZero(num_vars, num_vars);
-  A_.setZero(num_constraints, num_vars);
-  q_.setZero(num_vars);
-  l_.setZero(num_constraints);
-  u_.setZero(num_constraints);
+  // the options decided the terms and so the QP's sizes
+  solver_ = std::make_unique<OSQPSolver>(qp_builder_->numVariables(),
+                                         qp_builder_->numConstraints());
   qp_builder_->writeConstantParts(data_);
 }
 
 MPCBase::~MPCBase() = default;
+
+const detail::QP& MPCBase::qp() const noexcept { return qp_builder_->qp(); }
+
+const Eigen::MatrixXd& MPCBase::getQPCostMatrix() const noexcept
+{
+  return qp_builder_->qp().P;
+}
 
 const detail::QPBuilder& MPCBase::qpBuilder() const noexcept
 {
@@ -201,8 +198,8 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   // categories that overwrite them are applied by the first solve
   pending_ |= qp_builder_->writeCostPattern();
 
-  solver_initialized_ =
-      solver_->initialize(P_, A_, q_, l_, u_, solver_settings);
+  solver_initialized_ = solver_->initialize(qp().P, qp().A, qp().q, qp().l,
+                                            qp().u, solver_settings);
   // According to Eigen's documentation, use "placement new" syntax to update
   // solution_map_ with the new pointer to the solution vector. This does not
   // allocate new memory that needs to be deleted, it just updates the pointer.
@@ -283,20 +280,20 @@ bool MPCBase::applyPendingChanges()
   // update rescales and refactors once instead of twice. The parts that
   // applyX0() writes are sent there.
   if (!written.P.empty() && !written.A.empty()) {
-    if (!solver_->updateMatrices(P_, A_))
+    if (!solver_->updateMatrices(qp().P, qp().A))
       pending_ |= written.P | written.A;
   } else if (!written.P.empty()) {
-    if (!solver_->updateCostMatrix(P_))
+    if (!solver_->updateCostMatrix(qp().P))
       pending_ |= written.P;
   } else if (!written.A.empty()) {
-    if (!solver_->updateConstraintMatrix(A_))
+    if (!solver_->updateConstraintMatrix(qp().A))
       pending_ |= written.A;
   }
   if (!written.q.empty() && !qp_builder_->applyX0WritesCostVector()
-      && !solver_->updateCostVector(q_))
+      && !solver_->updateCostVector(qp().q))
     pending_ |= written.q;
   if (!written.bounds.empty() && !qp_builder_->applyX0WritesBounds()
-      && !solver_->updateBounds(l_, u_))
+      && !solver_->updateBounds(qp().l, qp().u))
     pending_ |= written.bounds;
   return pending_.empty();
 }
@@ -309,9 +306,9 @@ bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
     return true;
   bool success{true};
   if (qp_builder_->applyX0WritesCostVector())
-    success &= solver_->updateCostVector(q_);
+    success &= solver_->updateCostVector(qp().q);
   if (qp_builder_->applyX0WritesBounds())
-    success &= solver_->updateBounds(l_, u_);
+    success &= solver_->updateBounds(qp().l, qp().u);
   return success;
 }
 
@@ -319,7 +316,7 @@ bool MPCBase::isWithinSparsityPattern() const
 {
   if (!solver_initialized_)
     return true;
-  return solver_->isWithinSparsityPattern(P_, A_);
+  return solver_->isWithinSparsityPattern(qp().P, qp().A);
 }
 
 void MPCBase::getNextInput(Ref<VectorXd> u0) const

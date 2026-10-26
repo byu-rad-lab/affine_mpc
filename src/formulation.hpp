@@ -1,27 +1,17 @@
 #ifndef AFFINE_MPC_FORMULATION_HPP
 #define AFFINE_MPC_FORMULATION_HPP
 
-// Internal (not installed): the QP storage, row layout, and the formulations
+// Internal (not installed): the row layout and the formulations
 // that map state-space costs and constraints onto the QP variables.
 
 #include <Eigen/Core>
 #include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
+#include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
 
 namespace affine_mpc::detail {
-
-/// The QP storage owned by MPCBase:
-/// minimize 1/2 z^T P z + q^T z subject to l <= A z <= u.
-struct QPRef
-{
-  Eigen::MatrixXd& P;
-  Eigen::MatrixXd& A;
-  Eigen::VectorXd& q;
-  Eigen::VectorXd& l;
-  Eigen::VectorXd& u;
-};
 
 /// A contiguous block of constraint rows.
 struct RowBlock
@@ -119,7 +109,8 @@ private:
 class Formulation
 {
 public:
-  explicit Formulation(QPRef qp) : qp_{qp} {}
+  /// @param qp The QP the formulation writes (owned by the QP builder).
+  explicit Formulation(QP& qp) : qp_{qp} {}
   virtual ~Formulation() = default;
   Formulation(const Formulation&) = delete;
   Formulation& operator=(const Formulation&) = delete;
@@ -285,7 +276,7 @@ protected:
     part.stale = false;
   }
 
-  QPRef qp_;
+  QP& qp_; // owned by the QP builder
 
 private:
   VarBlock extra_{};           // the extra variables (empty without any)
@@ -302,7 +293,7 @@ class CondensedFormulation final : public Formulation
 public:
   CondensedFormulation(int state_dim,
                        const VectorParameterization& input_param,
-                       QPRef qp);
+                       QP& qp);
 
   int numVariables() const noexcept override { return nc_; }
   RowBlock declareRows(QPLayout&) override { return {}; }
@@ -384,7 +375,7 @@ class SparseFormulation final : public Formulation
 public:
   SparseFormulation(int state_dim,
                     const VectorParameterization& input_param,
-                    QPRef qp);
+                    QP& qp);
 
   int numVariables() const noexcept override { return nc_ + nx_; }
   RowBlock declareRows(QPLayout& layout) override

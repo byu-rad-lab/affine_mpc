@@ -30,20 +30,25 @@ struct QPRows
 };
 
 /**
- * Owns the formulation and the QP terms. The term list and the order of the
- * rows are fixed at construction; the lists each update walks are computed
- * once there too.
+ * Owns the QP, the formulation, and the QP terms. The term list, the order of
+ * the rows, and so the QP's sizes are fixed at construction, where the QP is
+ * allocated; the lists each update walks are computed once there too.
  */
 class QPBuilder
 {
 public:
-  /// @param qp The QP storage (allocated later by the owner with the sizes
-  ///   from numVariables() and numConstraints(), then writeConstantParts()).
+  /// Builds the term list and allocates the QP (zero); call
+  /// writeConstantParts() before the first update.
   QPBuilder(FormulationKind kind,
             int state_dim,
             const VectorParameterization& input_param,
-            const Options& opts,
-            QPRef qp);
+            const Options& opts);
+  // the formulation keeps a reference to qp_
+  QPBuilder(const QPBuilder&) = delete;
+  QPBuilder& operator=(const QPBuilder&) = delete;
+
+  /// The QP as last written by the updates.
+  const QP& qp() const noexcept { return qp_; }
 
   int numVariables() const noexcept { return num_variables_; }
   int numConstraints() const noexcept { return num_constraints_; }
@@ -86,7 +91,7 @@ private:
     DataChangeSet deps;
   };
 
-  QPRef qp_;
+  QP qp_; // declared before formulation_, which keeps a reference
   std::unique_ptr<Formulation> formulation_;
   std::vector<std::unique_ptr<QPTerm>> terms_;
   QPRows rows_;

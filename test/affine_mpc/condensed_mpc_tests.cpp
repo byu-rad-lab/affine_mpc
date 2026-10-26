@@ -46,7 +46,7 @@ public:
   auto getS() const { return formulation().S(); }
   auto getV() const { return formulation().v(); }
   auto getP() const { return getQPCostMatrix(); }
-  auto getQ() const { return this->q_; }
+  auto getQ() const { return this->qp().q; }
 
 private:
   const ampc::detail::CondensedFormulation& formulation() const

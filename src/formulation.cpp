@@ -101,9 +101,7 @@ bool StateRowMap::matches(const Ref<const MatrixXd>& H) const
 // ---- CondensedFormulation ---------------------------------------------------
 
 CondensedFormulation::CondensedFormulation(
-    const int state_dim,
-    const VectorParameterization& input_param,
-    const QPRef qp) :
+    const int state_dim, const VectorParameterization& input_param, QP& qp) :
     Formulation{qp},
     n_{state_dim},
     m_{input_param.inputDim()},
@@ -304,7 +302,7 @@ void CondensedFormulation::updateV(const MPCData& d)
 
 SparseFormulation::SparseFormulation(const int state_dim,
                                      const VectorParameterization& input_param,
-                                     const QPRef qp) :
+                                     QP& qp) :
     Formulation{qp},
     n_{state_dim},
     m_{input_param.inputDim()},

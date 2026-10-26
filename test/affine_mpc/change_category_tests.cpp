@@ -28,18 +28,20 @@ public:
     ASSERT_TRUE(this->qpUpdateX0(x0));
   }
   ampc::detail::DataChangeSet pending() const { return this->pendingChanges(); }
-  const MatrixXd& P() const { return this->P_; }
-  const MatrixXd& A() const { return this->A_; }
-  const VectorXd& q() const { return this->q_; }
-  const VectorXd& l() const { return this->l_; }
-  const VectorXd& u() const { return this->u_; }
+  const MatrixXd& P() const { return this->qp().P; }
+  const MatrixXd& A() const { return this->qp().A; }
+  const VectorXd& q() const { return this->qp().q; }
+  const VectorXd& l() const { return this->qp().l; }
+  const VectorXd& u() const { return this->qp().u; }
   // Overwrites the local copies of the QP matrices; OSQP keeps its own copy,
   // so solves are unaffected unless the MPC rebuilds and sends them.
   void poisonMatrices()
   {
+    // the QP is only readable from here; the test writes it on purpose
+    auto& qp{const_cast<ampc::detail::QP&>(this->qp())};
     const double nan{std::numeric_limits<double>::quiet_NaN()};
-    this->P_.setConstant(nan);
-    this->A_.setConstant(nan);
+    qp.P.setConstant(nan);
+    qp.A.setConstant(nan);
   }
 };
 

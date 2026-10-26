@@ -36,10 +36,10 @@ public:
   auto getBd() const { return readModel(*this).Bd; }
   auto getWd() const { return readModel(*this).wd; }
   auto getP() const { return getQPCostMatrix(); }
-  auto getQ() const { return this->q_; }
-  auto getA() const { return this->A_; }
-  auto getL() const { return this->l_; }
-  auto getU() const { return this->u_; }
+  auto getQ() const { return this->qp().q; }
+  auto getA() const { return this->qp().A; }
+  auto getL() const { return this->qp().l; }
+  auto getU() const { return this->qp().u; }
 };
 
 // ---- Constraint tests ------------------------------------------------------

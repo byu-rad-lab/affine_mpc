@@ -19,7 +19,7 @@ std::unique_ptr<Formulation>
 makeFormulation(const FormulationKind kind,
                 const int state_dim,
                 const VectorParameterization& input_param,
-                const QPRef qp)
+                QP& qp)
 {
   if (kind == FormulationKind::Sparse)
     return std::make_unique<SparseFormulation>(state_dim, input_param, qp);
@@ -41,9 +41,8 @@ const Term& QPBuilder::add(QPLayout& layout, Args&&... args)
 QPBuilder::QPBuilder(const FormulationKind kind,
                      const int state_dim,
                      const VectorParameterization& input_param,
-                     const Options& opts,
-                     const QPRef qp) :
-    qp_{qp}, formulation_{makeFormulation(kind, state_dim, input_param, qp)}
+                     const Options& opts) :
+    formulation_{makeFormulation(kind, state_dim, input_param, qp_)}
 {
   // The options select the terms; each term's rows follow the previous ones
   QPLayout layout{formulation_->numVariables()};
@@ -84,6 +83,11 @@ QPBuilder::QPBuilder(const FormulationKind kind,
             .rows();
   num_constraints_ = layout.numRows();
   num_variables_ = layout.numVariables();
+  qp_.P.setZero(num_variables_, num_variables_);
+  qp_.A.setZero(num_constraints_, num_variables_);
+  qp_.q.setZero(num_variables_);
+  qp_.l.setZero(num_constraints_);
+  qp_.u.setZero(num_constraints_);
   // variables the terms declared (after the formulation's own)
   const int own_variables{formulation_->numVariables()};
   formulation_->setExtraVariables(

@@ -20,8 +20,8 @@ template <class Base> class RateInspector : public Base
 public:
   using Base::Base;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
-  const MatrixXd& P() const { return this->P_; }
-  const VectorXd& q() const { return this->q_; }
+  const MatrixXd& P() const { return this->qp().P; }
+  const VectorXd& q() const { return this->qp().q; }
 };
 
 // Two-input system with every entry of Ad and Bd nonzero

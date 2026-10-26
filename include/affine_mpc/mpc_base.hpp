@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
+#include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
@@ -755,7 +756,7 @@ public:
    * @return Reference to the internal QP cost matrix (full symmetric matrix),
    *   valid for the lifetime of this object.
    */
-  const Eigen::MatrixXd& getQPCostMatrix() const noexcept { return P_; }
+  const Eigen::MatrixXd& getQPCostMatrix() const noexcept;
 
   /**
    * @brief Debugging aid: check whether the current QP matrices fit the
@@ -792,14 +793,7 @@ protected:
   const std::vector<int> bounded_states_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
-  // OSQP variables - see https://osqp.org/docs/solver/index.html
-  // The QP terms and the formulation write them (see qpBuilder()).
   std::unique_ptr<OSQPSolver> solver_;
-  Eigen::MatrixXd P_; // osqp cost matrix
-  Eigen::MatrixXd A_; // osqp constraint matrix
-  Eigen::VectorXd q_; // osqp cost vector
-  Eigen::VectorXd l_; // osqp constraint lower bound
-  Eigen::VectorXd u_; // osqp constraint upper bound
 
   /// @brief The MPC data set through the setters (read-only).
   const MPCData& data() const noexcept { return data_; }
@@ -809,6 +803,9 @@ protected:
 
   /// @brief The internal QP builder (formulation, terms, and row layout).
   const detail::QPBuilder& qpBuilder() const noexcept;
+
+  /// @brief The QP as last written (owned by the QP builder; see qpUpdateX0()).
+  const detail::QP& qp() const noexcept;
 
   /**
    * @brief Bring the whole QP up to date for x0: apply the pending changes,
@@ -845,7 +842,7 @@ private:
   double prepare_time_;   ///< prepare() time reported by the last solve() (s)
   double unsolved_prepare_time_; ///< prepare() time since the last solve() (s)
   Discretizer discretizer_;      // for setModelContinuous2Discrete()
-  // builds the QP into P_, A_, q_, l_, u_ (declared after them)
+  // owns and builds the QP
   std::unique_ptr<detail::QPBuilder> qp_builder_;
 };
 
