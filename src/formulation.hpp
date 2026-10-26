@@ -5,6 +5,7 @@
 // that map state-space costs and constraints onto the QP variables.
 
 #include <Eigen/Core>
+#include <memory>
 #include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
@@ -57,13 +58,30 @@ public:
   /// Whether H is the identity (a selection of every state), which the
   /// formulations write as one block.
   bool isIdentity() const noexcept { return identity_; }
+  /// Whether H is a general matrix, whose nonzero entries can change (a
+  /// selection's entries are fixed).
+  bool isGeneral() const noexcept { return general_; }
   const std::vector<Entry>& entries() const noexcept { return entries_; }
 
 private:
-  StateRowMap(int rows, bool identity) : rows_{rows}, identity_{identity} {}
+  StateRowMap(int rows, bool identity, bool general) :
+      rows_{rows}, identity_{identity}, general_{general}
+  {}
   int rows_;
-  bool identity_;
+  bool identity_, general_;
   std::vector<Entry> entries_;
+};
+
+/// Constraint rows H x_k for the predicted states x_k,
+/// k = first_step, ..., first_step + num_steps - 1 (1 <= k <= T), H.rows()
+/// rows per step in step order from block.offset. Returned by
+/// Formulation::declareStateRows() and passed back to write the rows.
+struct StateRows
+{
+  RowBlock block;
+  int first_step{1};
+  int num_steps{0};
+  QPEntries* entries{nullptr}; // the formulation's entries, if it declares any
 };
 
 /// Hands out QP variables (after the formulation's own) and constraint rows in
@@ -242,22 +260,25 @@ public:
   addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) = 0;
 
   // ---- constraint rows -----------------------------------------------------
-  /// Rows H x_k for the predicted states x_k, k = first_step, ...,
-  /// first_step + num_steps - 1 (1 <= k <= T), H.rows() rows per step in step
-  /// order from block.offset. Afterwards the formulation's columns of these
-  /// rows hold exactly H x_k (earlier values there, e.g. a term's entries on
-  /// the control points, are cleared) and no other column is touched, so a
-  /// term can then add entries on the control points or on its own variables.
-  virtual void setStateRows(const RowBlock& block,
-                            const StateRowMap& H,
-                            int first_step,
-                            int num_steps) = 0;
-  /// Bounds lo <= H x_k <= hi (lo and hi have size H.rows()) for the rows of
-  /// setStateRows() with the same arguments.
-  virtual void setStateBounds(const RowBlock& block,
+  /// Declare the rows H x_k of `block` for the given steps (see StateRows),
+  /// where H has the structure of `H`: a selection's fixed entries, or any
+  /// entry of a general matrix (whose nonzero entries can change). The term
+  /// keeps the result to write the rows.
+  virtual StateRows declareStateRows(QPLayout& layout,
+                                     const RowBlock& block,
+                                     const StateRowMap& H,
+                                     int first_step,
+                                     int num_steps) = 0;
+  /// Write H x_k in the rows (H with the declared structure). Only the
+  /// formulation's own entries of the rows are assigned. Another writer of the
+  /// same rows (e.g. a term's entries on the control points) zeroes its own
+  /// entries first, then calls this, then adds its values: the formulation's
+  /// entries may overlap the term's (condensed rows are dense on the control
+  /// points) and are then assigned over the zeros.
+  virtual void setStateRows(const StateRows& rows, const StateRowMap& H) = 0;
+  /// Bounds lo <= H x_k <= hi (lo and hi have size H.rows()) for the rows.
+  virtual void setStateBounds(const StateRows& rows,
                               const StateRowMap& H,
-                              int first_step,
-                              int num_steps,
                               const Eigen::Ref<const Eigen::VectorXd>& lo,
                               const Eigen::Ref<const Eigen::VectorXd>& hi) = 0;
 
@@ -344,14 +365,14 @@ public:
   void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
-  void setStateRows(const RowBlock& block,
-                    const StateRowMap& H,
-                    int first_step,
-                    int num_steps) override;
-  void setStateBounds(const RowBlock& block,
+  StateRows declareStateRows(QPLayout& layout,
+                             const RowBlock& block,
+                             const StateRowMap& H,
+                             int first_step,
+                             int num_steps) override;
+  void setStateRows(const StateRows& rows, const StateRowMap& H) override;
+  void setStateBounds(const StateRows& rows,
                       const StateRowMap& H,
-                      int first_step,
-                      int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,
                       const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 
@@ -425,14 +446,14 @@ public:
   void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
-  void setStateRows(const RowBlock& block,
-                    const StateRowMap& H,
-                    int first_step,
-                    int num_steps) override;
-  void setStateBounds(const RowBlock& block,
+  StateRows declareStateRows(QPLayout& layout,
+                             const RowBlock& block,
+                             const StateRowMap& H,
+                             int first_step,
+                             int num_steps) override;
+  void setStateRows(const StateRows& rows, const StateRowMap& H) override;
+  void setStateBounds(const StateRows& rows,
                       const StateRowMap& H,
-                      int first_step,
-                      int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,
                       const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 
@@ -455,6 +476,8 @@ private:
   // hold values (then a stale block is zeroed whole, not just its diagonal).
   CostPart P_ctrl_, P_state_, q_ctrl_, q_state_;
   bool P_ctrl_offdiag_{false};
+  // the entries of the state rows (one set per declareStateRows())
+  std::vector<std::unique_ptr<QPEntries>> state_rows_;
 };
 
 } // namespace affine_mpc::detail

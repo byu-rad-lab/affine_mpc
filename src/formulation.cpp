@@ -54,7 +54,7 @@ StateRowMap StateRowMap::selection(const std::vector<int>& states,
                                    const int state_dim)
 {
   const int num_selected{static_cast<int>(states.size())};
-  StateRowMap map{num_selected, num_selected == state_dim};
+  StateRowMap map{num_selected, num_selected == state_dim, false};
   map.entries_.reserve(states.size());
   for (int j{0}; j < num_selected; ++j)
     map.entries_.push_back({j, states[static_cast<std::size_t>(j)], 1.0});
@@ -63,7 +63,7 @@ StateRowMap StateRowMap::selection(const std::vector<int>& states,
 
 StateRowMap StateRowMap::general(const int rows, const int state_dim)
 {
-  StateRowMap map{rows, false};
+  StateRowMap map{rows, false, true};
   map.entries_.reserve(static_cast<std::size_t>(rows)
                        * static_cast<std::size_t>(state_dim));
   return map;
@@ -191,11 +191,21 @@ void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
   ownQ() += q_c;
 }
 
-void CondensedFormulation::setStateRows(const RowBlock& block,
-                                        const StateRowMap& H,
-                                        const int first_step,
-                                        const int num_steps)
+StateRows CondensedFormulation::declareStateRows(QPLayout& /*layout*/,
+                                                 const RowBlock& block,
+                                                 const StateRowMap& /*H*/,
+                                                 const int first_step,
+                                                 const int num_steps)
 {
+  // the rows are written densely from S (not by position)
+  return {block, first_step, num_steps, nullptr};
+}
+
+void CondensedFormulation::setStateRows(const StateRows& rows,
+                                        const StateRowMap& H)
+{
+  const RowBlock& block{rows.block};
+  const int first_step{rows.first_step}, num_steps{rows.num_steps};
   if (H.isIdentity()) {
     // the rows of S itself
     qp_.A.block(block.offset, 0, num_steps * n_, nc_) =
@@ -203,14 +213,14 @@ void CondensedFormulation::setStateRows(const RowBlock& block,
     return;
   }
   // Row i of H S_k (S_k: the rows of S for x_k) as a sum over the nonzero
-  // entries of row i of H. A selection of states copies rows of S.
+  // entries of row i of H. A selection of states copies rows of S. Only the
+  // band columns are the formulation's (S_k is zero after them).
   const int p{H.rows()};
   const std::vector<StateRowMap::Entry>& entries{H.entries()};
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int t{(k - 1) * n_};
     const int cols{band_cols_[static_cast<std::size_t>(k - 1)]};
-    qp_.A.block(row, cols, p, nc_ - cols).setZero();
     auto e{entries.begin()};
     for (int i{0}; i < p; ++i) {
       auto dst{qp_.A.row(row + i).head(cols)};
@@ -225,13 +235,13 @@ void CondensedFormulation::setStateRows(const RowBlock& block,
   }
 }
 
-void CondensedFormulation::setStateBounds(const RowBlock& block,
+void CondensedFormulation::setStateBounds(const StateRows& rows,
                                           const StateRowMap& H,
-                                          const int first_step,
-                                          const int num_steps,
                                           const Ref<const VectorXd>& lo,
                                           const Ref<const VectorXd>& hi)
 {
+  const RowBlock& block{rows.block};
+  const int first_step{rows.first_step}, num_steps{rows.num_steps};
   // lo <= H (S_k c + v_k) <= hi becomes lo - H v_k <= H S_k c <= hi - H v_k
   if (H.isIdentity()) {
     const int rows{num_steps * n_};
@@ -424,34 +434,64 @@ void SparseFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
   assignOrAdd(q_ctrl_, qp_.q.head(nc_), q_c);
 }
 
-void SparseFormulation::setStateRows(const RowBlock& block,
-                                     const StateRowMap& H,
-                                     const int first_step,
-                                     const int num_steps)
+StateRows SparseFormulation::declareStateRows(QPLayout& layout,
+                                              const RowBlock& block,
+                                              const StateRowMap& H,
+                                              const int first_step,
+                                              const int num_steps)
 {
-  // H on the columns of x_k; the control point columns and the rest of the
-  // x_k columns are cleared (the other state columns are never written)
+  // H on the columns of x_k: a selection's entries, or the whole p x n block
+  // for a general H (any of its entries can become nonzero)
+  QPEntries& entries{*state_rows_.emplace_back(std::make_unique<QPEntries>())};
   const int p{H.rows()};
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int col{nc_ + (k - 1) * n_};
-    qp_.A.block(row, 0, p, nc_).setZero();
-    qp_.A.block(row, col, p, n_).setZero();
+    if (H.isGeneral()) {
+      entries.declareBlock(row, col, p, n_);
+      continue;
+    }
     for (const StateRowMap::Entry& e : H.entries())
-      qp_.A(row + e.row, col + e.state) = e.value;
+      entries.declare(row + e.row, col + e.state);
+  }
+  layout.declareA(entries);
+  return {block, first_step, num_steps, &entries};
+}
+
+void SparseFormulation::setStateRows(const StateRows& rows,
+                                     const StateRowMap& H)
+{
+  QPEntries& entries{*rows.entries};
+  if (!H.isGeneral()) {
+    // a selection: the declared entries, step by step
+    assert(entries.size()
+           == static_cast<Index>(H.entries().size()) * rows.num_steps);
+    Index i{0};
+    for (int s{0}; s < rows.num_steps; ++s)
+      for (const StateRowMap::Entry& e : H.entries())
+        entries.set(i++, e.value);
+    return;
+  }
+  // a general H: every entry of each step's block, since an entry that became
+  // zero must not keep its old value
+  const Index p{H.rows()}, block{p * n_};
+  assert(entries.size() == block * rows.num_steps);
+  for (Index first{0}; first < entries.size(); first += block) {
+    entries.setZero(first, block);
+    for (const StateRowMap::Entry& e : H.entries())
+      entries.set(first + e.state * p + e.row, e.value);
   }
 }
 
-void SparseFormulation::setStateBounds(const RowBlock& block,
+void SparseFormulation::setStateBounds(const StateRows& rows,
                                        const StateRowMap& H,
-                                       const int /*first_step*/,
-                                       const int num_steps,
                                        const Ref<const VectorXd>& lo,
                                        const Ref<const VectorXd>& hi)
 {
-  const int rows{H.rows() * num_steps};
-  qp_.l.segment(block.offset, rows) = lo.replicate(num_steps, 1);
-  qp_.u.segment(block.offset, rows) = hi.replicate(num_steps, 1);
+  const int num_steps{rows.num_steps};
+  const int size{H.rows() * num_steps};
+  qp_.l.segment(rows.block.offset, size) = lo.replicate(num_steps, 1);
+  qp_.u.segment(rows.block.offset, size) = hi.replicate(num_steps, 1);
 }
 
 void SparseFormulation::setDynamicsMatrixBlocks(const MPCData& d)

@@ -225,11 +225,12 @@ StateBounds::StateBounds(const std::vector<int>& states,
     plus_inf_{VectorXd::Constant(states_.rows(), MPCData::inf)}
 {}
 
-void StateBounds::declare(QPLayout& layout, Formulation& /*f*/)
+void StateBounds::declare(QPLayout& layout, Formulation& f)
 {
   const int num_bounded{states_.rows()};
   if (!soft_) {
     rows_ = layout.addRows(num_bounded * T_);
+    hard_rows_ = f.declareStateRows(layout, rows_, states_, 1, T_);
     return;
   }
   slack_ = layout.addVariables(num_bounded);
@@ -237,6 +238,8 @@ void StateBounds::declare(QPLayout& layout, Formulation& /*f*/)
   lower_ = layout.addRows(num_bounded * T_);
   nonneg_ = layout.addRows(num_bounded);
   rows_ = {upper_.offset, 2 * num_bounded * T_ + num_bounded};
+  upper_rows_ = f.declareStateRows(layout, upper_, states_, 1, T_);
+  lower_rows_ = f.declareStateRows(layout, lower_, states_, 1, T_);
   // the slack columns: -s in the upper rows, +s in the lower rows, s >= 0
   for (int k{0}; k < T_; ++k) {
     for (int j{0}; j < num_bounded; ++j) {
@@ -254,22 +257,22 @@ void StateBounds::declare(QPLayout& layout, Formulation& /*f*/)
 void StateBounds::updateMatrix(const MPCData&, Formulation& f, QP&)
 {
   if (!soft_) {
-    f.setStateRows(rows_, states_, 1, T_);
+    f.setStateRows(hard_rows_, states_);
     return;
   }
-  f.setStateRows(upper_, states_, 1, T_);
-  f.setStateRows(lower_, states_, 1, T_);
+  f.setStateRows(upper_rows_, states_);
+  f.setStateRows(lower_rows_, states_);
   slack_A_.write();
 }
 
 void StateBounds::updateVector(const MPCData& d, Formulation& f, QP& qp)
 {
   if (!soft_) {
-    f.setStateBounds(rows_, states_, 1, T_, d.x_min, d.x_max);
+    f.setStateBounds(hard_rows_, states_, d.x_min, d.x_max);
     return;
   }
-  f.setStateBounds(upper_, states_, 1, T_, minus_inf_, d.x_max);
-  f.setStateBounds(lower_, states_, 1, T_, d.x_min, plus_inf_);
+  f.setStateBounds(upper_rows_, states_, minus_inf_, d.x_max);
+  f.setStateBounds(lower_rows_, states_, d.x_min, plus_inf_);
   qp.l.segment(nonneg_.offset, nonneg_.rows).setZero();
   qp.u.segment(nonneg_.offset, nonneg_.rows) = plus_inf_;
 }
@@ -287,36 +290,37 @@ GeneralConstraints::GeneralConstraints(
     Hx0_{num_constraints}
 {}
 
-void GeneralConstraints::declare(QPLayout& layout, Formulation& /*f*/)
+void GeneralConstraints::declare(QPLayout& layout, Formulation& f)
 {
   rows_ = layout.addRows(p_ * T_);
-  state_rows_ = {rows_.offset + p_, p_ * (T_ - 1)};
-}
-
-void GeneralConstraints::addInputPart(const MPCData& d,
-                                      QP& qp,
-                                      const int k,
-                                      const int row) const
-{
+  state_rows_ = f.declareStateRows(layout, {rows_.offset + p_, p_ * (T_ - 1)},
+                                   Hx_, 1, T_ - 1);
   const Parameterization& param{input_param_.parameterization()};
   const int m{input_param_.inputDim()};
-  for (int i{0}; i < param.band_width; ++i) {
-    const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
-    qp.A.block(row, col, p_, m) += param.band_weights(i, k) * d.Hu;
+  for (int k{0}; k < T_; ++k) {
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
+      Hu_.declareBlock(rows_.offset + k * p_, col, p_, m);
+    }
   }
+  layout.declareA(Hu_);
 }
 
-void GeneralConstraints::updateMatrix(const MPCData& d, Formulation& f, QP& qp)
+void GeneralConstraints::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   Hx_.assign(d.Hx);
-  // k = 0: Hu u_0 only (x_0 is not a QP variable in any formulation)
-  qp.A.block(rows_.offset, 0, p_, input_param_.numCoefficients()).setZero();
-  addInputPart(d, qp, 0, rows_.offset);
-  // k >= 1: the formulation writes Hx x_k (clearing the control point columns),
-  // then Hu u_k is added
-  f.setStateRows(state_rows_, Hx_, 1, T_ - 1);
-  for (int k{1}; k < T_; ++k)
-    addInputPart(d, qp, k, rows_.offset + k * p_);
+  // k = 0: Hu u_0 only (x_0 is not a QP variable in any formulation). k >= 1:
+  // Hx x_k by the formulation, which may assign over the zeroed Hu entries,
+  // then Hu u_k added.
+  Hu_.setZero();
+  f.setStateRows(state_rows_, Hx_);
+  const Parameterization& param{input_param_.parameterization()};
+  const Index block{d.Hu.size()};
+  Index first{0};
+  for (int k{0}; k < T_; ++k) {
+    for (int i{0}; i < param.band_width; ++i, first += block)
+      Hu_.addBlock(first, param.band_weights(i, k), d.Hu);
+  }
 }
 
 void GeneralConstraints::updateVector(const MPCData& d, Formulation& f, QP& qp)
@@ -328,7 +332,7 @@ void GeneralConstraints::updateVector(const MPCData& d, Formulation& f, QP& qp)
   Hx0_.noalias() = d.Hx * d.x0;
   qp.l.segment(rows_.offset, p_) = d.h_min - Hx0_;
   qp.u.segment(rows_.offset, p_) = d.h_max - Hx0_;
-  f.setStateBounds(state_rows_, Hx_, 1, T_ - 1, d.h_min, d.h_max);
+  f.setStateBounds(state_rows_, Hx_, d.h_min, d.h_max);
 }
 
 // ---- TerminalConstraints ----------------------------------------------------
@@ -336,14 +340,14 @@ void GeneralConstraints::updateVector(const MPCData& d, Formulation& f, QP& qp)
 void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
   Hf_.assign(d.Hf);
-  f.setStateRows(rows_, Hf_, T_, 1);
+  f.setStateRows(state_rows_, Hf_);
 }
 
 void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QP&)
 {
   assert(Hf_.matches(
       d.Hf)); // refreshed by updateMatrix(), as for the general rows
-  f.setStateBounds(rows_, Hf_, T_, 1, d.hf_min, d.hf_max);
+  f.setStateBounds(state_rows_, Hf_, d.hf_min, d.hf_max);
 }
 
 // ---- SoftStatePenalty -------------------------------------------------------

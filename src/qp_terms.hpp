@@ -271,6 +271,7 @@ private:
   const int T_;
   const bool soft_;
   RowBlock upper_, lower_, nonneg_; // soft only: x - s <= max, x + s >= min
+  StateRows hard_rows_, upper_rows_, lower_rows_; // the formulation's rows
   VarBlock slack_;
   ConstantEntries slack_A_;              // soft only: the slack columns
   Eigen::VectorXd minus_inf_, plus_inf_; // the open sides of the soft rows
@@ -304,13 +305,13 @@ public:
   void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
 
 private:
-  // add Hu u_k (Hu times the basis weights of u_k) to the p rows from `row`
-  void addInputPart(const MPCData& d, QP& qp, int k, int row) const;
-
   const VectorParameterization& input_param_;
   const int p_, T_;
-  StateRowMap Hx_;      // the nonzero entries of Hx (refreshed with the matrix)
-  RowBlock state_rows_; // the rows for k >= 1
+  StateRowMap Hx_; // the nonzero entries of Hx (refreshed with the matrix)
+  StateRows state_rows_; // the formulation's rows Hx x_k for k >= 1
+  // Hu times the basis weights of u_k, a p x m block per step k and band
+  // entry, on the control points
+  QPEntries Hu_;
   Eigen::VectorXd Hx0_; // Hx x_0
 };
 
@@ -321,9 +322,10 @@ public:
   TerminalConstraints(int num_constraints, int state_dim, int horizon_steps) :
       T_{horizon_steps}, Hf_{StateRowMap::general(num_constraints, state_dim)}
   {}
-  void declare(QPLayout& layout, Formulation& /*f*/) override
+  void declare(QPLayout& layout, Formulation& f) override
   {
     rows_ = layout.addRows(Hf_.rows());
+    state_rows_ = f.declareStateRows(layout, rows_, Hf_, T_, 1);
   }
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
@@ -341,6 +343,7 @@ public:
 private:
   const int T_;
   StateRowMap Hf_; // the nonzero entries of Hf (refreshed with the matrix)
+  StateRows state_rows_;
 };
 
 /// l1^T s + s^T diag(l2) s on the state bound slacks s (`soft_state_bounds`),
