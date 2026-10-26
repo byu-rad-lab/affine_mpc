@@ -80,6 +80,24 @@ void StateRowMap::assign(const Ref<const MatrixXd>& H)
         entries_.push_back({i, j, H(i, j)});
 }
 
+bool StateRowMap::matches(const Ref<const MatrixXd>& H) const
+{
+  if (H.rows() != rows_)
+    return false;
+  std::size_t next{0};
+  for (int i{0}; i < rows_; ++i)
+    for (int j{0}; j < H.cols(); ++j) {
+      if (H(i, j) == 0.0)
+        continue;
+      if (next == entries_.size())
+        return false;
+      const Entry& e{entries_[next++]};
+      if (e.row != i || e.state != j || e.value != H(i, j))
+        return false;
+    }
+  return next == entries_.size();
+}
+
 // ---- CondensedFormulation ---------------------------------------------------
 
 CondensedFormulation::CondensedFormulation(

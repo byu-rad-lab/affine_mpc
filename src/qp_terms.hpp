@@ -35,6 +35,12 @@ public:
   /// Categories that change the term's part of P or of A.
   virtual DataChangeSet matrixDependsOn(const Formulation& f) const = 0;
   /// Categories that change the term's part of q or of the bounds.
+  ///
+  /// When both parts run for a change, the matrix part runs first (see
+  /// QPBuilder::apply()), and the X0 update runs only vector parts. So a
+  /// vector part may read state its matrix part caches (e.g. the nonzero
+  /// entries of a constraint matrix) if every category that refreshes that
+  /// state is also in vectorDependsOn().
   virtual DataChangeSet vectorDependsOn(const Formulation& f) const = 0;
   virtual void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) = 0;
   virtual void updateVector(const MPCData& d, Formulation& f, QPRef& qp) = 0;

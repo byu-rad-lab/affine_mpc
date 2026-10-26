@@ -1,6 +1,7 @@
 #include "qp_terms.hpp"
 
 #include <Eigen/Core>
+#include <cassert>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -303,6 +304,9 @@ void GeneralConstraints::updateVector(const MPCData& d,
                                       Formulation& f,
                                       QPRef& qp)
 {
+  // Hx_ was refreshed by updateMatrix(), which runs first on every change of
+  // Hx (ConstraintMatrices is in both parts' dependencies)
+  assert(Hx_.matches(d.Hx));
   // k = 0: h - Hx x_0
   Hx0_.noalias() = d.Hx * d.x0;
   qp.l.segment(rows_.offset, p_) = d.h_min - Hx0_;
@@ -320,6 +324,8 @@ void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
 
 void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QPRef&)
 {
+  assert(Hf_.matches(
+      d.Hf)); // refreshed by updateMatrix(), as for the general rows
   f.setStateBounds(rows_, Hf_, T_, 1, d.hf_min, d.hf_max);
 }
 

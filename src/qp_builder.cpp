@@ -135,7 +135,9 @@ Formulation::Update QPBuilder::apply(const DataChangeSet changes,
                                      const MPCData& d)
 {
   Formulation& f{*formulation_};
-  // first the formulation (the terms read its state map)
+  // first the formulation (the terms read its state map), then every matrix
+  // part before any vector part (a vector part may read what its matrix part
+  // cached, see QPTerm::vectorDependsOn())
   Formulation::Update written{f.update(changes, d)};
 
   if (changes.has(cost_matrix_deps_)) {

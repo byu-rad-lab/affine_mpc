@@ -58,6 +58,9 @@ public:
 
   /// Store the nonzero entries of H (p x n), without allocating.
   void assign(const Eigen::Ref<const Eigen::MatrixXd>& H);
+  /// Whether the stored entries are exactly the nonzero entries of H (for
+  /// debug checks that a cached map is current).
+  bool matches(const Eigen::Ref<const Eigen::MatrixXd>& H) const;
 
   int rows() const noexcept { return rows_; }
   /// Whether H is the identity (a selection of every state), which the
