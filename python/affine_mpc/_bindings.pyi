@@ -36,7 +36,8 @@ class Options:
         slew_initial_input: Slew-rate constraint on initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Enables slew-rate constraints on parameterization
-            control points (|v_{i+1} - v_i| <= control_point_slew).
+            control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
+            B-spline parameterization.
         saturate_states: Enables state saturation constraints.
         saturate_input_trajectory: Enables saturation of the sampled input
             trajectory rather than just the control points. Ignored for degree 0,
@@ -44,7 +45,8 @@ class Options:
             samples adjacent to each knot are constrained (at most
             2*num_control_points-2 rows), which is exact for non-integer knots. For
             degree > 1 every sample is constrained. Allows control points to be
-            outside of input limits while keeping inputs within limits.
+            outside of input limits while keeping inputs within limits. A custom
+            basis (Parameterization.fromBasis()) always constrains every sample.
         use_input_rate_cost: Enables a cost on the change of the sampled inputs
             ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
         soft_state_bounds: Makes the state limits soft (requires
@@ -89,7 +91,8 @@ class Options:
             slew_initial_input: Slew-rate constraint on initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Enables slew-rate constraints on parameterization
-                control points (|v_{i+1} - v_i| <= control_point_slew).
+                control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
+                B-spline parameterization.
             saturate_states: Enables state saturation constraints.
             saturate_input_trajectory: Enables saturation of the sampled input
                 trajectory rather than just the control points. Ignored for degree 0,
@@ -97,7 +100,8 @@ class Options:
                 samples adjacent to each knot are constrained (at most
                 2*num_control_points-2 rows), which is exact for non-integer knots. For
                 degree > 1 every sample is constrained. Allows control points to be
-                outside of input limits while keeping inputs within limits.
+                outside of input limits while keeping inputs within limits. A custom
+                basis (Parameterization.fromBasis()) always constrains every sample.
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
             soft_state_bounds: Makes the state limits soft (requires
@@ -133,16 +137,20 @@ class Parameterization:
 
     Provides constructors and factory methods for generating knot vectors and
     metadata to map control points to per-step input trajectories over the
-    prediction horizon.
+    prediction horizon. fromBasis() instead takes any sampled basis matrix (e.g.
+    Laguerre functions), whose coefficients play the role of the control points.
 
     The preferred usage is via the static factory methods for common
     parameterizations.
 
     Attributes:
         horizon_steps: Number of discrete steps in the MPC horizon.
-        degree: Degree of B-spline polynomials.
-        num_control_points: Number of B-spline control points.
-        knots: Full knot vector of size num_control_points + degree + 1.
+        degree: Degree of B-spline polynomials (-1 for a custom basis).
+        num_control_points: Number of B-spline control points (basis coefficients
+            for a custom basis).
+        knots: Full knot vector of size num_control_points + degree + 1 (empty for
+            a custom basis).
+        type: Kind of basis (Parameterization.Type).
 
     Static Methods:
         makeClampedKnots: Generate a uniform or geometric knot vector to modify.
@@ -150,8 +158,17 @@ class Parameterization:
         moveBlocking: Factory method for move-blocking parameterization.
         linearInterp: Factory method for linear interpolation parameterization.
         bspline: Factory method for clamped B-spline parameterization.
+        fromBasis: Factory method for a custom sampled basis.
 
     """
+
+    class Type(enum.Enum):
+        """
+        Kind of basis. Some MPC features rely on B-spline properties (see fromBasis()).
+        """
+
+        BSpline: typing.ClassVar[Parameterization.Type]
+        Custom: typing.ClassVar[Parameterization.Type]
 
     @staticmethod
     @typing.overload
@@ -201,6 +218,43 @@ class Parameterization:
 
         returns:
             out: Parameterization instance with clamped B-spline structure.
+        """
+
+    @staticmethod
+    def fromBasis(
+        horizon_steps: int,
+        basis: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+    ) -> Parameterization:
+        """
+        Factory method for a custom basis given by its samples, e.g. Laguerre
+        functions. The input at step k is sum_i basis[k, i] * control_point[i], where
+        the control points are the basis coefficients.
+
+        A custom basis is treated as dense (every coefficient can affect every sample:
+        band_width = num_control_points, band_start = 0, band_weights = basis
+        transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
+        the B-spline convex hull property does not hold, an MPC with a custom basis
+        always bounds every sampled input (whether or not saturate_input_trajectory is
+        set), rejects slew_control_points, and rejects setReferenceInput(); the input
+        cost weights the coefficients.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            basis: Basis sampled at k = 0, ..., horizon_steps-1, of shape
+                (horizon_steps, num_control_points) (one column per coefficient), with
+                finite entries and full column rank: its smallest singular value must
+                exceed 1e-9 times its largest. Full rank does not make the QP well
+                conditioned; orthonormalizing the columns (e.g. by numpy.linalg.qr)
+                helps for bases such as slowly decaying Laguerre functions.
+
+        Raises:
+            ValueError: If the shape is wrong, an entry is not finite, or the basis
+                does not have full column rank.
+
+        returns:
+            out: Parameterization instance with a custom basis.
         """
 
     @staticmethod
@@ -438,6 +492,11 @@ class Parameterization:
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
     @property
     def num_control_points(self) -> int: ...
+    @property
+    def type(self) -> Parameterization.Type:
+        """
+        Kind of basis.
+        """
 
 class Discretizer:
     """
@@ -1608,7 +1667,9 @@ class MPCBase:
         Set reference input trajectory as a step command (reference for all control
         points set to this value).
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `use_input_cost` is enabled, and not with a
+        custom basis (Parameterization.fromBasis()), whose coefficients do not
+        represent a constant input; use setReferenceInputControlPoints() there.
 
         Args:
             u_step: Reference input vector to use for entire trajectory.

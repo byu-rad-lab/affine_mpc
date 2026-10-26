@@ -165,7 +165,8 @@ private:
 };
 
 /// u_min <= input <= u_max, on the control points or, with
-/// `saturate_input_trajectory`, on the sampled inputs that make it exact.
+/// `saturate_input_trajectory` or a custom basis, on the sampled inputs that
+/// make it exact.
 class InputBounds final : public QPTerm
 {
 public:

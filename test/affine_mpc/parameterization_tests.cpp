@@ -1116,3 +1116,75 @@ TEST(ParameterizationRank, givenSubSampleGeometricInterval_Accepts)
   EXPECT_NO_THROW(ampc::Parameterization::moveBlocking(20, 4, 3.0));
   EXPECT_NO_THROW(ampc::Parameterization::linearInterp(20, 5, 1.0 / 3.0));
 }
+
+// ---- custom basis ----------------------------------------------------------
+
+TEST(ParameterizationFromBasis, givenBasis_StoresDenseBand)
+{
+  const int T{10}, m{2};
+  const auto bspline{ampc::Parameterization::bspline(T, 2, 5)};
+  const MatrixXd basis{bandBasis(bspline)};
+  const auto param{ampc::Parameterization::fromBasis(T, basis)};
+
+  EXPECT_EQ(param.type, ampc::Parameterization::Type::Custom);
+  EXPECT_EQ(bspline.type, ampc::Parameterization::Type::BSpline);
+  EXPECT_EQ(param.horizon_steps, T);
+  EXPECT_EQ(param.num_control_points, 5);
+  EXPECT_EQ(param.degree, -1);
+  EXPECT_EQ(param.knots.size(), 0);
+  EXPECT_EQ(param.band_width, 5);
+  EXPECT_TRUE(param.band_start.isZero());
+  EXPECT_TRUE(expectEigenNear(param.band_weights, basis.transpose(), 0.0));
+  EXPECT_TRUE(expectEigenNear(bandBasis(param), basis, 0.0));
+
+  const VectorXd ctrls{VectorXd::LinSpaced(m * 5, -1, 2)};
+  EXPECT_TRUE(expectEigenNear(param.evaluate(m, ctrls),
+                              bspline.evaluate(m, ctrls), 1e-15));
+}
+
+TEST(ParameterizationFromBasis, givenInvalidShape_Throws)
+{
+  using P = ampc::Parameterization;
+  expectInvalidArgumentWithMessage([] { P::fromBasis(0, MatrixXd{0, 1}); },
+                                   "horizon_steps must be positive");
+  expectInvalidArgumentWithMessage(
+      [] { P::fromBasis(5, MatrixXd::Identity(4, 2)); },
+      "basis must have horizon_steps = 5 rows (one per sample), got 4");
+  expectInvalidArgumentWithMessage([] { P::fromBasis(4, MatrixXd{4, 0}); },
+                                   "basis must have at least one column");
+  expectInvalidArgumentWithMessage(
+      [] { P::fromBasis(2, MatrixXd::Identity(2, 3)); },
+      "basis can not have more columns than rows");
+}
+
+TEST(ParameterizationFromBasis, givenNonFiniteOrRankDeficientBasis_Throws)
+{
+  using P = ampc::Parameterization;
+  MatrixXd basis{MatrixXd::Identity(4, 2)};
+  basis(1, 1) = std::numeric_limits<double>::quiet_NaN();
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "basis entries must be finite");
+
+  basis.setOnes(); // repeated columns
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "basis must have full column rank");
+  expectInvalidArgumentWithMessage(
+      [] { P::fromBasis(4, MatrixXd::Zero(4, 2)); },
+      "basis must have full column rank");
+
+  // nearly dependent columns: singular value ratio about 1e-10 < 1e-9
+  basis << 1, 1, 1, 1 + 4e-10, 1, 1, 1, 1;
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "basis must have full column rank");
+  // ratio about 1e-8 is accepted
+  basis(1, 1) = 1 + 4e-8;
+  EXPECT_NO_THROW(P::fromBasis(4, basis));
+}
+
+TEST(ParameterizationStreamOperator, givenCustomBasis_FormatsSummary)
+{
+  std::ostringstream oss;
+  oss << ampc::Parameterization::fromBasis(4, MatrixXd::Identity(4, 2));
+  EXPECT_EQ(oss.str(), "Parameterization(type=custom, horizon_steps=4, "
+                       "num_control_points=2)");
+}

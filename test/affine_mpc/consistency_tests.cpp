@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
+#include <utility>
 
 #include "utils.hpp"
 
@@ -1417,4 +1418,145 @@ TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
     tester.sparse.getPredictedStateTrajectory(x_sparse);
     EXPECT_TRUE(expectEigenNear(x_condensed, x_sparse, 1e-4));
   }
+}
+
+// ---- Custom basis ----------------------------------------------------------
+
+namespace {
+
+// Dense basis of a B-spline from its band
+MatrixXd denseBasis(const ampc::Parameterization& p)
+{
+  MatrixXd basis{MatrixXd::Zero(p.horizon_steps, p.num_control_points)};
+  for (int k{0}; k < p.horizon_steps; ++k)
+    basis.row(k).segment(p.band_start(k), p.band_width) =
+        p.band_weights.col(k).transpose();
+  return basis;
+}
+
+// Discrete Laguerre functions (Wang, 2004): row k is L(k), with
+// L(0) = sqrt(1 - a^2) [1, -a, a^2, ...] and L(k+1) = Omega L(k)
+MatrixXd laguerreBasis(int T, int N, double a)
+{
+  const double beta{1.0 - a * a};
+  MatrixXd omega{MatrixXd::Zero(N, N)};
+  for (int i{0}; i < N; ++i)
+    for (int j{0}; j <= i; ++j)
+      omega(i, j) = i == j ? a : beta * std::pow(-a, i - j - 1);
+  VectorXd L{N};
+  for (int i{0}; i < N; ++i)
+    L(i) = std::sqrt(beta) * std::pow(-a, i);
+  MatrixXd basis{T, N};
+  for (int k{0}; k < T; ++k) {
+    basis.row(k) = L.transpose();
+    L = omega * L;
+  }
+  return basis;
+}
+
+// Mass-spring-damper with input limits [0, 3], tracking x = 1, solved by
+// polished OSQP
+void setupCustomBasisMsd(ampc::MPCBase& mpc, const ampc::Options& opts)
+{
+  Matrix2d A;
+  A << 0, 1, -0.6, -0.1;
+  mpc.setModelContinuous2Discrete(A, Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
+  mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
+  mpc.setStateWeights(Vector2d{1.0, 0.1});
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  if (opts.use_input_cost)
+    mpc.setInputWeights(VectorXd::Constant(1, 1e-3));
+  if (opts.slew_initial_input)
+    mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
+  auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  settings.polishing = true;
+  settings.max_iter = 20000;
+  ASSERT_TRUE(mpc.initializeSolver(settings));
+}
+
+} // namespace
+
+TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
+{
+  // The custom basis bounds every sample, as the B-spline does with
+  // saturate_input_trajectory for degree > 1, and the input cost weights the
+  // coefficients in both (reference zero).
+  const int n{2}, m{1}, T{15}, nc{6};
+  const auto bspline{ampc::Parameterization::bspline(T, 2, nc, 1.3)};
+  const auto custom{ampc::Parameterization::fromBasis(T, denseBasis(bspline))};
+  const ampc::Options opts{.use_input_cost = true, .slew_initial_input = true};
+  ampc::Options bspline_opts{opts};
+  bspline_opts.saturate_input_trajectory = true;
+
+  ampc::CondensedMPC condensed_b{n, m, bspline, bspline_opts};
+  ampc::CondensedMPC condensed_c{n, m, custom, opts};
+  ampc::SparseMPC sparse_b{n, m, bspline, bspline_opts};
+  ampc::SparseMPC sparse_c{n, m, custom, opts};
+  setupCustomBasisMsd(condensed_b, bspline_opts);
+  setupCustomBasisMsd(condensed_c, opts);
+  setupCustomBasisMsd(sparse_b, bspline_opts);
+  setupCustomBasisMsd(sparse_c, opts);
+
+  const Vector2d x0{0.5, -0.2};
+  VectorXd ctrls_b{nc}, ctrls_c{nc}, u_b{T}, u_c{T};
+  const std::pair<ampc::MPCBase*, ampc::MPCBase*> pairs[]{
+      {&condensed_b, &condensed_c}, {&sparse_b, &sparse_c}};
+  for (const auto& [b, c] : pairs) {
+    ASSERT_EQ(b->solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(c->solve(x0), ampc::SolveStatus::Success);
+    b->getInputControlPoints(ctrls_b);
+    c->getInputControlPoints(ctrls_c);
+    EXPECT_TRUE(expectEigenNear(ctrls_c, ctrls_b, 1e-6));
+    b->getInputTrajectory(u_b);
+    c->getInputTrajectory(u_c);
+    EXPECT_TRUE(expectEigenNear(u_c, u_b, 1e-6));
+    // the upper limit and the initial slew limit are active
+    EXPECT_NEAR(u_c.maxCoeff(), 3.0, 1e-6);
+    EXPECT_NEAR(u_c(0), 0.5, 1e-6);
+  }
+}
+
+TEST(CustomBasisTester, givenLaguerreBasis_BoundsEverySampledInput)
+{
+  // Without saturate_input_trajectory, a custom basis still bounds every
+  // sample (bounding Laguerre coefficients would bound nothing useful).
+  const int n{2}, m{1}, T{30};
+  const auto param{
+      ampc::Parameterization::fromBasis(T, laguerreBasis(T, 4, 0.8))};
+  const ampc::Options opts{.use_input_cost = true};
+
+  ampc::CondensedMPC condensed{n, m, param, opts};
+  ampc::SparseMPC sparse{n, m, param, opts};
+  setupCustomBasisMsd(condensed, opts);
+  setupCustomBasisMsd(sparse, opts);
+
+  const Vector2d x0{0.5, -0.2};
+  VectorXd u_condensed{T}, u_sparse{T};
+  ASSERT_EQ(condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
+  condensed.getInputTrajectory(u_condensed);
+  sparse.getInputTrajectory(u_sparse);
+  EXPECT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-6));
+  EXPECT_LE(u_sparse.maxCoeff(), 3.0 + 1e-6);
+  EXPECT_GE(u_sparse.minCoeff(), -1e-6);
+  EXPECT_NEAR(u_sparse.maxCoeff(), 3.0, 1e-6); // the limit is active
+}
+
+TEST(CustomBasisTester, givenBsplineOnlyFeatures_Throws)
+{
+  const auto param{
+      ampc::Parameterization::fromBasis(10, laguerreBasis(10, 3, 0.5))};
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::CondensedMPC(2, 1, param, {.slew_control_points = true}); },
+      "slew_control_points requires a B-spline parameterization");
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::SparseMPC(2, 1, param, {.slew_control_points = true}); },
+      "slew_control_points requires a B-spline parameterization");
+
+  ampc::CondensedMPC mpc{2, 1, param, {.use_input_cost = true}};
+  expectLogicErrorWithMessage(
+      [&] { mpc.setReferenceInput(VectorXd::Zero(1)); },
+      "A custom basis has no control points that represent a constant input");
+  mpc.setReferenceInputControlPoints(VectorXd::Ones(3));
+  EXPECT_TRUE(mpc.getReferenceInputControlPoints().isOnes());
 }

@@ -24,7 +24,8 @@ namespace affine_mpc {
  * - slew_initial_input: Slew-rate constraint on initial input
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_control_points: Enables slew-rate constraints on parameterization
- *     control points (|v_{i+1} - v_i| <= control_point_slew).
+ *     control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
+ *     B-spline parameterization.
  * - saturate_states: Enables state saturation constraints.
  * - saturate_input_trajectory: Enables saturation of the sampled input
  *     trajectory rather than just the control points. Ignored for degree 0,
@@ -32,7 +33,8 @@ namespace affine_mpc {
  *     samples adjacent to each knot are constrained (at most
  *     2*num_control_points-2 rows), which is exact for non-integer knots. For
  *     degree > 1 every sample is constrained. Allows control points to be
- *     outside of input limits while keeping inputs within limits.
+ *     outside of input limits while keeping inputs within limits. A custom
+ *     basis (Parameterization::fromBasis()) always constrains every sample.
  * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  * - soft_state_bounds: Makes the state limits soft (requires

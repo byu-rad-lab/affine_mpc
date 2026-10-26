@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <pybind11/eigen.h>
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <sstream>
 
@@ -19,16 +20,20 @@ Encapsulates B-spline input trajectory parameterization for MPC.
 
 Provides constructors and factory methods for generating knot vectors and
 metadata to map control points to per-step input trajectories over the
-prediction horizon.
+prediction horizon. fromBasis() instead takes any sampled basis matrix (e.g.
+Laguerre functions), whose coefficients play the role of the control points.
 
 The preferred usage is via the static factory methods for common
 parameterizations.
 
 Attributes:
     horizon_steps: Number of discrete steps in the MPC horizon.
-    degree: Degree of B-spline polynomials.
-    num_control_points: Number of B-spline control points.
-    knots: Full knot vector of size num_control_points + degree + 1.
+    degree: Degree of B-spline polynomials (-1 for a custom basis).
+    num_control_points: Number of B-spline control points (basis coefficients
+        for a custom basis).
+    knots: Full knot vector of size num_control_points + degree + 1 (empty for
+        a custom basis).
+    type: Kind of basis (Parameterization.Type).
 
 Static Methods:
     makeClampedKnots: Generate a uniform or geometric knot vector to modify.
@@ -36,7 +41,18 @@ Static Methods:
     moveBlocking: Factory method for move-blocking parameterization.
     linearInterp: Factory method for linear interpolation parameterization.
     bspline: Factory method for clamped B-spline parameterization.
+    fromBasis: Factory method for a custom sampled basis.
                                          )doc");
+
+  py::native_enum<ampc::Parameterization::Type>(
+      param, "Type", "enum.Enum",
+      "Kind of basis. Some MPC features rely on B-spline properties (see "
+      "fromBasis()).")
+      .value("BSpline", ampc::Parameterization::Type::BSpline,
+             "B-spline from knots (move blocking, linear interpolation, ...).")
+      .value("Custom", ampc::Parameterization::Type::Custom,
+             "Sampled basis matrix given to fromBasis().")
+      .finalize();
 
   param.def_static("moveBlocking",
                    py::overload_cast<int, int, double>(
@@ -174,6 +190,38 @@ returns:
 )doc",
       py::arg("horizon_steps"), py::arg("degree"), py::arg("active_knots"));
 
+  param.def_static("fromBasis", &ampc::Parameterization::fromBasis,
+                   R"doc(
+Factory method for a custom basis given by its samples, e.g. Laguerre
+functions. The input at step k is sum_i basis[k, i] * control_point[i], where
+the control points are the basis coefficients.
+
+A custom basis is treated as dense (every coefficient can affect every sample:
+band_width = num_control_points, band_start = 0, band_weights = basis
+transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
+the B-spline convex hull property does not hold, an MPC with a custom basis
+always bounds every sampled input (whether or not saturate_input_trajectory is
+set), rejects slew_control_points, and rejects setReferenceInput(); the input
+cost weights the coefficients.
+
+Args:
+    horizon_steps: Number of discrete steps in the MPC horizon.
+    basis: Basis sampled at k = 0, ..., horizon_steps-1, of shape
+        (horizon_steps, num_control_points) (one column per coefficient), with
+        finite entries and full column rank: its smallest singular value must
+        exceed 1e-9 times its largest. Full rank does not make the QP well
+        conditioned; orthonormalizing the columns (e.g. by numpy.linalg.qr)
+        helps for bases such as slowly decaying Laguerre functions.
+
+Raises:
+    ValueError: If the shape is wrong, an entry is not finite, or the basis
+        does not have full column rank.
+
+returns:
+    out: Parameterization instance with a custom basis.
+)doc",
+                   py::arg("horizon_steps"), py::arg("basis"));
+
   param.def(py::init<const int, const int, const int>(),
             R"doc(
 Direct constructor for uniform clamped B-spline parameterization.
@@ -287,6 +335,7 @@ Returns:
                      "horizon_steps). The input at step k is "
                      "sum_i band_weights[i, k] * control_point[band_start[k] "
                      "+ i].");
+  param.def_readonly("type", &ampc::Parameterization::type, "Kind of basis.");
 
   param.def("__str__", [](const ampc::Parameterization& self) {
     std::ostringstream os;
@@ -295,6 +344,11 @@ Returns:
   });
 
   param.def("__repr__", [](const ampc::Parameterization& self) {
+    if (self.type == ampc::Parameterization::Type::Custom) {
+      std::ostringstream os;
+      os << self;
+      return os.str();
+    }
     const Eigen::VectorXd uniform_knots{
         ampc::Parameterization::makeUniformClampedKnots(
             self.horizon_steps, self.degree, self.num_control_points)};

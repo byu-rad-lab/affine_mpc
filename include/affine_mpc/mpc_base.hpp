@@ -361,7 +361,10 @@ public:
    * @brief Set reference input trajectory as a step command (reference for all
    *   control points set to this value).
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `use_input_cost` is enabled, and not
+   *   with a custom basis (Parameterization::fromBasis()), whose coefficients
+   *   do not represent a constant input; use setReferenceInputControlPoints()
+   *   there.
    * @param u_step Reference input vector to use for entire trajectory.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.

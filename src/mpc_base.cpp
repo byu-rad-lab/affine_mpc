@@ -42,8 +42,10 @@ constexpr int validateInputDim(int input_dim)
 }
 
 // The state bound options need saturate_states, and the bounded states must
-// be valid indices
-const Options& validateOptions(const Options& opts, int state_dim)
+// be valid indices. Control-point slew relies on B-spline properties.
+const Options& validateOptions(const Options& opts,
+                               int state_dim,
+                               const Parameterization& param)
 {
   if (!opts.saturate_states
       && (opts.soft_state_bounds || !opts.bounded_states.empty()))
@@ -62,6 +64,11 @@ const Options& validateOptions(const Options& opts, int state_dim)
     throw std::invalid_argument(
         "[MPCBase::validateOptions] num_general_constraints and "
         "num_terminal_constraints must be non-negative.");
+  if (opts.slew_control_points && param.type != Parameterization::Type::BSpline)
+    throw std::invalid_argument(
+        "[MPCBase::validateOptions] slew_control_points requires a B-spline "
+        "parameterization: differences of custom basis coefficients do not "
+        "bound input changes.");
   return opts;
 }
 
@@ -105,7 +112,7 @@ MPCBase::MPCBase(int state_dim,
     x_traj_dim_{state_dim * param.horizon_steps},
     u_traj_dim_{input_dim * param.horizon_steps},
     ctrls_dim_{input_dim * param.num_control_points},
-    opts_{validateOptions(opts, state_dim_)},
+    opts_{validateOptions(opts, state_dim_, param)},
     input_param_{input_dim_, param},
     bounded_states_{detail::boundedStates(opts_, state_dim_)},
     solution_map_{nullptr, 0},
@@ -510,6 +517,12 @@ void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
   if (!opts_.use_input_cost)
     throw std::logic_error(
         "[MPCBase::setReferenceInput] Input cost is not enabled.");
+  if (input_param_.parameterization().type != Parameterization::Type::BSpline)
+    throw std::logic_error(
+        "[MPCBase::setReferenceInput] A custom basis has no control points "
+        "that represent a constant input; the input cost weights the basis "
+        "coefficients, whose reference defaults to zero. Use "
+        "setReferenceInputControlPoints() to set coefficient references.");
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
   data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
   pending_ |= DataChange::References;

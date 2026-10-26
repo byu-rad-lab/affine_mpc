@@ -148,10 +148,23 @@ void MPCLogger::captureMPCSnapshot()
   addMetadata("state_dim", mpc_->getStateDim());
   addMetadata("input_dim", mpc_->getInputDim());
   addMetadata("horizon_steps", mpc_->getHorizonSteps());
-  addMetadata("spline_degree", mpc_->getParameterization().degree);
+  const Parameterization& param{mpc_->getParameterization()};
+  const bool bspline{param.type == Parameterization::Type::BSpline};
+  addMetadata("parameterization_type",
+              std::string{bspline ? "bspline" : "custom"});
+  if (bspline)
+    addMetadata("spline_degree", param.degree);
   addMetadata("num_control_points", mpc_->getNumControlPoints());
 
-  addMetadata("knots", mpc_->getParameterization().knots);
+  if (bspline) {
+    addMetadata("knots", param.knots);
+  } else {
+    // the basis row by row (horizon_steps x num_control_points), so control
+    // points can be evaluated offline
+    addMetadata("basis",
+                Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
+                    param.band_weights.data(), param.band_weights.size()}});
+  }
 
   addMetadata("opt_use_input_cost",
               static_cast<int>(mpc_->getOptions().use_input_cost));

@@ -143,7 +143,8 @@ Here:
 The logger records configuration metadata such as:
 
 - dimensions
-- knot vector
+- parameterization type (`bspline` or `custom`)
+- B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
 - enabled options
 - limits
 - weights

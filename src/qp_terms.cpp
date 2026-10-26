@@ -13,10 +13,16 @@ namespace affine_mpc::detail {
 
 namespace {
 
+// Sample indices whose inputs are bounded. An empty result means the control
+// points are bounded instead. Bounding B-spline control points bounds the
+// sampled inputs (convex hull property), so the samples are only bounded
+// when `saturate_input_trajectory` is enabled. A custom basis has no such
+// property, so its sampled inputs are always bounded.
 std::vector<int> boundedSamples(const VectorParameterization& input_param,
                                 const bool saturate_input_trajectory)
 {
-  if (!saturate_input_trajectory)
+  if (!saturate_input_trajectory
+      && input_param.parameterization().type == Parameterization::Type::BSpline)
     return {};
   return input_param.inputSaturationSamples();
 }

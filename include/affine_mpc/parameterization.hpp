@@ -4,8 +4,8 @@
 /**
  * @file parameterization.hpp
  * @brief Defines the Parameterization class for parameterizing the MPC input
- *   trajectory with a B-spline to reduce the number of design variables in the
- *   optimization and smooth the input trajectory.
+ *   trajectory with a B-spline (or a custom basis) to reduce the number of
+ *   design variables in the optimization and smooth the input trajectory.
  */
 
 #include <Eigen/Core>
@@ -24,7 +24,9 @@ class VectorParameterization;
  *
  * Provides constructors and factory methods for generating knot vectors and
  * metadata to map control points to per-step input trajectories over the
- * prediction horizon.
+ * prediction horizon. fromBasis() instead takes any sampled basis matrix
+ * (e.g. Laguerre functions), whose coefficients play the role of the control
+ * points.
  *
  * The preferred usage is via the static factory methods for common
  * parameterizations.
@@ -32,6 +34,14 @@ class VectorParameterization;
 class Parameterization
 {
 public:
+  /// Kind of basis. Some MPC features rely on B-spline properties (see
+  /// fromBasis()).
+  enum class Type
+  {
+    BSpline, ///< B-spline from knots (move blocking, linear interpolation, ...)
+    Custom   ///< Sampled basis matrix given to fromBasis()
+  };
+
   /**
    * @brief Factory method for move-blocking parameterization with uniform or
    *   geometrically spaced blocks.
@@ -140,6 +150,33 @@ public:
           const Eigen::Ref<const Eigen::VectorXd>& active_knots);
 
   /**
+   * @brief Factory method for a custom basis given by its samples, e.g.
+   *   Laguerre functions. The input at step k is
+   *   `sum_i basis(k, i) * control_point_i`, where the control points are the
+   *   basis coefficients.
+   *
+   *   A custom basis is treated as dense (every coefficient can affect every
+   *   sample: band_width = num_control_points, band_start = 0, band_weights =
+   *   basis transposed), and type is Type::Custom, with degree = -1 and empty
+   *   knots. Since the B-spline convex hull property does not hold, an MPC
+   *   with a custom basis always bounds every sampled input (whether or not
+   *   `saturate_input_trajectory` is set), rejects `slew_control_points`, and
+   *   rejects setReferenceInput(); the input cost weights the coefficients.
+   * @param horizon_steps Number of discrete time steps in the horizon.
+   * @param basis Basis sampled at k = 0, ..., horizon_steps-1, of size
+   *   horizon_steps x num_control_points (one column per coefficient), with
+   *   finite entries and full column rank: its smallest singular value must
+   *   exceed 1e-9 times its largest. Full rank does not make the QP well
+   *   conditioned; orthonormalizing the columns (e.g. by a QR decomposition)
+   *   helps for bases such as slowly decaying Laguerre functions.
+   * @throws std::invalid_argument if the shape is wrong, an entry is not
+   *   finite, or the basis does not have full column rank.
+   * @return Parameterization instance.
+   */
+  static Parameterization
+  fromBasis(int horizon_steps, const Eigen::Ref<const Eigen::MatrixXd>& basis);
+
+  /**
    * @brief Direct constructor for uniform clamped B-spline parameterization.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param degree Degree of B-spline polynomials. Must be less than
@@ -237,17 +274,19 @@ public:
   /// Number of discrete time steps in the horizon.
   const int horizon_steps;
 
-  /// B-spline polynomial degree.
+  /// B-spline polynomial degree (-1 for a custom basis).
   const int degree;
 
-  /// Number of B-spline control points.
+  /// Number of B-spline control points (basis coefficients for a custom
+  /// basis).
   const int num_control_points;
 
-  /// Full knot vector of size num_control_points + degree + 1.
+  /// Full knot vector of size num_control_points + degree + 1 (empty for a
+  /// custom basis).
   const Eigen::VectorXd knots;
 
   /// Number of consecutive control points that can affect one sampled input
-  /// (degree + 1 for B-splines).
+  /// (degree + 1 for B-splines, num_control_points for a custom basis).
   const int band_width;
 
   /// Index of the first control point that affects the input at each step k
@@ -259,8 +298,14 @@ public:
   /// `band_start(k) + i`.
   const Eigen::MatrixXd band_weights;
 
+  /// Kind of basis.
+  const Type type;
+
 private:
   friend class detail::VectorParameterization;
+
+  // custom basis, validated by fromBasis()
+  Parameterization(int horizon_steps, const Eigen::MatrixXd& basis);
 
   // Sample indices whose bounds are equivalent to bounding every sampled
   // input, or empty when bounding the control points is already exact. Not

@@ -1,6 +1,7 @@
 #include "affine_mpc/parameterization.hpp"
 
 #include <Eigen/Core>
+#include <Eigen/SVD>
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -418,6 +419,59 @@ Parameterization Parameterization::bspline(
   return Parameterization{horizon_steps, degree, knots};
 }
 
+Parameterization Parameterization::fromBasis(int horizon_steps,
+                                             const Ref<const MatrixXd>& basis)
+{
+  static const std::string prefix{"[Parameterization::fromBasis] "};
+  validateHorizonSteps(horizon_steps);
+  if (basis.rows() != horizon_steps)
+    throw std::invalid_argument(prefix + "basis must have horizon_steps = "
+                                + std::to_string(horizon_steps)
+                                + " rows (one per sample), got "
+                                + std::to_string(basis.rows()) + ".\n");
+  if (basis.cols() < 1)
+    throw std::invalid_argument(prefix
+                                + "basis must have at least one column.\n");
+  if (basis.cols() > horizon_steps)
+    throw std::invalid_argument(
+        prefix
+        + "basis can not have more columns than rows (it would not "
+          "have full column rank).\n");
+  if (!basis.allFinite())
+    throw std::invalid_argument(prefix + "basis entries must be finite.\n");
+
+  // Rank by singular values, relative to the largest. The tolerance is looser
+  // than round-off so nearly dependent columns are reported, but full rank
+  // does not make the QP well conditioned (cond(P) grows like the square of
+  // cond(basis)).
+  constexpr double rank_tol{1e-9};
+  const VectorXd sv{JacobiSVD<MatrixXd>{basis}.singularValues()};
+  const double ratio{sv(0) > 0.0 ? sv(sv.size() - 1) / sv(0) : 0.0};
+  if (!(ratio > rank_tol)) {
+    std::stringstream ss;
+    ss << std::setprecision(3) << prefix
+       << "basis must have full column rank: its smallest singular value is "
+       << ratio << " times its largest (at most " << rank_tol
+       << "), so some combination of coefficients has (almost) no effect on "
+       << "any sampled input. Remove dependent columns, or orthonormalize the "
+       << "columns (e.g. by a QR decomposition) if they are only badly "
+       << "scaled.\n";
+    throw std::invalid_argument(ss.str());
+  }
+  return Parameterization{horizon_steps, MatrixXd{basis}};
+}
+
+Parameterization::Parameterization(int horizon_steps, const MatrixXd& basis) :
+    horizon_steps{horizon_steps},
+    degree{-1},
+    num_control_points{static_cast<int>(basis.cols())},
+    knots{},
+    band_width{static_cast<int>(basis.cols())},
+    band_start{VectorXi::Zero(horizon_steps)},
+    band_weights{basis.transpose()},
+    type{Type::Custom}
+{}
+
 Parameterization::Parameterization(int horizon_steps,
                                    int degree,
                                    int num_control_points) :
@@ -427,7 +481,8 @@ Parameterization::Parameterization(int horizon_steps,
     knots{makeUniformClampedKnots(horizon_steps, degree, num_control_points)},
     band_width{degree + 1},
     band_start{computeBandStart(horizon_steps, degree, knots)},
-    band_weights{computeBandWeights(horizon_steps, degree, knots)}
+    band_weights{computeBandWeights(horizon_steps, degree, knots)},
+    type{Type::BSpline}
 {
   validateBasisRank(*this);
 }
@@ -441,7 +496,8 @@ Parameterization::Parameterization(int horizon_steps,
     knots{validatedKnots(knots, horizon_steps, degree)},
     band_width{degree + 1},
     band_start{computeBandStart(horizon_steps, degree, this->knots)},
-    band_weights{computeBandWeights(horizon_steps, degree, this->knots)}
+    band_weights{computeBandWeights(horizon_steps, degree, this->knots)},
+    type{Type::BSpline}
 {
   validateBasisRank(*this);
 }
@@ -501,12 +557,12 @@ std::vector<int> Parameterization::inputSaturationSamples() const
 {
   // degree 0: each sampled input equals one control point, so bounding the
   // control points is already exact
-  if (degree == 0)
+  if (type == Type::BSpline && degree == 0)
     return {};
 
-  // degree > 1: every sample
+  // degree > 1 or a custom basis: every sample
   std::vector<int> samples;
-  if (degree > 1) {
+  if (type == Type::Custom || degree > 1) {
     samples.resize(horizon_steps);
     std::iota(samples.begin(), samples.end(), 0);
     return samples;
@@ -546,6 +602,12 @@ std::vector<int> Parameterization::inputSaturationSamples() const
 
 std::ostream& operator<<(std::ostream& os, const Parameterization& param)
 {
+  if (param.type == Parameterization::Type::Custom) {
+    return os << "Parameterization(type=custom, horizon_steps="
+              << param.horizon_steps
+              << ", num_control_points=" << param.num_control_points << ")";
+  }
+
   os << "Parameterization(horizon_steps=" << param.horizon_steps
      << ", degree=" << param.degree
      << ", num_control_points=" << param.num_control_points << ", knots=[";
