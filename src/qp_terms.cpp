@@ -51,8 +51,6 @@ void InputCost::updateVector(const MPCData& d, Formulation& f, QP&)
 
 InputRateCost::InputRateCost(const VectorParameterization& input_param) :
     input_param_{input_param},
-    P_c_{MatrixXd::Zero(input_param.numCoefficients(),
-                        input_param.numCoefficients())},
     q_c_{VectorXd::Zero(input_param.numCoefficients())}
 {
   // Construction only: the dense basis Phi (one row per sample), the
@@ -76,14 +74,32 @@ InputRateCost::InputRateCost(const VectorParameterization& input_param) :
       phi0_.push_back({i, Phi(0, i)});
 }
 
+void InputRateCost::declare(QPLayout& layout, Formulation& f)
+{
+  const int m{input_param_.inputDim()};
+  const Index size{m * static_cast<Index>(G_.size())};
+  P_c_.reserve(static_cast<std::size_t>(size));
+  P_c_values_.resize(size);
+  P_c_placeholders_.resize(size);
+  Index idx{0};
+  for (int ch{0}; ch < m; ++ch) {
+    for (const GEntry& e : G_) {
+      P_c_.declare(input_param_.coefficientIndex(ch, e.i),
+                   input_param_.coefficientIndex(ch, e.j));
+      P_c_placeholders_(idx++) = e.value;
+    }
+  }
+  f.declareControlMatrix(layout, P_c_);
+}
+
 void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QP&)
 {
-  // G times each channel's weight (P_c_ stays zero outside these entries)
+  // G times each channel's weight
+  Index idx{0};
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
     for (const GEntry& e : G_)
-      P_c_(input_param_.coefficientIndex(ch, e.i),
-           input_param_.coefficientIndex(ch, e.j)) = e.value * d.R_rate(ch);
-  f.addControlMatrix(P_c_);
+      P_c_values_(idx++) = e.value * d.R_rate(ch);
+  f.addControlMatrix(P_c_, P_c_values_);
 }
 
 void InputRateCost::updateVector(const MPCData& d, Formulation& f, QP&)
@@ -100,11 +116,7 @@ void InputRateCost::writeCostPlaceholders(Formulation& f)
 {
   // G on every channel (the cost with unit weights, positive semidefinite),
   // so its entries are in the pattern even where a weight is zero now
-  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
-    for (const GEntry& e : G_)
-      P_c_(input_param_.coefficientIndex(ch, e.i),
-           input_param_.coefficientIndex(ch, e.j)) = e.value;
-  f.addControlCostPlaceholders(P_c_);
+  f.addControlCostPlaceholders(P_c_, P_c_placeholders_);
 }
 
 // ---- InputBounds ------------------------------------------------------------

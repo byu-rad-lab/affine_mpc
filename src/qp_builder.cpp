@@ -90,8 +90,8 @@ QPBuilder::QPBuilder(const FormulationKind kind,
   qp_.u.setZero(num_constraints_);
   // variables the terms declared (after the formulation's own)
   const int own_variables{formulation_->numVariables()};
-  formulation_->setExtraVariables(
-      {own_variables, num_variables_ - own_variables});
+  formulation_->declareExtraVariables(
+      {own_variables, num_variables_ - own_variables}, layout);
   // the declared entries' positions depend on the final sizes
   declared_P_ = layout.entriesP();
   declared_A_ = layout.entriesA();

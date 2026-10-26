@@ -137,6 +137,7 @@ public:
   {
     return DataChange::Weights | DataChange::PreviousInput;
   }
+  void declare(QPLayout& layout, Formulation& f) override;
   void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
   void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
   void writeCostPlaceholders(Formulation& f) override;
@@ -156,7 +157,10 @@ private:
   const VectorParameterization& input_param_;
   std::vector<GEntry> G_;
   std::vector<Phi0Entry> phi0_;
-  Eigen::MatrixXd P_c_; // G times the weights, on all coefficients
+  // G on each channel's control points (channel by channel, G_'s order), and
+  // its values times the weights and with unit weights (the placeholders)
+  QPEntries P_c_;
+  Eigen::VectorXd P_c_values_, P_c_placeholders_;
   Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 

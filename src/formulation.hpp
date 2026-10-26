@@ -152,8 +152,9 @@ public:
 
   /// Number of the formulation's own QP variables (before any extra ones).
   virtual int numVariables() const noexcept = 0;
-  /// The extra variables the terms declared (after the formulation's own).
-  void setExtraVariables(const VarBlock& extra) noexcept { extra_ = extra; }
+  /// The extra variables the terms declared (after the formulation's own),
+  /// and the entries of their cost (P's diagonal).
+  void declareExtraVariables(const VarBlock& extra, QPLayout& layout);
   /// Declare the formulation's own constraint rows (the first rows of A) and
   /// the entries of P and A it writes by position.
   virtual RowBlock declare(QPLayout& layout) = 0;
@@ -186,12 +187,14 @@ public:
   /// Write unit placeholders on the cost entries the formulation's own
   /// primitives use (see usesCostPlaceholders()).
   virtual void writeCostPlaceholders() {}
-  /// Add a term's placeholder block to the control point block of P (for costs
-  /// whose structure the formulation does not know). The block must be
-  /// positive semidefinite, like the cost itself, or OSQP rejects P as
-  /// nonconvex: the term's cost with unit weights is the natural choice.
+  /// Add a term's placeholder values on the entries of a control point matrix
+  /// (see declareControlMatrix()) to P, for costs whose structure the
+  /// formulation does not know. The values must form a positive semidefinite
+  /// matrix, like the cost itself, or OSQP rejects P as nonconvex: the term's
+  /// cost with unit weights is the natural choice.
   virtual void addControlCostPlaceholders(
-      const Eigen::Ref<const Eigen::MatrixXd>& /*placeholders*/)
+      QPEntries& /*entries*/,
+      const Eigen::Ref<const Eigen::VectorXd>& /*values*/)
   {}
 
   /// Predicted states x = (x_1, ..., x_T) for the QP solution z.
@@ -208,7 +211,7 @@ public:
   void endCostMatrix()
   {
     endOwnCostMatrix();
-    finish(P_extra_, qp_.P.diagonal().segment(extra_.offset, extra_.size));
+    finish(P_extra_, P_extra_entries_);
   }
   void beginCostVector()
   {
@@ -225,9 +228,8 @@ public:
   void addVariableQuadratic(const VarBlock& block,
                             const Eigen::Ref<const Eigen::VectorXd>& w)
   {
-    startPartialWrite(P_extra_,
-                      qp_.P.diagonal().segment(extra_.offset, extra_.size));
-    qp_.P.diagonal().segment(block.offset, block.size) += w;
+    startPartialWrite(P_extra_, P_extra_entries_);
+    P_extra_entries_.add(w, block.offset - extra_.offset);
   }
   /// g^T v on extra variables v.
   void addVariableLinear(const VarBlock& block,
@@ -252,9 +254,16 @@ public:
   virtual void
   addControlQuadraticVector(const Eigen::Ref<const Eigen::VectorXd>& R,
                             const Eigen::Ref<const Eigen::VectorXd>& c_ref) = 0;
-  /// 1/2 c^T P_c c for a general (symmetric) P_c on the control points.
+  /// Declare the entries (row, col) of a symmetric matrix P_c on the control
+  /// points that a cost term adds with addControlMatrix(): its nonzero
+  /// entries, both triangles (the term keeps the set at a stable address).
+  virtual void declareControlMatrix(QPLayout& layout, QPEntries& entries) = 0;
+  /// 1/2 c^T P_c c for a symmetric P_c on the control points, given by its
+  /// values on the entries declared with declareControlMatrix() (zero
+  /// elsewhere).
   virtual void
-  addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) = 0;
+  addControlMatrix(QPEntries& entries,
+                   const Eigen::Ref<const Eigen::VectorXd>& values) = 0;
   /// q_c^T c on the control points.
   virtual void
   addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) = 0;
@@ -320,6 +329,7 @@ protected:
 private:
   VarBlock extra_{};           // the extra variables (empty without any)
   CostPart P_extra_, q_extra_; // their cost entries (diagonal of P, and q)
+  QPEntries P_extra_entries_;  // their diagonal entries of P
 };
 
 /**
@@ -362,7 +372,10 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
-  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
+  void declareControlMatrix(QPLayout& layout, QPEntries& entries) override;
+  void
+  addControlMatrix(QPEntries& entries,
+                   const Eigen::Ref<const Eigen::VectorXd>& values) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
   StateRows declareStateRows(QPLayout& layout,
@@ -403,6 +416,9 @@ private:
   // The own blocks of P and q are dense, so each is one part (the state cost
   // writes all of it, the control point cost adds to the control points)
   CostPart P_, q_;
+  // a control point matrix scattered from its entries (zero elsewhere), sized
+  // by declareControlMatrix()
+  Eigen::MatrixXd P_c_;
 };
 
 /**
@@ -417,7 +433,7 @@ public:
                     QP& qp);
 
   int numVariables() const noexcept override { return nc_ + nx_; }
-  RowBlock declare(QPLayout& layout) override { return layout.addRows(nx_); }
+  RowBlock declare(QPLayout& layout) override;
   void writeConstantRows() override;
 
   DataChangeSet stateMatrixDependsOn() const noexcept override { return {}; }
@@ -428,7 +444,8 @@ public:
   bool usesCostPlaceholders() const noexcept override { return true; }
   void writeCostPlaceholders() override;
   void addControlCostPlaceholders(
-      const Eigen::Ref<const Eigen::MatrixXd>& placeholders) override;
+      QPEntries& entries,
+      const Eigen::Ref<const Eigen::VectorXd>& values) override;
   void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
@@ -443,7 +460,10 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
-  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
+  void declareControlMatrix(QPLayout& layout, QPEntries& entries) override;
+  void
+  addControlMatrix(QPEntries& entries,
+                   const Eigen::Ref<const Eigen::VectorXd>& values) override;
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
   StateRows declareStateRows(QPLayout& layout,
@@ -469,13 +489,27 @@ private:
 
   const int n_, m_, T_, nx_, nc_; // the states start at column nc_
   const VectorParameterization& input_param_;
+  // The entries of the control point block of P: its diagonal (the control
+  // point cost) and the control matrices the cost terms declared (owned by the
+  // terms). Entries can be in several sets.
+  struct ControlEntries
+  {
+    QPEntries diagonal;
+    std::vector<QPEntries*> matrices;
+    void setZero()
+    {
+      diagonal.setZero();
+      for (QPEntries* entries : matrices)
+        entries->setZero();
+    }
+  };
+
   // The state cost only has diagonal entries in P, so the cost parts are the
-  // control point block of P, the state block of P's diagonal, and the two
-  // blocks of q. The control point block is often only written on its
-  // diagonal; P_ctrl_offdiag_ records whether its off-diagonal entries may
-  // hold values (then a stale block is zeroed whole, not just its diagonal).
+  // control point block of P (its declared entries), the state block of P's
+  // diagonal, and the two blocks of q.
   CostPart P_ctrl_, P_state_, q_ctrl_, q_state_;
-  bool P_ctrl_offdiag_{false};
+  ControlEntries P_ctrl_entries_;
+  QPEntries P_state_entries_; // the state block of P's diagonal
   // the entries of the state rows (one set per declareStateRows())
   std::vector<std::unique_ptr<QPEntries>> state_rows_;
 };

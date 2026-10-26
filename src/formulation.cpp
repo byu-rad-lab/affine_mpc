@@ -28,6 +28,20 @@ void assignOrAdd(Part& part, Dst&& dst, const Src& value)
   part.written = true;
 }
 
+// assignOrAdd() for a part written through its declared entries
+template <class Part>
+void assignOrAddEntries(Part& part,
+                        QPEntries& entries,
+                        const Ref<const VectorXd>& value)
+{
+  if (part.stale)
+    entries.assign(value);
+  else
+    entries.add(value);
+  part.stale = false;
+  part.written = true;
+}
+
 // For each step, the number of leading control point columns that can affect
 // the state after it (the columns of every control point up to the last one
 // in the band of this or an earlier step)
@@ -96,6 +110,17 @@ bool StateRowMap::matches(const Ref<const MatrixXd>& H) const
         return false;
     }
   return next == entries_.size();
+}
+
+// ---- Formulation ------------------------------------------------------------
+
+void Formulation::declareExtraVariables(const VarBlock& extra, QPLayout& layout)
+{
+  extra_ = extra;
+  P_extra_entries_.reserve(static_cast<std::size_t>(extra.size));
+  for (int i{extra.offset}; i < extra.offset + extra.size; ++i)
+    P_extra_entries_.declare(i, i);
+  layout.declareP(P_extra_entries_);
 }
 
 // ---- CondensedFormulation ---------------------------------------------------
@@ -179,10 +204,25 @@ void CondensedFormulation::addControlQuadraticVector(
   ownQ().noalias() -= R.cwiseProduct(c_ref);
 }
 
-void CondensedFormulation::addControlMatrix(const Ref<const MatrixXd>& P_c)
+void CondensedFormulation::declareControlMatrix(QPLayout& /*layout*/,
+                                                QPEntries& /*entries*/)
 {
+  // written densely (not by position), through P_c_
+  if (P_c_.size() == 0)
+    P_c_.setZero(nc_, nc_);
+}
+
+void CondensedFormulation::addControlMatrix(QPEntries& entries,
+                                            const Ref<const VectorXd>& values)
+{
+  // The dense block is added whole, as a dense P_c would be, then P_c_ is
+  // cleared again for the next matrix
+  for (Index i{0}; i < entries.size(); ++i)
+    P_c_(entries.row(i), entries.col(i)) = values(i);
   startPartialWrite(P_, ownP());
-  ownP() += P_c;
+  ownP() += P_c_;
+  for (Index i{0}; i < entries.size(); ++i)
+    P_c_(entries.row(i), entries.col(i)) = 0.0;
 }
 
 void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
@@ -322,6 +362,20 @@ SparseFormulation::SparseFormulation(const int state_dim,
     input_param_{input_param}
 {}
 
+RowBlock SparseFormulation::declare(QPLayout& layout)
+{
+  // the cost entries: the control point and state blocks of P's diagonal
+  P_ctrl_entries_.diagonal.reserve(static_cast<std::size_t>(nc_));
+  for (int i{0}; i < nc_; ++i)
+    P_ctrl_entries_.diagonal.declare(i, i);
+  layout.declareP(P_ctrl_entries_.diagonal);
+  P_state_entries_.reserve(static_cast<std::size_t>(nx_));
+  for (int i{nc_}; i < nc_ + nx_; ++i)
+    P_state_entries_.declare(i, i);
+  layout.declareP(P_state_entries_);
+  return layout.addRows(nx_);
+}
+
 void SparseFormulation::writeConstantRows()
 {
   // -x_{k+1} in the dynamics rows (the declared rows are the first rows of A)
@@ -358,19 +412,19 @@ void SparseFormulation::writeCostPlaceholders()
   // can become nonzero later. This costs nothing in solves since OSQP's KKT
   // system always includes P's diagonal. The weights are re-applied after
   // initialization.
-  qp_.P.diagonal().segment(nc_, nx_).setOnes();
-  // terms then add their own placeholder blocks, so drop the assembled
-  // off-diagonal values first
-  if (P_ctrl_offdiag_)
-    qp_.P.topLeftCorner(nc_, nc_).setZero();
+  P_state_entries_.setOnes();
+  // terms then add their own placeholders on their control matrices, so drop
+  // the assembled values there first
+  for (QPEntries* entries : P_ctrl_entries_.matrices)
+    entries->setZero();
   if (P_ctrl_.written)
-    qp_.P.diagonal().head(nc_).setOnes();
+    P_ctrl_entries_.diagonal.setOnes();
 }
 
 void SparseFormulation::addControlCostPlaceholders(
-    const Ref<const MatrixXd>& placeholders)
+    QPEntries& entries, const Ref<const VectorXd>& values)
 {
-  qp_.P.topLeftCorner(nc_, nc_) += placeholders;
+  entries.add(values);
 }
 
 void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
@@ -381,12 +435,8 @@ void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
 
 void SparseFormulation::endOwnCostMatrix()
 {
-  if (P_ctrl_offdiag_ && P_ctrl_.stale && P_ctrl_.written) {
-    qp_.P.topLeftCorner(nc_, nc_).setZero();
-    P_ctrl_offdiag_ = false;
-  }
-  finish(P_ctrl_, qp_.P.diagonal().head(nc_));
-  finish(P_state_, qp_.P.diagonal().segment(nc_, nx_));
+  finish(P_ctrl_, P_ctrl_entries_);
+  finish(P_state_, P_state_entries_);
 }
 
 void SparseFormulation::endOwnCostVector()
@@ -397,7 +447,7 @@ void SparseFormulation::endOwnCostVector()
 
 void SparseFormulation::addStateQuadraticMatrix(const Ref<const VectorXd>& Q)
 {
-  assignOrAdd(P_state_, qp_.P.diagonal().segment(nc_, nx_), Q);
+  assignOrAddEntries(P_state_, P_state_entries_, Q);
 }
 
 void SparseFormulation::addStateQuadraticVector(const Ref<const VectorXd>& Q,
@@ -409,12 +459,11 @@ void SparseFormulation::addStateQuadraticVector(const Ref<const VectorXd>& Q,
 
 void SparseFormulation::addControlQuadraticMatrix(const Ref<const VectorXd>& R)
 {
-  // a diagonal write into a stale block must not leave old off-diagonals
-  if (P_ctrl_.stale && P_ctrl_offdiag_) {
-    qp_.P.topLeftCorner(nc_, nc_).setZero();
-    P_ctrl_offdiag_ = false;
-  }
-  assignOrAdd(P_ctrl_, qp_.P.diagonal().head(nc_), R);
+  // a write into a stale block must not leave old values in the other sets
+  if (P_ctrl_.stale)
+    for (QPEntries* entries : P_ctrl_entries_.matrices)
+      entries->setZero();
+  assignOrAddEntries(P_ctrl_, P_ctrl_entries_.diagonal, R);
 }
 
 void SparseFormulation::addControlQuadraticVector(
@@ -423,10 +472,25 @@ void SparseFormulation::addControlQuadraticVector(
   assignOrAdd(q_ctrl_, qp_.q.head(nc_), -R.cwiseProduct(c_ref));
 }
 
-void SparseFormulation::addControlMatrix(const Ref<const MatrixXd>& P_c)
+void SparseFormulation::declareControlMatrix(QPLayout& layout,
+                                             QPEntries& entries)
 {
-  assignOrAdd(P_ctrl_, qp_.P.topLeftCorner(nc_, nc_), P_c);
-  P_ctrl_offdiag_ = true;
+  layout.declareP(entries);
+  P_ctrl_entries_.matrices.push_back(&entries);
+}
+
+void SparseFormulation::addControlMatrix(QPEntries& entries,
+                                         const Ref<const VectorXd>& values)
+{
+  // a write into a stale block must not leave old values in the other sets
+  // (zeroed before this set is assigned, since entries can be shared)
+  if (P_ctrl_.stale) {
+    P_ctrl_entries_.diagonal.setZero();
+    for (QPEntries* other : P_ctrl_entries_.matrices)
+      if (other != &entries)
+        other->setZero();
+  }
+  assignOrAddEntries(P_ctrl_, entries, values);
 }
 
 void SparseFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
