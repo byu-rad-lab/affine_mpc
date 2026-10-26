@@ -1,8 +1,14 @@
 #include <Eigen/Core>
+#include <Eigen/SVD>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <iostream>
 #include <limits>
+#include <random>
 #include <sstream>
+#include <string>
+#include <vector>
 
 #include "affine_mpc/parameterization.hpp"
 #include "utils.hpp"
@@ -128,15 +134,17 @@ TEST(ParameterizationDirectConstructor, givenKnotsDecreasing_Throws)
       "knots must be non-decreasing");
 }
 
-TEST(ParameterizationDirectConstructor, givenRepeatedActiveKnots_Throws)
+TEST(ParameterizationDirectConstructor,
+     givenRepeatedFirstActiveKnotUnclamped_Throws)
 {
+  // basis function 0 is nonzero only on [-1, 0), which contains no sample
   expectInvalidArgumentWithMessage(
       [&]() {
         VectorXd knots{5};
         knots << -1, 0, 0, 3, 4;
         ampc::Parameterization{4, 1, knots};
       },
-      "active knots can not be repeated");
+      "control point 0 has no sample of its own");
 }
 
 TEST(ParameterizationDirectConstructor,
@@ -457,13 +465,24 @@ TEST(ParameterizationMoveBlocking, givenFreeStepsThenTail_EvaluatesProperly)
   EXPECT_TRUE(expectEigenNear(p.evaluate(1, controls), u_expected, 0.0));
 }
 
+TEST(ParameterizationMoveBlocking, givenSingleStepHorizon_HasOneControlPoint)
+{
+  // the first and last active knots are both 0, and there is no interior knot
+  const auto p{ampc::Parameterization::moveBlocking(1, 1)};
+  ASSERT_EQ(p.num_control_points, 1);
+  EXPECT_TRUE(expectEigenNear(p.knots, Vector2d{0.0, 0.0}, 0.0));
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, Matrix<double, 1, 1>{3.0}),
+                              Matrix<double, 1, 1>{3.0}, 0.0));
+}
+
 TEST(ParameterizationMoveBlocking, givenRepeatedChangePoint_Throws)
 {
+  // the block [2, 2) is empty
   const int T{5};
   const Vector3d change_points{0, 2, 2};
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::moveBlocking(T, change_points); },
-      "active knots can not be repeated");
+      "control point 1 has no sample of its own");
 }
 
 // ---- Factory: linearInterp -------------------------------------------------
@@ -542,13 +561,19 @@ TEST(ParameterizationLinearInterp, givenChangePointsSizeEqualsT_Succeeds)
   ASSERT_NO_THROW(ampc::Parameterization::linearInterp(T, change_points));
 }
 
-TEST(ParameterizationLinearInterp, givenRepeatedChangePoint_Throws)
+TEST(ParameterizationLinearInterp, givenRepeatedEndpoint_JumpsAtKnot)
 {
+  // a double knot at 2 makes the piecewise linear input discontinuous there:
+  // c1 at the end of the first segment (reached only in the limit) and c2 at
+  // the start of the second
   const int T{5};
   const Vector4d endpoints{0, 2, 2, 4};
-  expectInvalidArgumentWithMessage(
-      [&]() { ampc::Parameterization::linearInterp(T, endpoints); },
-      "active knots can not be repeated");
+  const auto p{ampc::Parameterization::linearInterp(T, endpoints)};
+  ASSERT_EQ(p.num_control_points, 4);
+  const Vector4d ctrls{0, 2, 10, 6};
+  VectorXd u_expected{T};
+  u_expected << 0, 1, 10, 8, 6;
+  EXPECT_TRUE(expectEigenNear(p.evaluate(1, ctrls), u_expected, 1e-15));
 }
 
 // ---- Factory: bspline ------------------------------------------------------
@@ -622,7 +647,8 @@ TEST(ParameterizationBspline, givenControlPointWithoutInfluence_Throws)
   active_knots << 0, 3.2, 3.21, 3.22, 9;
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::bspline(10, 1, active_knots); },
-      "control point 2 has no influence on any sampled input");
+      "control point 2 has no sample of its own. Its basis function, with "
+      "support [3.2, 3.22], is nonzero at no sample");
 }
 
 TEST(ParameterizationMoveBlocking, givenBlockWithoutSample_Throws)
@@ -631,7 +657,7 @@ TEST(ParameterizationMoveBlocking, givenBlockWithoutSample_Throws)
   const Vector3d change_points{0, 3.2, 3.5};
   expectInvalidArgumentWithMessage(
       [&]() { ampc::Parameterization::moveBlocking(10, change_points); },
-      "control point 1 has no influence on any sampled input");
+      "control point 1 has no sample of its own");
 }
 
 TEST(ParameterizationBspline, givenSubSampleKnotsWithInfluence_Succeeds)
@@ -798,8 +824,9 @@ TEST(ParameterizationKnotRatio, givenRatio_MakeClampedKnotsMatchesFactories)
   EXPECT_EQ(P::makeClampedKnots(T, 1, 5, g), P::linearInterp(T, 5, g).knots);
   EXPECT_EQ(P::makeClampedKnots(T, 3, 8), P::makeUniformClampedKnots(T, 3, 8));
   expectInvalidArgumentWithMessage(
-      [] { P::makeClampedKnots(20, 1, 5, 3.0); },
-      "[Parameterization::makeClampedKnots] shortest knot interval");
+      [] { P::makeClampedKnots(20, 1, 5, 10.0); },
+      "[Parameterization::makeClampedKnots] knot_ratio = 10 gives knot "
+      "intervals too short for the samples");
 }
 
 TEST(ParameterizationKnotRatio, givenInvalidArguments_Throws)
@@ -810,14 +837,16 @@ TEST(ParameterizationKnotRatio, givenInvalidArguments_Throws)
   expectInvalidArgumentWithMessage(
       [] { P::moveBlocking(20, 5, std::numeric_limits<double>::infinity()); },
       "knot_ratio must be positive and finite");
-  // first interval 19 / (1 + 3 + 9 + 27) < 1 sample
+  // knots 0, 0.0171, 0.188, 1.90, 19: the hat of control point 1 is nonzero
+  // only on (0, 0.188), which contains no sample
+  expectInvalidArgumentWithMessage([] { P::bspline(20, 1, 5, 10.0); },
+                                   "control point 1 has no sample of its own");
   expectInvalidArgumentWithMessage(
-      [] { P::bspline(20, 1, 5, 3.0); },
-      "shortest knot interval must be at least one sample");
-  // ratio below 1: the last interval is the shortest
-  expectInvalidArgumentWithMessage(
-      [] { P::linearInterp(20, 5, 1.0 / 3.0); },
-      "shortest knot interval must be at least one sample");
+      [] { P::bspline(20, 1, 5, 10.0); },
+      "Use a knot_ratio closer to 1 or fewer control points");
+  // ratio below 1: the last intervals are the shortest
+  expectInvalidArgumentWithMessage([] { P::linearInterp(20, 5, 0.1); },
+                                   "control point 3 has no sample of its own");
   expectInvalidArgumentWithMessage(
       [] { P::bspline(20, 2, 2, 1.5); },
       "must have at least degree+1 control points");
@@ -849,4 +878,241 @@ TEST(ParameterizationUnclamped, givenUnclampedKnots_EvaluatesLikeSpline)
   // partition of unity still holds on [0, T-1]
   EXPECT_TRUE(expectEigenNear(p.evaluate(1, VectorXd::Constant(5, 2.5)),
                               VectorXd::Constant(T, 2.5), 1e-14));
+}
+
+// ---- Schoenberg-Whitney rank check -----------------------------------------
+
+namespace {
+
+// Independent Cox-de Boor evaluation of basis function i of degree p at t,
+// with zero-denominator terms dropped. Degree 0 is right-continuous, except
+// with left_limit, which takes the limit from the left (the spline is
+// evaluated at the last active knot horizon_steps-1 from the left).
+double coxDeBoor(const VectorXd& knots, int i, int p, double t, bool left_limit)
+{
+  if (p == 0) {
+    if (left_limit)
+      return (knots(i) < t && t <= knots(i + 1)) ? 1.0 : 0.0;
+    return (knots(i) <= t && t < knots(i + 1)) ? 1.0 : 0.0;
+  }
+  double value{0.0};
+  const double d1{knots(i + p) - knots(i)};
+  const double d2{knots(i + p + 1) - knots(i + 1)};
+  if (d1 > 0.0)
+    value += (t - knots(i)) / d1 * coxDeBoor(knots, i, p - 1, t, left_limit);
+  if (d2 > 0.0)
+    value += (knots(i + p + 1) - t) / d2
+             * coxDeBoor(knots, i + 1, p - 1, t, left_limit);
+  return value;
+}
+
+// Dense T x num_control_points basis sampled at k = 0, ..., T-1 by Cox-de
+// Boor. Degree 0 follows the library convention that the last control point
+// owns the last sample (so a change point at T-1 is a one-sample block).
+MatrixXd coxDeBoorBasis(int T, int p, const VectorXd& knots)
+{
+  const int n{static_cast<int>(knots.size()) - p - 1};
+  MatrixXd basis{MatrixXd::Zero(T, n)};
+  for (int k{0}; k < T; ++k) {
+    if (p == 0 && k == T - 1) {
+      basis(k, n - 1) = 1.0;
+      continue;
+    }
+    for (int i{0}; i < n; ++i)
+      basis(k, i) = coxDeBoor(knots, i, p, k, p > 0 && k == T - 1);
+  }
+  return basis;
+}
+
+// Dense basis from the stored band
+MatrixXd bandBasis(const ampc::Parameterization& p)
+{
+  MatrixXd basis{MatrixXd::Zero(p.horizon_steps, p.num_control_points)};
+  for (int k{0}; k < p.horizon_steps; ++k)
+    basis.row(k).segment(p.band_start(k), p.band_width) =
+        p.band_weights.col(k).transpose();
+  return basis;
+}
+
+// Smallest over largest singular value (0 when there are more columns than
+// rows, which can not have full column rank)
+double inverseCondition(const MatrixXd& basis)
+{
+  if (basis.cols() > basis.rows())
+    return 0.0;
+  const VectorXd sv{JacobiSVD<MatrixXd>{basis}.singularValues()};
+  return sv(sv.size() - 1) / sv(0);
+}
+
+// Clamped knot vector from active knots
+VectorXd clampedKnots(int T, int p, const VectorXd& active)
+{
+  VectorXd knots{active.size() + 2 * p};
+  knots << VectorXd::Zero(p), active, VectorXd::Constant(p, T - 1.0);
+  return knots;
+}
+
+} // namespace
+
+TEST(ParameterizationRank, givenRepeatedInteriorKnots_EigenMatchesCoxDeBoor)
+{
+  // every multiplicity that keeps the spline defined (2 to degree+1), at and
+  // between samples, next to simple knots
+  const int T{14};
+  int num_accepted{0};
+  for (int p{1}; p <= 3; ++p) {
+    for (int mult{2}; mult <= p + 1; ++mult) {
+      for (const double t : {5.0, 5.5, 5.25, 4.0 + 1e-9}) {
+        VectorXd active{4 + mult};
+        active << 0.0, 2.5, VectorXd::Constant(mult, t), 9.0, T - 1.0;
+        const auto param{ampc::Parameterization::bspline(T, p, active)};
+        ++num_accepted;
+        const MatrixXd expected{coxDeBoorBasis(T, p, param.knots)};
+        EXPECT_TRUE(expectEigenNear(bandBasis(param), expected, 1e-14))
+            << "p = " << p << ", mult = " << mult << ", t = " << t;
+        EXPECT_GT(inverseCondition(expected), 1e-6);
+
+        const VectorXd ctrls{
+            VectorXd::LinSpaced(param.num_control_points, -1, 3).array().sin()};
+        EXPECT_TRUE(
+            expectEigenNear(param.evaluate(1, ctrls), expected * ctrls, 1e-14));
+      }
+    }
+  }
+  EXPECT_EQ(num_accepted, 6 * 4);
+}
+
+TEST(ParameterizationRank, givenKnotMultiplicityAboveDegreePlusOne_Throws)
+{
+  // a basis function whose support is a single point is zero everywhere
+  for (int p{0}; p <= 3; ++p) {
+    VectorXd active{5 + p};
+    active << 0.0, 3.0, VectorXd::Constant(p + 2, 5.5), 9.0;
+    expectInvalidArgumentWithMessage(
+        [&] { ampc::Parameterization::bspline(10, p, active); },
+        "has no sample of its own");
+  }
+}
+
+TEST(ParameterizationRank, givenInteriorKnotAtLastActiveKnot_Throws)
+{
+  // the spline is evaluated at T-1 from the left, so the last basis function
+  // (support [9, 9]) is zero at every sample
+  VectorXd active{4};
+  active << 0, 4, 9, 9;
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::Parameterization::bspline(10, 1, active); },
+      "control point 3 has no sample of its own");
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::Parameterization::bspline(10, 2, active); },
+      "control point 4 has no sample of its own");
+  // degree 0: a change point at T-1 is a one-sample block (see moveBlocking)
+  EXPECT_NO_THROW(ampc::Parameterization::bspline(10, 0, active));
+}
+
+TEST(ParameterizationRank, givenInteriorKnotAtFirstActiveKnot_Throws)
+{
+  // the spline is evaluated from the right, so the first basis function
+  // (support [0, 0], or [-1, 0] unclamped) is zero at every sample
+  const Vector3d change_points{0, 0, 3};
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::Parameterization::moveBlocking(10, change_points); },
+      "control point 0 has no sample of its own");
+  VectorXd active{4};
+  active << 0, 0, 4, 9;
+  for (int p{1}; p <= 3; ++p)
+    expectInvalidArgumentWithMessage(
+        [&] { ampc::Parameterization::bspline(10, p, active); },
+        "control point 0 has no sample of its own");
+  VectorXd knots{6};
+  knots << -1, 0, 0, 4, 9, 10;
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::Parameterization{10, 1, knots}; },
+      "interior knot equals the first active knot");
+}
+
+TEST(ParameterizationRank, givenTwoColumnsSharingOneSample_Throws)
+{
+  // every basis function is nonzero at some sample (accepted before the rank
+  // check), but the hats of control points 3 and 4 are both nonzero only at
+  // k = 4, so they are linearly dependent on the samples
+  const int T{10}, p{1};
+  VectorXd active{7};
+  active << 0, 2, 3.5, 3.9, 4.2, 4.6, 9;
+  const MatrixXd basis{coxDeBoorBasis(T, p, clampedKnots(T, p, active))};
+  for (int j{0}; j < basis.cols(); ++j)
+    EXPECT_GT(basis.col(j).cwiseAbs().maxCoeff(), 0.0) << "column " << j;
+  EXPECT_LT(inverseCondition(basis), 1e-14);
+
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::Parameterization::bspline(T, p, active); },
+      "control point 4 has no sample of its own. Its basis function, with "
+      "support [3.9, 4.6], is nonzero at sample k = 4 only, but it needs a "
+      "sample k > 4 (control points 0 to 3 need samples up to k = 4)");
+}
+
+TEST(ParameterizationRank, givenRandomKnots_AcceptedIffBasisHasFullRank)
+{
+  // random degrees, horizons, and active knots, on a quarter-sample grid (with
+  // repeats) and continuous; the check accepts exactly the knot vectors whose
+  // sampled basis has full column rank
+  std::mt19937 gen{2024};
+  int num_accepted{0}, num_rejected{0}, num_repeated{0};
+  double min_accepted{1.0}, max_rejected{0.0};
+  for (int trial{0}; trial < 4000; ++trial) {
+    std::uniform_int_distribution<int> T_dist{2, 25}, p_dist{0, 3};
+    const int T{T_dist(gen)}, p{p_dist(gen)};
+    std::uniform_int_distribution<int> num_dist{0, T};
+    const int num_interior{num_dist(gen)};
+    std::uniform_real_distribution<double> uniform{0.0, T - 1.0};
+    std::uniform_int_distribution<int> grid{0, 4 * (T - 1)};
+    std::vector<double> interior(num_interior);
+    for (double& t : interior)
+      t = trial % 2 == 0 ? 0.25 * grid(gen) : uniform(gen);
+    std::sort(interior.begin(), interior.end());
+    VectorXd active{num_interior + 2};
+    active << 0.0, Map<const VectorXd>{interior.data(), num_interior}, T - 1.0;
+    const VectorXd knots{clampedKnots(T, p, active)};
+    if (knots.size() - p - 1 > T)
+      continue; // more control points than samples: rejected by the counts
+    const MatrixXd expected{coxDeBoorBasis(T, p, knots)};
+    const double inv_cond{inverseCondition(expected)};
+
+    try {
+      const auto param{ampc::Parameterization::bspline(T, p, active)};
+      ++num_accepted;
+      for (Index i{p + 1}; i + 1 < knots.size() - p; ++i)
+        num_repeated += knots(i) == knots(i - 1);
+      ASSERT_TRUE(expectEigenNear(bandBasis(param), expected, 1e-13))
+          << "trial " << trial;
+      min_accepted = std::min(min_accepted, inv_cond);
+      ASSERT_GT(inv_cond, 1e-12) << "trial " << trial;
+    } catch (const std::invalid_argument& e) {
+      ASSERT_NE(std::string{e.what()}.find("full column rank"),
+                std::string::npos)
+          << e.what();
+      ++num_rejected;
+      max_rejected = std::max(max_rejected, inv_cond);
+      ASSERT_LT(inv_cond, 1e-14) << "trial " << trial;
+    }
+  }
+  std::cout << "accepted " << num_accepted << " (with " << num_repeated
+            << " repeated knots), rejected " << num_rejected
+            << ", smallest accepted inverse condition " << min_accepted
+            << ", largest rejected " << max_rejected << "\n";
+  EXPECT_GT(num_accepted, 1000);
+  EXPECT_GT(num_rejected, 500);
+  EXPECT_GT(num_repeated, 50);
+}
+
+TEST(ParameterizationRank, givenSubSampleGeometricInterval_Accepts)
+{
+  // first interval 19 / (1 + 3 + 9 + 27) = 0.475 samples, but every control
+  // point still has its own sample
+  const auto p{ampc::Parameterization::bspline(20, 1, 5, 3.0)};
+  EXPECT_LT(p.knots(2) - p.knots(1), 1.0);
+  EXPECT_GT(inverseCondition(bandBasis(p)), 1e-3);
+  EXPECT_EQ(ampc::Parameterization::makeClampedKnots(20, 1, 5, 3.0), p.knots);
+  EXPECT_NO_THROW(ampc::Parameterization::moveBlocking(20, 4, 3.0));
+  EXPECT_NO_THROW(ampc::Parameterization::linearInterp(20, 5, 1.0 / 3.0));
 }

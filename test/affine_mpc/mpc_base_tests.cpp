@@ -1037,6 +1037,36 @@ TEST(MPCBaseTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
       expectEigenNear(A, expectedSatRows(base, m, deg, 4, samples), 1e-9));
 }
 
+TEST(MPCBaseTester, givenInputTrajSatOptionDeg1RepeatedKnots_BoundsBothSides)
+{
+  // a double knot makes the spline jump, so the last sample before the knot
+  // is constrained too: active knots {0, 4, 4, 6.5, 6.5, 9} give samples
+  // {0, 3, 4, 6, 7, 9}
+  const int n{2}, m{1}, T{10}, deg{1};
+  VectorXd knots{8};
+  knots << 0, 0, 4, 4, 6.5, 6.5, 9, 9;
+  const ampc::Parameterization param{T, deg, knots};
+  MPCBaseTester base{n, m, param, {.saturate_input_trajectory = true}};
+
+  const std::vector<int> samples{0, 3, 4, 6, 7, 9};
+  const int num_rows{static_cast<int>(samples.size())};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * num_rows);
+  ASSERT_TRUE(expectEigenNear(
+      A, expectedSatRows(base, m, deg, param.num_control_points, samples),
+      1e-15));
+
+  // the extreme sampled inputs always lie on the constrained samples
+  std::srand(0);
+  for (int trial{0}; trial < 100; ++trial) {
+    const VectorXd ctrls{VectorXd::Random(m * param.num_control_points)};
+    const VectorXd u_traj{param.evaluate(m, ctrls)};
+    const VectorXd u_cons{A * ctrls};
+    EXPECT_NEAR(u_cons.maxCoeff(), u_traj.maxCoeff(), 1e-12);
+    EXPECT_NEAR(u_cons.minCoeff(), u_traj.minCoeff(), 1e-12);
+  }
+}
+
 TEST(MPCBaseTester,
      givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
 {

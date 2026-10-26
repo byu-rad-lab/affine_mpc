@@ -84,15 +84,41 @@ void validateKnots(const Ref<const VectorXd>& knots,
     throw std::invalid_argument(
         "[Parameterization::validateKnots] knots must be non-decreasing.\n");
 
-  const int num_active_knots = knots.size() - 2 * degree;
-  // deg 0 can repeat the last knot (last one isn't really active)
-  const int size{degree == 0 ? num_active_knots - 2 : num_active_knots - 1};
-  if (size > 0 && diff(seqN(degree, size)).minCoeff() == 0.0)
-    throw std::invalid_argument(
-        "[Parameterization::validateKnots] active knots can not be repeated "
-        "(technically a spline can repeat knots, but it causes discontinuities "
-        "that essentially leave some control points unused and wastes "
-        "optimization effort in this context).\n");
+  // Repeated knots are allowed (they lower the continuity at that knot) as
+  // long as the sampled basis keeps full column rank, which is checked once
+  // the basis is computed. Two cases are rejected here instead, because the
+  // span search would pick an empty knot interval (Eigen then divides by zero,
+  // and versions differ in which interval they pick at the first knot):
+  // - an interior knot equal to the first active knot 0 (any degree): the
+  //   first basis function is zero from 0 on (the spline is evaluated from the
+  //   right);
+  // - for degree > 0, an interior knot equal to the last active knot T-1: the
+  //   last basis function is zero up to T-1 (the spline is evaluated there
+  //   from the left). Degree 0 allows it: the last control point owns the last
+  //   sample, so a change point at T-1 is a one-sample block.
+  // Without interior knots (e.g. horizon_steps = 1, where the first and last
+  // active knots are both 0) neither case applies.
+  const int first_active{degree}, last_active{num_knots - degree - 1};
+  const bool has_interior{last_active - first_active > 1};
+  const bool first_repeated{has_interior
+                            && knots(first_active + 1) == knots(first_active)};
+  const bool last_repeated{has_interior && degree > 0
+                           && knots(last_active - 1) == knots(last_active)};
+  if (first_repeated || last_repeated) {
+    const int ctrl{first_repeated ? 0 : last_active - 1};
+    std::stringstream ss;
+    ss << std::setprecision(10) << "[Parameterization::validateBasisRank] "
+       << "the sampled basis does not have full column rank: control point "
+       << ctrl << " has no sample of its own. Its basis function, with "
+       << "support [" << knots(ctrl) << ", " << knots(ctrl + degree + 1)
+       << "], is zero at every sample because an interior knot equals the "
+       << (first_repeated ? "first active knot 0 (the spline is evaluated "
+                            "there from the right). Move that knot above 0.\n"
+                          : "last active knot horizon_steps-1 (the spline is "
+                            "evaluated there from the left). Move that knot "
+                            "below horizon_steps-1.\n");
+    throw std::invalid_argument(ss.str());
+  }
 }
 
 // Index of the first control point of the band at each sample
@@ -121,27 +147,109 @@ computeBandWeights(int horizon_steps, int degree, const VectorXd& knots)
   return weights;
 }
 
-// A basis function that is zero at every sample leaves its control point
-// without any effect on the inputs, so the QP is singular in that direction.
-// This happens when knots closer than one sample leave no sample inside a
-// support (degree 0: a block [t_i, t_i+1) that contains no integer).
-void validateInfluence(const Parameterization& p)
+bool basisNonzero(const VectorXi& band_start,
+                  const MatrixXd& band_weights,
+                  int control_point,
+                  int k)
 {
-  VectorXd influence{VectorXd::Zero(p.num_control_points)};
-  for (int k{0}; k < p.horizon_steps; ++k)
-    influence.segment(p.band_start(k), p.band_width) += p.band_weights.col(k);
-  for (int i{0}; i < p.num_control_points; ++i) {
-    if (influence(i) == 0.0) {
-      std::stringstream ss;
-      ss << std::setprecision(17) << "[Parameterization::validateInfluence] "
-         << "control point " << i
-         << " has no influence on any sampled input: no sample time k = 0, "
-         << "..., horizon_steps-1 lies inside the support of its basis "
-         << "function [" << p.knots(i) << ", " << p.knots(i + p.degree + 1)
-         << "]. Spread the knots so every support contains a sample.\n";
-      throw std::invalid_argument(ss.str());
+  const Index i{control_point - band_start(k)};
+  // a non-finite weight (not expected) does not count as nonzero
+  return i >= 0 && i < band_weights.rows() && band_weights(i, k) != 0.0
+         && std::isfinite(band_weights(i, k));
+}
+
+// Describes the samples at which a basis function is nonzero (contiguous for
+// B-splines), e.g. "no sample", "sample k = 4 only", or "samples k = 1, ..., 3"
+std::string nonzeroSamples(const VectorXi& band_start,
+                           const MatrixXd& band_weights,
+                           int control_point)
+{
+  int first{-1}, last{-1};
+  for (int k{0}; k < band_start.size(); ++k) {
+    if (basisNonzero(band_start, band_weights, control_point, k)) {
+      if (first < 0)
+        first = k;
+      last = k;
     }
   }
+  std::stringstream ss;
+  if (first < 0)
+    ss << "no sample";
+  else if (first == last)
+    ss << "sample k = " << first << " only";
+  else if (last == first + 1)
+    ss << "samples k = " << first << ", " << last;
+  else
+    ss << "samples k = " << first << ", ..., " << last;
+  return ss.str();
+}
+
+// Schoenberg-Whitney condition on the sampled basis. The T x eta matrix of
+// basis functions sampled at k = 0, ..., T-1 has full column rank if and only
+// if the control points can be matched to strictly increasing samples
+// k_0 < k_1 < ... < k_{eta-1} with basis function j nonzero at k_j. The
+// supports of consecutive basis functions move monotonically to the right, so
+// matching each control point to the first free sample at which it is nonzero
+// decides it in O(T + eta). Without full rank, some combination of control
+// points has no effect on any sampled input and the QP is flat in that
+// direction. Returns an empty string when the condition holds, otherwise a
+// description of the first control point without a sample.
+std::string rankDeficiency(int degree,
+                           const VectorXd& knots,
+                           const VectorXi& band_start,
+                           const MatrixXd& band_weights)
+{
+  const int T{static_cast<int>(band_start.size())};
+  const int num_ctrls{static_cast<int>(knots.size()) - degree - 1};
+  int k{0}, prev{-1};
+  for (int j{0}; j < num_ctrls; ++j) {
+    while (k < T && !basisNonzero(band_start, band_weights, j, k)) {
+      if (band_start(k) > j) { // later bands start even further right
+        k = T;
+        break;
+      }
+      ++k;
+    }
+    if (k < T) {
+      prev = k++;
+      continue;
+    }
+
+    std::stringstream ss;
+    ss << std::setprecision(10)
+       << "the sampled basis does not have full column rank: control point "
+       << j << " has no sample of its own. Its basis function, with support ["
+       << knots(j) << ", " << knots(j + degree + 1) << "], is nonzero at "
+       << nonzeroSamples(band_start, band_weights, j);
+    if (j == 1)
+      ss << ", but it needs a sample k > " << prev << " (control point 0 "
+         << "needs k = " << prev << ")";
+    else if (j > 1)
+      ss << ", but it needs a sample k > " << prev << " (control points 0 to "
+         << j - 1 << " need samples up to k = " << prev << ")";
+    ss << ". Each control point needs its own sample at which its basis "
+       << "function is nonzero, in increasing order (Schoenberg-Whitney "
+       << "condition); otherwise some combination of control points has no "
+       << "effect on any sampled input.";
+    return ss.str();
+  }
+  return {};
+}
+
+void validateBasisRank(const Parameterization& p)
+{
+  // not expected after validateKnots; a NaN would count as nonzero below
+  if (!p.band_weights.allFinite())
+    throw std::invalid_argument(
+        "[Parameterization::validateBasisRank] evaluating the basis gave "
+        "non-finite values; check the knots.\n");
+  const std::string reason{
+      rankDeficiency(p.degree, p.knots, p.band_start, p.band_weights)};
+  if (!reason.empty())
+    throw std::invalid_argument("[Parameterization::validateBasisRank] "
+                                + reason
+                                + " Spread the knots or lower their "
+                                  "multiplicity.\n");
 }
 
 // Validates the knots after snapping the boundary knots (the first and last
@@ -199,15 +307,16 @@ VectorXd makeKnots(const std::string& prefix,
       (horizon_steps - 1) / knots(degree + num_intervals);
   knots.tail(degree + 1).setConstant(horizon_steps - 1); // exact, not round-off
 
-  // the shortest interval is the first for knot_ratio > 1 and the last for < 1
-  const int shortest{knot_ratio > 1.0 ? degree : degree + num_intervals - 1};
-  const double min_length{knots(shortest + 1) - knots(shortest)};
-  if (min_length < 1.0) {
+  // short first (or last) intervals are fine as long as the sampled basis
+  // keeps full column rank
+  const std::string reason{rankDeficiency(
+      degree, knots, computeBandStart(horizon_steps, degree, knots),
+      computeBandWeights(horizon_steps, degree, knots))};
+  if (!reason.empty()) {
     std::stringstream ss;
-    ss << std::setprecision(17) << prefix
-       << "shortest knot interval must be at least one sample. Got "
-       << min_length << " with knot_ratio = " << knot_ratio
-       << "; use a knot_ratio closer to 1 or fewer control points.\n";
+    ss << prefix << "knot_ratio = " << knot_ratio
+       << " gives knot intervals too short for the samples: " << reason
+       << " Use a knot_ratio closer to 1 or fewer control points.\n";
     throw std::invalid_argument(ss.str());
   }
   return knots;
@@ -320,7 +429,7 @@ Parameterization::Parameterization(int horizon_steps,
     band_start{computeBandStart(horizon_steps, degree, knots)},
     band_weights{computeBandWeights(horizon_steps, degree, knots)}
 {
-  validateInfluence(*this);
+  validateBasisRank(*this);
 }
 
 Parameterization::Parameterization(int horizon_steps,
@@ -334,7 +443,7 @@ Parameterization::Parameterization(int horizon_steps,
     band_start{computeBandStart(horizon_steps, degree, this->knots)},
     band_weights{computeBandWeights(horizon_steps, degree, this->knots)}
 {
-  validateInfluence(*this);
+  validateBasisRank(*this);
 }
 
 VectorXd Parameterization::evaluate(
@@ -403,22 +512,31 @@ std::vector<int> Parameterization::inputSaturationSamples() const
     return samples;
   }
 
-  // Degree 1: floor(t) and ceil(t) of every active knot t, without duplicates.
-  // The spline is linear between knots, so every other sample lies between the
-  // first and last samples of its segment, and bounding these (at most
-  // 2*num_control_points-2) samples is exactly equivalent to bounding all of
-  // them. Active knots can not repeat, so the spline is continuous. Active
-  // knots are knots(1), ..., knots(size-2) and span [0, T-1].
-  constexpr double snap_tol{1e-9}; // treat round-off from integers as integers
+  // Degree 1: the spline is linear on each knot interval [t_i, t_{i+1}), so
+  // bounding the first and last sample of every interval, ceil(t) - 1 and
+  // ceil(t) for every active knot t, is exactly equivalent to bounding every
+  // sample (at most 2*num_control_points-2 samples). Where the spline is
+  // continuous (a simple knot), the sample at an integer knot also bounds the
+  // sample before it, so only that sample is used. Round-off from integers
+  // is treated as an integer there. A repeated knot makes the spline jump, so
+  // both samples are needed. Active knots are knots(1), ..., knots(size-2) and
+  // span [0, T-1].
+  constexpr double snap_tol{1e-9};
+  const Index first_active{1}, last_active{knots.size() - 2};
   samples.reserve(2 * (knots.size() - 2));
-  for (Index i{1}; i < knots.size() - 1; ++i) {
+  for (Index i{first_active}; i <= last_active; ++i) {
     const double t{knots(i)};
+    const bool repeated{(i > first_active && knots(i - 1) == t)
+                        || (i < last_active && knots(i + 1) == t)};
     const double t_round{std::round(t)};
-    if (std::abs(t - t_round) <= snap_tol) {
+    if (!repeated && std::abs(t - t_round) <= snap_tol) {
       samples.push_back(static_cast<int>(t_round));
     } else {
-      samples.push_back(static_cast<int>(std::floor(t)));
-      samples.push_back(static_cast<int>(std::ceil(t)));
+      const int after{static_cast<int>(std::ceil(t))};
+      if (after - 1 >= 0)
+        samples.push_back(after - 1);
+      if (after <= horizon_steps - 1)
+        samples.push_back(after);
     }
   }
   std::sort(samples.begin(), samples.end());

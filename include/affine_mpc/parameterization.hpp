@@ -43,8 +43,9 @@ public:
    *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
    *   ratio above 1 puts short intervals (more flexibility) at the start of
    *   the horizon and a ratio below 1 puts them at the end.
-   * @throws std::invalid_argument if the shortest block is shorter than one
-   *   sample, or if any argument is invalid.
+   * @throws std::invalid_argument if the blocks are so short that some block
+   *   has no sample of its own (the sampled basis would not have full column
+   *   rank), or if any argument is invalid.
    * @return Parameterization instance.
    *
    * Piecewise constant inputs set from previous change point.
@@ -78,8 +79,9 @@ public:
    *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
    *   ratio above 1 puts short intervals (more flexibility) at the start of
    *   the horizon and a ratio below 1 puts them at the end.
-   * @throws std::invalid_argument if the shortest segment is shorter than one
-   *   sample, or if any argument is invalid.
+   * @throws std::invalid_argument if the segments are so short that the
+   *   sampled basis does not have full column rank, or if any argument is
+   *   invalid.
    * @return Parameterization instance.
    *
    * Endpoints span 0 to horizon_steps - 1.
@@ -113,8 +115,9 @@ public:
    *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
    *   ratio above 1 puts short intervals (more flexibility) at the start of
    *   the horizon and a ratio below 1 puts them at the end.
-   * @throws std::invalid_argument if the shortest knot interval is shorter
-   *   than one sample, or if any argument is invalid.
+   * @throws std::invalid_argument if the knot intervals are so short that the
+   *   sampled basis does not have full column rank, or if any argument is
+   *   invalid.
    * @return Parameterization instance.
    */
   static Parameterization bspline(int horizon_steps,
@@ -161,9 +164,15 @@ public:
    *   the knots outside them extend beyond [0, horizon_steps-1]. Knots among
    *   the first and last degree+1 are snapped to 0 and horizon_steps-1 when
    *   within `1e-9 * horizon_steps` (round-off).
-   * @throws std::invalid_argument if the knots are invalid, including when a
-   *   control point has no influence on any sampled input (its basis function
-   *   is zero at every sample k = 0, ..., horizon_steps-1).
+   * @throws std::invalid_argument if the knots are invalid, including when the
+   *   basis sampled at k = 0, ..., horizon_steps-1 does not have full column
+   *   rank, so some combination of control points has no effect on any
+   *   sampled input. By the Schoenberg-Whitney theorem this is the case unless
+   *   every control point can be given its own sample, in increasing order, at
+   *   which its basis function is nonzero. Repeated knots are allowed (each
+   *   repeat lowers the continuity at that knot by one; multiplicity degree+1
+   *   lets the input jump), except an interior knot equal to the first active
+   *   knot or, for degree > 0, the last.
    */
   Parameterization(int horizon_steps,
                    int degree,
@@ -200,8 +209,9 @@ public:
    *   span [0, horizon_steps - 1]. The default of 1 gives uniform knots. A
    *   ratio above 1 puts short intervals (more flexibility) at the start of
    *   the horizon and a ratio below 1 puts them at the end.
-   * @throws std::invalid_argument if the shortest knot interval is shorter
-   *   than one sample, or if any argument is invalid.
+   * @throws std::invalid_argument if the knot intervals are so short that the
+   *   sampled basis does not have full column rank, or if any argument is
+   *   invalid.
    * @return knots The clamped knot vector.
    */
   static Eigen::VectorXd makeClampedKnots(int horizon_steps,

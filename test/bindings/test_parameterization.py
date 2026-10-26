@@ -102,8 +102,25 @@ def test_parameterization_knot_ratio():
         ampc.Parameterization.makeClampedKnots(T, 2, 6, knot_ratio=g), param.knots
     )
 
-    with pytest.raises(ValueError, match="shortest knot interval"):
-        ampc.Parameterization.bspline(20, 1, 5, knot_ratio=3.0)
+    # a first interval below one sample is fine while the basis has full rank
+    short = ampc.Parameterization.bspline(20, 1, 5, knot_ratio=3.0)
+    assert short.knots[2] - short.knots[1] < 1.0
+    with pytest.raises(ValueError, match="knot_ratio closer to 1"):
+        ampc.Parameterization.bspline(20, 1, 5, knot_ratio=10.0)
+
+
+def test_parameterization_rank_check():
+    import pytest
+
+    # a double knot is a valid spline: the input jumps at the knot
+    jump = ampc.Parameterization.linearInterp(5, np.array([0.0, 2, 2, 4]))
+    u = jump.evaluate(1, np.array([0.0, 2, 10, 6]))
+    np.testing.assert_allclose(u, [0, 1, 10, 8, 6], rtol=0, atol=1e-15)
+
+    # every basis function is nonzero at some sample, but control points 3 and
+    # 4 are only nonzero at k = 4
+    with pytest.raises(ValueError, match="control point 4 has no sample of its own"):
+        ampc.Parameterization.bspline(10, 1, np.array([0, 2, 3.5, 3.9, 4.2, 4.6, 9]))
 
 
 if __name__ == "__main__":

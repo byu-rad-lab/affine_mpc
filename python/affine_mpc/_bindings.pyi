@@ -177,8 +177,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest knot interval is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the knot intervals are so short that the sampled basis
+                does not have full column rank, or if any argument is invalid.
 
         returns:
             out: Parameterization instance with clamped B-spline structure.
@@ -223,8 +223,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest segment is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the segments are so short that the sampled basis does not
+                have full column rank, or if any argument is invalid.
 
         returns:
             out: Parameterization instance with linear interpolation structure.
@@ -272,8 +272,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest knot interval is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the knot intervals are so short that the sampled basis
+                does not have full column rank, or if any argument is invalid.
 
         Returns:
             knots: The clamped knot vector.
@@ -317,8 +317,9 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest block is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the blocks are so short that some block has no sample of
+                its own (the sampled basis would not have full column rank), or if
+                any argument is invalid.
 
         returns:
             out: Parameterization instance with move-blocking structure.
@@ -378,10 +379,12 @@ class Parameterization:
                 len(knots)-degree-1) must be horizon_steps-1; for unclamped splines
                 the knots outside them extend beyond [0, horizon_steps-1]. Knots
                 among the first and last degree+1 are snapped to 0 and
-                horizon_steps-1 when within 1e-9 * horizon_steps (round-off). Every
-                control point must influence at least one sampled input (its basis
-                function can not be zero at every sample k = 0, ...,
-                horizon_steps-1).
+                horizon_steps-1 when within 1e-9 * horizon_steps (round-off). The
+                basis sampled at k = 0, ..., horizon_steps-1 must have full column
+                rank: every control point needs its own sample, in increasing order,
+                at which its basis function is nonzero (Schoenberg-Whitney). Repeated
+                knots are allowed, except an interior knot equal to the first active
+                knot or, for degree > 0, the last.
         """
 
     def __repr__(self) -> str: ...

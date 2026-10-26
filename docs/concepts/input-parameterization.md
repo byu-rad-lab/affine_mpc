@@ -198,7 +198,8 @@ With $g > 1$, the short intervals (and so the most flexibility) are at the start
 $g < 1$ does the opposite, and the default $g = 1$ gives uniform knots.
 With `moveBlocking()`, this gives geometric move blocking.
 A good ratio depends on the horizon and the number of control points; tuned geometric knots performed best in the B-spline parameterization experiments.
-The shortest interval must be at least one sample long, which limits $g$ for a given horizon and number of control points.
+Intervals shorter than one sample are fine as long as the sampled basis keeps full column rank (see [Accepted Knot Vectors](#accepted-knot-vectors)).
+Otherwise the factory throws and suggests a ratio closer to 1 or fewer control points, which limits $g$ for a given horizon and number of control points.
 `makeClampedKnots(horizon_steps, degree, num_control_points, knot_ratio)` returns the same knot vector, as a starting point for custom knots.
 
 ## Tradeoffs and Interpretation
@@ -224,11 +225,29 @@ Changing the active-knot locations redistributes where the trajectory can vary m
 - Uniform knots distribute flexibility evenly across the horizon.
 - Custom knots or change points concentrate flexibility where it is most needed.
 
-Knots do not have to be integers or at least one sample apart, but every control point must affect at least one sampled input.
-A control point whose basis function is zero at every sample $k = 0, \dots, T-1$ would only add a direction the QP can not see, so construction throws `std::invalid_argument` (`ValueError` in Python).
-For example, `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` is rejected because control point 2 is only nonzero on $(3.2, 3.22)$, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
+### Accepted Knot Vectors
 
-Clustered or very short knot intervals make the QP worse conditioned, because nearby control points affect almost the same samples.
+The sampled basis $\Psi$ ($T \times \eta$) must have full column rank.
+Otherwise some combination of control points has no effect on any sampled input, the cost is flat in that direction, and the QP has no unique solution.
+By the Schoenberg-Whitney theorem, $\Psi$ has full column rank if and only if every control point $j$ can be given its own sample $k_j$, with $k_0 < k_1 < \dots < k_{\eta-1}$, at which its basis function is nonzero, $b_j^p(k_j, \boldsymbol{\tau}) \neq 0$.
+Construction checks this condition exactly on the sampled basis and throws `std::invalid_argument` (`ValueError` in Python) otherwise; the message names the first control point without a sample, its support, and the samples it would need.
+
+- Knots do not have to be integers or at least one sample apart.
+  For example, geometric knots whose first interval is shorter than one sample are accepted as long as every control point still gets its own sample.
+- Repeated knots are allowed.
+  Each repeat lowers the continuity of the input at that knot by one, so a double knot in a quadratic spline gives a kink and multiplicity $p+1$ gives a jump, which can be what you want (e.g., a planned step in the input).
+  For example, `linearInterp(5, [0, 2, 2, 4])` is piecewise linear with a jump at $k = 2$.
+  With `saturate_input_trajectory` and $p = 1$, the samples on both sides of a repeated knot are bounded.
+- A basis function that is zero at every sample is rejected.
+  For example, in `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` control point 2 is only nonzero on $(3.2, 3.22)$, a knot multiplicity above $p+1$ leaves a basis function supported on a single point, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
+- Basis functions that are each nonzero somewhere but share too few samples are rejected too.
+  For example, in `bspline(10, 1, [0, 2, 3.5, 3.9, 4.2, 4.6, 9])` the hat functions of control points 3 and 4 are both nonzero only at $k = 4$.
+- An interior knot equal to the first active knot $0$, or for $p > 0$ to the last active knot $T-1$, is rejected.
+  The spline is evaluated from the right at $0$ and from the left at $T-1$, so that basis function is zero at every sample.
+  For $p = 0$, a change point at $T-1$ is a valid one-sample block.
+
+Near-coincident knots pass this check, since the rank is still full, but they make the QP ill conditioned.
+Clustered or very short knot intervals make the QP worse conditioned in general, because nearby control points affect almost the same samples.
 In the knot optimization experiments, degree 0 with optimized (clustered) knots had a median QP condition number of $1.45 \times 10^5$, compared with about $10^3$ for uniform or geometric knots.
 OSQP then needs more iterations and may stop at `MaxIterReached`.
 A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.

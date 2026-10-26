@@ -1387,3 +1387,34 @@ TEST(ConsistencyTester, givenUnclampedKnots_CondensedAndSparseMPCAgree)
   tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }
+
+TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
+{
+  // a double knot (degree 2: continuous with a kink) and a triple knot
+  // (degree 2: a jump), with the sampled inputs bounded
+  const int n{2}, m{1}, T{12};
+  for (const int mult : {2, 3}) {
+    VectorXd active{3 + mult};
+    active << 0, 2.5, VectorXd::Constant(mult, 5.0), T - 1.0;
+    const auto param{ampc::Parameterization::bspline(T, 2, active)};
+    const ampc::Options opts{.saturate_input_trajectory = true};
+    ConsistencyTester tester{n, m, param, opts};
+    tester.setup(); // input limits are [0, 3]
+
+    const Vector2d x0{0.5, -0.2};
+    ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd u_condensed{m * T}, u_sparse{m * T};
+    tester.condensed.getInputTrajectory(u_condensed);
+    tester.sparse.getInputTrajectory(u_sparse);
+    EXPECT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-4));
+    EXPECT_LE(u_sparse.maxCoeff(), 3.0 + 1e-4);
+    EXPECT_GE(u_sparse.minCoeff(), -1e-4);
+
+    VectorXd x_condensed{n * T}, x_sparse{n * T};
+    tester.condensed.getPredictedStateTrajectory(x_condensed);
+    tester.sparse.getPredictedStateTrajectory(x_sparse);
+    EXPECT_TRUE(expectEigenNear(x_condensed, x_sparse, 1e-4));
+  }
+}
