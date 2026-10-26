@@ -43,8 +43,6 @@ public:
   /// A dense rows x cols block from (row, col), declared column by column.
   void declareBlock(int row, int col, int rows, int cols)
   {
-    reserve(rows_.size()
-            + static_cast<std::size_t>(rows) * static_cast<std::size_t>(cols));
     for (int j{0}; j < cols; ++j)
       for (int i{0}; i < rows; ++i)
         declare(row + i, col + j);

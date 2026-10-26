@@ -377,6 +377,9 @@ RowBlock SparseFormulation::declare(QPLayout& layout)
   // the dynamics rows (the first rows of A)
   const RowBlock rows{layout.addRows(nx_)};
   const Parameterization& param{input_param_.parameterization()};
+  Bd_entries_.reserve(
+      static_cast<std::size_t>(T_ * param.band_width * n_ * m_));
+  Ad_entries_.reserve(static_cast<std::size_t>((T_ - 1) * n_ * n_));
   for (int k{0}, row{rows.offset}; k < T_; ++k, row += n_) {
     for (int i{0}; i < param.band_width; ++i) {
       const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
@@ -527,6 +530,9 @@ StateRows SparseFormulation::declareStateRows(QPLayout& layout,
   // for a general H (any of its entries can become nonzero)
   QPEntries& entries{*state_rows_.emplace_back(std::make_unique<QPEntries>())};
   const int p{H.rows()};
+  const std::size_t per_step{H.isGeneral() ? static_cast<std::size_t>(p * n_)
+                                           : H.entries().size()};
+  entries.reserve(per_step * static_cast<std::size_t>(num_steps));
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int col{nc_ + (k - 1) * n_};

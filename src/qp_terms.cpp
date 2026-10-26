@@ -309,6 +309,7 @@ void GeneralConstraints::declare(QPLayout& layout, Formulation& f)
                                    Hx_, 1, T_ - 1);
   const Parameterization& param{input_param_.parameterization()};
   const int m{input_param_.inputDim()};
+  Hu_.reserve(static_cast<std::size_t>(T_ * param.band_width * p_ * m));
   for (int k{0}; k < T_; ++k) {
     for (int i{0}; i < param.band_width; ++i) {
       const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
