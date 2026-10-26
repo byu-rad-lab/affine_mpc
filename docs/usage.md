@@ -55,6 +55,7 @@ Factory methods are provided for
 
 When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots by default, or geometrically spaced knots with `knot_ratio`) or you can supply a custom knot vector.
 For unclamped splines, you must use the regular constructor directly.
+Other bases, such as Laguerre functions, can be supplied as a sampled basis matrix with `fromBasis()` (see [Custom Bases](concepts/input-parameterization.md#custom-bases)).
 
 If you are unsure what to use, linear interpolation is a good default:
 
@@ -352,7 +353,7 @@ State trajectory reference:
     mpc.setReferenceStateTrajectory(x_traj);
     ```
 
-If input cost is enabled, input references can also be configured:
+If input cost is enabled, input references can also be configured (with a [custom basis](concepts/input-parameterization.md#custom-bases), only `setReferenceInputControlPoints()`, which sets the coefficient references):
 
 === "Python"
 

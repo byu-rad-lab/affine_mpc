@@ -8,6 +8,7 @@ The same problem is implemented in both C++ and Python so users can learn one co
 - `examples/sim.cpp`
 - `examples/sim.py`
 - `examples/plot_sim.py`
+- `examples/laguerre.py`
 
 `sim.cpp` and `sim.py` were designed to be near-exact translations of each other; they both run the simple mass-spring-damper sim and print the location of the saved log file.
 The log file is saved to the same location, so running `plot_sim.py` works after running either the C++ or Python versions of the sim.
@@ -15,6 +16,9 @@ The log file is saved to the same location, so running `plot_sim.py` works after
 The C++ version of `affine_mpc` does not come with plotting capabilities.
 It is designed to log `.npz` files that can be loaded in Python with `numpy.load()`.
 Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` will also plot the results when run directly.
+
+`laguerre.py` is a Python-only variation on the same mass-spring-damper: it parameterizes the input with Laguerre functions through `Parameterization.fromBasis()` and compares the direct form with the deviation form described in [Custom Bases](concepts/input-parameterization.md#custom-bases).
+It prints the closed-loop results and does not log or plot.
 
 ## What the Example Demonstrates
 

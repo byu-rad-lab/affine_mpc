@@ -32,6 +32,7 @@ This generates a dynamically feasible input trajectory by minimizing state track
 In `affine_mpc`, the parameterization mapping function $g_k$ is implemented with B-splines,
 so saturating the control points saturates the entire input trajectory as well
 (due to the convex hull property of B-splines).
+A [custom basis](input-parameterization.md#custom-bases) has no such property, so its sampled inputs are always saturated instead.
 
 #### Nomenclature
 
@@ -75,7 +76,7 @@ The previous input is stored after every solve that returns `Success` or `Solved
 **When you may want to use it:**
 
 - You want smooth inputs, e.g. to limit actuator wear or excite fewer high-frequency modes, without the hard limit of a slew rate constraint
-- You compare parameterizations: unlike $R$, which weights the control points, $R_\Delta$ acts on the sampled inputs, so it penalizes the same input change equally for every basis
+- You compare parameterizations: unlike $R$, which weights the control points, $R_\Delta$ acts on the sampled inputs, so it penalizes the same input change equally for every basis, including a [custom basis](input-parameterization.md#custom-bases)
 
 ### Input Trajectory Saturation Constraint
 
@@ -99,6 +100,7 @@ How many constraints are added depends on the degree $p$:
   This is exactly equivalent to constraining every sample and adds at most $\min(T, 2\eta - 2)$ constraints per input.
   With integer knots it is the same as saturating the control points.
 - $p > 1$: every sample $k = 0, \dots, T-1$ is constrained.
+- A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whether or not the option is set.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
 Saturating the control points (left) versus the knot-adjacent samples (right) of a degree 1 spline with non-integer knots.
@@ -181,6 +183,7 @@ Slew rates are used to smooth out trajectories,
 preventing potentially harmful input spikes and often yielding smoother or less aggressive actuation.
 This is more natural for degree 0 and 1 splines to essentially set a slew rate constraint between evaluated inputs.
 It can still be used for higher degree splines, but the result may not be as intuitive.
+It requires a B-spline parameterization: with a [custom basis](input-parameterization.md#custom-bases), differences of the coefficients do not bound input changes, so the MPC rejects `slew_control_points` at construction.
 
 **When you may want to use it:**
 

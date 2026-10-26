@@ -13,6 +13,8 @@ $$
 \mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}.
 $$
 
+A [custom basis](input-parameterization.md#custom-bases) takes the place of $\Psi^p(\boldsymbol{\tau})$ in everything below, with the coefficients in place of the control points; it is dense, so the band of every sample holds every coefficient.
+
 ## Quadratic Program (QP)
 
 The form of a QP is
@@ -316,6 +318,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+A custom basis always uses these constraints with every row, in place of saturating the control points, whether or not `saturate_input_trajectory` is set.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -672,6 +675,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+A custom basis always uses these constraints with every row, in place of saturating the control points, whether or not `saturate_input_trajectory` is set.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -810,7 +814,7 @@ using $D^\top (\mathbf{e}_1 \otimes \mathbf{v}) = \mathbf{e}_1 \otimes \mathbf{v
 Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)$ and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
 
 With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) = G \otimes R_\Delta$ with $G = (D_1 \Phi)^\top (D_1 \Phi)$, where $\Phi$ is the $T \times \eta$ basis and $D_1 = I_T - I_T^{(-1)}$.
-$G$ is banded and depends only on the knots, so it is computed once; a weight change only rescales it.
+$G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
 The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
 
 ## General and Terminal Constraints

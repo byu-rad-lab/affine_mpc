@@ -21,6 +21,7 @@ B-splines are built from continuous polynomial segments, so they can produce smo
 This page gives the mathematical definition of the parameterization,
 its sampled matrix form,
 and the API-level factory methods provided by `Parameterization`.
+Other bases, such as Laguerre functions, can be used through a sampled basis matrix (see [Custom Bases](#custom-bases)).
 
 --8<-- "concepts/nomenclature.md"
 
@@ -253,6 +254,107 @@ OSQP then needs more iterations and may stop at `MaxIterReached`.
 A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
 
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
+
+## Custom Bases
+
+`fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Psi$ with one column per coefficient, so $\mathbf{u}_k = \sum_i \Psi_{k,i} \mathbf{c}_i$, where the coefficients $\mathbf{c}_i$ take the place of the control points.
+
+=== "Python"
+
+    ```python
+    param = Parameterization.fromBasis(horizon_steps, basis)  # basis.shape == (horizon_steps, num_control_points)
+    ```
+
+=== "C++"
+
+    ```cpp
+    auto param = Parameterization::fromBasis(horizon_steps, basis)  // Eigen::MatrixXd, horizon_steps x num_control_points
+    ```
+
+The basis must have finite entries and full column rank, tested by its singular values: the smallest must exceed $10^{-9}$ times the largest.
+Full rank does not make the QP well conditioned, since the condition number of the QP Hessian grows like the square of that of $\Psi$.
+For example, many Laguerre functions with a pole close to 1 pass the rank test, yet can make the QP so badly conditioned that OSQP fails to converge.
+Orthonormalizing the columns (e.g. `numpy.linalg.qr`) spans the same input trajectories and improves the conditioning by many orders of magnitude.
+B-splines are well conditioned without this, and orthonormalizing would destroy their banded structure and their convex hull property.
+
+A custom basis has `type` `Custom`, `degree` $-1$, and empty `knots`, and it is treated as dense: every coefficient can affect every sample, so the QP rows of each sampled input involve every coefficient.
+B-spline properties that the MPC relies on do not hold, which changes three features:
+
+- **Input limits.**
+  B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `saturate_input_trajectory` is optional.
+  A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whether or not `saturate_input_trajectory` is set.
+- **Input cost.**
+  `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
+  With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
+  No coefficients represent a constant input in general, so `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
+- **Slew rates.**
+  Differences of coefficients do not bound input changes, so `slew_control_points` throws `std::invalid_argument` (`ValueError` in Python) at construction.
+  `slew_initial_input` still works, since it bounds the first sampled input.
+
+The input rate cost (`use_input_rate_cost`) and the general constraints act on the sampled inputs, so they mean the same for a custom basis as for a B-spline.
+
+The logger records the basis (`meta_basis`, row by row) instead of the degree and knots.
+
+### Example: Laguerre Functions
+
+Discrete Laguerre functions decay like $a^k$ for a pole $0 \le a < 1$, so a few of them can describe a long input transient.
+Used directly, $\mathbf{u} = \Psi \mathbf{c}$, the predicted input decays to zero and can not hold the steady input that keeps a plant at a nonzero reference, so the direct form is not suited to setpoint tracking on its own.
+
+The deviation form $\mathbf{u} = \mathbf{u}_{\mathrm{ss}} + \Psi \mathbf{c}$ plans the deviation from the steady-state input $\mathbf{u}_{\mathrm{ss}}$ that holds the reference, which enters through the model offset $\mathbf{w}$ (see [Deviation Form for Other Bases](modeling-patterns.md#deviation-form-for-other-bases) for the full recipe).
+For the mass-spring-damper of the [examples](../examples.md), with the limits $0 \le u \le 4$:
+
+```python
+import numpy as np
+import affine_mpc as ampc
+
+
+def laguerre_basis(horizon_steps, num_functions, pole):
+    """Discrete Laguerre functions (Wang, 2004): row k of the result is L(k)."""
+    a, beta = pole, 1.0 - pole**2
+    omega = np.zeros((num_functions, num_functions))
+    for i in range(num_functions):
+        omega[i, i] = a
+        for j in range(i):
+            omega[i, j] = beta * (-a) ** (i - j - 1)
+    L = np.sqrt(beta) * (-a) ** np.arange(num_functions)
+    basis = np.zeros((horizon_steps, num_functions))
+    for k in range(horizon_steps):
+        basis[k] = L
+        L = omega @ L
+    return basis
+
+
+T, ts = 40, 0.1
+basis, _ = np.linalg.qr(laguerre_basis(T, 4, 0.8))  # orthonormal columns
+param = ampc.Parameterization.fromBasis(T, basis)
+mpc = ampc.CondensedMPC(2, 1, param, ampc.Options(use_input_cost=True))
+
+A = np.array([[0.0, 1.0], [-0.6, -0.1]])
+B = np.array([0.0, 0.2])
+w = np.zeros(2)
+x_ref = np.array([1.0, 0.0])
+u_min, u_max = np.array([0.0]), np.array([4.0])
+
+# steady-state input that holds x_ref: 0 = A x_ref + B u_ss + w
+u_ss = np.linalg.lstsq(B[:, None], -(A @ x_ref + w), rcond=None)[0]  # [3.0]
+
+mpc.setModelContinuous2Discrete(A, B, w + B * u_ss[0], ts)  # offset w + B u_ss
+mpc.setInputLimits(u_min - u_ss, u_max - u_ss)  # limits on u - u_ss
+mpc.setWeights(np.array([1.0, 0.1]), np.array([1e-3]))  # R weights the coefficients
+mpc.setReferenceState(x_ref)  # coefficient reference stays at zero
+mpc.initializeSolver()
+
+xk = np.zeros(2)
+for _ in range(100):
+    mpc.solve(xk)
+    u_tilde = mpc.getNextInput()
+    uk = u_ss + u_tilde  # input for the plant
+    xk = mpc.propagateModel(xk, u_tilde)  # the model includes B u_ss
+```
+
+Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
+`examples/laguerre.py` runs both forms and compares their closed-loop cost.
+It also zeroes the rows of $\Psi$ that have decayed to round-off before the QR decomposition: those samples are frozen at $\mathbf{u}_{\mathrm{ss}}$ anyway (they can be many orders of magnitude below round-off for long horizons), and their tiny coefficients in the input bound rows would otherwise hurt OSQP's scaling.
 
 ## Next Step
 
