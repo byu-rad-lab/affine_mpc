@@ -51,6 +51,7 @@ public:
   /// A dense rows x cols block from (row, col), declared column by column.
   void declareBlock(int row, int col, int rows, int cols)
   {
+    blocks_.push_back({size(), rows, cols});
     for (int j{0}; j < cols; ++j)
       for (int i{0}; i < rows; ++i)
         declare(row + i, col + j);
@@ -62,6 +63,10 @@ public:
   }
   int row(Eigen::Index i) const { return rows_[index(i)]; }
   int col(Eigen::Index i) const { return cols_[index(i)]; }
+  /// Whether blocks were declared with declareBlock(), and (after resolve())
+  /// whether block writes copy whole columns (see findContiguousColumns()).
+  bool hasBlocks() const noexcept { return !blocks_.empty(); }
+  bool blockColumnsContiguous() const noexcept { return contiguous_columns_; }
 
   /// Resolve the entries to places in M's values (dense, column-major).
   void resolve(Eigen::MatrixXd& M)
@@ -73,6 +78,7 @@ public:
       targets_[i] =
           M.data() + static_cast<Eigen::Index>(cols_[i]) * M.rows() + rows_[i];
     }
+    findContiguousColumns();
   }
   /// Resolve the entries to places in M's values (CSC, compressed), which
   /// must hold every entry; with `upper`, M is the upper triangle of a
@@ -96,6 +102,7 @@ public:
       assert(found != last && *found == row);
       targets_[i] = M.valuePtr() + (found - inner);
     }
+    findContiguousColumns();
   }
 
   // ---- writes (after resolve()) --------------------------------------------
@@ -128,10 +135,21 @@ public:
       at(first + i) += v(i);
   }
 
+  // The block writes below take `first` at the start of a declared block,
+  // and copy whole columns when every block's columns are contiguous.
+
   /// For a block declared with declareBlock() at entry `first`: assign M.
   void assignBlock(Eigen::Index first,
                    const Eigen::Ref<const Eigen::MatrixXd>& M)
   {
+    if (contiguous_columns_) {
+      for (Eigen::Index j{0}; j < M.cols(); ++j, first += M.rows()) {
+        double* dst{column(first, M.rows())};
+        for (Eigen::Index i{0}; i < M.rows(); ++i)
+          dst[i] = M(i, j);
+      }
+      return;
+    }
     for (Eigen::Index j{0}; j < M.cols(); ++j)
       for (Eigen::Index i{0}; i < M.rows(); ++i)
         at(first++) = M(i, j);
@@ -141,6 +159,14 @@ public:
                    double s,
                    const Eigen::Ref<const Eigen::MatrixXd>& M)
   {
+    if (contiguous_columns_) {
+      for (Eigen::Index j{0}; j < M.cols(); ++j, first += M.rows()) {
+        double* dst{column(first, M.rows())};
+        for (Eigen::Index i{0}; i < M.rows(); ++i)
+          dst[i] = s * M(i, j);
+      }
+      return;
+    }
     for (Eigen::Index j{0}; j < M.cols(); ++j)
       for (Eigen::Index i{0}; i < M.rows(); ++i)
         at(first++) = s * M(i, j);
@@ -150,6 +176,14 @@ public:
                 double s,
                 const Eigen::Ref<const Eigen::MatrixXd>& M)
   {
+    if (contiguous_columns_) {
+      for (Eigen::Index j{0}; j < M.cols(); ++j, first += M.rows()) {
+        double* dst{column(first, M.rows())};
+        for (Eigen::Index i{0}; i < M.rows(); ++i)
+          dst[i] += s * M(i, j);
+      }
+      return;
+    }
     for (Eigen::Index j{0}; j < M.cols(); ++j)
       for (Eigen::Index i{0}; i < M.rows(); ++i)
         at(first++) += s * M(i, j);
@@ -166,10 +200,42 @@ private:
     return *targets_[index(i)];
   }
 
+  // The values of a block's column from entry `first`, as one contiguous
+  // array (contiguous columns only). A plain loop over it vectorizes and,
+  // unlike an Eigen map, costs nothing extra for short columns.
+  double* column(Eigen::Index first, Eigen::Index rows)
+  {
+    assert(first >= 0 && first + rows <= size());
+    (void)rows;
+    return targets_[index(first)];
+  }
+  // Whether each column of every declared block is a contiguous run in the
+  // matrix's values (always for dense storage; for CSC when no other stored
+  // entry lies between the block's rows), so block writes copy columns
+  void findContiguousColumns()
+  {
+    contiguous_columns_ = !blocks_.empty();
+    for (const Block& b : blocks_)
+      for (Eigen::Index j{0}; j < b.cols; ++j) {
+        const Eigen::Index first{b.first + j * b.rows};
+        for (Eigen::Index i{1}; i < b.rows; ++i)
+          if (targets_[index(first + i)] != targets_[index(first)] + i)
+            contiguous_columns_ = false;
+      }
+  }
+
+  struct Block // a block declared with declareBlock()
+  {
+    Eigen::Index first; // its first entry
+    int rows, cols;
+  };
+
   std::vector<int> rows_, cols_; // the declared entries
+  std::vector<Block> blocks_;
   // their places in the matrix's values (resolve()), or dropped_
   std::vector<double*> targets_;
   double dropped_{0.0}; // written for dropped entries, never read
+  bool contiguous_columns_{false};
 };
 
 } // namespace affine_mpc::detail

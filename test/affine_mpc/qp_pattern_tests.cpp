@@ -317,6 +317,11 @@ TEST(QPPatternTester, givenSparseMPC_CscPatternIsTheDeclaredEntries)
     };
     expectPattern("P", qp.P_csc, mpc.declaredP(), true);
     expectPattern("A", qp.A_csc, mpc.declaredA(), false);
+    // the dense blocks of A (Bd, Ad, Hu) are written column by column
+    for (const ampc::detail::QPEntries* entries : mpc.declaredA())
+      if (entries->hasBlocks()) {
+        EXPECT_TRUE(entries->blockColumnsContiguous());
+      }
   }
 }
 
