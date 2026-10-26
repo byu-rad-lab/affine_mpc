@@ -510,6 +510,9 @@ private:
   CostPart P_ctrl_, P_state_, q_ctrl_, q_state_;
   ControlEntries P_ctrl_entries_;
   QPEntries P_state_entries_; // the state block of P's diagonal
+  // The dynamics rows: Bd times the basis weights (an n x m block per step and
+  // band entry), Ad on x_k (n x n per step k >= 1), and -x_{k+1}
+  QPEntries Bd_entries_, Ad_entries_, minus_I_entries_;
   // the entries of the state rows (one set per declareStateRows())
   std::vector<std::unique_ptr<QPEntries>> state_rows_;
 };

@@ -373,13 +373,32 @@ RowBlock SparseFormulation::declare(QPLayout& layout)
   for (int i{nc_}; i < nc_ + nx_; ++i)
     P_state_entries_.declare(i, i);
   layout.declareP(P_state_entries_);
-  return layout.addRows(nx_);
+
+  // the dynamics rows (the first rows of A)
+  const RowBlock rows{layout.addRows(nx_)};
+  const Parameterization& param{input_param_.parameterization()};
+  for (int k{0}, row{rows.offset}; k < T_; ++k, row += n_) {
+    for (int i{0}; i < param.band_width; ++i) {
+      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
+      Bd_entries_.declareBlock(row, col, n_, m_);
+    }
+  }
+  for (int k{1}, row{rows.offset + n_}, col{nc_}; k < T_;
+       ++k, row += n_, col += n_)
+    Ad_entries_.declareBlock(row, col, n_, n_);
+  minus_I_entries_.reserve(static_cast<std::size_t>(nx_));
+  for (int i{0}; i < nx_; ++i)
+    minus_I_entries_.declare(rows.offset + i, nc_ + i);
+  layout.declareA(Bd_entries_);
+  layout.declareA(Ad_entries_);
+  layout.declareA(minus_I_entries_);
+  return rows;
 }
 
 void SparseFormulation::writeConstantRows()
 {
-  // -x_{k+1} in the dynamics rows (the declared rows are the first rows of A)
-  qp_.A.block(0, nc_, nx_, nx_).diagonal().setConstant(-1.0);
+  // -x_{k+1} in the dynamics rows
+  minus_I_entries_.setConstant(-1.0);
 }
 
 Formulation::Update SparseFormulation::update(const DataChangeSet changes,
@@ -560,18 +579,18 @@ void SparseFormulation::setStateBounds(const StateRows& rows,
 
 void SparseFormulation::setDynamicsMatrixBlocks(const MPCData& d)
 {
-  // set model constraints that multiply controls
+  // set model constraints that multiply controls, in declaration order
   const Parameterization& param{input_param_.parameterization()};
-  for (int k{0}, row{0}; k < T_; ++k, row += n_) {
-    for (int i{0}; i < param.band_width; ++i) {
-      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
-      qp_.A.block(row, col, n_, m_) = param.band_weights(i, k) * d.Bd;
-    }
+  Index first{0};
+  for (int k{0}; k < T_; ++k) {
+    for (int i{0}; i < param.band_width; ++i, first += d.Bd.size())
+      Bd_entries_.assignBlock(first, param.band_weights(i, k), d.Bd);
   }
 
   // set model constraints that multiply states
-  for (int k{1}, row{n_}, col{nc_}; k < T_; ++k, row += n_, col += n_)
-    qp_.A.block(row, col, n_, n_) = d.Ad;
+  first = 0;
+  for (int k{1}; k < T_; ++k, first += d.Ad.size())
+    Ad_entries_.assignBlock(first, d.Ad);
 }
 
 void SparseFormulation::setDynamicsOffsetBounds(const MPCData& d)
