@@ -7,10 +7,12 @@
  */
 
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include <iosfwd>
 #include <memory>
 #include <osqp.h>
 #include <type_traits>
+#include <vector>
 
 #include "affine_mpc/solve_status.hpp"
 
@@ -43,6 +45,10 @@ public:
   typedef Eigen::Matrix<OSQPFloat, Eigen::Dynamic, 1> VectorXF;
   /// Eigen vector type for OSQPInt elements.
   typedef Eigen::Matrix<OSQPInt, Eigen::Dynamic, 1> VectorXI;
+  /// Eigen sparse matrix type in OSQP's CSC layout (column-major, OSQPInt
+  /// indices). Matrices passed to the solver must be compressed.
+  typedef Eigen::SparseMatrix<OSQPFloat, Eigen::ColMajor, OSQPInt>
+      SparseMatrixXF;
 
   /**
    * @brief Construct an OSQPSolver for a problem of given size.
@@ -128,6 +134,31 @@ public:
                                 const OSQPSettings& settings);
 
   /**
+   * @brief Initialize the OSQP solver with sparse QP matrices and settings.
+   *
+   *   The solver's sparsity pattern is the stored entries whose values are
+   *   nonzero now, plus the whole diagonal of P (as for dense matrices). Later
+   *   updates must pass matrices with the same stored entries; their values
+   *   are copied without scanning the matrices (or passed to OSQP directly
+   *   when every stored entry is in the pattern).
+   * @param P Quadratic cost matrix: the upper triangle (entries below the
+   *   diagonal are ignored), with every diagonal entry stored (possibly zero).
+   * @param A Constraint matrix.
+   * @param q Linear cost vector.
+   * @param l Lower bounds vector.
+   * @param u Upper bounds vector.
+   * @param settings OSQP solver settings.
+   * @return True if initialization succeeds, false otherwise (also if P or A
+   *   is not compressed or P does not store its whole diagonal).
+   */
+  [[nodiscard]] bool initialize(const SparseMatrixXF& P,
+                                const SparseMatrixXF& A,
+                                const Eigen::Ref<const VectorXF>& q,
+                                const Eigen::Ref<const VectorXF>& l,
+                                const Eigen::Ref<const VectorXF>& u,
+                                const OSQPSettings& settings);
+
+  /**
    * @brief Update the quadratic cost matrix P (values only, sparsity fixed).
    * @param P New cost matrix (only elements matching original sparsity
    *   structure are updated).
@@ -154,6 +185,22 @@ public:
    */
   [[nodiscard]] bool updateMatrices(const Eigen::Ref<const MatrixXF>& P,
                                     const Eigen::Ref<const MatrixXF>& A);
+
+  /**
+   * @brief Sparse versions of updateCostMatrix(), updateConstraintMatrix(),
+   *   and updateMatrices(), for a solver initialized with sparse matrices.
+   *
+   *   The matrices must have the stored entries (not only the pattern) of the
+   *   ones passed to initialize(); only their values may differ.
+   * @return True if the update succeeds, false otherwise (also if the solver
+   *   was initialized with dense matrices).
+   */
+  [[nodiscard]] bool updateCostMatrix(const SparseMatrixXF& P);
+  /// @copydoc updateCostMatrix(const SparseMatrixXF&)
+  [[nodiscard]] bool updateConstraintMatrix(const SparseMatrixXF& A);
+  /// @copydoc updateCostMatrix(const SparseMatrixXF&)
+  [[nodiscard]] bool updateMatrices(const SparseMatrixXF& P,
+                                    const SparseMatrixXF& A);
 
   /**
    * @brief Update the linear cost vector q.
@@ -186,6 +233,16 @@ public:
   isWithinSparsityPattern(const Eigen::Ref<const MatrixXF>& P,
                           const Eigen::Ref<const MatrixXF>& A) const;
 
+  /**
+   * @brief Sparse version of isWithinSparsityPattern(), for a solver
+   *   initialized with sparse matrices: whether every nonzero stored value
+   *   (in P's upper triangle) is in the pattern.
+   * @return False if a nonzero value is outside the pattern, if the solver is
+   *   not initialized, or if it was initialized with dense matrices.
+   */
+  [[nodiscard]] bool isWithinSparsityPattern(const SparseMatrixXF& P,
+                                             const SparseMatrixXF& A) const;
+
 private:
   /**
    * @brief Counts the number of non-zeros in the upper triangle of a matrix.
@@ -198,6 +255,15 @@ private:
   // CSC value buffers passed to OSQP.
   void fillCostValues(const Eigen::Ref<const MatrixXF>& P);
   void fillConstraintValues(const Eigen::Ref<const MatrixXF>& A);
+  // The value array of a sparse P (A) as OSQP's values: the matrix's own
+  // values if they are OSQP's in order, else the buffer filled from them
+  const OSQPFloat* costValues(const SparseMatrixXF& P);
+  const OSQPFloat* constraintValues(const SparseMatrixXF& A);
+  // Set up after the CSC buffers are filled
+  bool setup(const Eigen::Ref<const VectorXF>& q,
+             const Eigen::Ref<const VectorXF>& l,
+             const Eigen::Ref<const VectorXF>& u,
+             const OSQPSettings& settings);
 
   /**
    * @brief Initializes the cost matrix storage for OSQP.
@@ -211,6 +277,11 @@ private:
    */
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
 
+  // The sparse versions: keep the stored entries that are nonzero (and P's
+  // diagonal); false if P does not store its whole diagonal
+  bool initializeCostMatrix(const SparseMatrixXF& P);
+  void initializeConstraintMatrix(const SparseMatrixXF& A);
+
   // Copy l and u into l_buf_ and u_buf_ with infinities clamped to OSQP_INFTY.
   void clampBounds(const Eigen::Ref<const VectorXF>& l,
                    const Eigen::Ref<const VectorXF>& u);
@@ -222,6 +293,19 @@ private:
   bool initialized_;
   bool P_is_set_;
   bool A_is_set_;
+  // The kind of matrices passed to initialize() (the updates take the same)
+  bool sparse_input_{false};
+  // Where each of OSQP's values of P (A) is in the matrices passed to the
+  // updates, computed once in initialize(): dense, the position
+  // col * outer stride + row; sparse, the index in the value array. With them
+  // an update copies the values without walking the pattern.
+  std::vector<OSQPInt> P_src_, A_src_;
+  // dense: the outer strides the positions were computed for (an update with
+  // other strides walks the pattern instead)
+  Eigen::Index P_stride_{0}, A_stride_{0};
+  // sparse: whether OSQP's values are the matrix's own (every stored entry
+  // kept), which then go to OSQP without a copy
+  bool P_direct_{false}, A_direct_{false};
   // OSQP only treats bounds beyond OSQP_INFTY as unbounded; with IEEE
   // infinities it can not detect convergence, so bounds are clamped here.
   VectorXF l_buf_, u_buf_;
