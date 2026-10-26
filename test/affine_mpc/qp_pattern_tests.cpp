@@ -1,10 +1,12 @@
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include <gtest/gtest.h>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "affine_mpc/options.hpp"
+#include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
 #include "qp_builder.hpp" // internal (src/): the declared entries
@@ -226,4 +228,160 @@ TEST(QPPatternTester, givenSparseMPC_NonzerosAreWithinDeclaredEntries)
     (void)mpc.solve(x0); // whatever the status, the QP was assembled
     EXPECT_EQ(mpc.undeclaredNonzeros(), std::vector<std::string>{}) << "solve";
   }
+}
+
+namespace {
+
+using SparseMatrixXF = ampc::OSQPSolver::SparseMatrixXF;
+
+// Exposes the CSC buffers the wrapper builds and the values it sends to OSQP
+class SolverInspector : public ampc::OSQPSolver
+{
+public:
+  using OSQPSolver::OSQPSolver;
+  // the values of P (A) sent by the last initialize() or matrix update: the
+  // stored values themselves when they go to OSQP without a copy
+  VectorXd sentP(const SparseMatrixXF* P) const
+  {
+    if (P != nullptr && P_direct_)
+      return Map<const VectorXd>{P->valuePtr(), P_nnz_};
+    return P_x_;
+  }
+  VectorXd sentA(const SparseMatrixXF* A) const
+  {
+    if (A != nullptr && A_direct_)
+      return Map<const VectorXd>{A->valuePtr(), A_nnz_};
+    return A_x_;
+  }
+  const VectorXI& Pi() const { return P_i_; }
+  const VectorXI& Pp() const { return P_p_; }
+  const VectorXI& Ai() const { return A_i_; }
+  const VectorXI& Ap() const { return A_p_; }
+};
+
+// The CSC solver and a dense reference built from the same values send the
+// same pattern and values
+void expectSameSolverData(const SolverInspector& csc,
+                          const SolverInspector& dense,
+                          const ampc::detail::QP& qp)
+{
+  EXPECT_TRUE(expectEigenNear(csc.Pi(), dense.Pi(), 0.0)) << "P rows";
+  EXPECT_TRUE(expectEigenNear(csc.Pp(), dense.Pp(), 0.0)) << "P cols";
+  EXPECT_TRUE(expectEigenNear(csc.Ai(), dense.Ai(), 0.0)) << "A rows";
+  EXPECT_TRUE(expectEigenNear(csc.Ap(), dense.Ap(), 0.0)) << "A cols";
+  EXPECT_TRUE(expectEigenNear(csc.sentP(&qp.P_csc), dense.sentP(nullptr), 0.0))
+      << "P values";
+  EXPECT_TRUE(expectEigenNear(csc.sentA(&qp.A_csc), dense.sentA(nullptr), 0.0))
+      << "A values";
+}
+
+} // namespace
+
+// The sparse formulation's CSC pattern holds exactly the declared entries,
+// each once: those of P on or above the diagonal (plus the diagonal, all
+// declared), and all of A
+TEST(QPPatternTester, givenSparseMPC_CscPatternIsTheDeclaredEntries)
+{
+  for (unsigned seed{0}; seed < 200; ++seed) {
+    Draw draw{seed};
+    const Case c{drawCase(draw)};
+    SCOPED_TRACE("seed " + std::to_string(seed) + ": " + describe(c));
+    PatternInspector mpc{c.n, c.m, c.param, c.opts};
+    const ampc::detail::QP& qp{mpc.qpData()};
+    ASSERT_EQ(qp.storage, ampc::detail::QPStorage::Sparse);
+    EXPECT_EQ(qp.P.size(), 0);
+    EXPECT_EQ(qp.A.size(), 0);
+    ASSERT_TRUE(qp.P_csc.isCompressed());
+    ASSERT_TRUE(qp.A_csc.isCompressed());
+
+    auto expectPattern = [](const char* name, const SparseMatrixXF& M,
+                            const std::vector<ampc::detail::QPEntries*>& sets,
+                            bool upper) {
+      SCOPED_TRACE(name);
+      Mask declared{Mask::Constant(M.rows(), M.cols(), false)};
+      for (const ampc::detail::QPEntries* entries : sets)
+        for (Index i{0}; i < entries->size(); ++i)
+          if (!upper || entries->row(i) <= entries->col(i))
+            declared(entries->row(i), entries->col(i)) = true;
+      if (upper) {
+        EXPECT_TRUE(declared.diagonal().all()) << "undeclared diagonal";
+      }
+      Mask stored{Mask::Constant(M.rows(), M.cols(), false)};
+      for (Index j{0}; j < M.outerSize(); ++j)
+        for (SparseMatrixXF::InnerIterator it{M, j}; it; ++it) {
+          EXPECT_FALSE(stored(it.row(), it.col())) << "stored twice";
+          stored(it.row(), it.col()) = true;
+        }
+      EXPECT_TRUE(stored == declared);
+      EXPECT_EQ(M.nonZeros(), declared.count());
+    };
+    expectPattern("P", qp.P_csc, mpc.declaredP(), true);
+    expectPattern("A", qp.A_csc, mpc.declaredA(), false);
+  }
+}
+
+// What the OSQP wrapper sends for the sparse formulation's CSC matrices (its
+// pattern from the values at initialization, the values at every update, and
+// the solutions) is exactly what it sends for dense copies of them, over many
+// option sets and value changes
+TEST(QPPatternTester, givenSparseMPC_CscSolverDataMatchesDenseReference)
+{
+  const OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  int initialized{0};
+  for (unsigned seed{0}; seed < 200; ++seed) {
+    Draw draw{seed};
+    const Case c{drawCase(draw)};
+    SCOPED_TRACE("seed " + std::to_string(seed) + ": " + describe(c));
+    PatternInspector mpc{c.n, c.m, c.param, c.opts};
+    setAll(mpc, c, draw);
+    mpc.assemble(draw.sparse(c.n, 1));
+    if (!mpc.initializeSolver())
+      continue;
+    ++initialized;
+    // the QP as sent by initializeSolver() (with the cost placeholders)
+    const ampc::detail::QP& qp{mpc.qpData()};
+    const int nv{static_cast<int>(qp.q.size())};
+    const int nr{static_cast<int>(qp.l.size())};
+    SolverInspector csc{nv, nr}, dense{nv, nr};
+    ASSERT_TRUE(csc.initialize(qp.P_csc, qp.A_csc, qp.q, qp.l, qp.u, settings));
+    ASSERT_TRUE(
+        dense.initialize(denseP(qp), denseA(qp), qp.q, qp.l, qp.u, settings));
+    expectSameSolverData(csc, dense, qp);
+
+    for (int change{0}; change < 4; ++change) {
+      SCOPED_TRACE("change " + std::to_string(change));
+      setAll(mpc, c, draw);
+      mpc.assemble(draw.sparse(c.n, 1)); // also sent to the MPC's own solver
+      const MatrixXd P{denseP(qp)}, A{denseA(qp)};
+      // each kind of update in turn
+      if (change % 3 == 0) {
+        ASSERT_TRUE(csc.updateMatrices(qp.P_csc, qp.A_csc));
+        ASSERT_TRUE(dense.updateMatrices(P, A));
+      } else if (change % 3 == 1) {
+        ASSERT_TRUE(csc.updateCostMatrix(qp.P_csc));
+        ASSERT_TRUE(dense.updateCostMatrix(P));
+        ASSERT_TRUE(csc.updateConstraintMatrix(qp.A_csc));
+        ASSERT_TRUE(dense.updateConstraintMatrix(A));
+      } else {
+        ASSERT_TRUE(csc.updateConstraintMatrix(qp.A_csc));
+        ASSERT_TRUE(dense.updateConstraintMatrix(A));
+        ASSERT_TRUE(csc.updateCostMatrix(qp.P_csc));
+        ASSERT_TRUE(dense.updateCostMatrix(P));
+      }
+      expectSameSolverData(csc, dense, qp);
+      const bool within{dense.isWithinSparsityPattern(P, A)};
+      EXPECT_EQ(csc.isWithinSparsityPattern(qp.P_csc, qp.A_csc), within);
+      EXPECT_EQ(mpc.isWithinSparsityPattern(), within);
+
+      ASSERT_TRUE(csc.updateCostVector(qp.q) && dense.updateCostVector(qp.q));
+      ASSERT_TRUE(csc.updateBounds(qp.l, qp.u)
+                  && dense.updateBounds(qp.l, qp.u));
+      const ampc::SolveStatus status{csc.solve()};
+      EXPECT_EQ(dense.solve(), status);
+      EXPECT_EQ(csc.getSolveInfo().iterations, dense.getSolveInfo().iterations);
+      EXPECT_TRUE(
+          expectEigenNear(csc.getSolutionMap(), dense.getSolutionMap(), 0.0));
+    }
+  }
+  EXPECT_GT(initialized, 150);
 }
