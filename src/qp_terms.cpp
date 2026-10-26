@@ -121,30 +121,33 @@ InputBounds::InputBounds(const VectorParameterization& input_param,
 void InputBounds::declare(QPLayout& layout, Formulation& /*f*/)
 {
   rows_ = layout.addRows(input_param_.inputDim() * num_bounded_);
-}
-
-void InputBounds::updateMatrix(const MPCData&, Formulation&, QP& qp)
-{
   // The control points come first in every formulation, so these rows do not
   // depend on it
   if (samples_.empty()) {
     // bound the control points directly (much fewer constraints)
-    qp.A.middleRows(rows_.offset, rows_.rows).diagonal().setOnes();
-    return;
-  }
-  // bound sampled inputs (each a weighted sum of control points)
-  const Parameterization& param{input_param_.parameterization()};
-  const int m{input_param_.inputDim()};
-  int row{rows_.offset};
-  for (const int k : samples_) {
-    for (int i{0}; i < param.band_width; ++i) {
-      const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
-      qp.A.block(row, col, m, m)
-          .diagonal()
-          .setConstant(param.band_weights(i, k));
+    for (int i{0}; i < rows_.rows; ++i)
+      A_.declare(rows_.offset + i, i, 1.0);
+  } else {
+    // bound sampled inputs (each a weighted sum of control points)
+    const Parameterization& param{input_param_.parameterization()};
+    const int m{input_param_.inputDim()};
+    int row{rows_.offset};
+    for (const int k : samples_) {
+      for (int i{0}; i < param.band_width; ++i) {
+        const int col{
+            input_param_.coefficientIndex(0, param.band_start(k) + i)};
+        for (int ch{0}; ch < m; ++ch)
+          A_.declare(row + ch, col + ch, param.band_weights(i, k));
+      }
+      row += m;
     }
-    row += m;
   }
+  layout.declareA(A_.entries);
+}
+
+void InputBounds::updateMatrix(const MPCData&, Formulation&, QP&)
+{
+  A_.write();
 }
 
 void InputBounds::updateVector(const MPCData& d, Formulation&, QP& qp)
@@ -155,17 +158,23 @@ void InputBounds::updateVector(const MPCData& d, Formulation&, QP& qp)
 
 // ---- InitialSlew ------------------------------------------------------------
 
-void InitialSlew::updateMatrix(const MPCData&, Formulation&, QP& qp)
+void InitialSlew::declare(QPLayout& layout, Formulation& /*f*/)
 {
+  rows_ = layout.addRows(input_param_.inputDim());
   // the first sampled input u_0
   const Parameterization& param{input_param_.parameterization()};
   const int m{input_param_.inputDim()};
   for (int i{0}; i < param.band_width; ++i) {
     const int col{input_param_.coefficientIndex(0, param.band_start(0) + i)};
-    qp.A.block(rows_.offset, col, m, m)
-        .diagonal()
-        .setConstant(param.band_weights(i, 0));
+    for (int ch{0}; ch < m; ++ch)
+      A_.declare(rows_.offset + ch, col + ch, param.band_weights(i, 0));
   }
+  layout.declareA(A_.entries);
+}
+
+void InitialSlew::updateMatrix(const MPCData&, Formulation&, QP&)
+{
+  A_.write();
 }
 
 void InitialSlew::updateVector(const MPCData& d, Formulation&, QP& qp)
@@ -176,12 +185,21 @@ void InitialSlew::updateVector(const MPCData& d, Formulation&, QP& qp)
 
 // ---- ControlPointSlew -------------------------------------------------------
 
-void ControlPointSlew::updateMatrix(const MPCData&, Formulation&, QP& qp)
+void ControlPointSlew::declare(QPLayout& layout, Formulation& /*f*/)
 {
+  const int m{input_param_.inputDim()};
+  rows_ = layout.addRows(input_param_.numCoefficients() - m);
   // c_{i+1} - c_i
-  auto rows{qp.A.middleRows(rows_.offset, rows_.rows)};
-  rows.diagonal().setConstant(-1.0);
-  rows.diagonal(input_param_.inputDim()).setOnes();
+  for (int i{0}; i < rows_.rows; ++i)
+    A_.declare(rows_.offset + i, i, -1.0);
+  for (int i{0}; i < rows_.rows; ++i)
+    A_.declare(rows_.offset + i, i + m, 1.0);
+  layout.declareA(A_.entries);
+}
+
+void ControlPointSlew::updateMatrix(const MPCData&, Formulation&, QP&)
+{
+  A_.write();
 }
 
 void ControlPointSlew::updateVector(const MPCData& d, Formulation&, QP& qp)
@@ -219,9 +237,21 @@ void StateBounds::declare(QPLayout& layout, Formulation& /*f*/)
   lower_ = layout.addRows(num_bounded * T_);
   nonneg_ = layout.addRows(num_bounded);
   rows_ = {upper_.offset, 2 * num_bounded * T_ + num_bounded};
+  // the slack columns: -s in the upper rows, +s in the lower rows, s >= 0
+  for (int k{0}; k < T_; ++k) {
+    for (int j{0}; j < num_bounded; ++j) {
+      slack_A_.declare(upper_.offset + k * num_bounded + j, slack_.offset + j,
+                       -1.0);
+      slack_A_.declare(lower_.offset + k * num_bounded + j, slack_.offset + j,
+                       1.0);
+    }
+  }
+  for (int j{0}; j < num_bounded; ++j)
+    slack_A_.declare(nonneg_.offset + j, slack_.offset + j, 1.0);
+  layout.declareA(slack_A_.entries);
 }
 
-void StateBounds::updateMatrix(const MPCData&, Formulation& f, QP& qp)
+void StateBounds::updateMatrix(const MPCData&, Formulation& f, QP&)
 {
   if (!soft_) {
     f.setStateRows(rows_, states_, 1, T_);
@@ -229,16 +259,7 @@ void StateBounds::updateMatrix(const MPCData&, Formulation& f, QP& qp)
   }
   f.setStateRows(upper_, states_, 1, T_);
   f.setStateRows(lower_, states_, 1, T_);
-  // the slack columns: -s in the upper rows, +s in the lower rows, s >= 0
-  const int num_bounded{states_.rows()};
-  for (int k{0}; k < T_; ++k) {
-    for (int j{0}; j < num_bounded; ++j) {
-      qp.A(upper_.offset + k * num_bounded + j, slack_.offset + j) = -1.0;
-      qp.A(lower_.offset + k * num_bounded + j, slack_.offset + j) = 1.0;
-    }
-  }
-  for (int j{0}; j < num_bounded; ++j)
-    qp.A(nonneg_.offset + j, slack_.offset + j) = 1.0;
+  slack_A_.write();
 }
 
 void StateBounds::updateVector(const MPCData& d, Formulation& f, QP& qp)

@@ -6,6 +6,7 @@
 // formulation, so the same term works for every formulation.
 
 #include <Eigen/Core>
+#include <cstddef>
 #include <vector>
 
 #include "affine_mpc/detail/mpc_data.hpp"
@@ -58,6 +59,24 @@ public:
 
 protected:
   RowBlock rows_{};
+};
+
+/// Entries with values fixed at construction (constant rows of A).
+struct ConstantEntries
+{
+  QPEntries entries;
+  std::vector<double> values; // in the order of the entries
+
+  void declare(int row, int col, double value)
+  {
+    entries.declare(row, col);
+    values.push_back(value);
+  }
+  void write()
+  {
+    for (std::size_t i{0}; i < values.size(); ++i)
+      entries.set(static_cast<Eigen::Index>(i), values[i]);
+  }
 };
 
 /// 1/2 sum_k (x_k - x_ref,k)^T Q_k (x_k - x_ref,k), with Q_{T-1} = Q_f.
@@ -165,6 +184,7 @@ private:
   // bounded sample indices (empty: the control points are bounded instead)
   const std::vector<int> samples_;
   const int num_bounded_; // number of bounded inputs (samples or points)
+  ConstantEntries A_;
 };
 
 /// |u_0 - u_prev| <= u0_slew (`slew_initial_input`).
@@ -174,10 +194,7 @@ public:
   explicit InitialSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout, Formulation& /*f*/) override
-  {
-    rows_ = layout.addRows(input_param_.inputDim());
-  }
+  void declare(QPLayout& layout, Formulation& f) override;
   DataChangeSet matrixDependsOn(const Formulation&) const override
   {
     return {};
@@ -191,6 +208,7 @@ public:
 
 private:
   const VectorParameterization& input_param_;
+  ConstantEntries A_;
 };
 
 /// |c_{i+1} - c_i| <= control_point_slew (`slew_control_points`).
@@ -200,11 +218,7 @@ public:
   explicit ControlPointSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout, Formulation& /*f*/) override
-  {
-    rows_ = layout.addRows(input_param_.numCoefficients()
-                           - input_param_.inputDim());
-  }
+  void declare(QPLayout& layout, Formulation& f) override;
   DataChangeSet matrixDependsOn(const Formulation&) const override
   {
     return {};
@@ -218,6 +232,7 @@ public:
 
 private:
   const VectorParameterization& input_param_;
+  ConstantEntries A_;
 };
 
 /// x_min <= x_{k,i} <= x_max at every step k for each bounded state i
@@ -257,6 +272,7 @@ private:
   const bool soft_;
   RowBlock upper_, lower_, nonneg_; // soft only: x - s <= max, x + s >= min
   VarBlock slack_;
+  ConstantEntries slack_A_;              // soft only: the slack columns
   Eigen::VectorXd minus_inf_, plus_inf_; // the open sides of the soft rows
 };
 
