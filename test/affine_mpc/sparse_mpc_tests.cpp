@@ -312,8 +312,7 @@ TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
-  // assemble as during solves (before initialization, P holds unit weights
-  // to fix the sparsity pattern)
+  // assemble as during solves
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
   ASSERT_TRUE(mpc.initializeSolver());
 
@@ -344,7 +343,7 @@ TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
 }
 
 TEST(SparseMPCProtectedTester,
-     givenZeroWeightsBeforeInit_AssemblesUnitWeightsForPattern)
+     givenZeroWeightsBeforeInit_WeightsCanBecomeNonzeroLater)
 {
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{n, m,
@@ -354,14 +353,19 @@ TEST(SparseMPCProtectedTester,
   mpc.setWeights(Vector2d{1.0, 0.0}, VectorXd::Zero(m));
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
 
-  // initializeSolver() hands P to OSQP with unit weights, which stay until the
-  // first prepare() or solve() applies the actual weights
+  // initializeSolver() hands OSQP the weights as set: the zero weights are in
+  // the pattern anyway (every weight position on P's diagonal is stored)
   ASSERT_TRUE(mpc.initializeSolver());
-  ASSERT_TRUE(mpc.getP().isIdentity());
-  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
   MatrixXd P_expected{MatrixXd::Zero(n * T + m * nc, n * T + m * nc)};
   P_expected.diagonal().tail(n * T) = Vector2d{1.0, 0.0}.replicate(T, 1);
   ASSERT_TRUE(expectEigenNear(mpc.getP(), P_expected, 0.0));
+
+  mpc.setWeights(Vector2d{1.0, 2.0}, VectorXd::Constant(m, 0.5));
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+  P_expected.diagonal().head(m * nc).setConstant(0.5);
+  P_expected.diagonal().tail(n * T) = Vector2d{1.0, 2.0}.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(mpc.getP(), P_expected, 0.0));
+  EXPECT_TRUE(mpc.isWithinSparsityPattern());
 }
 
 TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
@@ -371,8 +375,7 @@ TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
                                ampc::Parameterization::linearInterp(T, nc),
                                ampc::Options{.use_input_cost = true}};
   mpc.setModel();
-  // assemble as during solves (before initialization, P holds unit weights
-  // to fix the sparsity pattern)
+  // assemble as during solves
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
   ASSERT_TRUE(mpc.initializeSolver());
 

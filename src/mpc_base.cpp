@@ -299,9 +299,6 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   VectorXd x_full{state_dim_};
   x_full.setOnes();
   (void)qpUpdateX0(x_full);
-  // entries that must be in the sparsity pattern even if zero now; the
-  // categories that overwrite them are applied by the first solve
-  pending_ |= qp_builder_->writeCostPattern();
 
   const detail::QP& qp_data{qp()};
   if (qp_data.storage == detail::QPStorage::Sparse)

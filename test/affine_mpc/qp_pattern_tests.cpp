@@ -221,7 +221,7 @@ TEST(QPPatternTester, givenSparseMPC_NonzerosAreWithinDeclaredEntries)
         << "assembled";
     (void)mpc.initializeSolver();
     EXPECT_EQ(mpc.undeclaredNonzeros(), std::vector<std::string>{})
-        << "placeholders";
+        << "initialized";
     for (int change{0}; change < 4; ++change) {
       setAll(mpc, c, draw);
       mpc.assemble(draw.sparse(c.n, 1));
@@ -352,7 +352,7 @@ TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
     if (!mpc.initializeSolver())
       continue;
     ++initialized;
-    // the QP as sent by initializeSolver() (with the cost placeholders)
+    // the QP as sent by initializeSolver()
     const ampc::detail::QP& qp{mpc.qpData()};
     const int nv{static_cast<int>(qp.q.size())};
     const int nr{static_cast<int>(qp.l.size())};

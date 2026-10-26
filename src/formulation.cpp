@@ -428,27 +428,6 @@ void SparseFormulation::updateX0(const MPCData& d)
   qp_.u.head(n_) = qp_.l.head(n_);
 }
 
-void SparseFormulation::writeCostPlaceholders()
-{
-  // Store every weight position on P's diagonal so a weight that is zero now
-  // can become nonzero later. This costs nothing in solves since OSQP's KKT
-  // system always includes P's diagonal. The weights are re-applied after
-  // initialization.
-  P_state_entries_.setOnes();
-  // terms then add their own placeholders on their control matrices, so drop
-  // the assembled values there first
-  for (QPEntries* entries : P_ctrl_entries_.matrices)
-    entries->setZero();
-  if (P_ctrl_.written)
-    P_ctrl_entries_.diagonal.setOnes();
-}
-
-void SparseFormulation::addControlCostPlaceholders(
-    QPEntries& entries, const Ref<const VectorXd>& values)
-{
-  entries.add(values);
-}
-
 void SparseFormulation::predictStates(const Ref<const VectorXd>& z,
                                       Ref<VectorXd> x_traj) const noexcept
 {

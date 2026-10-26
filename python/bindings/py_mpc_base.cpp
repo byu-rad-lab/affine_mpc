@@ -791,9 +791,7 @@ Get a copy of the QP cost matrix P (the Hessian of the QP objective), for
 analysis and debugging.
 
 Reflects the matrix used by the last solve() or prepare(): setters do not change
-it, model or weight changes are applied by the next prepare() or solve(), and
-SparseMPC holds unit placeholder weights between initializeSolver() and the
-first prepare() or solve().
+it, and model or weight changes are applied by the next prepare() or solve().
 
 SparseMPC stores P in sparse form, so each call also builds the dense matrix;
 not intended for the control loop.
@@ -813,9 +811,8 @@ Analysis aid: get the QP as last written by solve(), prepare(), or assembleQP(),
 for analysis, debugging, or handing to another solver.
 
 Setters do not change it; to get the QP for the current settings and a given
-initial state without solving, use assembleQP(). After initializeSolver() and
-before the first prepare() or solve(), SparseMPC's cost holds unit placeholder
-weights. Copies the QP, so not intended for the control loop.
+initial state without solving, use assembleQP(). Copies the QP, so not intended
+for the control loop.
 
 Returns:
     qp (QuadraticProgram): The QP; reading its P or A needs SciPy.

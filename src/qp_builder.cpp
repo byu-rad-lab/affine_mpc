@@ -195,16 +195,6 @@ const MatrixXd& QPBuilder::denseCostMatrix() const
   return dense_P_;
 }
 
-DataChangeSet QPBuilder::writeCostPattern()
-{
-  if (!formulation_->usesCostPlaceholders())
-    return {};
-  formulation_->writeCostPlaceholders();
-  for (QPTerm* term : cost_terms_)
-    term->writeCostPlaceholders(*formulation_);
-  return DataChange::Weights;
-}
-
 void QPBuilder::writeConstantParts(const MPCData& d)
 {
   formulation_->writeConstantRows();

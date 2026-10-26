@@ -849,15 +849,15 @@ TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
   configureMsd(sparse, opts);
   sparse.setWeights(Q, R);
   ASSERT_TRUE(sparse.initializeSolver());
-  // unit placeholder weights until the first solve
-  EXPECT_TRUE(sparse.getQPCostMatrix().isIdentity());
-  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
 
   const int ctrls_dim{m * nc}, x_traj_dim{n * T};
   MatrixXd P_expected{
       MatrixXd::Zero(ctrls_dim + x_traj_dim, ctrls_dim + x_traj_dim)};
   P_expected.diagonal().head(ctrls_dim) = R.replicate(nc, 1);
   P_expected.diagonal().tail(x_traj_dim) = Q.replicate(T, 1);
+  // the weights as set, from initializeSolver() on (zero ones included)
+  EXPECT_TRUE(expectEigenNear(sparse.getQPCostMatrix(), P_expected, 1e-15));
+  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
   EXPECT_TRUE(expectEigenNear(sparse.getQPCostMatrix(), P_expected, 1e-15));
 
   // CondensedMPC: P is dense over the control points and updated at the next

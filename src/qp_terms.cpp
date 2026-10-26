@@ -86,15 +86,10 @@ void InputRateCost::declare(QPLayout& layout, Formulation& f)
   const Index size{m * static_cast<Index>(G_.size())};
   P_c_.reserve(static_cast<std::size_t>(size));
   P_c_values_.resize(size);
-  P_c_placeholders_.resize(size);
-  Index idx{0};
-  for (int ch{0}; ch < m; ++ch) {
-    for (const GEntry& e : G_) {
+  for (int ch{0}; ch < m; ++ch)
+    for (const GEntry& e : G_)
       P_c_.declare(input_param_.coefficientIndex(ch, e.i),
                    input_param_.coefficientIndex(ch, e.j));
-      P_c_placeholders_(idx++) = e.value;
-    }
-  }
   f.declareControlMatrix(layout, P_c_);
 }
 
@@ -116,13 +111,6 @@ void InputRateCost::updateVector(const MPCData& d, Formulation& f, QP&)
       q_c_(input_param_.coefficientIndex(ch, e.i)) =
           -e.value * d.R_rate(ch) * d.u_prev(ch);
   f.addControlLinear(q_c_);
-}
-
-void InputRateCost::writeCostPlaceholders(Formulation& f)
-{
-  // G on every channel (the cost with unit weights, positive semidefinite),
-  // so its entries are in the pattern even where a weight is zero now
-  f.addControlCostPlaceholders(P_c_, P_c_placeholders_);
 }
 
 // ---- InputBounds ------------------------------------------------------------

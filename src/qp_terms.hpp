@@ -49,10 +49,6 @@ public:
   virtual DataChangeSet vectorDependsOn(const Formulation& f) const = 0;
   virtual void updateMatrix(const MPCData& d, Formulation& f, QP& qp) = 0;
   virtual void updateVector(const MPCData& d, Formulation& f, QP& qp) = 0;
-  /// For formulations with cost placeholders (see
-  /// Formulation::usesCostPlaceholders()): mark the cost entries the term can
-  /// write beyond those the formulation's primitives already cover.
-  virtual void writeCostPlaceholders(Formulation& /*f*/) {}
 
   /// The rows declared by declare() (empty for costs).
   const RowBlock& rows() const noexcept { return rows_; }
@@ -140,7 +136,6 @@ public:
   void declare(QPLayout& layout, Formulation& f) override;
   void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
   void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
-  void writeCostPlaceholders(Formulation& f) override;
 
 private:
   struct GEntry // a nonzero G(i, j) between control points i and j
@@ -158,9 +153,9 @@ private:
   std::vector<GEntry> G_;
   std::vector<Phi0Entry> phi0_;
   // G on each channel's control points (channel by channel, G_'s order), and
-  // its values times the weights and with unit weights (the placeholders)
+  // its values times the weights
   QPEntries P_c_;
-  Eigen::VectorXd P_c_values_, P_c_placeholders_;
+  Eigen::VectorXd P_c_values_;
   Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 

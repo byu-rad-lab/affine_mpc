@@ -180,23 +180,6 @@ public:
   /// Whether updateX0() writes bounds (those are then sent at every solve).
   virtual bool updateX0WritesBounds() const noexcept = 0;
 
-  /// Whether the cost entries hold unit placeholders at initializeSolver(), so
-  /// that a weight that is zero then is still in the solver's sparsity
-  /// pattern (the weights are re-applied after initialization).
-  virtual bool usesCostPlaceholders() const noexcept { return false; }
-  /// Write unit placeholders on the cost entries the formulation's own
-  /// primitives use (see usesCostPlaceholders()).
-  virtual void writeCostPlaceholders() {}
-  /// Add a term's placeholder values on the entries of a control point matrix
-  /// (see declareControlMatrix()) to P, for costs whose structure the
-  /// formulation does not know. The values must form a positive semidefinite
-  /// matrix, like the cost itself, or OSQP rejects P as nonconvex: the term's
-  /// cost with unit weights is the natural choice.
-  virtual void addControlCostPlaceholders(
-      QPEntries& /*entries*/,
-      const Eigen::Ref<const Eigen::VectorXd>& /*values*/)
-  {}
-
   /// Predicted states x = (x_1, ..., x_T) for the QP solution z.
   virtual void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
@@ -441,11 +424,6 @@ public:
   Update update(DataChangeSet changes, const MPCData& d) override;
   void updateX0(const MPCData& d) override;
   bool updateX0WritesBounds() const noexcept override { return true; }
-  bool usesCostPlaceholders() const noexcept override { return true; }
-  void writeCostPlaceholders() override;
-  void addControlCostPlaceholders(
-      QPEntries& entries,
-      const Eigen::Ref<const Eigen::VectorXd>& values) override;
   void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
