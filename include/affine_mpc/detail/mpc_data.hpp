@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "affine_mpc/options.hpp"
@@ -29,9 +30,10 @@ namespace affine_mpc::detail {
  *
  * The initial state x0 is never pending: solve() applies it every call. It is
  * still a category (X0, the highest bit and not part of DataChangeSet::all())
- * so the QP terms can declare which of their parts depend on it.
+ * so the QP terms can declare which of their parts depend on it. A new
+ * category takes the bit of X0, and X0 moves to the next one.
  */
-enum class DataChange : std::uint8_t
+enum class DataChange : std::uint16_t
 {
   ModelOffset = 1 << 0, ///< model offset `wd` (QP vectors only)
   Model = 1 << 1,       ///< model matrices `Ad`, `Bd` (QP matrices)
@@ -51,17 +53,19 @@ enum class DataChange : std::uint8_t
  */
 class DataChangeSet
 {
+  using Bits = std::underlying_type_t<DataChange>;
+
 public:
   constexpr DataChangeSet() noexcept = default;
   constexpr DataChangeSet(DataChange change) noexcept :
-      bits_{static_cast<std::uint8_t>(change)}
+      bits_{static_cast<Bits>(change)}
   {}
 
   /// @brief Every category that can be pending (all but X0).
   static constexpr DataChangeSet all() noexcept
   {
     DataChangeSet set;
-    set.bits_ = static_cast<std::uint8_t>(DataChange::X0) - 1;
+    set.bits_ = static_cast<Bits>(static_cast<Bits>(DataChange::X0) - 1);
     return set;
   }
 
@@ -77,14 +81,14 @@ public:
   constexpr DataChangeSet operator|(DataChangeSet other) const noexcept
   {
     DataChangeSet set;
-    set.bits_ = bits_ | other.bits_;
+    set.bits_ = static_cast<Bits>(bits_ | other.bits_);
     return set;
   }
 
   constexpr DataChangeSet operator&(DataChangeSet other) const noexcept
   {
     DataChangeSet set;
-    set.bits_ = bits_ & other.bits_;
+    set.bits_ = static_cast<Bits>(bits_ & other.bits_);
     return set;
   }
 
@@ -105,7 +109,7 @@ public:
   }
 
 private:
-  std::uint8_t bits_{0};
+  Bits bits_{0};
 };
 
 constexpr DataChangeSet operator|(DataChange lhs, DataChange rhs) noexcept
