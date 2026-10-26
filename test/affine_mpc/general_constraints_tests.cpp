@@ -231,7 +231,7 @@ TEST(GeneralConstraintsTester, givenMeasuredState_InitialRowsLimitFirstInput)
 }
 
 // Changing x0 alone only moves bounds: nothing is pending, A is unchanged,
-// and the k = 0 rows hold g - Hx x_0 (sparse: the rows for k >= 1 do not move)
+// and the k = 0 rows hold h - Hx x_0 (sparse: the rows for k >= 1 do not move)
 template <class MPC> void checkInitialRowsFollowX0()
 {
   ConstraintInspector<MPC> mpc{2, 1, param, general_and_terminal};
@@ -293,6 +293,57 @@ TEST(GeneralConstraintsTester, givenTerminalConstraints_HoldAtFinalState)
   ampc::CondensedMPC condensed{2, 1, param, terminal};
   ampc::SparseMPC sparse{2, 1, param, terminal};
   EXPECT_TRUE(expectEigenNear(check(condensed), check(sparse), 1e-8));
+}
+
+// With one step the general rows are only the k = 0 rows (Hu u_0 with Hx x_0
+// in the bounds, no state rows) and the terminal rows are on x_1. The cost
+// drives u_0 to its limit, so whichever constraint is tighter is active. One
+// step barely moves the state, so the weights are large enough for OSQP to
+// converge on the active constraint.
+template <class MPC> VectorXd checkSingleStepHorizon()
+{
+  const auto one_step{ampc::Parameterization::moveBlocking(1, 1)};
+  ConstraintInspector<MPC> mpc{2, 1, one_step, general_and_terminal};
+  configure(mpc);
+  mpc.setStateWeights(Vector2d{1e4, 1e3});
+  // 0.3 u_0 <= 0.5 - Hx x_0, so u_0 <= 1 for the x0 below
+  const RowVector2d Hx{1.0, 0.5};
+  const Vector2d x0{0.1, 0.2};
+  mpc.setGeneralConstraints(Hx, MatrixXd::Constant(1, 1, 0.3),
+                            VectorXd::Constant(1, -inf),
+                            VectorXd::Constant(1, 0.5));
+  mpc.setTerminalConstraints(RowVector2d{0.0, 1.0}, VectorXd::Constant(1, -inf),
+                             VectorXd::Constant(1, inf));
+  EXPECT_TRUE(mpc.initializeSolver(polishedSettings()));
+  EXPECT_EQ(mpc.rows().general_constraints.rows, 1);
+  EXPECT_EQ(mpc.rows().terminal_constraints.rows, 1);
+
+  EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  // the one general row is Hu on the control point, with Hx x_0 in its bounds
+  const int row{mpc.rows().general_constraints.offset};
+  EXPECT_DOUBLE_EQ(mpc.A()(row, 0), 0.3);
+  EXPECT_DOUBLE_EQ(mpc.u()(row), 0.5 - Hx.dot(x0));
+  EXPECT_EQ(mpc.l()(row), -inf);
+  VectorXd u0{1};
+  mpc.getInputTrajectory(u0);
+  EXPECT_NEAR(u0(0), 1.0, 1e-8);
+
+  // a tighter bound on the velocity of x_1 takes over
+  mpc.setTerminalConstraints(RowVector2d{0.0, 1.0}, VectorXd::Constant(1, -inf),
+                             VectorXd::Constant(1, 0.205));
+  EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  Vector2d x1;
+  mpc.getPredictedStateTrajectory(x1);
+  mpc.getInputTrajectory(u0);
+  EXPECT_NEAR(x1(1), 0.205, 1e-8);
+  EXPECT_LT(u0(0), 1.0 - 1e-3);
+  return u0;
+}
+
+TEST(GeneralConstraintsTester, givenSingleStepHorizon_ConstraintsAreActive)
+{
+  EXPECT_TRUE(expectEigenNear(checkSingleStepHorizon<ampc::CondensedMPC>(),
+                              checkSingleStepHorizon<ampc::SparseMPC>(), 1e-8));
 }
 
 // ---- runtime changes --------------------------------------------------------
