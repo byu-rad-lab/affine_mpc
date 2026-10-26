@@ -111,8 +111,9 @@ def test_is_within_sparsity_pattern():
     assert mpc.solve(x0) == ampc.SolveStatus.Success
     assert mpc.isWithinSparsityPattern()
 
-    # off-diagonal Ad entries were zero at initialization
+    # off-diagonal Ad entries were zero at initialization, but SparseMPC's
+    # pattern holds every entry of the model blocks
     Ad = np.array([[1.0, 0.1], [-0.06, 0.99]])
     mpc.setModelDiscrete(Ad=Ad, Bd=np.array([0.0, 0.1]), wd=np.zeros(n))
-    mpc.solve(x0)
-    assert not mpc.isWithinSparsityPattern()
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.isWithinSparsityPattern()

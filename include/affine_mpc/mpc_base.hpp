@@ -458,10 +458,11 @@ public:
    *
    *   Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a
    *   model change), while changing only the bounds updates QP vectors: Hx and
-   *   Hu count as changed only when a value differs from the stored one. As
-   *   with the model, an entry of Hx or Hu that may become nonzero later must
-   *   be nonzero when initializeSolver() is called, since that fixes the
-   *   solver's sparsity pattern.
+   *   Hu count as changed only when a value differs from the stored one.
+   *   With CondensedMPC, as with the model, an entry of Hx or Hu that may
+   *   become nonzero later must be nonzero when initializeSolver() is called,
+   *   since that fixes the solver's sparsity pattern; SparseMPC keeps every
+   *   entry of Hx and Hu in its pattern.
    * @param Hx State matrix (p x state_dim).
    * @param Hu Input matrix (p x input_dim).
    * @param h_min Lower bounds (size p).
@@ -485,8 +486,9 @@ public:
    *   called after if the constraints change between solves. Pass `-inf` or
    *   `inf` for a side without a bound. As with setGeneralConstraints(),
    *   changing Hf rebuilds QP matrices and makes OSQP refactor, changing only
-   *   the bounds updates QP vectors, and an entry of Hf that may become
-   *   nonzero later must be nonzero when initializeSolver() is called.
+   *   the bounds updates QP vectors, and with CondensedMPC an entry of Hf
+   *   that may become nonzero later must be nonzero when initializeSolver()
+   *   is called (SparseMPC keeps every entry of Hf in its pattern).
    * @param Hf State matrix (p_T x state_dim).
    * @param hf_min Lower bounds (size p_T).
    * @param hf_max Upper bounds (size p_T).
@@ -775,11 +777,13 @@ public:
    * @brief Debugging aid: check whether the current QP matrices fit the
    *   sparsity pattern fixed by initializeSolver().
    *
-   *   Model or weight updates that add nonzeros outside that pattern are
-   *   silently dropped by the solver, so the MPC solves a different problem
-   *   than the one you set. Call this after prepare() or solve() (setters do
-   *   not update the QP) to detect that. It scans every entry of the
-   *   QP matrices, so avoid calling it in time-critical loops.
+   *   Model, weight, or constraint matrix updates that add nonzeros outside
+   *   that pattern are silently dropped by the solver, so the MPC solves a
+   *   different problem than the one you set. Call this after prepare() or
+   *   solve() (setters do not update the QP) to detect that. SparseMPC's
+   *   pattern holds every entry its updates can write, so its QP always
+   *   fits. It scans the QP matrices, so avoid calling it in time-critical
+   *   loops.
    * @return True if the QP matrices fit the pattern, or if the solver is not
    *   initialized yet. False otherwise.
    */

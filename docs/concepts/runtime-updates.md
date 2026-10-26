@@ -55,10 +55,11 @@ The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 
 `Options` and `Parameterization` do not change at runtime,
 but they determine the QP structure within which runtime updates occur.
-The runtime-updated inputs that can affect QP sparsity are the model matrices and weights.
+The runtime-updated inputs that can affect QP sparsity are the model matrices, the weights, and the general and terminal constraint matrices.
 The model offset $\mathbf{w}$ only enters the QP vectors, so it never affects sparsity.
-To preserve sparsity structure,
-ensure that any model or weight updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
+With `CondensedMPC`,
+the pattern comes from the values at initialization,
+so ensure that any model, weight, or constraint matrix updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
 For example, it is common to compute Jacobians of a nonlinear model for $A$, $B$, and $\mathbf{w}$.
 Often when evaluating those Jacobians at equilibrium points, many entries are exactly zero,
@@ -71,28 +72,33 @@ Evaluating the Jacobians at a random state and input usually gives such a patter
 If you switch between several models, such as piecewise or gain-scheduled models,
 initialize with a model whose nonzeros cover all of them.
 
-Weights in `SparseMPC` are the one exception:
-`SparseMPC` places $Q$, $Q_{\mathrm{f}}$, and $R$ only on the diagonal of $P$,
-which OSQP always includes in its linear system,
-so `initializeSolver()` stores every weight position at no cost to solve time.
-Weights in `SparseMPC` may therefore change between zero and nonzero freely.
-In `CondensedMPC`, weights enter $P$ through matrix products,
-so they follow the same rule as the model.
+`SparseMPC` does not have this rule.
+Its pattern comes from the structure of its QP rather than from the values at initialization:
+every entry of the model blocks ($A$ and $B$ at every step),
+every weight position on the diagonal of $P$,
+and every entry of $H_x$, $H_u$, and $H_{\mathrm{f}}$ is in the pattern,
+whatever its value when `initializeSolver()` is called.
+The model, the weights, and the constraint matrices in `SparseMPC` may therefore change between zero and nonzero freely.
+In `CondensedMPC`, the model and the weights enter $P$ and $A_\mathrm{qp}$ through matrix products,
+so the rule above applies to all of them.
 
 Updates that break these rules are not detected during normal operation,
 because checking would add work to every update.
 Values outside the initialized pattern are silently dropped,
 so the solver solves a different problem than the one you set.
 If you suspect this, call `isWithinSparsityPattern()` after `solve()` or `prepare()`;
-it returns `false` when the current QP matrices have nonzeros outside the initialized pattern.
-It scans the full QP matrices, so use it for debugging rather than in a control loop.
+it returns `false` when the current QP matrices have nonzeros outside the initialized pattern
+(never for `SparseMPC`, whose pattern holds every entry its updates can write).
+It scans the QP matrices, so use it for debugging rather than in a control loop.
 
 !!! note
 
     OSQP exploits sparsity for efficiency,
-    so coefficients that are truly zero throughout the expected operating range should remain exactly zero at initialization.
+    so with `CondensedMPC`, coefficients that are truly zero throughout the expected operating range should remain exactly zero at initialization.
     Include entries that may become active later,
     but avoid making matrices denser than necessary just to be conservative.
+    `SparseMPC` stores every entry of its model and constraint matrix blocks,
+    including exact zeros, which OSQP's factorization treats like nonzeros.
 
 ## What Can Change Between Solves?
 

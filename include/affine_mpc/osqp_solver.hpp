@@ -136,11 +136,12 @@ public:
   /**
    * @brief Initialize the OSQP solver with sparse QP matrices and settings.
    *
-   *   The solver's sparsity pattern is the stored entries whose values are
-   *   nonzero now, plus the whole diagonal of P (as for dense matrices). Later
-   *   updates must pass matrices with the same stored entries; their values
-   *   are copied without scanning the matrices (or passed to OSQP directly
-   *   when every stored entry is in the pattern).
+   *   The solver's sparsity pattern is the stored entries (the matrices'
+   *   structure), whatever their values now: unlike for dense matrices, a
+   *   stored entry that is zero now may become nonzero later. Later updates
+   *   must pass matrices with the same stored entries; their values go to
+   *   OSQP directly (P with only its upper triangle stored) or are copied
+   *   without scanning the matrices.
    * @param P Quadratic cost matrix: the upper triangle (entries below the
    *   diagonal are ignored), with every diagonal entry stored (possibly zero).
    * @param A Constraint matrix.
@@ -236,7 +237,8 @@ public:
   /**
    * @brief Sparse version of isWithinSparsityPattern(), for a solver
    *   initialized with sparse matrices: whether every nonzero stored value
-   *   (in P's upper triangle) is in the pattern.
+   *   (in P's upper triangle) is in the pattern, which holds for matrices
+   *   with the stored entries of the ones passed to initialize().
    * @return False if a nonzero value is outside the pattern, if the solver is
    *   not initialized, or if it was initialized with dense matrices.
    */
@@ -277,8 +279,8 @@ private:
    */
   void initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A);
 
-  // The sparse versions: keep the stored entries that are nonzero (and P's
-  // diagonal); false if P does not store its whole diagonal
+  // The sparse versions: keep every stored entry, zero or not (of P, those on
+  // or above the diagonal); false if P does not store its whole diagonal
   bool initializeCostMatrix(const SparseMatrixXF& P);
   void initializeConstraintMatrix(const SparseMatrixXF& A);
 

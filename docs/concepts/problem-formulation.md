@@ -204,7 +204,7 @@ Pass `-inf` or `inf` for a side without a bound.
 Rows of the identity in $H_x$ with $H_u = 0$ (plus the same terminal rows) give state limits, and $H_x = 0$, $H_u = I$ limits every sampled input.
 
 Changing $H_x$, $H_u$, or $H_{\mathrm{f}}$ rebuilds QP matrices and makes OSQP refactor, like a model change; changing only the bounds is cheap.
-As with the model, an entry of these matrices that may become nonzero later must be nonzero when the solver is initialized (see [Runtime Updates](runtime-updates.md)).
+With `CondensedMPC`, as with the model, an entry of these matrices that may become nonzero later must be nonzero when the solver is initialized; `SparseMPC` keeps every entry in its sparsity pattern (see [Runtime Updates](runtime-updates.md)).
 
 **When you may want to use it:**
 

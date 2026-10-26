@@ -42,7 +42,7 @@ Core C++ sources live under `src/` and `include/`, Python bindings and package s
 
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`
 - OSQP sparsity is fixed at initialization; later updates must not introduce new nonzero structure
-- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present
+- With `CondensedMPC`, if a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` keeps every such entry in its pattern)
 
 ## Community Standards
 

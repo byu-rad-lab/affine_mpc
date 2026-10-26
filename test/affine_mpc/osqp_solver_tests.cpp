@@ -710,60 +710,57 @@ struct SparseProblem
 
 } // namespace
 
-TEST(OSQPSolverProtectedTester, givenSparseMatrices_MatchesDensePath)
+TEST(OSQPSolverProtectedTester, givenSparseMatrices_PatternIsTheStoredEntries)
 {
   SparseProblem p;
-  OSQPSolverProtectedTester dense{3, 2}, sparse{3, 2};
+  OSQPSolverProtectedTester sparse{3, 2};
   OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
-  ASSERT_TRUE(dense.initialize(p.P, p.A, p.q, p.l, p.u, settings));
   SparseMatrixXF Ps{stored(p.P, p.P_mask)}, As{stored(p.A, p.A_mask)};
   ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
 
-  // the same pattern: nonzero values of P's upper triangle, P's diagonal, and
-  // nonzero values of A
-  EXPECT_TRUE(expectEigenNear(sparse.getPx(), dense.getPx(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getPi(), dense.getPi(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getPp(), dense.getPp(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getAx(), dense.getAx(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getAi(), dense.getAi(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getAp(), dense.getAp(), 0.0));
-
-  Eigen::Vector3d z_dense, z_sparse;
-  ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
+  // every stored entry of P's upper triangle and of A, zero or not (the
+  // stored lower entry P(1, 0) is ignored)
+  const Eigen::Matrix<OSQPInt, 4, 1> pp_true{0, 1, 3, 5};
+  const Eigen::Matrix<OSQPInt, 5, 1> pi_true{0, 0, 1, 0, 2};
+  const Eigen::Matrix<OSQPFloat, 5, 1> px_true{4, 0, 0, 0, 3};
+  const Eigen::Matrix<OSQPInt, 4, 1> ap_true{0, 2, 3, 5};
+  const Eigen::Matrix<OSQPInt, 5, 1> ai_true{0, 1, 1, 0, 1};
+  const Eigen::Matrix<OSQPFloat, 5, 1> ax_true{1, 0, 1, 1, 1};
+  EXPECT_TRUE(expectEigenNear(sparse.getPp(), pp_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getPi(), pi_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getPx(), px_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAp(), ap_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAi(), ai_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAx(), ax_true, 0.0));
+  Eigen::Vector3d z_sparse, z_dense;
   ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
-  EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 0.0));
 
-  // new values within the pattern, through each update
-  p.P(0, 0) = 5.0;
+  // stored entries that were zero become nonzero, through each update; the
+  // solutions match a dense solver initialized with the new values
+  auto expectSolvesLikeFreshDense = [&]() {
+    OSQPSolverProtectedTester dense{3, 2};
+    ASSERT_TRUE(dense.initialize(p.P, p.A, p.q, p.l, p.u, settings));
+    ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
+    ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
+    EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 1e-5));
+  };
   p.P(0, 1) = p.P(1, 0) = 0.5;
   p.P(1, 1) = 2.0;
-  p.A(0, 0) = 1.5;
-  p.A(1, 2) = 0.8;
-  Ps = stored(p.P, p.P_mask);
-  As = stored(p.A, p.A_mask);
-  ASSERT_TRUE(dense.updateCostMatrix(p.P));
-  ASSERT_TRUE(sparse.updateCostMatrix(Ps));
-  ASSERT_TRUE(dense.updateConstraintMatrix(p.A));
-  ASSERT_TRUE(sparse.updateConstraintMatrix(As));
-  EXPECT_TRUE(expectEigenNear(sparse.getPx(), dense.getPx(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getAx(), dense.getAx(), 0.0));
-  ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
-  ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
-  EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 0.0));
-
-  p.P(2, 2) = 1.0;
-  p.A(0, 2) = 2.0;
-  Ps = stored(p.P, p.P_mask);
-  As = stored(p.A, p.A_mask);
-  ASSERT_TRUE(dense.updateMatrices(p.P, p.A));
-  ASSERT_TRUE(sparse.updateMatrices(Ps, As));
-  EXPECT_TRUE(expectEigenNear(sparse.getPx(), dense.getPx(), 0.0));
-  EXPECT_TRUE(expectEigenNear(sparse.getAx(), dense.getAx(), 0.0));
-  ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
-  ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
-  EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 0.0));
+  ASSERT_TRUE(sparse.updateCostMatrix(stored(p.P, p.P_mask)));
+  p.A(1, 0) = 0.7;
+  ASSERT_TRUE(sparse.updateConstraintMatrix(stored(p.A, p.A_mask)));
+  expectSolvesLikeFreshDense();
+  p.P(0, 2) = p.P(2, 0) = 0.3;
+  p.A(0, 0) = 0.0;
+  ASSERT_TRUE(
+      sparse.updateMatrices(stored(p.P, p.P_mask), stored(p.A, p.A_mask)));
+  expectSolvesLikeFreshDense();
 
   // the update kind must match the initialization
+  OSQPSolverProtectedTester dense{3, 2};
+  ASSERT_TRUE(dense.initialize(p.P, p.A, p.q, p.l, p.u, settings));
+  Ps = stored(p.P, p.P_mask);
+  As = stored(p.A, p.A_mask);
   EXPECT_FALSE(dense.updateCostMatrix(Ps));
   EXPECT_FALSE(dense.updateMatrices(Ps, As));
   EXPECT_FALSE(sparse.updateCostMatrix(p.P));
@@ -814,7 +811,7 @@ TEST(OSQPSolverProtectedTester, givenSparsePWithoutDiagonal_InitializeFails)
 }
 
 TEST(OSQPSolverProtectedTester,
-     givenSparseValuesOutsidePattern_IsWithinSparsityPatternReturnsFalse)
+     givenSparseStoredEntries_AreWithinSparsityPatternWhateverTheirValues)
 {
   SparseProblem p;
   OSQPSolverProtectedTester sparse{3, 2};
@@ -824,20 +821,14 @@ TEST(OSQPSolverProtectedTester,
   ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
   EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
 
-  // a stored zero of P's diagonal is in the pattern, a stored lower entry is
-  // not read
+  // stored entries that were zero at initialization, and a stored lower entry
+  // of P (not read)
   Ps.coeffRef(1, 1) = 2.0;
-  Ps.coeffRef(1, 0) = 7.0;
-  EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
-  // a stored upper entry that was zero at initialization is not
   Ps.coeffRef(0, 2) = 0.5;
-  EXPECT_FALSE(sparse.isWithinSparsityPattern(Ps, As));
-  Ps.coeffRef(0, 2) = 0.0;
-  // nor a stored entry of A that was zero
+  Ps.coeffRef(1, 0) = 7.0;
   As.coeffRef(1, 0) = 1.0;
-  EXPECT_FALSE(sparse.isWithinSparsityPattern(Ps, As));
-  As.coeffRef(1, 0) = 0.0;
-  // explicit zeros within the pattern are fine
+  EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
+  // explicit zeros
   As.coeffRef(0, 0) = 0.0;
   EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
 }

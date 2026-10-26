@@ -456,13 +456,13 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 bool OSQPSolver::initializeCostMatrix(const SparseMatrixXF& P)
 {
   assert(!P_is_set_);
-  // The same pattern as for a dense P: the nonzero values of the upper
-  // triangle and the whole diagonal (see the dense version)
+  // The stored entries of the upper triangle, zero or not: the pattern is
+  // the matrix's structure, so later values may be nonzero anywhere in it
   const OSQPInt* outer{P.outerIndexPtr()};
   const OSQPInt* inner{P.innerIndexPtr()};
   const OSQPFloat* values{P.valuePtr()};
   auto kept = [&](const OSQPInt k, const OSQPInt col) {
-    return inner[k] <= col && (values[k] != 0.0 || inner[k] == col);
+    return inner[k] <= col;
   };
   P_nnz_ = 0;
   for (OSQPInt col{0}; col < n_; ++col) {
@@ -527,13 +527,11 @@ void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
 {
   assert(!A_is_set_);
-  // the stored entries with nonzero values (as for a dense A)
+  // every stored entry, zero or not (as for P)
   const OSQPInt* outer{A.outerIndexPtr()};
   const OSQPInt* inner{A.innerIndexPtr()};
   const OSQPFloat* values{A.valuePtr()};
-  A_nnz_ = 0;
-  for (OSQPInt k{0}; k < outer[n_]; ++k)
-    A_nnz_ += values[k] != 0.0 ? 1 : 0;
+  A_nnz_ = outer[n_];
   A_x_.setZero(A_nnz_);
   A_i_.setZero(A_nnz_);
   A_src_.resize(static_cast<std::size_t>(A_nnz_));
@@ -541,11 +539,9 @@ void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
   for (OSQPInt col{0}; col < n_; ++col) {
     A_p_(col) = A_nnz_;
     for (OSQPInt k{outer[col]}; k < outer[col + 1]; ++k) {
-      if (values[k] != 0.0) {
-        A_x_(A_nnz_) = values[k];
-        A_i_(A_nnz_) = inner[k];
-        A_src_[static_cast<std::size_t>(A_nnz_++)] = k;
-      }
+      A_x_(A_nnz_) = values[k];
+      A_i_(A_nnz_) = inner[k];
+      A_src_[static_cast<std::size_t>(A_nnz_++)] = k;
     }
   }
   A_p_(n_) = A_nnz_;

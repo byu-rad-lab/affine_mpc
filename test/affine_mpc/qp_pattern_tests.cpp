@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <random>
 #include <string>
@@ -259,22 +260,28 @@ public:
   const VectorXI& Pp() const { return P_p_; }
   const VectorXI& Ai() const { return A_i_; }
   const VectorXI& Ap() const { return A_p_; }
+  bool direct() const { return P_direct_ && A_direct_; }
 };
 
-// The CSC solver and a dense reference built from the same values send the
-// same pattern and values
-void expectSameSolverData(const SolverInspector& csc,
-                          const SolverInspector& dense,
-                          const ampc::detail::QP& qp)
+// The solver sends the CSC matrices as stored: their structure (P's upper
+// triangle, all stored) as its pattern, and their values without a copy
+void expectSentAsStored(const SolverInspector& csc, const ampc::detail::QP& qp)
 {
-  EXPECT_TRUE(expectEigenNear(csc.Pi(), dense.Pi(), 0.0)) << "P rows";
-  EXPECT_TRUE(expectEigenNear(csc.Pp(), dense.Pp(), 0.0)) << "P cols";
-  EXPECT_TRUE(expectEigenNear(csc.Ai(), dense.Ai(), 0.0)) << "A rows";
-  EXPECT_TRUE(expectEigenNear(csc.Ap(), dense.Ap(), 0.0)) << "A cols";
-  EXPECT_TRUE(expectEigenNear(csc.sentP(&qp.P_csc), dense.sentP(nullptr), 0.0))
-      << "P values";
-  EXPECT_TRUE(expectEigenNear(csc.sentA(&qp.A_csc), dense.sentA(nullptr), 0.0))
-      << "A values";
+  using MapI = Map<const ampc::OSQPSolver::VectorXI>;
+  const Index nv{qp.P_csc.cols()};
+  EXPECT_TRUE(
+      expectEigenNear(csc.Pp(), MapI(qp.P_csc.outerIndexPtr(), nv + 1), 0.0))
+      << "P cols";
+  EXPECT_TRUE(expectEigenNear(
+      csc.Pi(), MapI(qp.P_csc.innerIndexPtr(), qp.P_csc.nonZeros()), 0.0))
+      << "P rows";
+  EXPECT_TRUE(
+      expectEigenNear(csc.Ap(), MapI(qp.A_csc.outerIndexPtr(), nv + 1), 0.0))
+      << "A cols";
+  EXPECT_TRUE(expectEigenNear(
+      csc.Ai(), MapI(qp.A_csc.innerIndexPtr(), qp.A_csc.nonZeros()), 0.0))
+      << "A rows";
+  EXPECT_TRUE(csc.direct()) << "values copied";
 }
 
 } // namespace
@@ -327,14 +334,14 @@ TEST(QPPatternTester, givenSparseMPC_CscPatternIsTheDeclaredEntries)
   }
 }
 
-// What the OSQP wrapper sends for the sparse formulation's CSC matrices (its
-// pattern from the values at initialization, the values at every update, and
-// the solutions) is exactly what it sends for dense copies of them, over many
-// option sets and value changes
-TEST(QPPatternTester, givenSparseMPC_CscSolverDataMatchesDenseReference)
+// What the OSQP wrapper sends for the sparse formulation's CSC matrices is
+// their stored structure and values, over many option sets and value changes:
+// every QP stays within the pattern, and the solutions match a dense solver
+// initialized with the same values
+TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
 {
   const OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
-  int initialized{0};
+  int initialized{0}, compared{0};
   for (unsigned seed{0}; seed < 200; ++seed) {
     Draw draw{seed};
     const Case c{drawCase(draw)};
@@ -349,48 +356,43 @@ TEST(QPPatternTester, givenSparseMPC_CscSolverDataMatchesDenseReference)
     const ampc::detail::QP& qp{mpc.qpData()};
     const int nv{static_cast<int>(qp.q.size())};
     const int nr{static_cast<int>(qp.l.size())};
-    SolverInspector csc{nv, nr}, dense{nv, nr};
+    SolverInspector csc{nv, nr};
     ASSERT_TRUE(csc.initialize(qp.P_csc, qp.A_csc, qp.q, qp.l, qp.u, settings));
-    ASSERT_TRUE(
-        dense.initialize(denseP(qp), denseA(qp), qp.q, qp.l, qp.u, settings));
-    expectSameSolverData(csc, dense, qp);
+    expectSentAsStored(csc, qp);
 
     for (int change{0}; change < 4; ++change) {
       SCOPED_TRACE("change " + std::to_string(change));
       setAll(mpc, c, draw);
       mpc.assemble(draw.sparse(c.n, 1)); // also sent to the MPC's own solver
-      const MatrixXd P{denseP(qp)}, A{denseA(qp)};
       // each kind of update in turn
-      if (change % 3 == 0) {
+      if (change % 2 == 0) {
         ASSERT_TRUE(csc.updateMatrices(qp.P_csc, qp.A_csc));
-        ASSERT_TRUE(dense.updateMatrices(P, A));
-      } else if (change % 3 == 1) {
-        ASSERT_TRUE(csc.updateCostMatrix(qp.P_csc));
-        ASSERT_TRUE(dense.updateCostMatrix(P));
-        ASSERT_TRUE(csc.updateConstraintMatrix(qp.A_csc));
-        ASSERT_TRUE(dense.updateConstraintMatrix(A));
       } else {
-        ASSERT_TRUE(csc.updateConstraintMatrix(qp.A_csc));
-        ASSERT_TRUE(dense.updateConstraintMatrix(A));
         ASSERT_TRUE(csc.updateCostMatrix(qp.P_csc));
-        ASSERT_TRUE(dense.updateCostMatrix(P));
+        ASSERT_TRUE(csc.updateConstraintMatrix(qp.A_csc));
       }
-      expectSameSolverData(csc, dense, qp);
-      const bool within{dense.isWithinSparsityPattern(P, A)};
-      EXPECT_EQ(csc.isWithinSparsityPattern(qp.P_csc, qp.A_csc), within);
-      EXPECT_EQ(mpc.isWithinSparsityPattern(), within);
+      expectSentAsStored(csc, qp);
+      EXPECT_TRUE(csc.isWithinSparsityPattern(qp.P_csc, qp.A_csc));
+      EXPECT_TRUE(mpc.isWithinSparsityPattern());
 
-      ASSERT_TRUE(csc.updateCostVector(qp.q) && dense.updateCostVector(qp.q));
-      ASSERT_TRUE(csc.updateBounds(qp.l, qp.u)
-                  && dense.updateBounds(qp.l, qp.u));
-      const ampc::SolveStatus status{csc.solve()};
-      EXPECT_EQ(dense.solve(), status);
-      EXPECT_EQ(csc.getSolveInfo().iterations, dense.getSolveInfo().iterations);
-      EXPECT_TRUE(
-          expectEigenNear(csc.getSolutionMap(), dense.getSolutionMap(), 0.0));
+      ASSERT_TRUE(csc.updateCostVector(qp.q));
+      ASSERT_TRUE(csc.updateBounds(qp.l, qp.u));
+      csc.coldStart();
+      SolverInspector dense{nv, nr};
+      ASSERT_TRUE(
+          dense.initialize(denseP(qp), denseA(qp), qp.q, qp.l, qp.u, settings));
+      if (csc.solve() != ampc::SolveStatus::Success
+          || dense.solve() != ampc::SolveStatus::Success)
+        continue;
+      ++compared;
+      // the objective (zero weights can make the minimizer non-unique)
+      const double obj{csc.getSolveInfo().objective};
+      EXPECT_NEAR(obj, dense.getSolveInfo().objective,
+                  1e-3 * (1.0 + std::abs(obj)));
     }
   }
   EXPECT_GT(initialized, 150);
+  EXPECT_GT(compared, 300);
 }
 
 namespace {

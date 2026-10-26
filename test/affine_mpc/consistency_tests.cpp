@@ -666,7 +666,12 @@ TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
   ASSERT_TRUE(expectEigenNear(u_late, u_reference, 1e-4));
 }
 
-TEST(ConsistencyTester, givenModelOutsideInitPattern_IsWithinPatternIsFalse)
+// Condensed: the solver's pattern comes from the values at initialization, so
+// a model entry that was zero then is dropped. Sparse: the pattern is the
+// declared structure (full model blocks), so the same change stays within it
+// and is solved exactly.
+TEST(ConsistencyTester,
+     givenModelOutsideInitValues_CondensedLeavesPatternSparseStaysWithin)
 {
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
@@ -674,12 +679,12 @@ TEST(ConsistencyTester, givenModelOutsideInitPattern_IsWithinPatternIsFalse)
   const ampc::Options opts{.saturate_states = true};
 
   // Ad = 0.9 I and Bd = [0, 0.1] leave the first state uncoupled, so the
-  // initialized pattern has no entries for that coupling
+  // values at initialization have no entries for that coupling
   const Matrix2d Ad_diag{Matrix2d::Identity() * 0.9};
   const Vector2d Bd{0, 0.1}, wd{0, 0};
   const Vector2d x0{0.5, -0.2};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPCBase& mpc, const bool structural) {
     configureMsd(mpc, opts);
     mpc.setModelDiscrete(Ad_diag, Bd, wd);
     EXPECT_TRUE(mpc.isWithinSparsityPattern()); // not initialized yet
@@ -687,22 +692,40 @@ TEST(ConsistencyTester, givenModelOutsideInitPattern_IsWithinPatternIsFalse)
     ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
     EXPECT_TRUE(mpc.isWithinSparsityPattern());
 
-    // the solver silently drops the new coupling terms
+    // condensed: the solver silently drops the new coupling terms
     setMsdModel(mpc);
     (void)mpc.solve(x0);
-    EXPECT_FALSE(mpc.isWithinSparsityPattern());
+    EXPECT_EQ(mpc.isWithinSparsityPattern(), structural);
 
-    // back within the pattern (w never affects the pattern)
+    // back within the values at initialization (w never affects the pattern)
     mpc.setModelDiscrete(Ad_diag * 0.5, Bd, Vector2d{0.1, 0.2});
     ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
     EXPECT_TRUE(mpc.isWithinSparsityPattern());
   };
 
   ampc::CondensedMPC condensed{n, m, param, opts};
-  check(condensed);
+  check(condensed, false);
 
   ampc::SparseMPC sparse{n, m, param, opts};
-  check(sparse);
+  check(sparse, true);
+
+  // the sparse solution for the coupled model matches a solver initialized
+  // with that model
+  ampc::SparseMPC changed{n, m, param, opts}, fresh{n, m, param, opts};
+  configureMsd(changed, opts);
+  changed.setModelDiscrete(Ad_diag, Bd, wd);
+  ASSERT_TRUE(changed.initializeSolver());
+  ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
+  setMsdModel(changed);
+  changed.resetWarmStart();
+  configureMsd(fresh, opts);
+  ASSERT_TRUE(fresh.initializeSolver());
+  ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(fresh.solve(x0), ampc::SolveStatus::Success);
+  VectorXd c_changed{m * nc}, c_fresh{m * nc};
+  changed.getInputControlPoints(c_changed);
+  fresh.getInputControlPoints(c_fresh);
+  EXPECT_TRUE(expectEigenNear(c_changed, c_fresh, 1e-4));
 }
 
 TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
