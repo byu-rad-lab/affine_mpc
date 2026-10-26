@@ -118,7 +118,7 @@ InputBounds::InputBounds(const VectorParameterization& input_param,
                      : static_cast<int>(samples_.size())}
 {}
 
-void InputBounds::declare(QPLayout& layout)
+void InputBounds::declare(QPLayout& layout, Formulation& /*f*/)
 {
   rows_ = layout.addRows(input_param_.inputDim() * num_bounded_);
 }
@@ -207,7 +207,7 @@ StateBounds::StateBounds(const std::vector<int>& states,
     plus_inf_{VectorXd::Constant(states_.rows(), MPCData::inf)}
 {}
 
-void StateBounds::declare(QPLayout& layout)
+void StateBounds::declare(QPLayout& layout, Formulation& /*f*/)
 {
   const int num_bounded{states_.rows()};
   if (!soft_) {
@@ -266,7 +266,7 @@ GeneralConstraints::GeneralConstraints(
     Hx0_{num_constraints}
 {}
 
-void GeneralConstraints::declare(QPLayout& layout)
+void GeneralConstraints::declare(QPLayout& layout, Formulation& /*f*/)
 {
   rows_ = layout.addRows(p_ * T_);
   state_rows_ = {rows_.offset + p_, p_ * (T_ - 1)};

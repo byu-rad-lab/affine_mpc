@@ -10,6 +10,7 @@
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
+#include "qp_entries.hpp"
 
 namespace affine_mpc::detail {
 
@@ -66,7 +67,9 @@ private:
 };
 
 /// Hands out QP variables (after the formulation's own) and constraint rows in
-/// declaration order (construction only).
+/// declaration order, and collects the entries of P and A that writers declare
+/// (construction only). The builder resolves the entries once the QP is
+/// allocated.
 class QPLayout
 {
 public:
@@ -85,12 +88,26 @@ public:
     num_rows_ += rows;
     return block;
   }
+  /// Register entries of P that a writer declared (it keeps them at a stable
+  /// address and writes them after the builder resolved them).
+  void declareP(QPEntries& entries) { P_entries_.push_back(&entries); }
+  /// Register entries of A (as declareP()).
+  void declareA(QPEntries& entries) { A_entries_.push_back(&entries); }
   int numVariables() const noexcept { return num_variables_; }
   int numRows() const noexcept { return num_rows_; }
+  const std::vector<QPEntries*>& entriesP() const noexcept
+  {
+    return P_entries_;
+  }
+  const std::vector<QPEntries*>& entriesA() const noexcept
+  {
+    return A_entries_;
+  }
 
 private:
   int num_variables_;
   int num_rows_{0};
+  std::vector<QPEntries*> P_entries_, A_entries_;
 };
 
 /**
@@ -119,8 +136,9 @@ public:
   virtual int numVariables() const noexcept = 0;
   /// The extra variables the terms declared (after the formulation's own).
   void setExtraVariables(const VarBlock& extra) noexcept { extra_ = extra; }
-  /// Declare the formulation's own constraint rows (the first rows of A).
-  virtual RowBlock declareRows(QPLayout& layout) = 0;
+  /// Declare the formulation's own constraint rows (the first rows of A) and
+  /// the entries of P and A it writes by position.
+  virtual RowBlock declare(QPLayout& layout) = 0;
   /// Write the parts of the own rows that never change (after allocation).
   virtual void writeConstantRows() {}
 
@@ -296,7 +314,7 @@ public:
                        QP& qp);
 
   int numVariables() const noexcept override { return nc_; }
-  RowBlock declareRows(QPLayout&) override { return {}; }
+  RowBlock declare(QPLayout&) override { return {}; }
 
   DataChangeSet stateMatrixDependsOn() const noexcept override
   {
@@ -378,10 +396,7 @@ public:
                     QP& qp);
 
   int numVariables() const noexcept override { return nc_ + nx_; }
-  RowBlock declareRows(QPLayout& layout) override
-  {
-    return layout.addRows(nx_);
-  }
+  RowBlock declare(QPLayout& layout) override { return layout.addRows(nx_); }
   void writeConstantRows() override;
 
   DataChangeSet stateMatrixDependsOn() const noexcept override { return {}; }

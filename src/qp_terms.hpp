@@ -28,8 +28,12 @@ class QPTerm
 public:
   virtual ~QPTerm() = default;
 
-  /// Declare the constraint rows the term owns (costs own none).
-  virtual void declare(QPLayout& /*layout*/) {}
+  /// Declare the constraint rows the term owns (costs own none), its extra
+  /// variables, and the entries of P and A it writes. Entries are written by
+  /// position (QPEntries), never through the matrices; entries the term writes
+  /// through the formulation (state rows, control point costs) are declared
+  /// with the formulation's declare functions.
+  virtual void declare(QPLayout& /*layout*/, Formulation& /*f*/) {}
   /// Whether the term is a cost (adds into P and q).
   virtual bool isCost() const noexcept { return false; }
   /// Categories that change the term's part of P or of A.
@@ -144,7 +148,7 @@ class InputBounds final : public QPTerm
 public:
   InputBounds(const VectorParameterization& input_param,
               bool saturate_input_trajectory);
-  void declare(QPLayout& layout) override;
+  void declare(QPLayout& layout, Formulation& f) override;
   DataChangeSet matrixDependsOn(const Formulation&) const override
   {
     return {};
@@ -170,7 +174,7 @@ public:
   explicit InitialSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout) override
+  void declare(QPLayout& layout, Formulation& /*f*/) override
   {
     rows_ = layout.addRows(input_param_.inputDim());
   }
@@ -196,7 +200,7 @@ public:
   explicit ControlPointSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout) override
+  void declare(QPLayout& layout, Formulation& /*f*/) override
   {
     rows_ = layout.addRows(input_param_.numCoefficients()
                            - input_param_.inputDim());
@@ -232,7 +236,7 @@ public:
               int state_dim,
               int horizon_steps,
               bool soft);
-  void declare(QPLayout& layout) override;
+  void declare(QPLayout& layout, Formulation& f) override;
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
     return f.stateMatrixDependsOn();
@@ -269,7 +273,7 @@ public:
   GeneralConstraints(const VectorParameterization& input_param,
                      int num_constraints,
                      int state_dim);
-  void declare(QPLayout& layout) override;
+  void declare(QPLayout& layout, Formulation& f) override;
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
     return DataChangeSet{DataChange::ConstraintMatrices}
@@ -301,7 +305,7 @@ public:
   TerminalConstraints(int num_constraints, int state_dim, int horizon_steps) :
       T_{horizon_steps}, Hf_{StateRowMap::general(num_constraints, state_dim)}
   {}
-  void declare(QPLayout& layout) override
+  void declare(QPLayout& layout, Formulation& /*f*/) override
   {
     rows_ = layout.addRows(Hf_.rows());
   }

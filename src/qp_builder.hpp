@@ -55,6 +55,19 @@ public:
   const QPRows& rows() const noexcept { return rows_; }
   const Formulation& formulation() const noexcept { return *formulation_; }
 
+  /// Every entry set of P (A) declared at construction, in declaration
+  /// order. Writes by position only reach these entries (an entry may be in
+  /// several sets); the formulations' bulk writes into dense storage are not
+  /// declared.
+  const std::vector<QPEntries*>& declaredP() const noexcept
+  {
+    return declared_P_;
+  }
+  const std::vector<QPEntries*>& declaredA() const noexcept
+  {
+    return declared_A_;
+  }
+
   /// Write the parts of the QP that never change (after allocation).
   void writeConstantParts(const MPCData& d);
 
@@ -96,6 +109,8 @@ private:
   std::vector<std::unique_ptr<QPTerm>> terms_;
   QPRows rows_;
   int num_variables_, num_constraints_;
+  // the entry sets of P and A (owned by the formulation and the terms)
+  std::vector<QPEntries*> declared_P_, declared_A_;
 
   // The cost terms are updated together (they accumulate into P and q)
   std::vector<QPTerm*> cost_terms_;

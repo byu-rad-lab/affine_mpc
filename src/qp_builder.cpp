@@ -32,7 +32,7 @@ template <class Term, class... Args>
 const Term& QPBuilder::add(QPLayout& layout, Args&&... args)
 {
   auto term{std::make_unique<Term>(std::forward<Args>(args)...)};
-  term->declare(layout);
+  term->declare(layout, *formulation_);
   const Term& ref{*term};
   terms_.push_back(std::move(term));
   return ref;
@@ -46,7 +46,7 @@ QPBuilder::QPBuilder(const FormulationKind kind,
 {
   // The options select the terms; each term's rows follow the previous ones
   QPLayout layout{formulation_->numVariables()};
-  rows_.dynamics = formulation_->declareRows(layout);
+  rows_.dynamics = formulation_->declare(layout);
   add<StateCost>(layout);
   // before InputCost, so the sparse formulation assigns its control point
   // block once instead of zeroing it first for InputCost's diagonal
@@ -92,6 +92,13 @@ QPBuilder::QPBuilder(const FormulationKind kind,
   const int own_variables{formulation_->numVariables()};
   formulation_->setExtraVariables(
       {own_variables, num_variables_ - own_variables});
+  // the declared entries' positions depend on the final sizes
+  declared_P_ = layout.entriesP();
+  declared_A_ = layout.entriesA();
+  for (QPEntries* entries : declared_P_)
+    entries->resolve(qp_.P);
+  for (QPEntries* entries : declared_A_)
+    entries->resolve(qp_.A);
 
   // Sort the term parts by when they are updated
   bounds_x0_ = formulation_->updateX0WritesBounds();
