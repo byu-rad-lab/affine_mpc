@@ -756,10 +756,14 @@ public:
    *   or solve(), and SparseMPC holds unit placeholder weights between
    *   initializeSolver() and the first prepare() or solve(). The return type
    *   may change if the internal QP storage changes.
-   * @return Reference to the internal QP cost matrix (full symmetric matrix),
-   *   valid for the lifetime of this object.
+   *
+   *   SparseMPC stores P in sparse form, so each call fills a dense copy
+   *   (allocated at the first call); not intended for the control loop.
+   * @return Reference to the QP cost matrix (full symmetric matrix), valid
+   *   for the lifetime of this object; for SparseMPC it is updated only by
+   *   calls to this function.
    */
-  const Eigen::MatrixXd& getQPCostMatrix() const noexcept;
+  const Eigen::MatrixXd& getQPCostMatrix() const;
 
   /**
    * @brief Debugging aid: check whether the current QP matrices fit the
@@ -824,6 +828,8 @@ private:
   // false if a solver update failed, in which case the categories behind it
   // stay pending.
   bool applyPendingChanges();
+  // Send the matrices P and/or A to the solver in the QP's storage
+  bool sendMatrices(bool P, bool A);
   // Whether an option uses the previous input u_prev
   bool usesPreviousInput() const noexcept
   {

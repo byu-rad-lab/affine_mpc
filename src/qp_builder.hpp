@@ -49,6 +49,10 @@ public:
 
   /// The QP as last written by the updates.
   const QP& qp() const noexcept { return qp_; }
+  /// The full symmetric cost matrix as a dense matrix: P itself for dense
+  /// storage, else a copy filled on each call into a member allocated at the
+  /// first call (not for the control loop).
+  const Eigen::MatrixXd& denseCostMatrix() const;
 
   int numVariables() const noexcept { return num_variables_; }
   int numConstraints() const noexcept { return num_constraints_; }
@@ -58,7 +62,8 @@ public:
   /// Every entry set of P (A) declared at construction, in declaration
   /// order. Writes by position only reach these entries (an entry may be in
   /// several sets); the formulations' bulk writes into dense storage are not
-  /// declared.
+  /// declared. For sparse storage the deduplicated entries (in P, those on
+  /// or above the diagonal, plus the diagonal) are the CSC pattern.
   const std::vector<QPEntries*>& declaredP() const noexcept
   {
     return declared_P_;
@@ -105,6 +110,7 @@ private:
   };
 
   QP qp_; // declared before formulation_, which keeps a reference
+  mutable Eigen::MatrixXd dense_P_; // denseCostMatrix() for sparse storage
   std::unique_ptr<Formulation> formulation_;
   std::vector<std::unique_ptr<QPTerm>> terms_;
   QPRows rows_;

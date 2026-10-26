@@ -1,8 +1,11 @@
 #include "qp_builder.hpp"
 
 #include <Eigen/Core>
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
@@ -24,6 +27,46 @@ makeFormulation(const FormulationKind kind,
   if (kind == FormulationKind::Sparse)
     return std::make_unique<SparseFormulation>(state_dim, input_param, qp);
   return std::make_unique<CondensedFormulation>(state_dim, input_param, qp);
+}
+
+// Allocate M (rows x cols, CSC) with the declared entries as its pattern,
+// each entry once and with zero values. With `upper`, M is the upper triangle
+// of a symmetric matrix: entries below the diagonal are left out and the whole
+// diagonal is stored (OSQP keeps it in any case).
+void allocatePattern(QP::SparseMatrix& M,
+                     const Index rows,
+                     const Index cols,
+                     const std::vector<QPEntries*>& sets,
+                     const bool upper)
+{
+  // the entries as col * rows + row, sorted in CSC order
+  std::size_t count{upper ? static_cast<std::size_t>(cols) : 0};
+  for (const QPEntries* entries : sets)
+    count += static_cast<std::size_t>(entries->size());
+  std::vector<Index> keys;
+  keys.reserve(count);
+  if (upper)
+    for (Index j{0}; j < cols; ++j)
+      keys.push_back(j * rows + j);
+  for (const QPEntries* entries : sets)
+    for (Index i{0}; i < entries->size(); ++i)
+      if (!upper || entries->row(i) <= entries->col(i))
+        keys.push_back(entries->col(i) * rows + entries->row(i));
+  std::sort(keys.begin(), keys.end());
+  keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+
+  M.resize(rows, cols);
+  M.resizeNonZeros(static_cast<Index>(keys.size()));
+  auto* outer{M.outerIndexPtr()};
+  auto* inner{M.innerIndexPtr()};
+  std::fill(outer, outer + cols + 1, 0);
+  for (std::size_t k{0}; k < keys.size(); ++k) {
+    ++outer[keys[k] / rows + 1];
+    inner[k] = static_cast<OSQPInt>(keys[k] % rows);
+  }
+  for (Index j{0}; j < cols; ++j)
+    outer[j + 1] += outer[j];
+  M.coeffs().setZero();
 }
 
 } // namespace
@@ -83,22 +126,40 @@ QPBuilder::QPBuilder(const FormulationKind kind,
             .rows();
   num_constraints_ = layout.numRows();
   num_variables_ = layout.numVariables();
-  qp_.P.setZero(num_variables_, num_variables_);
-  qp_.A.setZero(num_constraints_, num_variables_);
-  qp_.q.setZero(num_variables_);
-  qp_.l.setZero(num_constraints_);
-  qp_.u.setZero(num_constraints_);
   // variables the terms declared (after the formulation's own)
   const int own_variables{formulation_->numVariables()};
   formulation_->declareExtraVariables(
       {own_variables, num_variables_ - own_variables}, layout);
-  // the declared entries' positions depend on the final sizes
   declared_P_ = layout.entriesP();
   declared_A_ = layout.entriesA();
-  for (QPEntries* entries : declared_P_)
-    entries->resolve(qp_.P);
-  for (QPEntries* entries : declared_A_)
-    entries->resolve(qp_.A);
+
+  // Allocate the QP in the formulation's storage; the declared entries'
+  // places depend on it and on the final sizes
+  qp_.q.setZero(num_variables_);
+  qp_.l.setZero(num_constraints_);
+  qp_.u.setZero(num_constraints_);
+  if (kind == FormulationKind::Sparse) {
+    // CSC with the declared entries as the pattern (every write is to a
+    // declared entry)
+    qp_.storage = QPStorage::Sparse;
+    allocatePattern(qp_.P_csc, num_variables_, num_variables_, declared_P_,
+                    true);
+    allocatePattern(qp_.A_csc, num_constraints_, num_variables_, declared_A_,
+                    false);
+    for (QPEntries* entries : declared_P_)
+      entries->resolve(qp_.P_csc, true);
+    for (QPEntries* entries : declared_A_)
+      entries->resolve(qp_.A_csc, false);
+  } else {
+    // dense: the condensed formulation also writes the matrices directly
+    qp_.storage = QPStorage::Dense;
+    qp_.P.setZero(num_variables_, num_variables_);
+    qp_.A.setZero(num_constraints_, num_variables_);
+    for (QPEntries* entries : declared_P_)
+      entries->resolve(qp_.P);
+    for (QPEntries* entries : declared_A_)
+      entries->resolve(qp_.A);
+  }
 
   // Sort the term parts by when they are updated
   bounds_x0_ = formulation_->updateX0WritesBounds();
@@ -123,6 +184,15 @@ QPBuilder::QPBuilder(const FormulationKind kind,
     }
   }
   cost_vector_x0_ = cost_vector_deps_.has(DataChange::X0);
+}
+
+const MatrixXd& QPBuilder::denseCostMatrix() const
+{
+  if (qp_.storage == QPStorage::Dense)
+    return qp_.P;
+  // allocates on the first call only (same size afterwards)
+  detail::denseCostMatrix(qp_, dense_P_);
+  return dense_P_;
 }
 
 DataChangeSet QPBuilder::writeCostPattern()

@@ -5,21 +5,29 @@
 // declares at construction and then writes by position.
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <vector>
+
+#include "affine_mpc/detail/qp.hpp"
 
 namespace affine_mpc::detail {
 
 /**
  * Entries (row, col) of a QP matrix that one writer may write, declared at
  * construction in a fixed order. Once the QP is allocated, resolve() turns
- * each entry into a position in the matrix's contiguous value array, and the
- * writer then writes values by entry index in the declared order
- * (values[pos] = v), so it never depends on how the matrix is stored.
+ * each entry into its place in the matrix's contiguous value array (dense:
+ * col * rows + row; CSC: the entry's index in the pattern), and the writer
+ * then writes values by entry index in the declared order, so it never
+ * depends on how the matrix is stored.
  *
  * The same entry may be declared by several writers (e.g. a diagonal entry of
- * P shared by two costs); each set then holds its own position for it.
+ * P shared by two costs); each set then holds its own place for it.
+ *
+ * A CSC cost matrix stores only its upper triangle (as OSQP takes it), so
+ * entries below the diagonal (declared by symmetric control point costs for
+ * the dense storage) resolve to a slot of the set that nothing reads.
  */
 class QPEntries
 {
@@ -55,16 +63,39 @@ public:
   int row(Eigen::Index i) const { return rows_[index(i)]; }
   int col(Eigen::Index i) const { return cols_[index(i)]; }
 
-  /// Resolve the entries to positions in M's values (dense, column-major).
+  /// Resolve the entries to places in M's values (dense, column-major).
   void resolve(Eigen::MatrixXd& M)
   {
-    positions_.resize(rows_.size());
+    targets_.resize(rows_.size());
     for (std::size_t i{0}; i < rows_.size(); ++i) {
       assert(rows_[i] >= 0 && rows_[i] < M.rows());
       assert(cols_[i] >= 0 && cols_[i] < M.cols());
-      positions_[i] = static_cast<Eigen::Index>(cols_[i]) * M.rows() + rows_[i];
+      targets_[i] =
+          M.data() + static_cast<Eigen::Index>(cols_[i]) * M.rows() + rows_[i];
     }
-    values_ = M.data();
+  }
+  /// Resolve the entries to places in M's values (CSC, compressed), which
+  /// must hold every entry; with `upper`, M is the upper triangle of a
+  /// symmetric matrix and entries below the diagonal are dropped.
+  void resolve(QP::SparseMatrix& M, bool upper)
+  {
+    assert(M.isCompressed());
+    targets_.resize(rows_.size());
+    const auto* outer{M.outerIndexPtr()};
+    const auto* inner{M.innerIndexPtr()};
+    for (std::size_t i{0}; i < rows_.size(); ++i) {
+      const int row{rows_[i]}, col{cols_[i]};
+      assert(row >= 0 && row < M.rows() && col >= 0 && col < M.cols());
+      if (upper && row > col) {
+        targets_[i] = &dropped_;
+        continue;
+      }
+      const auto* first{inner + outer[col]};
+      const auto* last{inner + outer[col + 1]};
+      const auto* found{std::lower_bound(first, last, row)};
+      assert(found != last && *found == row);
+      targets_[i] = M.valuePtr() + (found - inner);
+    }
   }
 
   // ---- writes (after resolve()) --------------------------------------------
@@ -131,13 +162,14 @@ private:
   }
   double& at(Eigen::Index i)
   {
-    assert(values_ != nullptr && i >= 0 && i < size());
-    return values_[positions_[index(i)]];
+    assert(i >= 0 && i < static_cast<Eigen::Index>(targets_.size()));
+    return *targets_[index(i)];
   }
 
-  std::vector<int> rows_, cols_;        // the declared entries
-  std::vector<Eigen::Index> positions_; // their places in values_
-  double* values_{nullptr};             // the matrix's values (resolve())
+  std::vector<int> rows_, cols_; // the declared entries
+  // their places in the matrix's values (resolve()), or dropped_
+  std::vector<double*> targets_;
+  double dropped_{0.0}; // written for dropped entries, never read
 };
 
 } // namespace affine_mpc::detail

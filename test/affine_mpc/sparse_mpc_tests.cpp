@@ -37,7 +37,7 @@ public:
   auto getWd() const { return readModel(*this).wd; }
   auto getP() const { return getQPCostMatrix(); }
   auto getQ() const { return this->qp().q; }
-  auto getA() const { return this->qp().A; }
+  auto getA() const { return denseA(this->qp()); }
   auto getL() const { return this->qp().l; }
   auto getU() const { return this->qp().u; }
 };

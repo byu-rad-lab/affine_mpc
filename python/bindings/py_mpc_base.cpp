@@ -793,6 +793,9 @@ it, model or weight changes are applied by the next prepare() or solve(), and
 SparseMPC holds unit placeholder weights between initializeSolver() and the
 first prepare() or solve().
 
+SparseMPC stores P in sparse form, so each call also builds the dense matrix;
+not intended for the control loop.
+
 Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
            )doc");

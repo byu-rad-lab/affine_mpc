@@ -24,13 +24,22 @@ class PatternInspector : public ampc::SparseMPC
 public:
   using SparseMPC::SparseMPC;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
+  const ampc::detail::QP& qpData() const { return this->qp(); }
+  const std::vector<ampc::detail::QPEntries*>& declaredP() const
+  {
+    return this->qpBuilder().declaredP();
+  }
+  const std::vector<ampc::detail::QPEntries*>& declaredA() const
+  {
+    return this->qpBuilder().declaredA();
+  }
 
   // Nonzero entries of the QP outside every declared entry of P (A)
   std::vector<std::string> undeclaredNonzeros() const
   {
     std::vector<std::string> found;
-    check("P", this->qp().P, this->qpBuilder().declaredP(), found);
-    check("A", this->qp().A, this->qpBuilder().declaredA(), found);
+    check("P", denseP(this->qp()), this->qpBuilder().declaredP(), found);
+    check("A", denseA(this->qp()), this->qpBuilder().declaredA(), found);
     return found;
   }
 

@@ -303,9 +303,6 @@ private:
   // dense: the outer strides the positions were computed for (an update with
   // other strides walks the pattern instead)
   Eigen::Index P_stride_{0}, A_stride_{0};
-  // sparse: whether OSQP's values are the matrix's own (every stored entry
-  // kept), which then go to OSQP without a copy
-  bool P_direct_{false}, A_direct_{false};
   // OSQP only treats bounds beyond OSQP_INFTY as unbounded; with IEEE
   // infinities it can not detect convergence, so bounds are clamped here.
   VectorXF l_buf_, u_buf_;
@@ -321,6 +318,10 @@ protected:          // Not private for unit tests
   VectorXI A_i_;    ///< Row indices for A.
   VectorXI P_p_;    ///< Column pointers for P.
   VectorXI A_p_;    ///< Column pointers for A.
+  /// Sparse input only: whether OSQP's values of P (A) are the matrix's own
+  /// stored values (every stored entry kept), which then go to OSQP without a
+  /// copy (P_x_ and A_x_ then hold the values of initialize() only).
+  bool P_direct_{false}, A_direct_{false};
 };
 
 /**

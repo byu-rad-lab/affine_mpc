@@ -40,9 +40,9 @@ public:
   auto getRbig() const { return data().R_big; }
   // the bound rows are written when the pending changes are applied; the
   // views are read-only so a test can not write into the QP storage
-  auto getASlew() const
+  MatrixXd getASlew() const
   {
-    return this->qp().A.middleRows(slewOffset(), slewRows());
+    return denseA(this->qp()).middleRows(slewOffset(), slewRows());
   }
   auto getLSlew()
   {
@@ -54,9 +54,10 @@ public:
     applyChanges();
     return this->qp().u.segment(slewOffset(), slewRows());
   }
-  auto getASatU() const
+  MatrixXd getASatU() const
   {
-    return this->qp().A.middleRows(inputBounds().offset, inputBounds().rows);
+    return denseA(this->qp())
+        .middleRows(inputBounds().offset, inputBounds().rows);
   }
   auto getLSatU()
   {

@@ -7,9 +7,25 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/parameterization.hpp"
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
+
+// The QP's cost matrix (full symmetric) and constraint matrix as dense
+// matrices, whichever storage the formulation uses
+inline Eigen::MatrixXd denseP(const affine_mpc::detail::QP& qp)
+{
+  Eigen::MatrixXd P;
+  affine_mpc::detail::denseCostMatrix(qp, P);
+  return P;
+}
+inline Eigen::MatrixXd denseA(const affine_mpc::detail::QP& qp)
+{
+  Eigen::MatrixXd A;
+  affine_mpc::detail::denseConstraintMatrix(qp, A);
+  return A;
+}
 
 // Records a GoogleTest failure (and returns false) unless mat1 and mat2 have
 // the same size and every element differs by at most delta. The return value

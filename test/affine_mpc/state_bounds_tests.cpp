@@ -25,8 +25,8 @@ template <class Base> class BoundsInspector : public Base
 public:
   using Base::Base;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
-  const MatrixXd& P() const { return this->qp().P; }
-  const MatrixXd& A() const { return this->qp().A; }
+  MatrixXd P() const { return denseP(this->qp()); }
+  MatrixXd A() const { return denseA(this->qp()); }
   const VectorXd& q() const { return this->qp().q; }
   const VectorXd& l() const { return this->qp().l; }
   const VectorXd& u() const { return this->qp().u; }

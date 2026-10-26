@@ -147,9 +147,9 @@ MPCBase::~MPCBase() = default;
 
 const detail::QP& MPCBase::qp() const noexcept { return qp_builder_->qp(); }
 
-const Eigen::MatrixXd& MPCBase::getQPCostMatrix() const noexcept
+const Eigen::MatrixXd& MPCBase::getQPCostMatrix() const
 {
-  return qp_builder_->qp().P;
+  return qp_builder_->denseCostMatrix();
 }
 
 const detail::QPBuilder& MPCBase::qpBuilder() const noexcept
@@ -205,8 +205,14 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
   // categories that overwrite them are applied by the first solve
   pending_ |= qp_builder_->writeCostPattern();
 
-  solver_initialized_ = solver_->initialize(qp().P, qp().A, qp().q, qp().l,
-                                            qp().u, solver_settings);
+  const detail::QP& qp_data{qp()};
+  if (qp_data.storage == detail::QPStorage::Sparse)
+    solver_initialized_ =
+        solver_->initialize(qp_data.P_csc, qp_data.A_csc, qp_data.q, qp_data.l,
+                            qp_data.u, solver_settings);
+  else
+    solver_initialized_ = solver_->initialize(
+        qp_data.P, qp_data.A, qp_data.q, qp_data.l, qp_data.u, solver_settings);
   // According to Eigen's documentation, use "placement new" syntax to update
   // solution_map_ with the new pointer to the solution vector. This does not
   // allocate new memory that needs to be deleted, it just updates the pointer.
@@ -286,15 +292,9 @@ bool MPCBase::applyPendingChanges()
   // Send only the changed parts. When both matrices changed, one combined
   // update rescales and refactors once instead of twice. The parts that
   // applyX0() writes are sent there.
-  if (!written.P.empty() && !written.A.empty()) {
-    if (!solver_->updateMatrices(qp().P, qp().A))
+  if (!written.P.empty() || !written.A.empty()) {
+    if (!sendMatrices(!written.P.empty(), !written.A.empty()))
       pending_ |= written.P | written.A;
-  } else if (!written.P.empty()) {
-    if (!solver_->updateCostMatrix(qp().P))
-      pending_ |= written.P;
-  } else if (!written.A.empty()) {
-    if (!solver_->updateConstraintMatrix(qp().A))
-      pending_ |= written.A;
   }
   if (!written.q.empty() && !qp_builder_->applyX0WritesCostVector()
       && !solver_->updateCostVector(qp().q))
@@ -319,11 +319,31 @@ bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
   return success;
 }
 
+bool MPCBase::sendMatrices(const bool P, const bool A)
+{
+  const detail::QP& qp_data{qp()};
+  if (qp_data.storage == detail::QPStorage::Sparse) {
+    if (P && A)
+      return solver_->updateMatrices(qp_data.P_csc, qp_data.A_csc);
+    if (P)
+      return solver_->updateCostMatrix(qp_data.P_csc);
+    return solver_->updateConstraintMatrix(qp_data.A_csc);
+  }
+  if (P && A)
+    return solver_->updateMatrices(qp_data.P, qp_data.A);
+  if (P)
+    return solver_->updateCostMatrix(qp_data.P);
+  return solver_->updateConstraintMatrix(qp_data.A);
+}
+
 bool MPCBase::isWithinSparsityPattern() const
 {
   if (!solver_initialized_)
     return true;
-  return solver_->isWithinSparsityPattern(qp().P, qp().A);
+  const detail::QP& qp_data{qp()};
+  if (qp_data.storage == detail::QPStorage::Sparse)
+    return solver_->isWithinSparsityPattern(qp_data.P_csc, qp_data.A_csc);
+  return solver_->isWithinSparsityPattern(qp_data.P, qp_data.A);
 }
 
 void MPCBase::getNextInput(Ref<VectorXd> u0) const

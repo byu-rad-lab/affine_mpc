@@ -29,7 +29,7 @@ template <class Base> class ConstraintInspector : public Base
 public:
   using Base::Base;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
-  const MatrixXd& A() const { return this->qp().A; }
+  MatrixXd A() const { return denseA(this->qp()); }
   const VectorXd& l() const { return this->qp().l; }
   const VectorXd& u() const { return this->qp().u; }
   ampc::detail::DataChangeSet pending() const { return this->pendingChanges(); }

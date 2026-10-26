@@ -28,8 +28,8 @@ public:
     ASSERT_TRUE(this->qpUpdateX0(x0));
   }
   ampc::detail::DataChangeSet pending() const { return this->pendingChanges(); }
-  const MatrixXd& P() const { return this->qp().P; }
-  const MatrixXd& A() const { return this->qp().A; }
+  MatrixXd P() const { return denseP(this->qp()); }
+  MatrixXd A() const { return denseA(this->qp()); }
   const VectorXd& q() const { return this->qp().q; }
   const VectorXd& l() const { return this->qp().l; }
   const VectorXd& u() const { return this->qp().u; }
@@ -42,6 +42,23 @@ public:
     const double nan{std::numeric_limits<double>::quiet_NaN()};
     qp.P.setConstant(nan);
     qp.A.setConstant(nan);
+    qp.P_csc.coeffs().setConstant(nan);
+    qp.A_csc.coeffs().setConstant(nan);
+  }
+  // Whether every stored value of P (A) is NaN, as poisonMatrices() left it
+  bool storedPIsNaN() const
+  {
+    const ampc::detail::QP& qp{this->qp()};
+    return qp.storage == ampc::detail::QPStorage::Dense
+               ? qp.P.array().isNaN().all()
+               : qp.P_csc.coeffs().isNaN().all();
+  }
+  bool storedAIsNaN() const
+  {
+    const ampc::detail::QP& qp{this->qp()};
+    return qp.storage == ampc::detail::QPStorage::Dense
+               ? qp.A.array().isNaN().all()
+               : qp.A_csc.coeffs().isNaN().all();
   }
 };
 
@@ -464,8 +481,8 @@ template <class F> void checkSolveAfterPrepareDoesNoMatrixWork()
   ASSERT_EQ(prepared.solve(x0), ampc::SolveStatus::Success);
   ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
 
-  EXPECT_TRUE(prepared.P().array().isNaN().all()) << "P was rebuilt";
-  EXPECT_TRUE(prepared.A().array().isNaN().all()) << "A was rebuilt";
+  EXPECT_TRUE(prepared.storedPIsNaN()) << "P was rebuilt";
+  EXPECT_TRUE(prepared.storedAIsNaN()) << "A was rebuilt";
   VectorXd z_prepared{m * param.num_control_points};
   VectorXd z_reference{m * param.num_control_points};
   prepared.getInputControlPoints(z_prepared);
