@@ -9,6 +9,7 @@
 #include "affine_mpc/sparse_mpc.hpp"
 #include "qp_builder.hpp" // internal (src/): the declared entries
 #include "qp_entries.hpp"
+#include "utils.hpp"
 
 namespace ampc = affine_mpc;
 using namespace Eigen;
@@ -89,10 +90,18 @@ struct Case
 Case drawCase(Draw& draw)
 {
   using P = ampc::Parameterization;
-  const std::vector<P> bases{P::moveBlocking(8, 8),    P::moveBlocking(12, 4),
-                             P::linearInterp(10, 4),   P::bspline(10, 2, 5),
-                             P::bspline(15, 3, 6),     P::moveBlocking(1, 1),
-                             P::bspline(20, 2, 7, 1.3)};
+  // custom bases: dense bands, with zeros (a B-spline's sampled basis) and
+  // without (Laguerre), and a one-step horizon
+  const std::vector<P> bases{P::moveBlocking(8, 8),
+                             P::moveBlocking(12, 4),
+                             P::linearInterp(10, 4),
+                             P::bspline(10, 2, 5),
+                             P::bspline(15, 3, 6),
+                             P::moveBlocking(1, 1),
+                             P::bspline(20, 2, 7, 1.3),
+                             P::fromBasis(10, denseBasis(P::bspline(10, 2, 5))),
+                             P::fromBasis(12, laguerreBasis(12, 4, 0.6)),
+                             P::fromBasis(1, MatrixXd::Constant(1, 1, 0.8))};
   Case c{draw.integer(1, 4),
          draw.integer(1, 3),
          bases[static_cast<std::size_t>(
@@ -104,7 +113,8 @@ Case drawCase(Draw& draw)
   o.use_input_rate_cost = draw.coin();
   o.saturate_input_trajectory = draw.coin();
   o.slew_initial_input = draw.coin();
-  o.slew_control_points = draw.coin() && c.param.num_control_points > 1;
+  o.slew_control_points = draw.coin() && c.param.num_control_points > 1
+                          && c.param.type == P::Type::BSpline;
   o.saturate_states = draw.coin();
   o.soft_state_bounds = o.saturate_states && draw.coin();
   if (o.saturate_states && draw.coin())

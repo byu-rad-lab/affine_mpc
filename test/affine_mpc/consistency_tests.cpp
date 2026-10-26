@@ -1424,36 +1424,6 @@ TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
 
 namespace {
 
-// Dense basis of a B-spline from its band
-MatrixXd denseBasis(const ampc::Parameterization& p)
-{
-  MatrixXd basis{MatrixXd::Zero(p.horizon_steps, p.num_control_points)};
-  for (int k{0}; k < p.horizon_steps; ++k)
-    basis.row(k).segment(p.band_start(k), p.band_width) =
-        p.band_weights.col(k).transpose();
-  return basis;
-}
-
-// Discrete Laguerre functions (Wang, 2004): row k is L(k), with
-// L(0) = sqrt(1 - a^2) [1, -a, a^2, ...] and L(k+1) = Omega L(k)
-MatrixXd laguerreBasis(int T, int N, double a)
-{
-  const double beta{1.0 - a * a};
-  MatrixXd omega{MatrixXd::Zero(N, N)};
-  for (int i{0}; i < N; ++i)
-    for (int j{0}; j <= i; ++j)
-      omega(i, j) = i == j ? a : beta * std::pow(-a, i - j - 1);
-  VectorXd L{N};
-  for (int i{0}; i < N; ++i)
-    L(i) = std::sqrt(beta) * std::pow(-a, i);
-  MatrixXd basis{T, N};
-  for (int k{0}; k < T; ++k) {
-    basis.row(k) = L.transpose();
-    L = omega * L;
-  }
-  return basis;
-}
-
 // Mass-spring-damper with input limits [0, 3], tracking x = 1, solved by
 // polished OSQP
 void setupCustomBasisMsd(ampc::MPCBase& mpc, const ampc::Options& opts)

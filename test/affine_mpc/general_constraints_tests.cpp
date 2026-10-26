@@ -209,6 +209,38 @@ TEST(GeneralConstraintsTester, givenCoupledConstraint_HoldsAtEveryStep)
   EXPECT_TRUE(expectEigenNear(c_condensed, c_sparse, 1e-8));
 }
 
+// A custom basis (dense band: Hu on every coefficient at every step, all
+// condensed columns from the first step on) equal to the B-spline's sampled
+// basis gives the B-spline's solution, and a Laguerre basis holds the
+// constraint at every step in both formulations. The custom basis bounds
+// every sampled input, so the B-spline does too (saturate_input_trajectory).
+TEST(GeneralConstraintsTester, givenCustomBasis_HoldsAtEveryStep)
+{
+  const auto custom{ampc::Parameterization::fromBasis(T, denseBasis(param))};
+  const ampc::Options sampled{.saturate_input_trajectory = true,
+                              .num_general_constraints = 1};
+  ampc::CondensedMPC condensed_b{2, 1, param, sampled};
+  ampc::CondensedMPC condensed_c{2, 1, custom, general_only};
+  ampc::SparseMPC sparse_b{2, 1, param, sampled};
+  ampc::SparseMPC sparse_c{2, 1, custom, general_only};
+  const VectorXd c_b{checkCoupledConstraint(condensed_b, Vector2d::Zero())};
+  EXPECT_TRUE(expectEigenNear(
+      checkCoupledConstraint(condensed_c, Vector2d::Zero()), c_b, 1e-8));
+  EXPECT_TRUE(expectEigenNear(
+      checkCoupledConstraint(sparse_b, Vector2d::Zero()), c_b, 1e-8));
+  EXPECT_TRUE(expectEigenNear(
+      checkCoupledConstraint(sparse_c, Vector2d::Zero()), c_b, 1e-8));
+
+  // same number of coefficients as the B-spline (solveControlPoints)
+  const auto laguerre{ampc::Parameterization::fromBasis(
+      T, laguerreBasis(T, param.num_control_points, 0.7))};
+  ampc::CondensedMPC condensed_l{2, 1, laguerre, general_only};
+  ampc::SparseMPC sparse_l{2, 1, laguerre, general_only};
+  EXPECT_TRUE(expectEigenNear(
+      checkCoupledConstraint(condensed_l, Vector2d::Zero()),
+      checkCoupledConstraint(sparse_l, Vector2d::Zero()), 1e-8));
+}
+
 // Starting at position 1, x_0 + u_0 <= 3 limits u_0 to 2, through the
 // measured state only
 TEST(GeneralConstraintsTester, givenMeasuredState_InitialRowsLimitFirstInput)

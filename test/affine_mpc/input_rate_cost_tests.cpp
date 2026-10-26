@@ -1,10 +1,12 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/options.hpp"
+#include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
 #include "utils.hpp"
@@ -59,9 +61,10 @@ double rateCost(const ampc::Parameterization& param,
 std::vector<ampc::Parameterization> bases()
 {
   using P = ampc::Parameterization;
-  return {P::moveBlocking(10, 10), P::moveBlocking(12, 4, 1.3),
-          P::linearInterp(10, 4), P::bspline(15, 2, 6),
-          P::bspline(20, 3, 7, 0.8)};
+  return {
+      P::moveBlocking(10, 10),   P::moveBlocking(12, 4, 1.3),
+      P::linearInterp(10, 4),    P::bspline(15, 2, 6),
+      P::bspline(20, 3, 7, 0.8), P::fromBasis(12, laguerreBasis(12, 4, 0.6))};
 }
 
 // The QP terms added by the rate cost, compared with the cost summed over
@@ -184,6 +187,48 @@ TEST(InputRateCostTester, givenRateCost_CondensedAndSparseAgree)
     ASSERT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-4));
     condensed.propagateModel(x, u_condensed, x_next);
     x = x_next;
+  }
+}
+
+TEST(InputRateCostTester, givenCustomBasisOfBspline_ReproducesBsplineSolution)
+{
+  // A custom basis equal to the B-spline's sampled basis gives the same rate
+  // cost (dense band: G and the u_0 entries over every coefficient) and bounds
+  // every sample, as the B-spline does with saturate_input_trajectory
+  const auto bspline{ampc::Parameterization::bspline(15, 2, 6, 1.3)};
+  const auto custom{ampc::Parameterization::fromBasis(15, denseBasis(bspline))};
+  const ampc::Options opts{.use_input_rate_cost = true};
+  ampc::Options bspline_opts{opts};
+  bspline_opts.saturate_input_trajectory = true;
+
+  ampc::CondensedMPC condensed_b{2, 2, bspline, bspline_opts};
+  ampc::CondensedMPC condensed_c{2, 2, custom, opts};
+  ampc::SparseMPC sparse_b{2, 2, bspline, bspline_opts};
+  ampc::SparseMPC sparse_c{2, 2, custom, opts};
+  auto settings{ampc::OSQPSolver::getRecommendedSettings()};
+  settings.polishing = true;
+  settings.max_iter = 20000;
+  for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&condensed_b),
+                             static_cast<ampc::MPCBase*>(&condensed_c),
+                             static_cast<ampc::MPCBase*>(&sparse_b),
+                             static_cast<ampc::MPCBase*>(&sparse_c)}) {
+    configure(*mpc);
+    mpc->setInputRateWeights(Vector2d{0.7, 1.9});
+    mpc->setPreviousInput(Vector2d{0.3, -0.4});
+    ASSERT_TRUE(mpc->initializeSolver(settings));
+  }
+
+  const Vector2d x0{0.5, -0.2};
+  const int nc{2 * bspline.num_control_points};
+  VectorXd c_b{nc}, c_c{nc};
+  for (auto [b, c] :
+       {std::pair<ampc::MPCBase*, ampc::MPCBase*>{&condensed_b, &condensed_c},
+        std::pair<ampc::MPCBase*, ampc::MPCBase*>{&sparse_b, &sparse_c}}) {
+    ASSERT_EQ(b->solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(c->solve(x0), ampc::SolveStatus::Success);
+    b->getInputControlPoints(c_b);
+    c->getInputControlPoints(c_c);
+    EXPECT_TRUE(expectEigenNear(c_c, c_b, 1e-6));
   }
 }
 

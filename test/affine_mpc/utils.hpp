@@ -2,9 +2,12 @@
 #define UTILS_HPP
 
 #include <Eigen/Core>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <stdexcept>
+
+#include "affine_mpc/parameterization.hpp"
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
 
@@ -59,6 +62,38 @@ template <typename MPC> DiscreteModel readModel(const MPC& mpc)
     model.Bd.col(j) = x_next - model.wd;
   }
   return model;
+}
+
+// Dense sampled basis (horizon_steps x num_control_points) of a
+// parameterization, from its band
+inline Eigen::MatrixXd denseBasis(const affine_mpc::Parameterization& p)
+{
+  Eigen::MatrixXd basis{
+      Eigen::MatrixXd::Zero(p.horizon_steps, p.num_control_points)};
+  for (int k{0}; k < p.horizon_steps; ++k)
+    basis.row(k).segment(p.band_start(k), p.band_width) =
+        p.band_weights.col(k).transpose();
+  return basis;
+}
+
+// Discrete Laguerre functions (Wang, 2004): row k is L(k), with
+// L(0) = sqrt(1 - a^2) [1, -a, a^2, ...] and L(k+1) = Omega L(k)
+inline Eigen::MatrixXd laguerreBasis(int T, int N, double a)
+{
+  const double beta{1.0 - a * a};
+  Eigen::MatrixXd omega{Eigen::MatrixXd::Zero(N, N)};
+  for (int i{0}; i < N; ++i)
+    for (int j{0}; j <= i; ++j)
+      omega(i, j) = i == j ? a : beta * std::pow(-a, i - j - 1);
+  Eigen::VectorXd L{N};
+  for (int i{0}; i < N; ++i)
+    L(i) = std::sqrt(beta) * std::pow(-a, i);
+  Eigen::MatrixXd basis{T, N};
+  for (int k{0}; k < T; ++k) {
+    basis.row(k) = L.transpose();
+    L = omega * L;
+  }
+  return basis;
 }
 
 void expectInvalidArgumentWithMessage(const std::function<void()>& fn,
