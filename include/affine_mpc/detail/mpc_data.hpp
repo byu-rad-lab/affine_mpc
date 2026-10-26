@@ -40,7 +40,7 @@ enum class DataChange : std::uint8_t
   /// input and state limits, slew rates, general constraint bounds (bounds)
   Limits = 1 << 4,
   PreviousInput = 1 << 5, ///< `u_prev` of the initial slew rate (bounds)
-  /// general and terminal constraint matrices `E`, `F`, `Ef` (QP matrices)
+  /// general and terminal constraint matrices `Hx`, `Hu`, `Hf` (QP matrices)
   ConstraintMatrices = 1 << 6,
   X0 = 1 << 7, ///< initial state (applied by every solve())
 };
@@ -188,16 +188,16 @@ struct MPCData
     }
     if (opts.num_general_constraints > 0) {
       const int p{opts.num_general_constraints};
-      E.setZero(p, state_dim);
-      F.setZero(p, input_dim);
-      g_min.setConstant(p, -inf);
-      g_max.setConstant(p, inf);
+      Hx.setZero(p, state_dim);
+      Hu.setZero(p, input_dim);
+      h_min.setConstant(p, -inf);
+      h_max.setConstant(p, inf);
     }
     if (opts.num_terminal_constraints > 0) {
       const int p{opts.num_terminal_constraints};
-      Ef.setZero(p, state_dim);
-      gf_min.setConstant(p, -inf);
-      gf_max.setConstant(p, inf);
+      Hf.setZero(p, state_dim);
+      hf_min.setConstant(p, -inf);
+      hf_max.setConstant(p, inf);
     }
   }
 
@@ -228,14 +228,14 @@ struct MPCData
   /// previous input (`slew_initial_input` or `use_input_rate_cost`)
   Eigen::VectorXd u_prev;
 
-  /// general constraints g_min <= E x_k + F u_k <= g_max at every step
+  /// general constraints h_min <= Hx x_k + Hu u_k <= h_max at every step
   /// (`num_general_constraints` rows each)
-  Eigen::MatrixXd E, F;
-  Eigen::VectorXd g_min, g_max;
-  /// terminal constraints gf_min <= Ef x_T <= gf_max
+  Eigen::MatrixXd Hx, Hu;
+  Eigen::VectorXd h_min, h_max;
+  /// terminal constraints hf_min <= Hf x_T <= hf_max
   /// (`num_terminal_constraints` rows each)
-  Eigen::MatrixXd Ef;
-  Eigen::VectorXd gf_min, gf_max;
+  Eigen::MatrixXd Hf;
+  Eigen::VectorXd hf_min, hf_max;
 
   /// the initial state of the last solve() (X0, set by MPCBase before the QP
   /// parts that depend on it are updated)

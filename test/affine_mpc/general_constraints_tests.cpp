@@ -90,7 +90,7 @@ const ampc::Options general_and_terminal{.num_general_constraints = 1,
 
 // ---- equivalence with the existing bounds -----------------------------------
 
-// E = rows of the identity and F = 0 on every step, plus the same rows as
+// Hx = rows of the identity and Hu = 0 on every step, plus the same rows as
 // terminal constraints, equal state limits on the same states: the general
 // rows also hold x_0 (inside the limits here) and stop at x_{T-1}, which the
 // terminal rows cover
@@ -114,15 +114,15 @@ template <class MPC> void checkIdentityRowsMatchStateLimits()
     configure(bounded);
     bounded.setStateLimits(c.lo, c.hi);
 
-    MatrixXd E{MatrixXd::Zero(p, 2)};
+    MatrixXd Hx{MatrixXd::Zero(p, 2)};
     for (int i{0}; i < p; ++i)
-      E(i, c.states[static_cast<size_t>(i)]) = 1.0;
+      Hx(i, c.states[static_cast<size_t>(i)]) = 1.0;
     MPC general{2, 1, param,
                 ampc::Options{.num_general_constraints = p,
                               .num_terminal_constraints = p}};
     configure(general);
-    general.setGeneralConstraints(E, MatrixXd::Zero(p, 1), c.lo, c.hi);
-    general.setTerminalConstraints(E, c.lo, c.hi);
+    general.setGeneralConstraints(Hx, MatrixXd::Zero(p, 1), c.lo, c.hi);
+    general.setTerminalConstraints(Hx, c.lo, c.hi);
 
     const VectorXd c_bounded{solveControlPoints(bounded, Vector2d::Zero())};
     const VectorXd c_general{solveControlPoints(general, Vector2d::Zero())};
@@ -142,7 +142,7 @@ TEST(GeneralConstraintsTester, givenIdentityRows_SparseMatchesStateLimits)
   checkIdentityRowsMatchStateLimits<ampc::SparseMPC>();
 }
 
-// E = 0 and F = I bound every sampled input u_0, ..., u_{T-1}, which is what
+// Hx = 0 and Hu = I bound every sampled input u_0, ..., u_{T-1}, which is what
 // saturate_input_trajectory does for degree 2
 template <class MPC> void checkInputRowsMatchSampledInputLimits()
 {
@@ -231,13 +231,13 @@ TEST(GeneralConstraintsTester, givenMeasuredState_InitialRowsLimitFirstInput)
 }
 
 // Changing x0 alone only moves bounds: nothing is pending, A is unchanged,
-// and the k = 0 rows hold g - E x_0 (sparse: the rows for k >= 1 do not move)
+// and the k = 0 rows hold g - Hx x_0 (sparse: the rows for k >= 1 do not move)
 template <class MPC> void checkInitialRowsFollowX0()
 {
   ConstraintInspector<MPC> mpc{2, 1, param, general_and_terminal};
   configure(mpc);
-  const RowVector2d E{1.0, 0.5};
-  mpc.setGeneralConstraints(E, MatrixXd::Constant(1, 1, 0.3),
+  const RowVector2d Hx{1.0, 0.5};
+  mpc.setGeneralConstraints(Hx, MatrixXd::Constant(1, 1, 0.3),
                             VectorXd::Constant(1, -2.0),
                             VectorXd::Constant(1, 1.5));
   mpc.setTerminalConstraints(RowVector2d{1.0, 1.0}, VectorXd::Constant(1, -inf),
@@ -254,8 +254,8 @@ template <class MPC> void checkInitialRowsFollowX0()
   EXPECT_TRUE(expectEigenNear(mpc.A(), A, 0.0));
   const ampc::detail::RowBlock rows{mpc.rows().general_constraints};
   ASSERT_EQ(rows.rows, T);
-  EXPECT_DOUBLE_EQ(mpc.l()(rows.offset), -2.0 - E.dot(x0_b));
-  EXPECT_DOUBLE_EQ(mpc.u()(rows.offset), 1.5 - E.dot(x0_b));
+  EXPECT_DOUBLE_EQ(mpc.l()(rows.offset), -2.0 - Hx.dot(x0_b));
+  EXPECT_DOUBLE_EQ(mpc.u()(rows.offset), 1.5 - Hx.dot(x0_b));
   EXPECT_NE(mpc.u()(rows.offset), u(rows.offset));
   if (std::is_same_v<MPC, ampc::SparseMPC>) {
     EXPECT_TRUE(expectEigenNear(mpc.l().tail(mpc.l().size() - rows.offset - 1),
@@ -273,17 +273,17 @@ TEST(GeneralConstraintsTester, givenNewX0_SparseMovesOnlyBounds)
   checkInitialRowsFollowX0<ampc::SparseMPC>();
 }
 
-// gf_min <= Ef x_T <= gf_max holds at the final predicted state; here it pins
+// hf_min <= Hf x_T <= hf_max holds at the final predicted state; here it pins
 // the final position below the reference
 TEST(GeneralConstraintsTester, givenTerminalConstraints_HoldAtFinalState)
 {
   const ampc::Options terminal{.num_terminal_constraints = 2};
-  Matrix2d Ef;
-  Ef << 1.0, 0.0, 1.0, 1.0;
-  const Vector2d gf_min{0.3, -inf}, gf_max{0.3, 0.35};
+  Matrix2d Hf;
+  Hf << 1.0, 0.0, 1.0, 1.0;
+  const Vector2d hf_min{0.3, -inf}, hf_max{0.3, 0.35};
   auto check = [&](ampc::MPCBase& mpc) {
     configure(mpc);
-    mpc.setTerminalConstraints(Ef, gf_min, gf_max);
+    mpc.setTerminalConstraints(Hf, hf_min, hf_max);
     const VectorXd c{solveControlPoints(mpc, Vector2d::Zero())};
     const Vector2d xT{states(mpc).col(T - 1)};
     EXPECT_NEAR(xT(0), 0.3, 1e-8);
@@ -297,8 +297,8 @@ TEST(GeneralConstraintsTester, givenTerminalConstraints_HoldAtFinalState)
 
 // ---- runtime changes --------------------------------------------------------
 
-// New E, F, Ef (same nonzero pattern) applied by prepare() give exactly the QP
-// of a freshly built MPC, and the same solution
+// New Hx, Hu, Hf (same nonzero pattern) applied by prepare() give exactly the
+// QP of a freshly built MPC, and the same solution
 template <class MPC> void checkMatrixChangeMatchesFreshMPC()
 {
   auto set = [](ampc::MPCBase& mpc, double s) {
@@ -357,32 +357,32 @@ TEST(GeneralConstraintsTester, givenSetters_MarkMatricesOnlyWhenChanged)
   ConstraintInspector<ampc::CondensedMPC> mpc{2, 1, param,
                                               general_and_terminal};
   configure(mpc);
-  const RowVector2d E{1.0, 0.0};
-  const MatrixXd F{MatrixXd::Ones(1, 1)};
+  const RowVector2d Hx{1.0, 0.0};
+  const MatrixXd Hu{MatrixXd::Ones(1, 1)};
   const VectorXd lo{VectorXd::Constant(1, -1.0)};
   const VectorXd hi{VectorXd::Constant(1, 1.0)};
-  mpc.setGeneralConstraints(E, F, lo, hi);
-  mpc.setTerminalConstraints(E, lo, hi);
+  mpc.setGeneralConstraints(Hx, Hu, lo, hi);
+  mpc.setTerminalConstraints(Hx, lo, hi);
   mpc.assemble(Vector2d::Zero());
   ASSERT_TRUE(mpc.pending().empty());
 
-  mpc.setGeneralConstraints(E, F, 2 * lo, 2 * hi);
-  mpc.setTerminalConstraints(E, 2 * lo, 2 * hi);
+  mpc.setGeneralConstraints(Hx, Hu, 2 * lo, 2 * hi);
+  mpc.setTerminalConstraints(Hx, 2 * lo, 2 * hi);
   EXPECT_EQ(mpc.pending(), DataChange::Limits);
   mpc.assemble(Vector2d::Zero());
 
-  mpc.setGeneralConstraints(E, 2 * F, lo, hi);
+  mpc.setGeneralConstraints(Hx, 2 * Hu, lo, hi);
   EXPECT_EQ(mpc.pending(), DataChange::ConstraintMatrices | DataChange::Limits);
   mpc.assemble(Vector2d::Zero());
-  mpc.setTerminalConstraints(2 * E, lo, hi);
+  mpc.setTerminalConstraints(2 * Hx, lo, hi);
   EXPECT_EQ(mpc.pending(), DataChange::ConstraintMatrices | DataChange::Limits);
 
-  EXPECT_TRUE(expectEigenNear(mpc.getGeneralConstraintStateMatrix(), E, 0.0));
+  EXPECT_TRUE(expectEigenNear(mpc.getGeneralConstraintStateMatrix(), Hx, 0.0));
   EXPECT_TRUE(
-      expectEigenNear(mpc.getGeneralConstraintInputMatrix(), 2 * F, 0.0));
+      expectEigenNear(mpc.getGeneralConstraintInputMatrix(), 2 * Hu, 0.0));
   EXPECT_TRUE(expectEigenNear(mpc.getGeneralConstraintMin(), lo, 0.0));
   EXPECT_TRUE(expectEigenNear(mpc.getGeneralConstraintMax(), hi, 0.0));
-  EXPECT_TRUE(expectEigenNear(mpc.getTerminalConstraintMatrix(), 2 * E, 0.0));
+  EXPECT_TRUE(expectEigenNear(mpc.getTerminalConstraintMatrix(), 2 * Hx, 0.0));
   EXPECT_TRUE(expectEigenNear(mpc.getTerminalConstraintMin(), lo, 0.0));
   EXPECT_TRUE(expectEigenNear(mpc.getTerminalConstraintMax(), hi, 0.0));
 }
@@ -416,8 +416,8 @@ TEST(GeneralConstraintsTester, givenInvalidArguments_Throws)
 
   // disabled
   ampc::CondensedMPC plain{2, 1, param};
-  const RowVector2d E{1.0, 0.0};
-  const MatrixXd F{MatrixXd::Zero(1, 1)};
+  const RowVector2d Hx{1.0, 0.0};
+  const MatrixXd Hu{MatrixXd::Zero(1, 1)};
   const VectorXd lo{VectorXd::Constant(1, -1.0)};
   const VectorXd hi{VectorXd::Constant(1, 1.0)};
   auto expectNotEnabled = [](auto&& call) {
@@ -429,8 +429,8 @@ TEST(GeneralConstraintsTester, givenInvalidArguments_Throws)
           << e.what();
     }
   };
-  expectNotEnabled([&] { plain.setGeneralConstraints(E, F, lo, hi); });
-  expectNotEnabled([&] { plain.setTerminalConstraints(E, lo, hi); });
+  expectNotEnabled([&] { plain.setGeneralConstraints(Hx, Hu, lo, hi); });
+  expectNotEnabled([&] { plain.setTerminalConstraints(Hx, lo, hi); });
   expectNotEnabled([&] { (void)plain.getGeneralConstraintStateMatrix(); });
   expectNotEnabled([&] { (void)plain.getGeneralConstraintInputMatrix(); });
   expectNotEnabled([&] { (void)plain.getGeneralConstraintMin(); });
@@ -441,28 +441,29 @@ TEST(GeneralConstraintsTester, givenInvalidArguments_Throws)
 
   // sizes and bound order
   ampc::SparseMPC mpc{2, 1, param, general_and_terminal};
-  EXPECT_THROW(mpc.setGeneralConstraints(Matrix2d::Identity(), F, lo, hi),
+  EXPECT_THROW(mpc.setGeneralConstraints(Matrix2d::Identity(), Hu, lo, hi),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setGeneralConstraints(E, MatrixXd::Zero(1, 2), lo, hi),
+  EXPECT_THROW(mpc.setGeneralConstraints(Hx, MatrixXd::Zero(1, 2), lo, hi),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setGeneralConstraints(E, F, Vector2d::Zero(), hi),
+  EXPECT_THROW(mpc.setGeneralConstraints(Hx, Hu, Vector2d::Zero(), hi),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setGeneralConstraints(E, F, lo, Vector2d::Zero()),
+  EXPECT_THROW(mpc.setGeneralConstraints(Hx, Hu, lo, Vector2d::Zero()),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setGeneralConstraints(E, F, hi, lo), std::invalid_argument);
+  EXPECT_THROW(mpc.setGeneralConstraints(Hx, Hu, hi, lo),
+               std::invalid_argument);
   EXPECT_THROW(mpc.setTerminalConstraints(RowVector3d::Zero(), lo, hi),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setTerminalConstraints(E, Vector2d::Zero(), hi),
+  EXPECT_THROW(mpc.setTerminalConstraints(Hx, Vector2d::Zero(), hi),
                std::invalid_argument);
-  EXPECT_THROW(mpc.setTerminalConstraints(E, hi, lo), std::invalid_argument);
+  EXPECT_THROW(mpc.setTerminalConstraints(Hx, hi, lo), std::invalid_argument);
   // infinite bounds are allowed
-  mpc.setGeneralConstraints(E, F, VectorXd::Constant(1, -inf),
+  mpc.setGeneralConstraints(Hx, Hu, VectorXd::Constant(1, -inf),
                             VectorXd::Constant(1, inf));
 
   // each setter is required before initializeSolver()
   configure(mpc);
   EXPECT_THROW((void)mpc.initializeSolver(), std::logic_error);
-  mpc.setTerminalConstraints(E, lo, hi);
+  mpc.setTerminalConstraints(Hx, lo, hi);
   EXPECT_TRUE(mpc.initializeSolver());
 
   ampc::CondensedMPC no_general{2, 1, param, general_only};
@@ -485,15 +486,16 @@ TEST(GeneralConstraintsTester, givenConstraints_PrintsThem)
   EXPECT_NE(inline_os.str().find("num_general_constraints=1, "
                                  "num_terminal_constraints=1)"),
             std::string::npos);
-  EXPECT_NE(inline_os.str().find(", E=[[1, 2]], F=[[3]], g_min=[-4], "
-                                 "g_max=[5], Ef=[[6, 7]], gf_min=[-8], "
-                                 "gf_max=[9])"),
+  EXPECT_NE(inline_os.str().find(", Hx=[[1, 2]], Hu=[[3]], h_min=[-4], "
+                                 "h_max=[5], Hf=[[6, 7]], hf_min=[-8], "
+                                 "hf_max=[9])"),
             std::string::npos)
       << inline_os.str();
-  EXPECT_NE(multiline_os.str().find("\n  E = [[1, 2]]\n  F = [[3]]\n  g_min = "
-                                    "[-4]\n  g_max = [5]\n  Ef = [[6, 7]]\n  "
-                                    "gf_min = [-8]\n  gf_max = [9]"),
-            std::string::npos)
+  EXPECT_NE(
+      multiline_os.str().find("\n  Hx = [[1, 2]]\n  Hu = [[3]]\n  h_min = "
+                              "[-4]\n  h_max = [5]\n  Hf = [[6, 7]]\n  "
+                              "hf_min = [-8]\n  hf_max = [9]"),
+      std::string::npos)
       << multiline_os.str();
 }
 

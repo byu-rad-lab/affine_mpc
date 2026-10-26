@@ -768,17 +768,17 @@ $$
 
 ## Selected and Soft State Limits
 
-With `bounded_states` listing $n_b$ of the $n$ states, let $E \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
-The state saturation rows become $(I_T \otimes E)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes E)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
+With `bounded_states` listing $n_b$ of the $n$ states, let $H_x \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
+The state saturation rows become $(I_T \otimes H_x)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes H_x)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
 In the condensed formulation these are the selected rows of $S$, so no product is needed.
 
 Soft limits add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
 A row can not hold one slack on both of its sides, so each limit becomes its own one-sided row:
 
 $$
-(I_T \otimes E)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} \leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}},
+(I_T \otimes H_x)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} \leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}},
 \qquad
-(I_T \otimes E)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} \geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}},
+(I_T \otimes H_x)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} \geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}},
 \qquad
 \mathbf{s} \geq \mathbf{0},
 $$
@@ -818,22 +818,22 @@ The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ 
 The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
 
 $$
-\mathbf{g}_{\min} - E \mathbf{x}_0 \leq F \mathbf{u}_0 \leq \mathbf{g}_{\max} - E \mathbf{x}_0,
+\mathbf{h}_{\min} - H_x \mathbf{x}_0 \leq H_u \mathbf{u}_0 \leq \mathbf{h}_{\max} - H_x \mathbf{x}_0,
 \qquad
-\mathbf{g}_{\min} \leq E \mathbf{x}_k + F \mathbf{u}_k \leq \mathbf{g}_{\max} \quad k = 1, \dots, T-1.
+\mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max} \quad k = 1, \dots, T-1.
 $$
 
-With $\mathbf{u} = \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$, the input part of all $n_g T$ rows is $(I_T \otimes F)\, \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$: row block $k$ holds $F$ times the basis weights of $\mathbf{u}_k$ on the control points of its band.
-The state part of the rows for $k \geq 1$ is $E$ applied to $\mathbf{x}_1, \dots, \mathbf{x}_{T-1}$, which each formulation writes as it writes state rows:
+With $\mathbf{u} = \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$, the input part of all $n_h T$ rows is $(I_T \otimes H_u)\, \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$: row block $k$ holds $H_u$ times the basis weights of $\mathbf{u}_k$ on the control points of its band.
+The state part of the rows for $k \geq 1$ is $H_x$ applied to $\mathbf{x}_1, \dots, \mathbf{x}_{T-1}$, which each formulation writes as it writes state rows:
 
-- Sparse: $E$ on the columns of $\mathbf{x}_k$ in $\mathbf{z}_{\mathrm{s}}$, with bounds $\mathbf{g}_{\min}$ and $\mathbf{g}_{\max}$.
-- Condensed: $E S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\mathbf{x}_k$, with bounds $\mathbf{g}_{\min} - E \mathbf{v}_k$ and $\mathbf{g}_{\max} - E \mathbf{v}_k$.
-  Row $i$ of $E S_k$ is a sum over the nonzero entries of row $i$ of $E$, so a sparse $E$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
+- Sparse: $H_x$ on the columns of $\mathbf{x}_k$ in $\mathbf{z}_{\mathrm{s}}$, with bounds $\mathbf{h}_{\min}$ and $\mathbf{h}_{\max}$.
+- Condensed: $H_x S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\mathbf{x}_k$, with bounds $\mathbf{h}_{\min} - H_x \mathbf{v}_k$ and $\mathbf{h}_{\max} - H_x \mathbf{v}_k$.
+  Row $i$ of $H_x S_k$ is a sum over the nonzero entries of row $i$ of $H_x$, so a sparse $H_x$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
 
-The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $E_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $E_{\mathrm{f}} S_T$ with bounds shifted by $-E_{\mathrm{f}} \mathbf{v}_T$ (condensed).
-State limits on selected states are the special case $F = 0$ with $E$ holding rows of $I_n$.
+The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $H_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $H_{\mathrm{f}} S_T$ with bounds shifted by $-H_{\mathrm{f}} \mathbf{v}_T$ (condensed).
+State limits on selected states are the special case $H_u = 0$ with $H_x$ holding rows of $I_n$.
 
-The general rows add $n_g T$ rows and the terminal rows $n_{g,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
+The general rows add $n_h T$ rows and the terminal rows $n_{h,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
 Their bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), so they are updated at every solve.
 
 ## Implementation Mapping

@@ -226,9 +226,9 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     if opts.soft_state_bounds:
         mpc.setStateBoundPenalties(l1, l2)  # one entry per bounded state
     if opts.num_general_constraints > 0:
-        mpc.setGeneralConstraints(E, F, g_min, g_max)  # g_min <= E x_k + F u_k <= g_max
+        mpc.setGeneralConstraints(Hx, Hu, h_min, h_max)  # h_min <= Hx x_k + Hu u_k <= h_max
     if opts.num_terminal_constraints > 0:
-        mpc.setTerminalConstraints(Ef, gf_min, gf_max)  # gf_min <= Ef x_T <= gf_max
+        mpc.setTerminalConstraints(Hf, hf_min, hf_max)  # hf_min <= Hf x_T <= hf_max
     ```
 
 === "C++"
@@ -248,17 +248,17 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
       mpc.setStateBoundPenalties(l1, l2); // one entry per bounded state
     }
     if (opts.num_general_constraints > 0) {
-      // g_min <= E x_k + F u_k <= g_max
-      mpc.setGeneralConstraints(E, F, g_min, g_max);
+      // h_min <= Hx x_k + Hu u_k <= h_max
+      mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
     }
     if (opts.num_terminal_constraints > 0) {
-      mpc.setTerminalConstraints(Ef, gf_min, gf_max); // gf_min <= Ef x_T <= gf_max
+      mpc.setTerminalConstraints(Hf, hf_min, hf_max); // hf_min <= Hf x_T <= hf_max
     }
     ```
 
 To limit only some states, list them in the options, e.g. `bounded_states=[3, 4]` in Python or `opts.bounded_states = {3, 4};` in C++ (see [State Saturation](concepts/problem-formulation.md#state-saturation-constraint)).
 
-For linear constraints on combinations of states and inputs, set the number of rows in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $E$ ($2 \times n$) and $F$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
+For linear constraints on combinations of states and inputs, set the number of rows in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
 
 #### Set weights
 

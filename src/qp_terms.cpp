@@ -50,9 +50,9 @@ void InputCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
 
 InputRateCost::InputRateCost(const VectorParameterization& input_param) :
     input_param_{input_param},
-    H_{MatrixXd::Zero(input_param.numCoefficients(),
-                      input_param.numCoefficients())},
-    g_{VectorXd::Zero(input_param.numCoefficients())}
+    P_c_{MatrixXd::Zero(input_param.numCoefficients(),
+                        input_param.numCoefficients())},
+    q_c_{VectorXd::Zero(input_param.numCoefficients())}
 {
   // Construction only: the dense basis Phi (one row per sample), the
   // differences D Phi, and G = (D Phi)^T (D Phi)
@@ -77,12 +77,12 @@ InputRateCost::InputRateCost(const VectorParameterization& input_param) :
 
 void InputRateCost::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
 {
-  // G times each channel's weight (H_ stays zero outside these entries)
+  // G times each channel's weight (P_c_ stays zero outside these entries)
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
     for (const GEntry& e : G_)
-      H_(input_param_.coefficientIndex(ch, e.i),
-         input_param_.coefficientIndex(ch, e.j)) = e.value * d.R_rate(ch);
-  f.addControlMatrix(H_);
+      P_c_(input_param_.coefficientIndex(ch, e.i),
+           input_param_.coefficientIndex(ch, e.j)) = e.value * d.R_rate(ch);
+  f.addControlMatrix(P_c_);
 }
 
 void InputRateCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
@@ -90,9 +90,9 @@ void InputRateCost::updateVector(const MPCData& d, Formulation& f, QPRef&)
   // the u_0 - u_prev difference: -Phi_0^T R_rate u_prev
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
     for (const Phi0Entry& e : phi0_)
-      g_(input_param_.coefficientIndex(ch, e.i)) =
+      q_c_(input_param_.coefficientIndex(ch, e.i)) =
           -e.value * d.R_rate(ch) * d.u_prev(ch);
-  f.addControlLinear(g_);
+  f.addControlLinear(q_c_);
 }
 
 void InputRateCost::writeCostPlaceholders(Formulation& f)
@@ -101,9 +101,9 @@ void InputRateCost::writeCostPlaceholders(Formulation& f)
   // so its entries are in the pattern even where a weight is zero now
   for (int ch{0}; ch < input_param_.inputDim(); ++ch)
     for (const GEntry& e : G_)
-      H_(input_param_.coefficientIndex(ch, e.i),
-         input_param_.coefficientIndex(ch, e.j)) = e.value;
-  f.addControlCostPlaceholders(H_);
+      P_c_(input_param_.coefficientIndex(ch, e.i),
+           input_param_.coefficientIndex(ch, e.j)) = e.value;
+  f.addControlCostPlaceholders(P_c_);
 }
 
 // ---- InputBounds ------------------------------------------------------------
@@ -261,8 +261,8 @@ GeneralConstraints::GeneralConstraints(
     input_param_{input_param},
     p_{num_constraints},
     T_{input_param.parameterization().horizon_steps},
-    E_{StateRowMap::general(num_constraints, state_dim)},
-    Ex0_{num_constraints}
+    Hx_{StateRowMap::general(num_constraints, state_dim)},
+    Hx0_{num_constraints}
 {}
 
 void GeneralConstraints::declare(QPLayout& layout)
@@ -280,7 +280,7 @@ void GeneralConstraints::addInputPart(const MPCData& d,
   const int m{input_param_.inputDim()};
   for (int i{0}; i < param.band_width; ++i) {
     const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
-    qp.A.block(row, col, p_, m) += param.band_weights(i, k) * d.F;
+    qp.A.block(row, col, p_, m) += param.band_weights(i, k) * d.Hu;
   }
 }
 
@@ -288,13 +288,13 @@ void GeneralConstraints::updateMatrix(const MPCData& d,
                                       Formulation& f,
                                       QPRef& qp)
 {
-  E_.assign(d.E);
-  // k = 0: F u_0 only (x_0 is not a QP variable in any formulation)
+  Hx_.assign(d.Hx);
+  // k = 0: Hu u_0 only (x_0 is not a QP variable in any formulation)
   qp.A.block(rows_.offset, 0, p_, input_param_.numCoefficients()).setZero();
   addInputPart(d, qp, 0, rows_.offset);
-  // k >= 1: the formulation writes E x_k (clearing the control point columns),
-  // then F u_k is added
-  f.setStateRows(state_rows_, E_, 1, T_ - 1);
+  // k >= 1: the formulation writes Hx x_k (clearing the control point columns),
+  // then Hu u_k is added
+  f.setStateRows(state_rows_, Hx_, 1, T_ - 1);
   for (int k{1}; k < T_; ++k)
     addInputPart(d, qp, k, rows_.offset + k * p_);
 }
@@ -303,24 +303,24 @@ void GeneralConstraints::updateVector(const MPCData& d,
                                       Formulation& f,
                                       QPRef& qp)
 {
-  // k = 0: g - E x_0
-  Ex0_.noalias() = d.E * d.x0;
-  qp.l.segment(rows_.offset, p_) = d.g_min - Ex0_;
-  qp.u.segment(rows_.offset, p_) = d.g_max - Ex0_;
-  f.setStateBounds(state_rows_, E_, 1, T_ - 1, d.g_min, d.g_max);
+  // k = 0: h - Hx x_0
+  Hx0_.noalias() = d.Hx * d.x0;
+  qp.l.segment(rows_.offset, p_) = d.h_min - Hx0_;
+  qp.u.segment(rows_.offset, p_) = d.h_max - Hx0_;
+  f.setStateBounds(state_rows_, Hx_, 1, T_ - 1, d.h_min, d.h_max);
 }
 
 // ---- TerminalConstraints ----------------------------------------------------
 
 void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
 {
-  Ef_.assign(d.Ef);
-  f.setStateRows(rows_, Ef_, T_, 1);
+  Hf_.assign(d.Hf);
+  f.setStateRows(rows_, Hf_, T_, 1);
 }
 
 void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QPRef&)
 {
-  f.setStateBounds(rows_, Ef_, T_, 1, d.gf_min, d.gf_max);
+  f.setStateBounds(rows_, Hf_, T_, 1, d.hf_min, d.hf_max);
 }
 
 // ---- SoftStatePenalty -------------------------------------------------------

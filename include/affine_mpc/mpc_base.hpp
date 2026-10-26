@@ -439,60 +439,60 @@ public:
 
   /**
    * @brief Set the general linear constraints
-   *   g_min <= E x_k + F u_k <= g_max, applied at every step k = 0, ..., T-1.
+   *   h_min <= Hx x_k + Hu u_k <= h_max, applied at every step k = 0, ..., T-1.
    *
    *   This function can only be called if `num_general_constraints` (p) is
    *   positive. Must be called prior to `initializeSolver()`, but can also be
    *   called after if the constraints change between solves. x_0 is the
    *   measured state passed to solve(), so the k = 0 rows constrain u_0 given
-   *   x_0; a row without an input part (a zero row of F) only checks x_0 at
+   *   x_0; a row without an input part (a zero row of Hu) only checks x_0 at
    *   k = 0, and the problem is infeasible if x_0 violates it. The predicted
    *   states x_1, ..., x_{T-1} are paired with the inputs u_1, ..., u_{T-1};
    *   constrain the final state x_T with setTerminalConstraints(). Pass `-inf`
    *   or `inf` for a side without a bound.
    *
-   *   Changing E or F rebuilds QP matrices and makes OSQP refactor (like a
-   *   model change), while changing only the bounds updates QP vectors: E and
-   *   F count as changed only when a value differs from the stored one. As
-   *   with the model, an entry of E or F that may become nonzero later must
+   *   Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a
+   *   model change), while changing only the bounds updates QP vectors: Hx and
+   *   Hu count as changed only when a value differs from the stored one. As
+   *   with the model, an entry of Hx or Hu that may become nonzero later must
    *   be nonzero when initializeSolver() is called, since that fixes the
    *   solver's sparsity pattern.
-   * @param E State matrix (p x state_dim).
-   * @param F Input matrix (p x input_dim).
-   * @param g_min Lower bounds (size p).
-   * @param g_max Upper bounds (size p).
+   * @param Hx State matrix (p x state_dim).
+   * @param Hu Input matrix (p x input_dim).
+   * @param h_min Lower bounds (size p).
+   * @param h_max Upper bounds (size p).
    * @throws std::logic_error if `num_general_constraints` is zero.
-   * @throws std::invalid_argument if a shape is wrong or g_min > g_max.
+   * @throws std::invalid_argument if a shape is wrong or h_min > h_max.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
-  void setGeneralConstraints(const Eigen::Ref<const Eigen::MatrixXd>& E,
-                             const Eigen::Ref<const Eigen::MatrixXd>& F,
-                             const Eigen::Ref<const Eigen::VectorXd>& g_min,
-                             const Eigen::Ref<const Eigen::VectorXd>& g_max);
+  void setGeneralConstraints(const Eigen::Ref<const Eigen::MatrixXd>& Hx,
+                             const Eigen::Ref<const Eigen::MatrixXd>& Hu,
+                             const Eigen::Ref<const Eigen::VectorXd>& h_min,
+                             const Eigen::Ref<const Eigen::VectorXd>& h_max);
 
   /**
-   * @brief Set the terminal constraints gf_min <= Ef x_T <= gf_max on the
+   * @brief Set the terminal constraints hf_min <= Hf x_T <= hf_max on the
    *   final predicted state.
    *
    *   This function can only be called if `num_terminal_constraints` (p_T) is
    *   positive. Must be called prior to `initializeSolver()`, but can also be
    *   called after if the constraints change between solves. Pass `-inf` or
    *   `inf` for a side without a bound. As with setGeneralConstraints(),
-   *   changing Ef rebuilds QP matrices and makes OSQP refactor, changing only
-   *   the bounds updates QP vectors, and an entry of Ef that may become
+   *   changing Hf rebuilds QP matrices and makes OSQP refactor, changing only
+   *   the bounds updates QP vectors, and an entry of Hf that may become
    *   nonzero later must be nonzero when initializeSolver() is called.
-   * @param Ef State matrix (p_T x state_dim).
-   * @param gf_min Lower bounds (size p_T).
-   * @param gf_max Upper bounds (size p_T).
+   * @param Hf State matrix (p_T x state_dim).
+   * @param hf_min Lower bounds (size p_T).
+   * @param hf_max Upper bounds (size p_T).
    * @throws std::logic_error if `num_terminal_constraints` is zero.
-   * @throws std::invalid_argument if a shape is wrong or gf_min > gf_max.
+   * @throws std::invalid_argument if a shape is wrong or hf_min > hf_max.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
-  void setTerminalConstraints(const Eigen::Ref<const Eigen::MatrixXd>& Ef,
-                              const Eigen::Ref<const Eigen::VectorXd>& gf_min,
-                              const Eigen::Ref<const Eigen::VectorXd>& gf_max);
+  void setTerminalConstraints(const Eigen::Ref<const Eigen::MatrixXd>& Hf,
+                              const Eigen::Ref<const Eigen::VectorXd>& hf_min,
+                              const Eigen::Ref<const Eigen::VectorXd>& hf_max);
 
   /**
    * @brief Set slew-rate constraint limits for control points. Control points
@@ -627,14 +627,14 @@ public:
   const Eigen::VectorXd& getStateBoundL2Penalties() const;
 
   /**
-   * @brief Get the state matrix E of the general constraints (zero until
+   * @brief Get the state matrix Hx of the general constraints (zero until
    *   setGeneralConstraints()).
    * @throws std::logic_error if `num_general_constraints` is zero.
    */
   const Eigen::MatrixXd& getGeneralConstraintStateMatrix() const;
 
   /**
-   * @brief Get the input matrix F of the general constraints (zero until
+   * @brief Get the input matrix Hu of the general constraints (zero until
    *   setGeneralConstraints()).
    * @throws std::logic_error if `num_general_constraints` is zero.
    */
@@ -655,7 +655,7 @@ public:
   const Eigen::VectorXd& getGeneralConstraintMax() const;
 
   /**
-   * @brief Get the state matrix Ef of the terminal constraints (zero until
+   * @brief Get the state matrix Hf of the terminal constraints (zero until
    *   setTerminalConstraints()).
    * @throws std::logic_error if `num_terminal_constraints` is zero.
    */

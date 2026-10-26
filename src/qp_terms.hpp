@@ -127,8 +127,8 @@ private:
   const VectorParameterization& input_param_;
   std::vector<GEntry> G_;
   std::vector<Phi0Entry> phi0_;
-  Eigen::MatrixXd H_; // G times the weights, on all coefficients
-  Eigen::VectorXd g_; // the linear part, on all coefficients
+  Eigen::MatrixXd P_c_; // G times the weights, on all coefficients
+  Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 
 /// u_min <= input <= u_max, on the control points or, with
@@ -250,13 +250,13 @@ private:
   Eigen::VectorXd minus_inf_, plus_inf_; // the open sides of the soft rows
 };
 
-/// g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1, p rows per
+/// h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1, p rows per
 /// step (`num_general_constraints`).
 ///
 /// The QP's predicted states are x_1, ..., x_T, and x_0 is the measured state:
-/// the k = 0 rows are F u_0 with E x_0 moved into the bounds (so the bounds
+/// the k = 0 rows are Hu u_0 with Hx x_0 moved into the bounds (so the bounds
 /// depend on X0 in every formulation), and the rows for k >= 1 are the
-/// formulation's state rows E x_k plus F u_k on the control points.
+/// formulation's state rows Hx x_k plus Hu u_k on the control points.
 class GeneralConstraints final : public QPTerm
 {
 public:
@@ -278,26 +278,26 @@ public:
   void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
 
 private:
-  // add F u_k (F times the basis weights of u_k) to the p rows from `row`
+  // add Hu u_k (Hu times the basis weights of u_k) to the p rows from `row`
   void addInputPart(const MPCData& d, QPRef& qp, int k, int row) const;
 
   const VectorParameterization& input_param_;
   const int p_, T_;
-  StateRowMap E_;       // the nonzero entries of E (refreshed with the matrix)
+  StateRowMap Hx_;      // the nonzero entries of Hx (refreshed with the matrix)
   RowBlock state_rows_; // the rows for k >= 1
-  Eigen::VectorXd Ex0_; // E x_0
+  Eigen::VectorXd Hx0_; // Hx x_0
 };
 
-/// gf_min <= Ef x_T <= gf_max (`num_terminal_constraints` rows).
+/// hf_min <= Hf x_T <= hf_max (`num_terminal_constraints` rows).
 class TerminalConstraints final : public QPTerm
 {
 public:
   TerminalConstraints(int num_constraints, int state_dim, int horizon_steps) :
-      T_{horizon_steps}, Ef_{StateRowMap::general(num_constraints, state_dim)}
+      T_{horizon_steps}, Hf_{StateRowMap::general(num_constraints, state_dim)}
   {}
   void declare(QPLayout& layout) override
   {
-    rows_ = layout.addRows(Ef_.rows());
+    rows_ = layout.addRows(Hf_.rows());
   }
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
@@ -314,7 +314,7 @@ public:
 
 private:
   const int T_;
-  StateRowMap Ef_; // the nonzero entries of Ef (refreshed with the matrix)
+  StateRowMap Hf_; // the nonzero entries of Hf (refreshed with the matrix)
 };
 
 /// l1^T s + s^T diag(l2) s on the state bound slacks s (`soft_state_bounds`),

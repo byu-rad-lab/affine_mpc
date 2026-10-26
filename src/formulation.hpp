@@ -38,8 +38,8 @@ struct VarBlock
 };
 
 /**
- * A matrix E (p x n) applied to a state in constraint rows, E x_k. It is
- * stored by its nonzero entries in row order, so the rows cost O(nnz(E)) per
+ * A matrix H (p x n) applied to a state in constraint rows, H x_k. It is
+ * stored by its nonzero entries in row order, so the rows cost O(nnz(H)) per
  * step: a selection of states (rows of the identity, one entry per row) and a
  * general matrix share the same rows.
  */
@@ -56,11 +56,11 @@ public:
   /// Room for a general p x n matrix, set with assign().
   static StateRowMap general(int rows, int state_dim);
 
-  /// Store the nonzero entries of E (p x n), without allocating.
-  void assign(const Eigen::Ref<const Eigen::MatrixXd>& E);
+  /// Store the nonzero entries of H (p x n), without allocating.
+  void assign(const Eigen::Ref<const Eigen::MatrixXd>& H);
 
   int rows() const noexcept { return rows_; }
-  /// Whether E is the identity (a selection of every state), which the
+  /// Whether H is the identity (a selection of every state), which the
   /// formulations write as one block.
   bool isIdentity() const noexcept { return identity_; }
   const std::vector<Entry>& entries() const noexcept { return entries_; }
@@ -222,26 +222,28 @@ public:
   virtual void
   addControlQuadraticVector(const Eigen::Ref<const Eigen::VectorXd>& R,
                             const Eigen::Ref<const Eigen::VectorXd>& c_ref) = 0;
-  /// 1/2 c^T H c for a general (symmetric) H on the control points.
-  virtual void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) = 0;
-  /// g^T c on the control points.
-  virtual void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) = 0;
+  /// 1/2 c^T P_c c for a general (symmetric) P_c on the control points.
+  virtual void
+  addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) = 0;
+  /// q_c^T c on the control points.
+  virtual void
+  addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) = 0;
 
   // ---- constraint rows -----------------------------------------------------
-  /// Rows E x_k for the predicted states x_k, k = first_step, ...,
-  /// first_step + num_steps - 1 (1 <= k <= T), E.rows() rows per step in step
+  /// Rows H x_k for the predicted states x_k, k = first_step, ...,
+  /// first_step + num_steps - 1 (1 <= k <= T), H.rows() rows per step in step
   /// order from block.offset. Afterwards the formulation's columns of these
-  /// rows hold exactly E x_k (earlier values there, e.g. a term's entries on
+  /// rows hold exactly H x_k (earlier values there, e.g. a term's entries on
   /// the control points, are cleared) and no other column is touched, so a
   /// term can then add entries on the control points or on its own variables.
   virtual void setStateRows(const RowBlock& block,
-                            const StateRowMap& E,
+                            const StateRowMap& H,
                             int first_step,
                             int num_steps) = 0;
-  /// Bounds lo <= E x_k <= hi (lo and hi have size E.rows()) for the rows of
+  /// Bounds lo <= H x_k <= hi (lo and hi have size H.rows()) for the rows of
   /// setStateRows() with the same arguments.
   virtual void setStateBounds(const RowBlock& block,
-                              const StateRowMap& E,
+                              const StateRowMap& H,
                               int first_step,
                               int num_steps,
                               const Eigen::Ref<const Eigen::VectorXd>& lo,
@@ -327,15 +329,15 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
-  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
-  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
+  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
+  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
   void setStateRows(const RowBlock& block,
-                    const StateRowMap& E,
+                    const StateRowMap& H,
                     int first_step,
                     int num_steps) override;
   void setStateBounds(const RowBlock& block,
-                      const StateRowMap& E,
+                      const StateRowMap& H,
                       int first_step,
                       int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,
@@ -411,15 +413,15 @@ public:
   void addControlQuadraticVector(
       const Eigen::Ref<const Eigen::VectorXd>& R,
       const Eigen::Ref<const Eigen::VectorXd>& c_ref) override;
-  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& H) override;
-  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
+  void addControlMatrix(const Eigen::Ref<const Eigen::MatrixXd>& P_c) override;
+  void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& q_c) override;
 
   void setStateRows(const RowBlock& block,
-                    const StateRowMap& E,
+                    const StateRowMap& H,
                     int first_step,
                     int num_steps) override;
   void setStateBounds(const RowBlock& block,
-                      const StateRowMap& E,
+                      const StateRowMap& H,
                       int first_step,
                       int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,

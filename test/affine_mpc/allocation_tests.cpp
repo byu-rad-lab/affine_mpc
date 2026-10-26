@@ -127,14 +127,14 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
                                VectorXd::Constant(k, 100.0));
   }
   // x + 0.1 v + 0.5 u <= 5 at every step, x + v <= 5 at the end
-  const RowVector2d E{1.0, 0.1}, Ef{1.0, 1.0};
-  const VectorXd F{VectorXd::Constant(1, 0.5)};
-  const VectorXd g_min{VectorXd::Constant(1, -5.0)};
-  const VectorXd g_max{VectorXd::Constant(1, 5.0)};
+  const RowVector2d Hx{1.0, 0.1}, Hf{1.0, 1.0};
+  const VectorXd Hu{VectorXd::Constant(1, 0.5)};
+  const VectorXd h_min{VectorXd::Constant(1, -5.0)};
+  const VectorXd h_max{VectorXd::Constant(1, 5.0)};
   if (opts.num_general_constraints > 0)
-    mpc.setGeneralConstraints(E, F, g_min, g_max);
+    mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
   if (opts.num_terminal_constraints > 0)
-    mpc.setTerminalConstraints(Ef, g_min, g_max);
+    mpc.setTerminalConstraints(Hf, h_min, h_max);
   ASSERT_TRUE(mpc.initializeSolver());
 
   const Vector2d x0{0.5, -0.2};
@@ -179,12 +179,12 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "limits";
   if (opts.num_general_constraints > 0) {
-    mpc.setGeneralConstraints(1.1 * E, F, g_min, g_max);
+    mpc.setGeneralConstraints(1.1 * Hx, Hu, h_min, h_max);
     EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
         << "constraint matrices";
   }
   if (opts.num_terminal_constraints > 0) {
-    mpc.setTerminalConstraints(Ef, 2.0 * g_min, 2.0 * g_max);
+    mpc.setTerminalConstraints(Hf, 2.0 * h_min, 2.0 * h_max);
     EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
         << "constraint limits";
   }

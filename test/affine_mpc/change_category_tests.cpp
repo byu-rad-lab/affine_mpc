@@ -141,13 +141,13 @@ void setPreviousInput(ampc::MPCBase& mpc, const Scales& s)
     mpc.setPreviousInput(VectorXd::Constant(1, 0.1 * s.u_prev));
 }
 
-// Every entry of E, F, and Ef nonzero (stays in the pattern)
+// Every entry of Hx, Hu, and Hf nonzero (stays in the pattern)
 void setConstraints(ampc::MPCBase& mpc, const Scales& s)
 {
   if (mpc.getOptions().num_general_constraints > 0) {
-    Matrix2d E;
-    E << 1.0, 0.5, -0.4, 0.8;
-    mpc.setGeneralConstraints(s.constraints * E,
+    Matrix2d Hx;
+    Hx << 1.0, 0.5, -0.4, 0.8;
+    mpc.setGeneralConstraints(s.constraints * Hx,
                               s.constraints * Vector2d{0.3, 0.6},
                               s.constraint_limits * Vector2d{-4.0, -5.0},
                               s.constraint_limits * Vector2d{6.0, 7.0});

@@ -41,10 +41,10 @@ namespace affine_mpc {
  * - bounded_states: Indices of the states with limits (requires
  *     saturate_states). Empty (the default) bounds every state.
  * - num_general_constraints: Number p of general linear constraints
- *     g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+ *     h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
  *     the measured state). Zero (the default) disables them.
  * - num_terminal_constraints: Number of terminal constraints
- *     gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
+ *     hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
  */
 struct Options
 {
@@ -80,12 +80,12 @@ struct Options
   /// that need it keeps the QP small.
   std::vector<int> bounded_states{};
 
-  /// Number of general linear constraints g_min <= E x_k + F u_k <= g_max per
+  /// Number of general linear constraints h_min <= Hx x_k + Hu u_k <= h_max per
   /// step (k = 0, ..., T-1, set with setGeneralConstraints()). Zero disables
   /// them; each one adds a row per horizon step.
   int num_general_constraints = 0;
 
-  /// Number of terminal constraints gf_min <= Ef x_T <= gf_max (set with
+  /// Number of terminal constraints hf_min <= Hf x_T <= hf_max (set with
   /// setTerminalConstraints()). Zero disables them.
   int num_terminal_constraints = 0;
 };

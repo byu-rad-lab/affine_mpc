@@ -69,15 +69,15 @@ StateRowMap StateRowMap::general(const int rows, const int state_dim)
   return map;
 }
 
-void StateRowMap::assign(const Ref<const MatrixXd>& E)
+void StateRowMap::assign(const Ref<const MatrixXd>& H)
 {
-  assert(E.rows() == rows_);
-  assert(static_cast<Index>(entries_.capacity()) >= E.size());
+  assert(H.rows() == rows_);
+  assert(static_cast<Index>(entries_.capacity()) >= H.size());
   entries_.clear();
   for (int i{0}; i < rows_; ++i)
-    for (int j{0}; j < E.cols(); ++j)
-      if (E(i, j) != 0.0)
-        entries_.push_back({i, j, E(i, j)});
+    for (int j{0}; j < H.cols(); ++j)
+      if (H(i, j) != 0.0)
+        entries_.push_back({i, j, H(i, j)});
 }
 
 // ---- CondensedFormulation ---------------------------------------------------
@@ -163,33 +163,33 @@ void CondensedFormulation::addControlQuadraticVector(
   ownQ().noalias() -= R.cwiseProduct(c_ref);
 }
 
-void CondensedFormulation::addControlMatrix(const Ref<const MatrixXd>& H)
+void CondensedFormulation::addControlMatrix(const Ref<const MatrixXd>& P_c)
 {
   startPartialWrite(P_, ownP());
-  ownP() += H;
+  ownP() += P_c;
 }
 
-void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& g)
+void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
 {
   startPartialWrite(q_, ownQ());
-  ownQ() += g;
+  ownQ() += q_c;
 }
 
 void CondensedFormulation::setStateRows(const RowBlock& block,
-                                        const StateRowMap& E,
+                                        const StateRowMap& H,
                                         const int first_step,
                                         const int num_steps)
 {
-  if (E.isIdentity()) {
+  if (H.isIdentity()) {
     // the rows of S itself
     qp_.A.block(block.offset, 0, num_steps * n_, nc_) =
         S_.middleRows((first_step - 1) * n_, num_steps * n_);
     return;
   }
-  // Row i of E S_k (S_k: the rows of S for x_k) as a sum over the nonzero
-  // entries of row i of E. A selection of states copies rows of S.
-  const int p{E.rows()};
-  const std::vector<StateRowMap::Entry>& entries{E.entries()};
+  // Row i of H S_k (S_k: the rows of S for x_k) as a sum over the nonzero
+  // entries of row i of H. A selection of states copies rows of S.
+  const int p{H.rows()};
+  const std::vector<StateRowMap::Entry>& entries{H.entries()};
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int t{(k - 1) * n_};
@@ -210,28 +210,28 @@ void CondensedFormulation::setStateRows(const RowBlock& block,
 }
 
 void CondensedFormulation::setStateBounds(const RowBlock& block,
-                                          const StateRowMap& E,
+                                          const StateRowMap& H,
                                           const int first_step,
                                           const int num_steps,
                                           const Ref<const VectorXd>& lo,
                                           const Ref<const VectorXd>& hi)
 {
-  // lo <= E (S_k c + v_k) <= hi becomes lo - E v_k <= E S_k c <= hi - E v_k
-  if (E.isIdentity()) {
+  // lo <= H (S_k c + v_k) <= hi becomes lo - H v_k <= H S_k c <= hi - H v_k
+  if (H.isIdentity()) {
     const int rows{num_steps * n_};
     const auto v{v_.segment((first_step - 1) * n_, rows)};
     qp_.l.segment(block.offset, rows) = lo.replicate(num_steps, 1) - v;
     qp_.u.segment(block.offset, rows) = hi.replicate(num_steps, 1) - v;
     return;
   }
-  const int p{E.rows()};
-  const std::vector<StateRowMap::Entry>& entries{E.entries()};
+  const int p{H.rows()};
+  const std::vector<StateRowMap::Entry>& entries{H.entries()};
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int t{(k - 1) * n_};
     auto e{entries.begin()};
     for (int i{0}; i < p; ++i) {
-      // (E v_k)_i, the first entry assigned (a selection copies v exactly)
+      // (H v_k)_i, the first entry assigned (a selection copies v exactly)
       double offset{0.0};
       if (e != entries.end() && e->row == i) {
         offset = e->value * v_(t + e->state);
@@ -397,43 +397,43 @@ void SparseFormulation::addControlQuadraticVector(
   assignOrAdd(q_ctrl_, qp_.q.head(nc_), -R.cwiseProduct(c_ref));
 }
 
-void SparseFormulation::addControlMatrix(const Ref<const MatrixXd>& H)
+void SparseFormulation::addControlMatrix(const Ref<const MatrixXd>& P_c)
 {
-  assignOrAdd(P_ctrl_, qp_.P.topLeftCorner(nc_, nc_), H);
+  assignOrAdd(P_ctrl_, qp_.P.topLeftCorner(nc_, nc_), P_c);
   P_ctrl_offdiag_ = true;
 }
 
-void SparseFormulation::addControlLinear(const Ref<const VectorXd>& g)
+void SparseFormulation::addControlLinear(const Ref<const VectorXd>& q_c)
 {
-  assignOrAdd(q_ctrl_, qp_.q.head(nc_), g);
+  assignOrAdd(q_ctrl_, qp_.q.head(nc_), q_c);
 }
 
 void SparseFormulation::setStateRows(const RowBlock& block,
-                                     const StateRowMap& E,
+                                     const StateRowMap& H,
                                      const int first_step,
                                      const int num_steps)
 {
-  // E on the columns of x_k; the control point columns and the rest of the
+  // H on the columns of x_k; the control point columns and the rest of the
   // x_k columns are cleared (the other state columns are never written)
-  const int p{E.rows()};
+  const int p{H.rows()};
   for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
        ++k, row += p) {
     const int col{nc_ + (k - 1) * n_};
     qp_.A.block(row, 0, p, nc_).setZero();
     qp_.A.block(row, col, p, n_).setZero();
-    for (const StateRowMap::Entry& e : E.entries())
+    for (const StateRowMap::Entry& e : H.entries())
       qp_.A(row + e.row, col + e.state) = e.value;
   }
 }
 
 void SparseFormulation::setStateBounds(const RowBlock& block,
-                                       const StateRowMap& E,
+                                       const StateRowMap& H,
                                        const int /*first_step*/,
                                        const int num_steps,
                                        const Ref<const VectorXd>& lo,
                                        const Ref<const VectorXd>& hi)
 {
-  const int rows{E.rows() * num_steps};
+  const int rows{H.rows() * num_steps};
   qp_.l.segment(block.offset, rows) = lo.replicate(num_steps, 1);
   qp_.u.segment(block.offset, rows) = hi.replicate(num_steps, 1);
 }

@@ -315,10 +315,12 @@ def test_general_and_terminal_constraints(cls):
     mpc.setReferenceState(np.array([1.0, 0.0]))
     mpc.setInputLimits(u_min=np.array([-3.0]), u_max=np.array([3.0]))
     # x_k + u_k <= 3 at every step, x_T <= 0.8 at the end
-    E, F = np.array([[1.0, 0.0]]), np.array([[1.0]])
-    mpc.setGeneralConstraints(E=E, F=F, g_min=np.array([-np.inf]), g_max=np.array([3.0]))
+    Hx, Hu = np.array([[1.0, 0.0]]), np.array([[1.0]])
+    mpc.setGeneralConstraints(
+        Hx=Hx, Hu=Hu, h_min=np.array([-np.inf]), h_max=np.array([3.0])
+    )
     mpc.setTerminalConstraints(
-        Ef=np.array([[1.0, 0.0]]), gf_min=np.array([-np.inf]), gf_max=np.array([0.8])
+        Hf=np.array([[1.0, 0.0]]), hf_min=np.array([-np.inf]), hf_max=np.array([0.8])
     )
     assert mpc.initializeSolver(settings)
     x0 = np.zeros(2)
@@ -330,16 +332,16 @@ def test_general_and_terminal_constraints(cls):
     assert g.max() <= 3.0 + 1e-7
     assert x[-1, 0] <= 0.8 + 1e-7
 
-    np.testing.assert_array_equal(mpc.getGeneralConstraintStateMatrix(), E)
-    np.testing.assert_array_equal(mpc.getGeneralConstraintInputMatrix(), F)
+    np.testing.assert_array_equal(mpc.getGeneralConstraintStateMatrix(), Hx)
+    np.testing.assert_array_equal(mpc.getGeneralConstraintInputMatrix(), Hu)
     np.testing.assert_array_equal(mpc.getGeneralConstraintMax(), [3.0])
     np.testing.assert_array_equal(mpc.getTerminalConstraintMax(), [0.8])
-    assert "E=[[1, 0]]" in repr(mpc)
+    assert "Hx=[[1, 0]]" in repr(mpc)
 
     with pytest.raises(ValueError, match="cannot be greater"):
-        mpc.setGeneralConstraints(E, F, np.array([1.0]), np.array([0.0]))
+        mpc.setGeneralConstraints(Hx, Hu, np.array([1.0]), np.array([0.0]))
     with pytest.raises(RuntimeError, match="not enabled"):
-        cls(2, 1, param).setGeneralConstraints(E, F, np.zeros(1), np.ones(1))
+        cls(2, 1, param).setGeneralConstraints(Hx, Hu, np.zeros(1), np.ones(1))
     with pytest.raises(RuntimeError, match="not enabled"):
         cls(2, 1, param).getTerminalConstraintMatrix()
     with pytest.raises(ValueError, match="non-negative"):

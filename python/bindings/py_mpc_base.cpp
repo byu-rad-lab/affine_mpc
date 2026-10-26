@@ -661,66 +661,66 @@ Raises:
            py::arg("l1"), py::arg("l2"));
   base.def("setGeneralConstraints", &ampc::MPCBase::setGeneralConstraints,
            R"doc(
-Set the general linear constraints g_min <= E x_k + F u_k <= g_max, applied at
+Set the general linear constraints h_min <= Hx x_k + Hu u_k <= h_max, applied at
 every step k = 0, ..., T-1.
 
 This function can only be called if `num_general_constraints` (p) is positive.
 Must be called prior to `initializeSolver()`, but can also be called after if
 the constraints change between solves. x_0 is the measured state passed to
 solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
-(a zero row of F) only checks x_0 at k = 0, and the problem is infeasible if x_0
+(a zero row of Hu) only checks x_0 at k = 0, and the problem is infeasible if x_0
 violates it. The predicted states x_1, ..., x_{T-1} are paired with the inputs
 u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
 Pass `-inf` or `inf` for a side without a bound.
 
-Changing E or F rebuilds QP matrices and makes OSQP refactor (like a model
-change), while changing only the bounds updates QP vectors: E and F count as
+Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a model
+change), while changing only the bounds updates QP vectors: Hx and Hu count as
 changed only when a value differs from the stored one. As with the model, an
-entry of E or F that may become nonzero later must be nonzero when
+entry of Hx or Hu that may become nonzero later must be nonzero when
 initializeSolver() is called, since that fixes the solver's sparsity pattern.
 
 Args:
-    E: State matrix (p x state_dim).
-    F: Input matrix (p x input_dim).
-    g_min: Lower bounds (size p).
-    g_max: Upper bounds (size p).
+    Hx: State matrix (p x state_dim).
+    Hu: Input matrix (p x input_dim).
+    h_min: Lower bounds (size p).
+    h_max: Upper bounds (size p).
 
 Raises:
     RuntimeError: If `num_general_constraints` is zero.
-    ValueError: If a shape is wrong or g_min > g_max.
+    ValueError: If a shape is wrong or h_min > h_max.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
            )doc",
-           py::arg("E"), py::arg("F"), py::arg("g_min"), py::arg("g_max"));
+           py::arg("Hx"), py::arg("Hu"), py::arg("h_min"), py::arg("h_max"));
   base.def("setTerminalConstraints", &ampc::MPCBase::setTerminalConstraints,
            R"doc(
-Set the terminal constraints gf_min <= Ef x_T <= gf_max on the final predicted
+Set the terminal constraints hf_min <= Hf x_T <= hf_max on the final predicted
 state.
 
 This function can only be called if `num_terminal_constraints` (p_T) is
 positive. Must be called prior to `initializeSolver()`, but can also be called
 after if the constraints change between solves. Pass `-inf` or `inf` for a side
-without a bound. As with setGeneralConstraints(), changing Ef rebuilds QP
+without a bound. As with setGeneralConstraints(), changing Hf rebuilds QP
 matrices and makes OSQP refactor, changing only the bounds updates QP vectors,
-and an entry of Ef that may become nonzero later must be nonzero when
+and an entry of Hf that may become nonzero later must be nonzero when
 initializeSolver() is called.
 
 Args:
-    Ef: State matrix (p_T x state_dim).
-    gf_min: Lower bounds (size p_T).
-    gf_max: Upper bounds (size p_T).
+    Hf: State matrix (p_T x state_dim).
+    hf_min: Lower bounds (size p_T).
+    hf_max: Upper bounds (size p_T).
 
 Raises:
     RuntimeError: If `num_terminal_constraints` is zero.
-    ValueError: If a shape is wrong or gf_min > gf_max.
+    ValueError: If a shape is wrong or hf_min > hf_max.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
            )doc",
-           py::arg("Ef"), py::arg("gf_min"), py::arg("gf_max"));
+           py::arg("Hf"), py::arg("hf_min"), py::arg("hf_max"));
   base.def("setSlewRate", &ampc::MPCBase::setSlewRate,
            R"doc(
 Set slew-rate constraint limits for control points. Control points can vary by
@@ -868,7 +868,7 @@ Raises:
   base.def("getGeneralConstraintStateMatrix",
            &ampc::MPCBase::getGeneralConstraintStateMatrix, copy,
            R"doc(
-Get the state matrix E of the general constraints (zero until
+Get the state matrix Hx of the general constraints (zero until
 setGeneralConstraints()).
 
 Raises:
@@ -877,7 +877,7 @@ Raises:
   base.def("getGeneralConstraintInputMatrix",
            &ampc::MPCBase::getGeneralConstraintInputMatrix, copy,
            R"doc(
-Get the input matrix F of the general constraints (zero until
+Get the input matrix Hu of the general constraints (zero until
 setGeneralConstraints()).
 
 Raises:
@@ -904,7 +904,7 @@ Raises:
   base.def("getTerminalConstraintMatrix",
            &ampc::MPCBase::getTerminalConstraintMatrix, copy,
            R"doc(
-Get the state matrix Ef of the terminal constraints (zero until
+Get the state matrix Hf of the terminal constraints (zero until
 setTerminalConstraints()).
 
 Raises:

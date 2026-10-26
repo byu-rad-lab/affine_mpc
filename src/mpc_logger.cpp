@@ -206,15 +206,15 @@ void MPCLogger::captureMPCSnapshot()
     return values;
   };
   if (mpc_->getOptions().num_general_constraints > 0) {
-    addMetadata("E", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
-    addMetadata("F", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
-    addMetadata("g_min", mpc_->getGeneralConstraintMin());
-    addMetadata("g_max", mpc_->getGeneralConstraintMax());
+    addMetadata("Hx", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
+    addMetadata("Hu", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
+    addMetadata("h_min", mpc_->getGeneralConstraintMin());
+    addMetadata("h_max", mpc_->getGeneralConstraintMax());
   }
   if (mpc_->getOptions().num_terminal_constraints > 0) {
-    addMetadata("Ef", rowMajor(mpc_->getTerminalConstraintMatrix()));
-    addMetadata("gf_min", mpc_->getTerminalConstraintMin());
-    addMetadata("gf_max", mpc_->getTerminalConstraintMax());
+    addMetadata("Hf", rowMajor(mpc_->getTerminalConstraintMatrix()));
+    addMetadata("hf_min", mpc_->getTerminalConstraintMin());
+    addMetadata("hf_max", mpc_->getTerminalConstraintMax());
   }
 }
 

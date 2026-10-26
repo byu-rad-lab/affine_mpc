@@ -42,10 +42,10 @@ Attributes:
     bounded_states: Indices of the states with limits (requires
         saturate_states). Empty (the default) bounds every state.
     num_general_constraints: Number p of general linear constraints
-        g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+        h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
         the measured state). Zero (the default) disables them.
     num_terminal_constraints: Number of terminal constraints
-        gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
+        hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
                           )doc");
 
   opt.def(
@@ -95,10 +95,10 @@ Args:
     bounded_states: Indices of the states with limits (requires
         saturate_states). Empty (the default) bounds every state.
     num_general_constraints: Number p of general linear constraints
-        g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+        h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
         the measured state). Zero (the default) disables them.
     num_terminal_constraints: Number of terminal constraints
-        gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
+        hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
       )doc",
       py::arg("use_input_cost") = false, py::arg("slew_initial_input") = false,
       py::arg("slew_control_points") = false,

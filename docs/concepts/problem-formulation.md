@@ -190,17 +190,17 @@ It can still be used for higher degree splines, but the result may not be as int
 ### General Linear Constraints
 
 $$
-\mathbf{g}_{\min} \leq E \mathbf{x}_k + F \mathbf{u}_k \leq \mathbf{g}_{\max} \quad k=0,\dots,T-1,
+\mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max} \quad k=0,\dots,T-1,
 \qquad
-\mathbf{g}_{\mathrm{f},\min} \leq E_{\mathrm{f}} \mathbf{x}_T \leq \mathbf{g}_{\mathrm{f},\max}
+\mathbf{h}_{\mathrm{f},\min} \leq H_{\mathrm{f}} \mathbf{x}_T \leq \mathbf{h}_{\mathrm{f},\max}
 $$
 
-Set `num_general_constraints` ($n_g$) to constrain linear combinations of the state and input at every step, with `setGeneralConstraints(E, F, g_min, g_max)`, and `num_terminal_constraints` ($n_{g,\mathrm{f}}$) to constrain the final predicted state, with `setTerminalConstraints(Ef, gf_min, gf_max)`.
+Set `num_general_constraints` ($n_h$) to constrain linear combinations of the state and input at every step, with `setGeneralConstraints(Hx, Hu, h_min, h_max)`, and `num_terminal_constraints` ($n_{h,\mathrm{f}}$) to constrain the final predicted state, with `setTerminalConstraints(Hf, hf_min, hf_max)`.
 This is the usual stage and terminal split: $\mathbf{x}_0$ is the measured state passed to `solve()`, so the $k = 0$ constraints limit $\mathbf{u}_0$ given $\mathbf{x}_0$, each predicted state $\mathbf{x}_k$ with $k \geq 1$ is paired with $\mathbf{u}_k$, and $\mathbf{x}_T$ (which has no input) is covered by the terminal constraints.
 Pass `-inf` or `inf` for a side without a bound.
-Rows of the identity in $E$ with $F = 0$ (plus the same terminal rows) give state limits, and $E = 0$, $F = I$ limits every sampled input.
+Rows of the identity in $H_x$ with $H_u = 0$ (plus the same terminal rows) give state limits, and $H_x = 0$, $H_u = I$ limits every sampled input.
 
-Changing $E$, $F$, or $E_{\mathrm{f}}$ rebuilds QP matrices and makes OSQP refactor, like a model change; changing only the bounds is cheap.
+Changing $H_x$, $H_u$, or $H_{\mathrm{f}}$ rebuilds QP matrices and makes OSQP refactor, like a model change; changing only the bounds is cheap.
 As with the model, an entry of these matrices that may become nonzero later must be nonzero when the solver is initialized (see [Runtime Updates](runtime-updates.md)).
 
 **When you may want to use it:**
@@ -211,7 +211,7 @@ As with the model, an entry of these matrices that may become nonzero later must
 
 !!! danger
 
-    A constraint row without an input part (a zero row of $F$) only checks the measured state at $k = 0$,
+    A constraint row without an input part (a zero row of $H_u$) only checks the measured state at $k = 0$,
     so the problem is infeasible whenever $\mathbf{x}_0$ violates it, as with hard state limits.
     OSQP can also need many iterations when more constraints are active than there are control points.
 
