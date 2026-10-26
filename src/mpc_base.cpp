@@ -58,6 +58,10 @@ const Options& validateOptions(const Options& opts, int state_dim)
           "increasing state indices in [0, state_dim).");
     previous = i;
   }
+  if (opts.num_general_constraints < 0 || opts.num_terminal_constraints < 0)
+    throw std::invalid_argument(
+        "[MPCBase::validateOptions] num_general_constraints and "
+        "num_terminal_constraints must be non-negative.");
   return opts;
 }
 
@@ -114,6 +118,8 @@ MPCBase::MPCBase(int state_dim,
     u_lims_set_{false},
     x_lims_set_{false},
     x_penalties_set_{false},
+    general_set_{false},
+    terminal_set_{false},
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
@@ -173,6 +179,14 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
     throw std::logic_error(
         "[MPCBase::initializeSolver] State bound penalties must be set before "
         "initializing solver (soft_state_bounds is enabled).");
+  if (opts_.num_general_constraints > 0 && !general_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] General constraints must be set before "
+        "initializing solver (num_general_constraints is positive).");
+  if (opts_.num_terminal_constraints > 0 && !terminal_set_)
+    throw std::logic_error(
+        "[MPCBase::initializeSolver] Terminal constraints must be set before "
+        "initializing solver (num_terminal_constraints is positive).");
 
   if (solver_initialized_)
     return true;
@@ -289,7 +303,8 @@ bool MPCBase::applyPendingChanges()
 
 bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
 {
-  qp_builder_->applyX0(data_, x0);
+  data_.x0 = x0;
+  qp_builder_->applyX0(data_);
   if (!solver_initialized_)
     return true;
   bool success{true};
@@ -566,6 +581,58 @@ void MPCBase::setStateBoundPenalties(const Ref<const VectorXd>& l1,
   pending_ |= DataChange::Weights;
 }
 
+void MPCBase::setGeneralConstraints(const Ref<const MatrixXd>& E,
+                                    const Ref<const MatrixXd>& F,
+                                    const Ref<const VectorXd>& g_min,
+                                    const Ref<const VectorXd>& g_max)
+{
+  if (opts_.num_general_constraints == 0)
+    throw std::logic_error("[MPCBase::setGeneralConstraints] General "
+                           "constraints are not enabled.");
+  const Index p{opts_.num_general_constraints};
+  validateShape(E, p, state_dim_, "setGeneralConstraints", "E");
+  validateShape(F, p, input_dim_, "setGeneralConstraints", "F");
+  validateSize(g_min.size(), p, "setGeneralConstraints", "g_min");
+  validateSize(g_max.size(), p, "setGeneralConstraints", "g_max");
+  if ((g_min.array() > g_max.array()).any())
+    throw std::invalid_argument("[MPCBase::setGeneralConstraints] g_min "
+                                "cannot be greater than g_max.");
+  // new matrices refactor, so only mark them when they changed
+  if (data_.E != E || data_.F != F) {
+    data_.E = E;
+    data_.F = F;
+    pending_ |= DataChange::ConstraintMatrices;
+  }
+  data_.g_min = g_min;
+  data_.g_max = g_max;
+  general_set_ = true;
+  pending_ |= DataChange::Limits;
+}
+
+void MPCBase::setTerminalConstraints(const Ref<const MatrixXd>& Ef,
+                                     const Ref<const VectorXd>& gf_min,
+                                     const Ref<const VectorXd>& gf_max)
+{
+  if (opts_.num_terminal_constraints == 0)
+    throw std::logic_error("[MPCBase::setTerminalConstraints] Terminal "
+                           "constraints are not enabled.");
+  const Index p{opts_.num_terminal_constraints};
+  validateShape(Ef, p, state_dim_, "setTerminalConstraints", "Ef");
+  validateSize(gf_min.size(), p, "setTerminalConstraints", "gf_min");
+  validateSize(gf_max.size(), p, "setTerminalConstraints", "gf_max");
+  if ((gf_min.array() > gf_max.array()).any())
+    throw std::invalid_argument("[MPCBase::setTerminalConstraints] gf_min "
+                                "cannot be greater than gf_max.");
+  if (data_.Ef != Ef) {
+    data_.Ef = Ef;
+    pending_ |= DataChange::ConstraintMatrices;
+  }
+  data_.gf_min = gf_min;
+  data_.gf_max = gf_max;
+  terminal_set_ = true;
+  pending_ |= DataChange::Limits;
+}
+
 void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
@@ -662,6 +729,62 @@ const VectorXd& MPCBase::getStateBoundL2Penalties() const
   return data_.x_soft_l2;
 }
 
+const MatrixXd& MPCBase::getGeneralConstraintStateMatrix() const
+{
+  if (opts_.num_general_constraints == 0)
+    throw std::logic_error("[MPCBase::getGeneralConstraintStateMatrix] "
+                           "General constraints are not enabled.");
+  return data_.E;
+}
+
+const MatrixXd& MPCBase::getGeneralConstraintInputMatrix() const
+{
+  if (opts_.num_general_constraints == 0)
+    throw std::logic_error("[MPCBase::getGeneralConstraintInputMatrix] "
+                           "General constraints are not enabled.");
+  return data_.F;
+}
+
+const VectorXd& MPCBase::getGeneralConstraintMin() const
+{
+  if (opts_.num_general_constraints == 0)
+    throw std::logic_error("[MPCBase::getGeneralConstraintMin] General "
+                           "constraints are not enabled.");
+  return data_.g_min;
+}
+
+const VectorXd& MPCBase::getGeneralConstraintMax() const
+{
+  if (opts_.num_general_constraints == 0)
+    throw std::logic_error("[MPCBase::getGeneralConstraintMax] General "
+                           "constraints are not enabled.");
+  return data_.g_max;
+}
+
+const MatrixXd& MPCBase::getTerminalConstraintMatrix() const
+{
+  if (opts_.num_terminal_constraints == 0)
+    throw std::logic_error("[MPCBase::getTerminalConstraintMatrix] Terminal "
+                           "constraints are not enabled.");
+  return data_.Ef;
+}
+
+const VectorXd& MPCBase::getTerminalConstraintMin() const
+{
+  if (opts_.num_terminal_constraints == 0)
+    throw std::logic_error("[MPCBase::getTerminalConstraintMin] Terminal "
+                           "constraints are not enabled.");
+  return data_.gf_min;
+}
+
+const VectorXd& MPCBase::getTerminalConstraintMax() const
+{
+  if (opts_.num_terminal_constraints == 0)
+    throw std::logic_error("[MPCBase::getTerminalConstraintMax] Terminal "
+                           "constraints are not enabled.");
+  return data_.gf_max;
+}
+
 const VectorXd& MPCBase::getSlewRate() const
 {
   if (!opts_.slew_control_points)
@@ -727,6 +850,17 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
     os << "\n  u0_slew = " << mpc.getSlewRateInitial().format(fmt);
   if (mpc.getOptions().slew_control_points)
     os << "\n  control_point_slew = " << mpc.getSlewRate().format(fmt);
+  const IOFormat mat_fmt{
+      StreamPrecision, DontAlignCols, ", ", ", ", "[", "]", "[", "]"};
+  if (mpc.getOptions().num_general_constraints > 0)
+    os << "\n  E = " << mpc.getGeneralConstraintStateMatrix().format(mat_fmt)
+       << "\n  F = " << mpc.getGeneralConstraintInputMatrix().format(mat_fmt)
+       << "\n  g_min = " << mpc.getGeneralConstraintMin().format(fmt)
+       << "\n  g_max = " << mpc.getGeneralConstraintMax().format(fmt);
+  if (mpc.getOptions().num_terminal_constraints > 0)
+    os << "\n  Ef = " << mpc.getTerminalConstraintMatrix().format(mat_fmt)
+       << "\n  gf_min = " << mpc.getTerminalConstraintMin().format(fmt)
+       << "\n  gf_max = " << mpc.getTerminalConstraintMax().format(fmt);
   return os;
 }
 
@@ -765,6 +899,17 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
     os << ", u0_slew=" << mpc.getSlewRateInitial().format(fmt);
   if (mpc.getOptions().slew_control_points)
     os << ", control_point_slew=" << mpc.getSlewRate().format(fmt);
+  const IOFormat mat_fmt{
+      StreamPrecision, DontAlignCols, ", ", ", ", "[", "]", "[", "]"};
+  if (mpc.getOptions().num_general_constraints > 0)
+    os << ", E=" << mpc.getGeneralConstraintStateMatrix().format(mat_fmt)
+       << ", F=" << mpc.getGeneralConstraintInputMatrix().format(mat_fmt)
+       << ", g_min=" << mpc.getGeneralConstraintMin().format(fmt)
+       << ", g_max=" << mpc.getGeneralConstraintMax().format(fmt);
+  if (mpc.getOptions().num_terminal_constraints > 0)
+    os << ", Ef=" << mpc.getTerminalConstraintMatrix().format(mat_fmt)
+       << ", gf_min=" << mpc.getTerminalConstraintMin().format(fmt)
+       << ", gf_max=" << mpc.getTerminalConstraintMax().format(fmt);
   os << ')';
   return os;
 }

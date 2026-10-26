@@ -37,6 +37,41 @@ struct VarBlock
   int size{0};
 };
 
+/**
+ * A matrix E (p x n) applied to a state in constraint rows, E x_k. It is
+ * stored by its nonzero entries in row order, so the rows cost O(nnz(E)) per
+ * step: a selection of states (rows of the identity, one entry per row) and a
+ * general matrix share the same rows.
+ */
+class StateRowMap
+{
+public:
+  struct Entry
+  {
+    int row, state;
+    double value;
+  };
+  /// The rows of the identity for the given states (strictly increasing).
+  static StateRowMap selection(const std::vector<int>& states, int state_dim);
+  /// Room for a general p x n matrix, set with assign().
+  static StateRowMap general(int rows, int state_dim);
+
+  /// Store the nonzero entries of E (p x n), without allocating.
+  void assign(const Eigen::Ref<const Eigen::MatrixXd>& E);
+
+  int rows() const noexcept { return rows_; }
+  /// Whether E is the identity (a selection of every state), which the
+  /// formulations write as one block.
+  bool isIdentity() const noexcept { return identity_; }
+  const std::vector<Entry>& entries() const noexcept { return entries_; }
+
+private:
+  StateRowMap(int rows, bool identity) : rows_{rows}, identity_{identity} {}
+  int rows_;
+  bool identity_;
+  std::vector<Entry> entries_;
+};
+
 /// Hands out QP variables (after the formulation's own) and constraint rows in
 /// declaration order (construction only).
 class QPLayout
@@ -109,9 +144,8 @@ public:
   /// Update the state map and the own rows for the changed categories (no x0
   /// dependence).
   virtual Update update(DataChangeSet changes, const MPCData& d) = 0;
-  /// Update the parts that depend on x0.
-  virtual void updateX0(const MPCData& d,
-                        const Eigen::Ref<const Eigen::VectorXd>& x0) = 0;
+  /// Update the parts that depend on x0 (d.x0).
+  virtual void updateX0(const MPCData& d) = 0;
   /// Whether updateX0() writes bounds (those are then sent at every solve).
   virtual bool updateX0WritesBounds() const noexcept = 0;
 
@@ -194,16 +228,22 @@ public:
   virtual void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) = 0;
 
   // ---- constraint rows -----------------------------------------------------
-  /// Rows x_{k,i} for every step k and every state index i in `states`
-  /// (states.size() rows per step, steps in order). Only the formulation's
-  /// columns of these rows are written, so a term can add entries for its own
-  /// variables.
+  /// Rows E x_k for the predicted states x_k, k = first_step, ...,
+  /// first_step + num_steps - 1 (1 <= k <= T), E.rows() rows per step in step
+  /// order from block.offset. Afterwards the formulation's columns of these
+  /// rows hold exactly E x_k (earlier values there, e.g. a term's entries on
+  /// the control points, are cleared) and no other column is touched, so a
+  /// term can then add entries on the control points or on its own variables.
   virtual void setStateRows(const RowBlock& block,
-                            const std::vector<int>& states) = 0;
-  /// Bounds lo_j <= x_{k,states[j]} <= hi_j for every step, for the rows of
-  /// setStateRows() (lo and hi have size states.size()).
+                            const StateRowMap& E,
+                            int first_step,
+                            int num_steps) = 0;
+  /// Bounds lo <= E x_k <= hi (lo and hi have size E.rows()) for the rows of
+  /// setStateRows() with the same arguments.
   virtual void setStateBounds(const RowBlock& block,
-                              const std::vector<int>& states,
+                              const StateRowMap& E,
+                              int first_step,
+                              int num_steps,
                               const Eigen::Ref<const Eigen::VectorXd>& lo,
                               const Eigen::Ref<const Eigen::VectorXd>& hi) = 0;
 
@@ -271,8 +311,7 @@ public:
     return DataChange::Model | DataChange::ModelOffset | DataChange::X0;
   }
   Update update(DataChangeSet changes, const MPCData& d) override;
-  void updateX0(const MPCData& d,
-                const Eigen::Ref<const Eigen::VectorXd>& x0) override;
+  void updateX0(const MPCData& d) override;
   bool updateX0WritesBounds() const noexcept override { return false; }
   void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
@@ -292,9 +331,13 @@ public:
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
   void setStateRows(const RowBlock& block,
-                    const std::vector<int>& states) override;
+                    const StateRowMap& E,
+                    int first_step,
+                    int num_steps) override;
   void setStateBounds(const RowBlock& block,
-                      const std::vector<int>& states,
+                      const StateRowMap& E,
+                      int first_step,
+                      int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,
                       const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 
@@ -311,10 +354,13 @@ private:
   void endOwnCostVector() override { finish(q_, ownQ()); }
 
   void updateS(const MPCData& d); // from the model matrices
-  void updateV(const MPCData& d, const Eigen::Ref<const Eigen::VectorXd>& x0);
+  void updateV(const MPCData& d);
 
   const int n_, m_, T_, nx_, nc_;
   const VectorParameterization& input_param_;
+  // Number of leading columns of S that can be nonzero in each step's rows
+  // (the control points after the step do not affect its state)
+  const std::vector<int> band_cols_;
   Eigen::MatrixXd S_;
   Eigen::VectorXd v_;
   Eigen::MatrixXd weighted_S_;         // diag(Q) S, avoids a temp for P
@@ -345,8 +391,7 @@ public:
   DataChangeSet stateMatrixDependsOn() const noexcept override { return {}; }
   DataChangeSet stateOffsetDependsOn() const noexcept override { return {}; }
   Update update(DataChangeSet changes, const MPCData& d) override;
-  void updateX0(const MPCData& d,
-                const Eigen::Ref<const Eigen::VectorXd>& x0) override;
+  void updateX0(const MPCData& d) override;
   bool updateX0WritesBounds() const noexcept override { return true; }
   bool usesCostPlaceholders() const noexcept override { return true; }
   void writeCostPlaceholders() override;
@@ -370,9 +415,13 @@ public:
   void addControlLinear(const Eigen::Ref<const Eigen::VectorXd>& g) override;
 
   void setStateRows(const RowBlock& block,
-                    const std::vector<int>& states) override;
+                    const StateRowMap& E,
+                    int first_step,
+                    int num_steps) override;
   void setStateBounds(const RowBlock& block,
-                      const std::vector<int>& states,
+                      const StateRowMap& E,
+                      int first_step,
+                      int num_steps,
                       const Eigen::Ref<const Eigen::VectorXd>& lo,
                       const Eigen::Ref<const Eigen::VectorXd>& hi) override;
 

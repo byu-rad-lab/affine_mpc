@@ -25,6 +25,8 @@ struct QPRows
   RowBlock initial_slew;
   RowBlock control_point_slew;
   RowBlock state_bounds; ///< soft: the upper rows, lower rows, then s >= 0
+  RowBlock general_constraints;  ///< p rows per step, steps in order
+  RowBlock terminal_constraints; ///< the rows on x_T
 };
 
 /**
@@ -54,9 +56,9 @@ public:
   /// Update every part of the QP that depends on the changed categories but
   /// not on x0. Returns the parts written and the categories behind each.
   Formulation::Update apply(DataChangeSet changes, const MPCData& d);
-  /// Update every part that depends on x0 (q if applyX0WritesCostVector(),
-  /// the bounds if applyX0WritesBounds()).
-  void applyX0(const MPCData& d, const Eigen::Ref<const Eigen::VectorXd>& x0);
+  /// Update every part that depends on x0 (d.x0): q if
+  /// applyX0WritesCostVector(), the bounds if applyX0WritesBounds().
+  void applyX0(const MPCData& d);
   bool applyX0WritesCostVector() const noexcept { return cost_vector_x0_; }
   bool applyX0WritesBounds() const noexcept { return bounds_x0_; }
 

@@ -113,6 +113,8 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{u}_\mathrm{min}$, $\mathbf{u}_\mathrm{max}$ | `setInputLimits()`                                        |
 | $\mathbf{u}_{0,\mathrm{slew}}$                       | `setSlewRateInitial()`                                    |
 | $\mathbf{c}_\mathrm{slew}$                           | `setSlewRate()`                                           |
+| $E$, $F$, $\mathbf{g}_\mathrm{min}$, $\mathbf{g}_\mathrm{max}$ | `setGeneralConstraints()`                       |
+| $E_\mathrm{f}$, $\mathbf{g}_{\mathrm{f},\mathrm{min}}$, $\mathbf{g}_{\mathrm{f},\mathrm{max}}$ | `setTerminalConstraints()`  |
 | $\mathbf{u}_\mathrm{prev}$                           | `setPreviousInput()` (also set by each successful solve)  |
 
 ## When Updates Reach the QP
@@ -125,15 +127,17 @@ The categories differ in cost:
 
 | Category | Setters | Condensed QP work | Sparse QP work | OSQP refactors |
 | --- | --- | --- | --- | --- |
-| Initial state $\mathbf{x}_0$ | `solve()` | $\mathbf{v}$, $q$, state-limit bounds | first dynamics-row bounds | No |
+| Initial state $\mathbf{x}_0$ | `solve()` | $\mathbf{v}$, $q$, state-limit and constraint bounds | first dynamics-row bounds, general constraint bounds | No |
 | Model offset $\mathbf{w}$ | `setModelOffset*()` | $\mathbf{v}$, $q$, state-limit bounds | dynamics-row bounds | No |
 | Model $A$, $B$ | `setModelDiscrete()`, `setModelContinuous2Discrete()` | $S$, $P$, state rows of $A_\mathrm{qp}$ | dynamics blocks of $A_\mathrm{qp}$ | Yes |
 | Weights | `setWeights()`, `setStateWeights()`, `setInputWeights()` | $P$, $q$ | diagonal of $P$, $q$ | Yes |
 | References | `setReference*()` | $q$ | $q$ | No |
-| Limits and slew rates | `setInputLimits()`, `setStateLimits()`, `setSlewRate()`, `setSlewRateInitial()` | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | No |
+| Limits and slew rates | `setInputLimits()`, `setStateLimits()`, `setSlewRate()`, `setSlewRateInitial()`, constraint bounds | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | No |
+| Constraint matrices $E$, $F$, $E_\mathrm{f}$ | `setGeneralConstraints()`, `setTerminalConstraints()` | constraint rows of $A_\mathrm{qp}$ (with $S$) and their bounds | constraint rows of $A_\mathrm{qp}$ | Yes |
 | Previous input | `setPreviousInput()` | initial-slew bounds | initial-slew bounds | No |
 
 The model setters also set $\mathbf{w}$, so they mark both model categories.
+The constraint setters mark the constraint matrices only when a value of $E$, $F$, or $E_\mathrm{f}$ differs from the stored one, so passing the same matrices with new bounds only updates QP vectors.
 If only the model offset changes, e.g. a disturbance estimate for offset-free tracking, use `setModelOffsetDiscrete()` or `setModelOffsetContinuous2Discrete()` instead: they only update QP vectors, like references and limits.
 
 `setModelContinuous2Discrete()` is the one setter that does real work itself: it computes the exact discretization (a matrix exponential) inside the setter, so that cost is not part of `solve()` or `prepare()` or the reported `mpc_solve_time`.

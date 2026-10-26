@@ -15,8 +15,9 @@ namespace affine_mpc {
  * @struct Options
  * @brief Controls which optional features are enabled at MPC construction time.
  *
- * All flags default to false (and bounded_states to empty, every state). These
- * options are immutable after constructing an MPC instance.
+ * All flags default to false (bounded_states to empty, every state, and the
+ * constraint counts to zero). These options are immutable after constructing
+ * an MPC instance.
  *
  * - use_input_cost: Enables input regularization term in the cost function
  *     ((uref_k - u_k)^T R (uref_k - u_k)).
@@ -39,6 +40,11 @@ namespace affine_mpc {
  *     per bounded state, penalized by l1^T s + s^T diag(l2) s.
  * - bounded_states: Indices of the states with limits (requires
  *     saturate_states). Empty (the default) bounds every state.
+ * - num_general_constraints: Number p of general linear constraints
+ *     g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+ *     the measured state). Zero (the default) disables them.
+ * - num_terminal_constraints: Number of terminal constraints
+ *     gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
  */
 struct Options
 {
@@ -73,6 +79,15 @@ struct Options
   /// bounded state adds a row per horizon step, so bounding only the states
   /// that need it keeps the QP small.
   std::vector<int> bounded_states{};
+
+  /// Number of general linear constraints g_min <= E x_k + F u_k <= g_max per
+  /// step (k = 0, ..., T-1, set with setGeneralConstraints()). Zero disables
+  /// them; each one adds a row per horizon step.
+  int num_general_constraints = 0;
+
+  /// Number of terminal constraints gf_min <= Ef x_T <= gf_max (set with
+  /// setTerminalConstraints()). Zero disables them.
+  int num_terminal_constraints = 0;
 };
 
 std::ostream&

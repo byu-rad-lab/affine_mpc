@@ -1,7 +1,6 @@
 #include "qp_terms.hpp"
 
 #include <Eigen/Core>
-#include <utility>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -196,21 +195,20 @@ void ControlPointSlew::updateVector(const MPCData& d, Formulation&, QPRef& qp)
 
 // ---- StateBounds ------------------------------------------------------------
 
-StateBounds::StateBounds(std::vector<int> states,
+StateBounds::StateBounds(const std::vector<int>& states,
+                         const int state_dim,
                          const int horizon_steps,
                          const bool soft) :
-    states_{std::move(states)},
+    states_{StateRowMap::selection(states, state_dim)},
     T_{horizon_steps},
     soft_{soft},
-    minus_inf_{
-        VectorXd::Constant(static_cast<Index>(states_.size()), -MPCData::inf)},
-    plus_inf_{
-        VectorXd::Constant(static_cast<Index>(states_.size()), MPCData::inf)}
+    minus_inf_{VectorXd::Constant(states_.rows(), -MPCData::inf)},
+    plus_inf_{VectorXd::Constant(states_.rows(), MPCData::inf)}
 {}
 
 void StateBounds::declare(QPLayout& layout)
 {
-  const int num_bounded{static_cast<int>(states_.size())};
+  const int num_bounded{states_.rows()};
   if (!soft_) {
     rows_ = layout.addRows(num_bounded * T_);
     return;
@@ -225,13 +223,13 @@ void StateBounds::declare(QPLayout& layout)
 void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef& qp)
 {
   if (!soft_) {
-    f.setStateRows(rows_, states_);
+    f.setStateRows(rows_, states_, 1, T_);
     return;
   }
-  f.setStateRows(upper_, states_);
-  f.setStateRows(lower_, states_);
+  f.setStateRows(upper_, states_, 1, T_);
+  f.setStateRows(lower_, states_, 1, T_);
   // the slack columns: -s in the upper rows, +s in the lower rows, s >= 0
-  const int num_bounded{static_cast<int>(states_.size())};
+  const int num_bounded{states_.rows()};
   for (int k{0}; k < T_; ++k) {
     for (int j{0}; j < num_bounded; ++j) {
       qp.A(upper_.offset + k * num_bounded + j, slack_.offset + j) = -1.0;
@@ -245,13 +243,84 @@ void StateBounds::updateMatrix(const MPCData&, Formulation& f, QPRef& qp)
 void StateBounds::updateVector(const MPCData& d, Formulation& f, QPRef& qp)
 {
   if (!soft_) {
-    f.setStateBounds(rows_, states_, d.x_min, d.x_max);
+    f.setStateBounds(rows_, states_, 1, T_, d.x_min, d.x_max);
     return;
   }
-  f.setStateBounds(upper_, states_, minus_inf_, d.x_max);
-  f.setStateBounds(lower_, states_, d.x_min, plus_inf_);
+  f.setStateBounds(upper_, states_, 1, T_, minus_inf_, d.x_max);
+  f.setStateBounds(lower_, states_, 1, T_, d.x_min, plus_inf_);
   qp.l.segment(nonneg_.offset, nonneg_.rows).setZero();
   qp.u.segment(nonneg_.offset, nonneg_.rows) = plus_inf_;
+}
+
+// ---- GeneralConstraints -----------------------------------------------------
+
+GeneralConstraints::GeneralConstraints(
+    const VectorParameterization& input_param,
+    const int num_constraints,
+    const int state_dim) :
+    input_param_{input_param},
+    p_{num_constraints},
+    T_{input_param.parameterization().horizon_steps},
+    E_{StateRowMap::general(num_constraints, state_dim)},
+    Ex0_{num_constraints}
+{}
+
+void GeneralConstraints::declare(QPLayout& layout)
+{
+  rows_ = layout.addRows(p_ * T_);
+  state_rows_ = {rows_.offset + p_, p_ * (T_ - 1)};
+}
+
+void GeneralConstraints::addInputPart(const MPCData& d,
+                                      QPRef& qp,
+                                      const int k,
+                                      const int row) const
+{
+  const Parameterization& param{input_param_.parameterization()};
+  const int m{input_param_.inputDim()};
+  for (int i{0}; i < param.band_width; ++i) {
+    const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
+    qp.A.block(row, col, p_, m) += param.band_weights(i, k) * d.F;
+  }
+}
+
+void GeneralConstraints::updateMatrix(const MPCData& d,
+                                      Formulation& f,
+                                      QPRef& qp)
+{
+  E_.assign(d.E);
+  // k = 0: F u_0 only (x_0 is not a QP variable in any formulation)
+  qp.A.block(rows_.offset, 0, p_, input_param_.numCoefficients()).setZero();
+  addInputPart(d, qp, 0, rows_.offset);
+  // k >= 1: the formulation writes E x_k (clearing the control point columns),
+  // then F u_k is added
+  f.setStateRows(state_rows_, E_, 1, T_ - 1);
+  for (int k{1}; k < T_; ++k)
+    addInputPart(d, qp, k, rows_.offset + k * p_);
+}
+
+void GeneralConstraints::updateVector(const MPCData& d,
+                                      Formulation& f,
+                                      QPRef& qp)
+{
+  // k = 0: g - E x_0
+  Ex0_.noalias() = d.E * d.x0;
+  qp.l.segment(rows_.offset, p_) = d.g_min - Ex0_;
+  qp.u.segment(rows_.offset, p_) = d.g_max - Ex0_;
+  f.setStateBounds(state_rows_, E_, 1, T_ - 1, d.g_min, d.g_max);
+}
+
+// ---- TerminalConstraints ----------------------------------------------------
+
+void TerminalConstraints::updateMatrix(const MPCData& d, Formulation& f, QPRef&)
+{
+  Ef_.assign(d.Ef);
+  f.setStateRows(rows_, Ef_, T_, 1);
+}
+
+void TerminalConstraints::updateVector(const MPCData& d, Formulation& f, QPRef&)
+{
+  f.setStateBounds(rows_, Ef_, T_, 1, d.gf_min, d.gf_max);
 }
 
 // ---- SoftStatePenalty -------------------------------------------------------

@@ -126,6 +126,15 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setStateBoundPenalties(VectorXd::Constant(k, 10.0),
                                VectorXd::Constant(k, 100.0));
   }
+  // x + 0.1 v + 0.5 u <= 5 at every step, x + v <= 5 at the end
+  const RowVector2d E{1.0, 0.1}, Ef{1.0, 1.0};
+  const VectorXd F{VectorXd::Constant(1, 0.5)};
+  const VectorXd g_min{VectorXd::Constant(1, -5.0)};
+  const VectorXd g_max{VectorXd::Constant(1, 5.0)};
+  if (opts.num_general_constraints > 0)
+    mpc.setGeneralConstraints(E, F, g_min, g_max);
+  if (opts.num_terminal_constraints > 0)
+    mpc.setTerminalConstraints(Ef, g_min, g_max);
   ASSERT_TRUE(mpc.initializeSolver());
 
   const Vector2d x0{0.5, -0.2};
@@ -169,6 +178,16 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "references";
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "limits";
+  if (opts.num_general_constraints > 0) {
+    mpc.setGeneralConstraints(1.1 * E, F, g_min, g_max);
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "constraint matrices";
+  }
+  if (opts.num_terminal_constraints > 0) {
+    mpc.setTerminalConstraints(Ef, 2.0 * g_min, 2.0 * g_max);
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "constraint limits";
+  }
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 }
 
@@ -195,12 +214,17 @@ std::vector<AllocationCase> allocationCases()
                            .saturate_states = true,
                            .soft_state_bounds = true,
                            .bounded_states = {0}};
+  const ampc::Options constraints{.use_input_cost = true,
+                                  .num_general_constraints = 1,
+                                  .num_terminal_constraints = 1};
   return {
       {"defaults", ampc::Parameterization::linearInterp(10, 4), {}},
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
       {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
+      {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),
+       constraints},
   };
 }
 

@@ -222,7 +222,10 @@ private:
 class StateBounds final : public QPTerm
 {
 public:
-  StateBounds(std::vector<int> states, int horizon_steps, bool soft);
+  StateBounds(const std::vector<int>& states,
+              int state_dim,
+              int horizon_steps,
+              bool soft);
   void declare(QPLayout& layout) override;
   DataChangeSet matrixDependsOn(const Formulation& f) const override
   {
@@ -239,12 +242,79 @@ public:
   const VarBlock& slack() const noexcept { return slack_; }
 
 private:
-  const std::vector<int> states_; // bounded state indices
+  const StateRowMap states_; // the bounded states (rows of the identity)
   const int T_;
   const bool soft_;
   RowBlock upper_, lower_, nonneg_; // soft only: x - s <= max, x + s >= min
   VarBlock slack_;
   Eigen::VectorXd minus_inf_, plus_inf_; // the open sides of the soft rows
+};
+
+/// g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1, p rows per
+/// step (`num_general_constraints`).
+///
+/// The QP's predicted states are x_1, ..., x_T, and x_0 is the measured state:
+/// the k = 0 rows are F u_0 with E x_0 moved into the bounds (so the bounds
+/// depend on X0 in every formulation), and the rows for k >= 1 are the
+/// formulation's state rows E x_k plus F u_k on the control points.
+class GeneralConstraints final : public QPTerm
+{
+public:
+  GeneralConstraints(const VectorParameterization& input_param,
+                     int num_constraints,
+                     int state_dim);
+  void declare(QPLayout& layout) override;
+  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  {
+    return DataChangeSet{DataChange::ConstraintMatrices}
+           | f.stateMatrixDependsOn();
+  }
+  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  {
+    return DataChange::Limits | DataChange::ConstraintMatrices | DataChange::X0
+           | f.stateOffsetDependsOn();
+  }
+  void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
+  void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
+
+private:
+  // add F u_k (F times the basis weights of u_k) to the p rows from `row`
+  void addInputPart(const MPCData& d, QPRef& qp, int k, int row) const;
+
+  const VectorParameterization& input_param_;
+  const int p_, T_;
+  StateRowMap E_;       // the nonzero entries of E (refreshed with the matrix)
+  RowBlock state_rows_; // the rows for k >= 1
+  Eigen::VectorXd Ex0_; // E x_0
+};
+
+/// gf_min <= Ef x_T <= gf_max (`num_terminal_constraints` rows).
+class TerminalConstraints final : public QPTerm
+{
+public:
+  TerminalConstraints(int num_constraints, int state_dim, int horizon_steps) :
+      T_{horizon_steps}, Ef_{StateRowMap::general(num_constraints, state_dim)}
+  {}
+  void declare(QPLayout& layout) override
+  {
+    rows_ = layout.addRows(Ef_.rows());
+  }
+  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  {
+    return DataChangeSet{DataChange::ConstraintMatrices}
+           | f.stateMatrixDependsOn();
+  }
+  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  {
+    return DataChange::Limits | DataChange::ConstraintMatrices
+           | f.stateOffsetDependsOn();
+  }
+  void updateMatrix(const MPCData& d, Formulation& f, QPRef& qp) override;
+  void updateVector(const MPCData& d, Formulation& f, QPRef& qp) override;
+
+private:
+  const int T_;
+  StateRowMap Ef_; // the nonzero entries of Ef (refreshed with the matrix)
 };
 
 /// l1^T s + s^T diag(l2) s on the state bound slacks s (`soft_state_bounds`),

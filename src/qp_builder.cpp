@@ -65,12 +65,23 @@ QPBuilder::QPBuilder(const FormulationKind kind,
         add<ControlPointSlew>(layout, input_param).rows();
   if (opts.saturate_states) {
     const StateBounds& bounds{add<StateBounds>(
-        layout, boundedStates(opts, state_dim),
+        layout, boundedStates(opts, state_dim), state_dim,
         input_param.parameterization().horizon_steps, opts.soft_state_bounds)};
     rows_.state_bounds = bounds.rows();
     if (opts.soft_state_bounds)
       add<SoftStatePenalty>(layout, bounds.slack());
   }
+  if (opts.num_general_constraints > 0)
+    rows_.general_constraints =
+        add<GeneralConstraints>(layout, input_param,
+                                opts.num_general_constraints, state_dim)
+            .rows();
+  if (opts.num_terminal_constraints > 0)
+    rows_.terminal_constraints =
+        add<TerminalConstraints>(layout, opts.num_terminal_constraints,
+                                 state_dim,
+                                 input_param.parameterization().horizon_steps)
+            .rows();
   num_constraints_ = layout.numRows();
   num_variables_ = layout.numVariables();
   // variables the terms declared (after the formulation's own)
@@ -157,10 +168,10 @@ Formulation::Update QPBuilder::apply(const DataChangeSet changes,
   return written;
 }
 
-void QPBuilder::applyX0(const MPCData& d, const Ref<const VectorXd>& x0)
+void QPBuilder::applyX0(const MPCData& d)
 {
   Formulation& f{*formulation_};
-  f.updateX0(d, x0);
+  f.updateX0(d);
   if (cost_vector_x0_) {
     f.beginCostVector();
     for (QPTerm* term : cost_terms_)

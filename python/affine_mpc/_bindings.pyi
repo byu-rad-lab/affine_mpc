@@ -26,7 +26,8 @@ class Options:
     """
     Controls which optional features are enabled at MPC construction time.
 
-    All flags default to false. These options are immutable after constructing an
+    All flags default to false (bounded_states to empty, every state, and the
+    constraint counts to zero). These options are immutable after constructing an
     MPC instance.
 
     Attributes:
@@ -51,6 +52,11 @@ class Options:
             per bounded state, penalized by l1^T s + s^T diag(l2) s.
         bounded_states: Indices of the states with limits (requires
             saturate_states). Empty (the default) bounds every state.
+        num_general_constraints: Number p of general linear constraints
+            g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+            the measured state). Zero (the default) disables them.
+        num_terminal_constraints: Number of terminal constraints
+            gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
 
     """
 
@@ -71,6 +77,8 @@ class Options:
         use_input_rate_cost: bool = False,
         soft_state_bounds: bool = False,
         bounded_states: collections.abc.Sequence[int] = [],
+        num_general_constraints: int = 0,
+        num_terminal_constraints: int = 0,
     ) -> None:
         """
         Construct an Options struct defining optional MPC configuration features.
@@ -97,6 +105,11 @@ class Options:
                 per bounded state, penalized by l1^T s + s^T diag(l2) s.
             bounded_states: Indices of the states with limits (requires
                 saturate_states). Empty (the default) bounds every state.
+            num_general_constraints: Number p of general linear constraints
+                g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+                the measured state). Zero (the default) disables them.
+            num_terminal_constraints: Number of terminal constraints
+                gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
         """
 
     def __repr__(self) -> str: ...
@@ -105,6 +118,14 @@ class Options:
     def bounded_states(self) -> list[int]: ...
     @bounded_states.setter
     def bounded_states(self, arg0: collections.abc.Sequence[int]) -> None: ...
+    @property
+    def num_general_constraints(self) -> int: ...
+    @num_general_constraints.setter
+    def num_general_constraints(self, arg0: int) -> None: ...
+    @property
+    def num_terminal_constraints(self) -> int: ...
+    @num_terminal_constraints.setter
+    def num_terminal_constraints(self, arg0: int) -> None: ...
 
 class Parameterization:
     """
@@ -816,6 +837,50 @@ class MPCBase:
         when it is empty; none without `saturate_states`).
         """
 
+    def getGeneralConstraintInputMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the input matrix F of the general constraints (zero until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper bounds of the general constraints (+inf until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower bounds of the general constraints (-inf until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintStateMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the state matrix E of the general constraints (zero until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
     @typing.overload
     def getInputControlPoints(
         self,
@@ -1144,6 +1209,39 @@ class MPCBase:
         Get the diagonal of the state weight matrix Q (size state_dim).
         """
 
+    def getTerminalConstraintMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the state matrix Ef of the terminal constraints (zero until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
+    def getTerminalConstraintMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper bounds of the terminal constraints (+inf until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
+    def getTerminalConstraintMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower bounds of the terminal constraints (-inf until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
     def getTerminalStateWeights(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
@@ -1267,6 +1365,51 @@ class MPCBase:
         down or prevent convergence of the next solve. Does not change the problem data,
         the previous input used by `slew_initial_input`, or the results returned by the
         solution getters. No-op before initializeSolver().
+        """
+
+    def setGeneralConstraints(
+        self,
+        E: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        F: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        g_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        g_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the general linear constraints g_min <= E x_k + F u_k <= g_max, applied at
+        every step k = 0, ..., T-1.
+
+        This function can only be called if `num_general_constraints` (p) is positive.
+        Must be called prior to `initializeSolver()`, but can also be called after if
+        the constraints change between solves. x_0 is the measured state passed to
+        solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
+        (a zero row of F) only checks x_0 at k = 0, and the problem is infeasible if x_0
+        violates it. The predicted states x_1, ..., x_{T-1} are paired with the inputs
+        u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
+        Pass `-inf` or `inf` for a side without a bound.
+
+        Changing E or F rebuilds QP matrices and makes OSQP refactor (like a model
+        change), while changing only the bounds updates QP vectors: E and F count as
+        changed only when a value differs from the stored one. As with the model, an
+        entry of E or F that may become nonzero later must be nonzero when
+        initializeSolver() is called, since that fixes the solver's sparsity pattern.
+
+        Args:
+            E: State matrix (p x state_dim).
+            F: Input matrix (p x input_dim).
+            g_min: Lower bounds (size p).
+            g_max: Upper bounds (size p).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+            ValueError: If a shape is wrong or g_min > g_max.
+
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     def setInputLimits(
@@ -1645,6 +1788,40 @@ class MPCBase:
         Args:
             Q_diag: Vector for diagonal of state weight matrix (non-negative).
             Qf_diag: Vector for diagonal of terminal state weight matrix (non-negative).
+        """
+
+    def setTerminalConstraints(
+        self,
+        Ef: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        gf_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        gf_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the terminal constraints gf_min <= Ef x_T <= gf_max on the final predicted
+        state.
+
+        This function can only be called if `num_terminal_constraints` (p_T) is
+        positive. Must be called prior to `initializeSolver()`, but can also be called
+        after if the constraints change between solves. Pass `-inf` or `inf` for a side
+        without a bound. As with setGeneralConstraints(), changing Ef rebuilds QP
+        matrices and makes OSQP refactor, changing only the bounds updates QP vectors,
+        and an entry of Ef that may become nonzero later must be nonzero when
+        initializeSolver() is called.
+
+        Args:
+            Ef: State matrix (p_T x state_dim).
+            gf_min: Lower bounds (size p_T).
+            gf_max: Upper bounds (size p_T).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+            ValueError: If a shape is wrong or gf_min > gf_max.
+
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     @typing.overload

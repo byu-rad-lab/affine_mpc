@@ -15,7 +15,8 @@ void moduleAddOptions(py::module& m)
   py::class_<ampc::Options> opt(m, "Options", R"doc(
 Controls which optional features are enabled at MPC construction time.
 
-All flags default to false. These options are immutable after constructing an
+All flags default to false (bounded_states to empty, every state, and the
+constraint counts to zero). These options are immutable after constructing an
 MPC instance.
 
 Attributes:
@@ -40,6 +41,11 @@ Attributes:
         per bounded state, penalized by l1^T s + s^T diag(l2) s.
     bounded_states: Indices of the states with limits (requires
         saturate_states). Empty (the default) bounds every state.
+    num_general_constraints: Number p of general linear constraints
+        g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+        the measured state). Zero (the default) disables them.
+    num_terminal_constraints: Number of terminal constraints
+        gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
                           )doc");
 
   opt.def(
@@ -47,7 +53,9 @@ Attributes:
                   const bool slew_control_points, const bool saturate_states,
                   const bool saturate_input_trajectory,
                   const bool use_input_rate_cost, const bool soft_state_bounds,
-                  const std::vector<int>& bounded_states) {
+                  const std::vector<int>& bounded_states,
+                  const int num_general_constraints,
+                  const int num_terminal_constraints) {
         ampc::Options opts;
         opts.use_input_cost = use_input_cost;
         opts.slew_initial_input = slew_initial_input;
@@ -57,6 +65,8 @@ Attributes:
         opts.use_input_rate_cost = use_input_rate_cost;
         opts.soft_state_bounds = soft_state_bounds;
         opts.bounded_states = bounded_states;
+        opts.num_general_constraints = num_general_constraints;
+        opts.num_terminal_constraints = num_terminal_constraints;
         return opts;
       }),
       R"doc(
@@ -84,6 +94,11 @@ Args:
         per bounded state, penalized by l1^T s + s^T diag(l2) s.
     bounded_states: Indices of the states with limits (requires
         saturate_states). Empty (the default) bounds every state.
+    num_general_constraints: Number p of general linear constraints
+        g_min <= E x_k + F u_k <= g_max at every step k = 0, ..., T-1 (x_0 is
+        the measured state). Zero (the default) disables them.
+    num_terminal_constraints: Number of terminal constraints
+        gf_min <= Ef x_T <= gf_max. Zero (the default) disables them.
       )doc",
       py::arg("use_input_cost") = false, py::arg("slew_initial_input") = false,
       py::arg("slew_control_points") = false,
@@ -91,7 +106,9 @@ Args:
       py::arg("saturate_input_trajectory") = false,
       py::arg("use_input_rate_cost") = false,
       py::arg("soft_state_bounds") = false,
-      py::arg("bounded_states") = std::vector<int>{});
+      py::arg("bounded_states") = std::vector<int>{},
+      py::arg("num_general_constraints") = 0,
+      py::arg("num_terminal_constraints") = 0);
 
   opt.def_readwrite("use_input_cost", &ampc::Options::use_input_cost);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
@@ -103,6 +120,10 @@ Args:
   opt.def_readwrite("soft_state_bounds", &ampc::Options::soft_state_bounds);
   // assign a new list (a copy is returned, so appending to it has no effect)
   opt.def_readwrite("bounded_states", &ampc::Options::bounded_states);
+  opt.def_readwrite("num_general_constraints",
+                    &ampc::Options::num_general_constraints);
+  opt.def_readwrite("num_terminal_constraints",
+                    &ampc::Options::num_terminal_constraints);
 
   opt.def("__str__", [](const affine_mpc::Options& opts) {
     std::ostringstream oss;
@@ -133,7 +154,16 @@ Args:
       for (size_t i{0}; i < opts.bounded_states.size(); ++i)
         oss << (i ? ", " : "") << opts.bounded_states[i];
       oss << "]";
+      prev = true;
     }
+    auto addCount = [&](int field, const std::string& name) {
+      if (field != 0) {
+        oss << (prev ? ", " : "") << name << '=' << field;
+        prev = true;
+      }
+    };
+    addCount(opts.num_general_constraints, "num_general_constraints");
+    addCount(opts.num_terminal_constraints, "num_terminal_constraints");
     oss << ")";
     return oss.str();
   });

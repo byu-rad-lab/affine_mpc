@@ -167,6 +167,10 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
   addMetadata("opt_soft_state_bounds",
               static_cast<int>(mpc_->getOptions().soft_state_bounds));
+  addMetadata("opt_num_general_constraints",
+              mpc_->getOptions().num_general_constraints);
+  addMetadata("opt_num_terminal_constraints",
+              mpc_->getOptions().num_terminal_constraints);
 
   addMetadata("u_min", mpc_->getInputMin());
   addMetadata("u_max", mpc_->getInputMax());
@@ -190,6 +194,27 @@ void MPCLogger::captureMPCSnapshot()
   if (mpc_->getOptions().soft_state_bounds) {
     addMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
     addMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
+  }
+  // constraint matrices are stored row-major (reshape to rows x state_dim or
+  // rows x input_dim)
+  auto rowMajor = [](const Eigen::MatrixXd& mat) {
+    std::vector<double> values;
+    values.reserve(static_cast<size_t>(mat.size()));
+    for (Eigen::Index i{0}; i < mat.rows(); ++i)
+      for (Eigen::Index j{0}; j < mat.cols(); ++j)
+        values.push_back(mat(i, j));
+    return values;
+  };
+  if (mpc_->getOptions().num_general_constraints > 0) {
+    addMetadata("E", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
+    addMetadata("F", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
+    addMetadata("g_min", mpc_->getGeneralConstraintMin());
+    addMetadata("g_max", mpc_->getGeneralConstraintMax());
+  }
+  if (mpc_->getOptions().num_terminal_constraints > 0) {
+    addMetadata("Ef", rowMajor(mpc_->getTerminalConstraintMatrix()));
+    addMetadata("gf_min", mpc_->getTerminalConstraintMin());
+    addMetadata("gf_max", mpc_->getTerminalConstraintMax());
   }
 }
 

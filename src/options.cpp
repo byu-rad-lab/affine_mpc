@@ -30,7 +30,8 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
      << ", bounded_states=[";
   for (size_t i{0}; i < opts.bounded_states.size(); ++i)
     os << (i ? ", " : "") << opts.bounded_states[i];
-  os << "])";
+  os << "], num_general_constraints=" << opts.num_general_constraints
+     << ", num_terminal_constraints=" << opts.num_terminal_constraints << ')';
   return os;
 }
 

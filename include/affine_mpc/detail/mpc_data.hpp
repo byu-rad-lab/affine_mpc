@@ -28,18 +28,21 @@ namespace affine_mpc::detail {
  *   QP is updated once per category in MPCBase::prepare() or MPCBase::solve().
  *
  * The initial state x0 is never pending: solve() applies it every call. It is
- * still a category (X0, not part of DataChangeSet::all()) so the QP terms can
- * declare which of their parts depend on it.
+ * still a category (X0, the highest bit and not part of DataChangeSet::all())
+ * so the QP terms can declare which of their parts depend on it.
  */
 enum class DataChange : std::uint8_t
 {
-  ModelOffset = 1 << 0,   ///< model offset `wd` (QP vectors only)
-  Model = 1 << 1,         ///< model matrices `Ad`, `Bd` (QP matrices)
-  Weights = 1 << 2,       ///< cost weights `Q`, `Q_f`, `R` (cost matrix)
-  References = 1 << 3,    ///< state and input references (cost vector)
-  Limits = 1 << 4,        ///< input and state limits, slew rates (bounds)
+  ModelOffset = 1 << 0, ///< model offset `wd` (QP vectors only)
+  Model = 1 << 1,       ///< model matrices `Ad`, `Bd` (QP matrices)
+  Weights = 1 << 2,     ///< cost weights `Q`, `Q_f`, `R` (cost matrix)
+  References = 1 << 3,  ///< state and input references (cost vector)
+  /// input and state limits, slew rates, general constraint bounds (bounds)
+  Limits = 1 << 4,
   PreviousInput = 1 << 5, ///< `u_prev` of the initial slew rate (bounds)
-  X0 = 1 << 6,            ///< initial state (applied by every solve())
+  /// general and terminal constraint matrices `E`, `F`, `Ef` (QP matrices)
+  ConstraintMatrices = 1 << 6,
+  X0 = 1 << 7, ///< initial state (applied by every solve())
 };
 
 /**
@@ -58,7 +61,7 @@ public:
   static constexpr DataChangeSet all() noexcept
   {
     DataChangeSet set;
-    set.bits_ = (1 << 6) - 1;
+    set.bits_ = static_cast<std::uint8_t>(DataChange::X0) - 1;
     return set;
   }
 
@@ -157,7 +160,8 @@ struct MPCData
       Q_big{state_dim * horizon_steps},
       x_ref{Eigen::VectorXd::Zero(state_dim * horizon_steps)},
       u_min{Eigen::VectorXd::Constant(input_dim, -inf)},
-      u_max{Eigen::VectorXd::Constant(input_dim, inf)}
+      u_max{Eigen::VectorXd::Constant(input_dim, inf)},
+      x0{Eigen::VectorXd::Zero(state_dim)}
   {
     Q_big.setIdentity();
     if (opts.use_input_cost) {
@@ -181,6 +185,19 @@ struct MPCData
         x_soft_l1.setZero(num_bounded);
         x_soft_l2.setZero(num_bounded);
       }
+    }
+    if (opts.num_general_constraints > 0) {
+      const int p{opts.num_general_constraints};
+      E.setZero(p, state_dim);
+      F.setZero(p, input_dim);
+      g_min.setConstant(p, -inf);
+      g_max.setConstant(p, inf);
+    }
+    if (opts.num_terminal_constraints > 0) {
+      const int p{opts.num_terminal_constraints};
+      Ef.setZero(p, state_dim);
+      gf_min.setConstant(p, -inf);
+      gf_max.setConstant(p, inf);
     }
   }
 
@@ -210,6 +227,19 @@ struct MPCData
   Eigen::VectorXd u0_slew;    ///< initial input slew rate
   /// previous input (`slew_initial_input` or `use_input_rate_cost`)
   Eigen::VectorXd u_prev;
+
+  /// general constraints g_min <= E x_k + F u_k <= g_max at every step
+  /// (`num_general_constraints` rows each)
+  Eigen::MatrixXd E, F;
+  Eigen::VectorXd g_min, g_max;
+  /// terminal constraints gf_min <= Ef x_T <= gf_max
+  /// (`num_terminal_constraints` rows each)
+  Eigen::MatrixXd Ef;
+  Eigen::VectorXd gf_min, gf_max;
+
+  /// the initial state of the last solve() (X0, set by MPCBase before the QP
+  /// parts that depend on it are updated)
+  Eigen::VectorXd x0;
 };
 
 } // namespace affine_mpc::detail

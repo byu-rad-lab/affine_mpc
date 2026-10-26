@@ -1,6 +1,9 @@
 #include "formulation.hpp"
 
 #include <Eigen/Core>
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -25,7 +28,57 @@ void assignOrAdd(Part& part, Dst&& dst, const Src& value)
   part.written = true;
 }
 
+// For each step, the number of leading control point columns that can affect
+// the state after it (the columns of every control point up to the last one
+// in the band of this or an earlier step)
+std::vector<int> bandColumns(const VectorParameterization& input_param)
+{
+  const Parameterization& param{input_param.parameterization()};
+  std::vector<int> cols(static_cast<std::size_t>(param.horizon_steps));
+  int last{0};
+  for (int k{0}; k < param.horizon_steps; ++k) {
+    last = std::max(last, param.band_start(k) + param.band_width - 1);
+    int c{0};
+    for (int ch{0}; ch < input_param.inputDim(); ++ch)
+      c = std::max(c, input_param.coefficientIndex(ch, last) + 1);
+    cols[static_cast<std::size_t>(k)] = c;
+  }
+  return cols;
+}
+
 } // namespace
+
+// ---- StateRowMap ------------------------------------------------------------
+
+StateRowMap StateRowMap::selection(const std::vector<int>& states,
+                                   const int state_dim)
+{
+  const int num_selected{static_cast<int>(states.size())};
+  StateRowMap map{num_selected, num_selected == state_dim};
+  map.entries_.reserve(states.size());
+  for (int j{0}; j < num_selected; ++j)
+    map.entries_.push_back({j, states[static_cast<std::size_t>(j)], 1.0});
+  return map;
+}
+
+StateRowMap StateRowMap::general(const int rows, const int state_dim)
+{
+  StateRowMap map{rows, false};
+  map.entries_.reserve(static_cast<std::size_t>(rows)
+                       * static_cast<std::size_t>(state_dim));
+  return map;
+}
+
+void StateRowMap::assign(const Ref<const MatrixXd>& E)
+{
+  assert(E.rows() == rows_);
+  assert(static_cast<Index>(entries_.capacity()) >= E.size());
+  entries_.clear();
+  for (int i{0}; i < rows_; ++i)
+    for (int j{0}; j < E.cols(); ++j)
+      if (E(i, j) != 0.0)
+        entries_.push_back({i, j, E(i, j)});
+}
 
 // ---- CondensedFormulation ---------------------------------------------------
 
@@ -40,6 +93,7 @@ CondensedFormulation::CondensedFormulation(
     nx_{state_dim * T_},
     nc_{input_param.numCoefficients()},
     input_param_{input_param},
+    band_cols_{bandColumns(input_param)},
     // the first row block of S is only written in the band columns, so the
     // rest of it must stay zero
     S_{MatrixXd::Zero(nx_, nc_)},
@@ -57,11 +111,7 @@ Formulation::Update CondensedFormulation::update(const DataChangeSet changes,
   return {};
 }
 
-void CondensedFormulation::updateX0(const MPCData& d,
-                                    const Ref<const VectorXd>& x0)
-{
-  updateV(d, x0);
-}
+void CondensedFormulation::updateX0(const MPCData& d) { updateV(d); }
 
 void CondensedFormulation::predictStates(const Ref<const VectorXd>& z,
                                          Ref<VectorXd> x_traj) const noexcept
@@ -126,36 +176,70 @@ void CondensedFormulation::addControlLinear(const Ref<const VectorXd>& g)
 }
 
 void CondensedFormulation::setStateRows(const RowBlock& block,
-                                        const std::vector<int>& states)
+                                        const StateRowMap& E,
+                                        const int first_step,
+                                        const int num_steps)
 {
-  // the selected rows of S (states are sorted, so all of them are S itself)
-  const int num_bounded{static_cast<int>(states.size())};
-  if (num_bounded == n_) {
-    qp_.A.block(block.offset, 0, nx_, nc_) = S_;
+  if (E.isIdentity()) {
+    // the rows of S itself
+    qp_.A.block(block.offset, 0, num_steps * n_, nc_) =
+        S_.middleRows((first_step - 1) * n_, num_steps * n_);
     return;
   }
-  for (int k{0}, row{block.offset}; k < T_; ++k)
-    for (int j{0}; j < num_bounded; ++j, ++row)
-      qp_.A.row(row).head(nc_) = S_.row(k * n_ + states[j]);
+  // Row i of E S_k (S_k: the rows of S for x_k) as a sum over the nonzero
+  // entries of row i of E. A selection of states copies rows of S.
+  const int p{E.rows()};
+  const std::vector<StateRowMap::Entry>& entries{E.entries()};
+  for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
+       ++k, row += p) {
+    const int t{(k - 1) * n_};
+    const int cols{band_cols_[static_cast<std::size_t>(k - 1)]};
+    qp_.A.block(row, cols, p, nc_ - cols).setZero();
+    auto e{entries.begin()};
+    for (int i{0}; i < p; ++i) {
+      auto dst{qp_.A.row(row + i).head(cols)};
+      if (e == entries.end() || e->row != i) {
+        dst.setZero();
+        continue;
+      }
+      dst = e->value * S_.row(t + e->state).head(cols);
+      for (++e; e != entries.end() && e->row == i; ++e)
+        dst += e->value * S_.row(t + e->state).head(cols);
+    }
+  }
 }
 
 void CondensedFormulation::setStateBounds(const RowBlock& block,
-                                          const std::vector<int>& states,
+                                          const StateRowMap& E,
+                                          const int first_step,
+                                          const int num_steps,
                                           const Ref<const VectorXd>& lo,
                                           const Ref<const VectorXd>& hi)
 {
-  // lo <= S c + v <= hi becomes lo - v <= S c <= hi - v
-  const int num_bounded{static_cast<int>(states.size())};
-  if (num_bounded == n_) {
-    qp_.l.segment(block.offset, nx_) = lo.replicate(T_, 1) - v_;
-    qp_.u.segment(block.offset, nx_) = hi.replicate(T_, 1) - v_;
+  // lo <= E (S_k c + v_k) <= hi becomes lo - E v_k <= E S_k c <= hi - E v_k
+  if (E.isIdentity()) {
+    const int rows{num_steps * n_};
+    const auto v{v_.segment((first_step - 1) * n_, rows)};
+    qp_.l.segment(block.offset, rows) = lo.replicate(num_steps, 1) - v;
+    qp_.u.segment(block.offset, rows) = hi.replicate(num_steps, 1) - v;
     return;
   }
-  for (int k{0}, row{block.offset}; k < T_; ++k) {
-    for (int j{0}; j < num_bounded; ++j, ++row) {
-      const double offset{v_(k * n_ + states[j])};
-      qp_.l(row) = lo(j) - offset;
-      qp_.u(row) = hi(j) - offset;
+  const int p{E.rows()};
+  const std::vector<StateRowMap::Entry>& entries{E.entries()};
+  for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
+       ++k, row += p) {
+    const int t{(k - 1) * n_};
+    auto e{entries.begin()};
+    for (int i{0}; i < p; ++i) {
+      // (E v_k)_i, the first entry assigned (a selection copies v exactly)
+      double offset{0.0};
+      if (e != entries.end() && e->row == i) {
+        offset = e->value * v_(t + e->state);
+        for (++e; e != entries.end() && e->row == i; ++e)
+          offset += e->value * v_(t + e->state);
+      }
+      qp_.l(row + i) = lo(i) - offset;
+      qp_.u(row + i) = hi(i) - offset;
     }
   }
 }
@@ -184,12 +268,11 @@ void CondensedFormulation::updateS(const MPCData& d)
   }
 }
 
-void CondensedFormulation::updateV(const MPCData& d,
-                                   const Ref<const VectorXd>& x0)
+void CondensedFormulation::updateV(const MPCData& d)
 {
   // add dynamics of initial time step (k=0). Adding wd separately avoids a
   // temporary for the product inside a sum.
-  v_.head(n_).noalias() = d.Ad * x0;
+  v_.head(n_).noalias() = d.Ad * d.x0;
   v_.head(n_) += d.wd;
 
   for (int k{1}, row{n_}; k < T_; ++k, row += n_) {
@@ -234,13 +317,12 @@ Formulation::Update SparseFormulation::update(const DataChangeSet changes,
   return written;
 }
 
-void SparseFormulation::updateX0(const MPCData& d,
-                                 const Ref<const VectorXd>& x0)
+void SparseFormulation::updateX0(const MPCData& d)
 {
   // the k = 0 dynamics rows: -x_1 + Bd u_0 = -Ad x0 - wd. Separate statements
   // avoid a temporary for the product inside a sum.
   qp_.l.head(n_) = -d.wd;
-  qp_.l.head(n_).noalias() -= d.Ad * x0;
+  qp_.l.head(n_).noalias() -= d.Ad * d.x0;
   qp_.u.head(n_) = qp_.l.head(n_);
 }
 
@@ -327,26 +409,33 @@ void SparseFormulation::addControlLinear(const Ref<const VectorXd>& g)
 }
 
 void SparseFormulation::setStateRows(const RowBlock& block,
-                                     const std::vector<int>& states)
+                                     const StateRowMap& E,
+                                     const int first_step,
+                                     const int num_steps)
 {
-  const int num_bounded{static_cast<int>(states.size())};
-  if (num_bounded == n_) {
-    qp_.A.block(block.offset, nc_, nx_, nx_).diagonal().setOnes();
-    return;
+  // E on the columns of x_k; the control point columns and the rest of the
+  // x_k columns are cleared (the other state columns are never written)
+  const int p{E.rows()};
+  for (int k{first_step}, row{block.offset}; k < first_step + num_steps;
+       ++k, row += p) {
+    const int col{nc_ + (k - 1) * n_};
+    qp_.A.block(row, 0, p, nc_).setZero();
+    qp_.A.block(row, col, p, n_).setZero();
+    for (const StateRowMap::Entry& e : E.entries())
+      qp_.A(row + e.row, col + e.state) = e.value;
   }
-  for (int k{0}, row{block.offset}; k < T_; ++k)
-    for (int j{0}; j < num_bounded; ++j, ++row)
-      qp_.A(row, nc_ + k * n_ + states[j]) = 1.0;
 }
 
 void SparseFormulation::setStateBounds(const RowBlock& block,
-                                       const std::vector<int>& states,
+                                       const StateRowMap& E,
+                                       const int /*first_step*/,
+                                       const int num_steps,
                                        const Ref<const VectorXd>& lo,
                                        const Ref<const VectorXd>& hi)
 {
-  const int num_bounded{static_cast<int>(states.size())};
-  qp_.l.segment(block.offset, num_bounded * T_) = lo.replicate(T_, 1);
-  qp_.u.segment(block.offset, num_bounded * T_) = hi.replicate(T_, 1);
+  const int rows{E.rows() * num_steps};
+  qp_.l.segment(block.offset, rows) = lo.replicate(num_steps, 1);
+  qp_.u.segment(block.offset, rows) = hi.replicate(num_steps, 1);
 }
 
 void SparseFormulation::setDynamicsMatrixBlocks(const MPCData& d)

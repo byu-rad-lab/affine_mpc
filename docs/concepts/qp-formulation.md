@@ -813,6 +813,29 @@ With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)
 $G$ is banded and depends only on the knots, so it is computed once; a weight change only rescales it.
 The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
 
+## General and Terminal Constraints
+
+The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
+
+$$
+\mathbf{g}_{\min} - E \mathbf{x}_0 \leq F \mathbf{u}_0 \leq \mathbf{g}_{\max} - E \mathbf{x}_0,
+\qquad
+\mathbf{g}_{\min} \leq E \mathbf{x}_k + F \mathbf{u}_k \leq \mathbf{g}_{\max} \quad k = 1, \dots, T-1.
+$$
+
+With $\mathbf{u} = \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$, the input part of all $n_g T$ rows is $(I_T \otimes F)\, \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$: row block $k$ holds $F$ times the basis weights of $\mathbf{u}_k$ on the control points of its band.
+The state part of the rows for $k \geq 1$ is $E$ applied to $\mathbf{x}_1, \dots, \mathbf{x}_{T-1}$, which each formulation writes as it writes state rows:
+
+- Sparse: $E$ on the columns of $\mathbf{x}_k$ in $\mathbf{z}_{\mathrm{s}}$, with bounds $\mathbf{g}_{\min}$ and $\mathbf{g}_{\max}$.
+- Condensed: $E S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\mathbf{x}_k$, with bounds $\mathbf{g}_{\min} - E \mathbf{v}_k$ and $\mathbf{g}_{\max} - E \mathbf{v}_k$.
+  Row $i$ of $E S_k$ is a sum over the nonzero entries of row $i$ of $E$, so a sparse $E$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
+
+The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $E_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $E_{\mathrm{f}} S_T$ with bounds shifted by $-E_{\mathrm{f}} \mathbf{v}_T$ (condensed).
+State limits on selected states are the special case $F = 0$ with $E$ holding rows of $I_n$.
+
+The general rows add $n_g T$ rows and the terminal rows $n_{g,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
+Their bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), so they are updated at every solve.
+
 ## Implementation Mapping
 
 At a high level,

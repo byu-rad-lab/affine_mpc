@@ -59,7 +59,7 @@ struct Scales
 {
   double model{1.0}, offset{1.0}, weights{1.0}, refs{1.0};
   double input_limits{1.0}, state_limits{1.0}, slew{1.0}, slew0{1.0};
-  double u_prev{1.0};
+  double u_prev{1.0}, constraints{1.0}, constraint_limits{1.0};
 };
 
 // SISO system with every entry of Ad and Bd nonzero (stays in the pattern)
@@ -141,6 +141,25 @@ void setPreviousInput(ampc::MPCBase& mpc, const Scales& s)
     mpc.setPreviousInput(VectorXd::Constant(1, 0.1 * s.u_prev));
 }
 
+// Every entry of E, F, and Ef nonzero (stays in the pattern)
+void setConstraints(ampc::MPCBase& mpc, const Scales& s)
+{
+  if (mpc.getOptions().num_general_constraints > 0) {
+    Matrix2d E;
+    E << 1.0, 0.5, -0.4, 0.8;
+    mpc.setGeneralConstraints(s.constraints * E,
+                              s.constraints * Vector2d{0.3, 0.6},
+                              s.constraint_limits * Vector2d{-4.0, -5.0},
+                              s.constraint_limits * Vector2d{6.0, 7.0});
+  }
+  if (mpc.getOptions().num_terminal_constraints > 0) {
+    mpc.setTerminalConstraints(
+        s.constraints * RowVector2d{0.7, -0.2},
+        VectorXd::Constant(1, -3.0 * s.constraint_limits),
+        VectorXd::Constant(1, 2.0 * s.constraint_limits));
+  }
+}
+
 void configure(ampc::MPCBase& mpc, const Scales& s)
 {
   setModel(mpc, s);
@@ -151,6 +170,7 @@ void configure(ampc::MPCBase& mpc, const Scales& s)
   setSlew(mpc, s);
   setSlew0(mpc, s);
   setPreviousInput(mpc, s);
+  setConstraints(mpc, s);
 }
 
 struct CategoryCase
@@ -174,6 +194,8 @@ std::vector<CategoryCase> categoryCases()
       {"slewRate", setSlew, Scales{.slew = c}},
       {"initialSlewRate", setSlew0, Scales{.slew0 = c}},
       {"previousInput", setPreviousInput, Scales{.u_prev = c}},
+      {"constraintMatrices", setConstraints, Scales{.constraints = c}},
+      {"constraintLimits", setConstraints, Scales{.constraint_limits = c}},
   };
   // clang-format on
 }
@@ -229,13 +251,21 @@ const ampc::Options soft_velocity{.use_input_cost = true,
 const ampc::Options sampled_bounds{.use_input_cost = true,
                                    .saturate_input_trajectory = true};
 
+// general and terminal constraints (with state bounds on the position)
+const ampc::Options constraints{.use_input_cost = true,
+                                .saturate_states = true,
+                                .bounded_states = {0},
+                                .num_general_constraints = 2,
+                                .num_terminal_constraints = 1};
+
 } // namespace
 
 TEST(ChangeCategoryTester,
      givenEachCategoryChanged_CondensedQPMatchesFreshlyBuiltQP)
 {
-  for (const ampc::Options& opts : {ampc::Options{}, all_options,
-                                    sampled_bounds, rate_cost, soft_velocity}) {
+  for (const ampc::Options& opts :
+       {ampc::Options{}, all_options, sampled_bounds, rate_cost, soft_velocity,
+        constraints}) {
     checkCategoriesAgainstFreshQP<ampc::CondensedMPC>(opts);
   }
 }
@@ -243,8 +273,9 @@ TEST(ChangeCategoryTester,
 TEST(ChangeCategoryTester,
      givenEachCategoryChanged_SparseQPMatchesFreshlyBuiltQP)
 {
-  for (const ampc::Options& opts : {ampc::Options{}, all_options,
-                                    sampled_bounds, rate_cost, soft_velocity}) {
+  for (const ampc::Options& opts :
+       {ampc::Options{}, all_options, sampled_bounds, rate_cost, soft_velocity,
+        constraints}) {
     checkCategoriesAgainstFreshQP<ampc::SparseMPC>(opts);
   }
 }
@@ -266,7 +297,9 @@ TEST(ChangeCategoryTester, givenSetters_DoNotChangeTheQP)
                          .state_limits = 1.3,
                          .slew = 1.3,
                          .slew0 = 1.3,
-                         .u_prev = 1.3};
+                         .u_prev = 1.3,
+                         .constraints = 1.3,
+                         .constraint_limits = 1.3};
     configure(mpc, changed);
     EXPECT_EQ(mpc.pending(), ampc::detail::DataChangeSet::all());
     EXPECT_TRUE(expectEigenNear(mpc.P(), P, 0.0));
@@ -276,14 +309,18 @@ TEST(ChangeCategoryTester, givenSetters_DoNotChangeTheQP)
     EXPECT_TRUE(expectEigenNear(mpc.u(), u, 0.0));
   };
   const auto param{ampc::Parameterization::bspline(10, 2, 5)};
+  // every setter group, so every category is marked
+  ampc::Options every_setter{all_options};
+  every_setter.num_general_constraints = 2;
+  every_setter.num_terminal_constraints = 1;
   {
     SCOPED_TRACE("CondensedMPC");
-    QPInspector<ampc::CondensedMPC> condensed{2, 1, param, all_options};
+    QPInspector<ampc::CondensedMPC> condensed{2, 1, param, every_setter};
     check(condensed);
   }
   {
     SCOPED_TRACE("SparseMPC");
-    QPInspector<ampc::SparseMPC> sparse{2, 1, param, all_options};
+    QPInspector<ampc::SparseMPC> sparse{2, 1, param, every_setter};
     check(sparse);
   }
 }

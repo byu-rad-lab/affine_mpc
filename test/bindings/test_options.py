@@ -10,6 +10,8 @@ def test_options_interface():
         opts = ampc.Options(saturate_states=False)
         opts = ampc.Options(saturate_input_trajectory=False)
         opts = ampc.Options(use_input_rate_cost=False)
+        opts = ampc.Options(num_general_constraints=0)
+        opts = ampc.Options(num_terminal_constraints=0)
     except:
         assert False
 
