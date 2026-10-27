@@ -852,9 +852,9 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | Block | Kind | Built from |
 | --- | --- | --- |
 | `control_points` | variables | the input coefficients $\mathbf{c}$ |
-| `states` | variables | `SparseMPC` only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
+| `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
 | `state_slacks` | variables | soft state bounds: one slack per bounded state |
-| `dynamics` | rows | `SparseMPC` only: the model as equality rows |
+| `dynamics` | rows | sparse formulation only: the model as equality rows |
 | `input_bounds` | rows | input limits on the control points or the sampled inputs |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
@@ -890,9 +890,9 @@ At a high level,
 the derivation maps to the implementation as follows:
 
 - `Parameterization` defines the evaluation map $\Psi^p(\boldsymbol{\tau})$
-- `CondensedMPC` uses the condensed relation between $\mathbf{c}$ and $\mathbf{x}$
-- `SparseMPC` keeps $\mathbf{x}$ directly in the QP decision vector
-- `MPCBase` manages the shared model, references, weights, constraints, and solver lifecycle
+- `Formulation::Condensed` (`Formulation.Condensed` in Python) uses the condensed relation between $\mathbf{c}$ and $\mathbf{x}$
+- `Formulation::Sparse` keeps $\mathbf{x}$ directly in the QP decision vector
+- `MPC` manages the model, references, weights, constraints, and solver lifecycle the same way for both
 
 The final mathematical ingredient needed for robust usage is understanding what may be updated after initialization and why OSQP imposes fixed sparsity constraints.
 That is covered in [Runtime Updates](runtime-updates.md).

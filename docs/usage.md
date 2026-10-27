@@ -19,8 +19,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Discretizer`
     - `Options`
     - `OSQPSettings`
-    - `CondensedMPC`
-    - `SparseMPC`
+    - `MPC` and `Formulation`
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
@@ -34,9 +33,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
-    - `MPCBase`
-    - `CondensedMPC`
-    - `SparseMPC`
+    - `MPC` and `Formulation` (`affine_mpc/mpc.hpp`)
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
@@ -102,27 +99,29 @@ See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
 
-Choose between `CondensedMPC` and `SparseMPC` (they have the same interfaces).
+The formulation chooses how the QP represents the predicted states; the interface is the same for both, and so is the solution (up to the solver tolerance).
 
-- `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
-- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
+- Condensed (`Formulation.Condensed` in Python, `Formulation::Condensed` in C++, the default): the states are eliminated with the model, so only the control points are QP variables; usually the best starting point, especially for shorter horizons and moderate dimensions
+- Sparse (`Formulation.Sparse`, `Formulation::Sparse`): the predicted states are QP variables too, and the model is a set of equality constraints; useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
 
 The best way to know which is faster for your problem is to try them both.
+In Python, `formulation` is a keyword-only argument.
 
 **With Parameterization:**
 
 === "Python"
 
     ```python
-    mpc = affine_mpc.CondensedMPC(state_dim=n, input_dim=m, param=param, opts=opts)
-    # mpc = affine_mpc.SparseMPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    mpc = affine_mpc.MPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    # mpc = affine_mpc.MPC(n, m, param, opts, formulation=affine_mpc.Formulation.Sparse)
     ```
 
 === "C++"
 
     ```cpp
-    affine_mpc::CondensedMPC mpc(state_dim, input_dim, param, opts);
-    // affine_mpc::SparseMPC mpc(state_dim, input_dim, param, opts);
+    affine_mpc::MPC mpc(state_dim, input_dim, param, opts);
+    // affine_mpc::MPC mpc(state_dim, input_dim, param, opts, affine_mpc::Formulation::Sparse);
+    // affine_mpc::MPC mpc(state_dim, input_dim, param, affine_mpc::Formulation::Sparse);  // default options
     ```
 
 **No Parameterization:**
@@ -130,16 +129,27 @@ The best way to know which is faster for your problem is to try them both.
 === "Python"
 
     ```python
-    mpc = affine_mpc.CondensedMPC(state_dim, input_dim, horizon_steps, opts)
-    # mpc = affine_mpc.SparseMPC(state_dim, input_dim, horizon_steps, opts)
+    mpc = affine_mpc.MPC(state_dim, input_dim, horizon_steps, opts)
+    # mpc = affine_mpc.MPC(state_dim, input_dim, horizon_steps, opts, formulation=affine_mpc.Formulation.Sparse)
     ```
 
 === "C++"
 
     ```cpp
-    affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
-    // affine_mpc::SparseMPC mpc(state_dim, input_dim, horizon_steps, opts);
+    affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts);
+    // affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts, affine_mpc::Formulation::Sparse);
     ```
+
+!!! note "Migrating from `CondensedMPC`, `SparseMPC`, and `MPCBase`"
+
+    Before 0.4.0, each formulation was its own class.
+    These names still work in 0.4.0 but are deprecated (C++ `[[deprecated]]` warnings, Python `DeprecationWarning`) and will be removed in 0.5.0:
+
+    - `CondensedMPC(...)` is `MPC(...)` (the condensed formulation is the default)
+    - `SparseMPC(...)` is `MPC(..., Formulation::Sparse)` in C++ and `MPC(..., formulation=Formulation.Sparse)` in Python
+    - `MPCBase` is `MPC`, declared in `affine_mpc/mpc.hpp`
+
+    The logger records the formulation in the `formulation` metadata entry, and `print()` shows it.
 
 ### 4. Configure the MPC object
 
@@ -623,7 +633,7 @@ You can propagate the internal model one step with:
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`.
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
-- If a model coefficient may become nonzero later, initialize with that structure already present, e.g. with a representative model set before `initializeSolver()`; with `SparseMPC` you can instead pass `ModelSparsity::Full` (see [Model Entries](concepts/runtime-updates.md#model-entries-initial-nonzeros-or-full)).
-- With `CondensedMPC`, the same holds for cost weights and constraint matrix entries (`SparseMPC` tracks every one of them).
+- If a model coefficient may become nonzero later, initialize with that structure already present, e.g. with a representative model set before `initializeSolver()`; with the sparse formulation you can instead pass `ModelSparsity::Full` (see [Model Entries](concepts/runtime-updates.md#model-entries-initial-nonzeros-or-full)).
+- With the condensed formulation, the same holds for cost weights and constraint matrix entries (the sparse formulation tracks every one of them).
 - To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()` or `prepare()`.
 - If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.

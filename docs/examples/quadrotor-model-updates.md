@@ -46,7 +46,7 @@ If you installed the package with `pip`, `affine-mpc-example-quadrotor` runs the
   The plant is integrated with RK4 at 0.5 ms or finer, and measurements have small Gaussian noise (fixed seed).
 - **Task:** 12 s, two laps of a figure-eight (±2 m by ±1 m, ±0.5 m in height, 6 s per lap) with yaw swinging ±45°, with a reference from differential flatness.
   A body-rate kick of (4, −3, 0) rad/s at 3 s models a collision that no prediction can anticipate; a constant wind force of (1.5, −1, 0) N starts at 6 s and is not in the model.
-- **MPC:** `CondensedMPC`, a 0.8 s horizon (80 steps at 100 Hz, 400 at 500 Hz), and a degree-2 B-spline with 8 control points per input and geometric knots (`knot_ratio=1.5`), which puts short knot intervals at the start of the horizon.
+- **MPC:** `MPC` with the condensed formulation, a 0.8 s horizon (80 steps at 100 Hz, 400 at 500 Hz), and a degree-2 B-spline with 8 control points per input and geometric knots (`knot_ratio=1.5`), which puts short knot intervals at the start of the horizon.
   The horizon is fixed in seconds so the controller previews the same time and uses the same knot times at both rates; the number of steps, and with it the cost of rebuilding the QP after a model change, grows with the rate.
   The weights scale the errors so that 1 cm of position, 3 cm/s of velocity, 1° of attitude, and 0.3 N of thrust cost about the same, with a small weight on body rates (`Q = diag(40, 40, 40, 2, 2, 2, 1, 1, 4, 0.01, 0.01, 0.01)`, `Q_f = Q`, `R = 0.05 I` on the rotor thrusts around the flatness reference).
 

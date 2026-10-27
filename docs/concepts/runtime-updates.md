@@ -65,7 +65,7 @@ The model offset $\mathbf{w}$ only enters the QP vectors, so it never affects sp
 - `ModelSparsity::InitialNonzeros` (the default): the entries that are nonzero in the model set when `initializeSolver()` is called.
   An entry that may become nonzero later must already be nonzero then.
 - `ModelSparsity::Full`: every entry of $A$ and $B$, so any entry may change between zero and nonzero later.
-  Supported by `SparseMPC` only for now (`CondensedMPC` throws `std::invalid_argument`, `ValueError` in Python).
+  Supported by the sparse formulation only for now (the condensed formulation throws `std::invalid_argument`, `ValueError` in Python).
 
 === "Python"
 
@@ -84,7 +84,7 @@ The model offset $\mathbf{w}$ only enters the QP vectors, so it never affects sp
 This is a trade-off between speed and modeling fidelity.
 OSQP's factorization treats every tracked entry like a nonzero, even when its value is zero,
 so tracking fewer entries makes each solve cheaper when the model has structural zeros
-(in `SparseMPC`, the untracked entries are left out of its constraint matrix entirely).
+(in the sparse formulation, the untracked entries are left out of its constraint matrix entirely).
 In exchange, every later model must be zero outside the tracked entries:
 either zero those entries yourself, or do not compute them.
 
@@ -135,10 +135,10 @@ the discretization $e^{A_c \Delta t}$ fills in the pattern of $A_c$
 `ModelSparsity::Full` avoids the representative model at the cost of slower solves when the model has structural zeros.
 
 The rest of the pattern does not depend on this choice.
-`SparseMPC` tracks every weight position on the diagonal of $P$
+The sparse formulation tracks every weight position on the diagonal of $P$
 and every entry of $H_x$, $H_u$, and $H_{\mathrm{f}}$, whatever their values when `initializeSolver()` is called,
 so its weights and constraint matrices may change between zero and nonzero freely.
-In `CondensedMPC`, the model and the weights enter $P$ and $A_\mathrm{qp}$ through matrix products,
+In the condensed formulation, the model and the weights enter $P$ and $A_\mathrm{qp}$ through matrix products,
 and its whole pattern comes from the values at initialization,
 so ensure that any model, weight, or constraint matrix updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
@@ -148,9 +148,9 @@ Values outside the initialized pattern are silently dropped,
 so the solver solves a different problem than the one you set.
 If you suspect this, call `isWithinSparsityPattern()` after `solve()` or `prepare()`;
 it returns `false` when the current QP matrices have nonzeros outside the initialized pattern,
-or, for `SparseMPC`, when the model has a nonzero outside its tracked entries.
+or, for the sparse formulation, when the model has a nonzero outside its tracked entries.
 It scans the QP matrices, so use it for debugging rather than in a control loop.
-Debug builds of the library also assert in `SparseMPC`'s model setters that the model stays within its tracked entries.
+Debug builds of the library also assert in the sparse formulation's model setters that the model stays within its tracked entries.
 
 !!! note
 
@@ -158,7 +158,7 @@ Debug builds of the library also assert in `SparseMPC`'s model setters that the 
     so coefficients that are truly zero throughout the expected operating range should remain exactly zero at initialization.
     Include entries that may become active later,
     but avoid making matrices denser than necessary just to be conservative.
-    `SparseMPC` stores every entry of its constraint matrix blocks ($H_x$, $H_u$, $H_{\mathrm{f}}$, and, with `ModelSparsity::Full`, $A$ and $B$),
+    The sparse formulation stores every entry of its constraint matrix blocks ($H_x$, $H_u$, $H_{\mathrm{f}}$, and, with `ModelSparsity::Full`, $A$ and $B$),
     including exact zeros, which OSQP's factorization treats like nonzeros.
 
 ## What Can Change Between Solves?

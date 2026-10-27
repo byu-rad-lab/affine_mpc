@@ -127,7 +127,7 @@ Enable this to set state saturation limits.
 
 Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
 List them in `bounded_states`; the limits then have one entry per listed state.
-Every bounded state adds one constraint row per horizon step, and with `CondensedMPC` each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state limits at all).
+Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state limits at all).
 
 !!! danger
 
@@ -204,7 +204,7 @@ Pass `-inf` or `inf` for a side without a bound.
 Rows of the identity in $H_x$ with $H_u = 0$ (plus the same terminal rows) give state limits, and $H_x = 0$, $H_u = I$ limits every sampled input.
 
 Changing $H_x$, $H_u$, or $H_{\mathrm{f}}$ rebuilds QP matrices and makes OSQP refactor, like a model change; changing only the bounds is cheap.
-With `CondensedMPC`, as with the model, an entry of these matrices that may become nonzero later must be nonzero when the solver is initialized; `SparseMPC` keeps every entry in its sparsity pattern (see [Runtime Updates](runtime-updates.md)).
+With the condensed formulation, as with the model, an entry of these matrices that may become nonzero later must be nonzero when the solver is initialized; the sparse formulation keeps every entry in its sparsity pattern (see [Runtime Updates](runtime-updates.md)).
 
 **When you may want to use it:**
 

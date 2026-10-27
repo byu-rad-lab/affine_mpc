@@ -19,7 +19,7 @@ Since Python can natively plot the logged results, the only difference between t
 ## What the Example Demonstrates
 
 - Building a linear interpolation parameterization
-- Configuring a `CondensedMPC`
+- Configuring an `MPC` (condensed formulation)
 - Setting model, limits, weights, and references
 - Solving in a closed loop
 - Logging outputs with `MPCLogger`
@@ -39,7 +39,7 @@ The two implementations follow the same steps:
 
 1. Define the model dimensions
 1. Choose a `Parameterization` and `Options`
-1. Construct `CondensedMPC`
+1. Construct `MPC` with `Formulation::Condensed` (`Formulation.Condensed` in Python)
 1. Set model, limits, weights, and references
 1. Call `initializeSolver()`
 1. Solve in a loop

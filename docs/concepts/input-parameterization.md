@@ -326,7 +326,7 @@ def laguerre_basis(horizon_steps, num_functions, pole):
 T, ts = 40, 0.1
 basis, _ = np.linalg.qr(laguerre_basis(T, 4, 0.8))  # orthonormal columns
 param = ampc.Parameterization.fromBasis(T, basis)
-mpc = ampc.CondensedMPC(2, 1, param, ampc.Options(use_input_cost=True))
+mpc = ampc.MPC(2, 1, param, ampc.Options(use_input_cost=True))
 
 A = np.array([[0.0, 1.0], [-0.6, -0.1]])
 B = np.array([0.0, 0.2])

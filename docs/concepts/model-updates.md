@@ -50,7 +50,7 @@ This is the preparation and feedback split of the real-time iteration (RTI) sche
 After the measurement, `solve()` only updates the QP vectors that depend on the initial state and runs the solver iterations.
 The model is computed about the prediction rather than the measured state; how much that matters depends on how close the prediction is to the measurement.
 
-If you take the prediction from the last solution, call `getPredictedStateTrajectory()` before `prepare()`: `CondensedMPC` computes the prediction from the current model.
+If you take the prediction from the last solution, call `getPredictedStateTrajectory()` before `prepare()`: the condensed formulation computes the prediction from the current model.
 
 ## Hybrid: Predicted Model, Offset Recomputed After the Measurement
 

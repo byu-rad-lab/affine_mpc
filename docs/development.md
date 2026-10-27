@@ -166,7 +166,7 @@ The project uses `.clang-format` with an LLVM-based configuration.
 Format edited files with:
 
 ```sh
-clang-format -i src/mpc_base.cpp
+clang-format -i src/mpc.cpp
 ```
 
 Use `// clang-format off` only when it clearly improves readability for matrix literals or similarly structured data.

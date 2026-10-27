@@ -13,9 +13,9 @@ $$
 
 and solves a finite-horizon tracking MPC problem in which the dense input trajectory is parameterized by control points through some mapping
 $\mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1})$.
-The same mathematical problem supports both library formulations:
-`CondensedMPC` optimizes only the control points,
-while `SparseMPC` keeps the predicted states in the QP decision vector as well.
+The same mathematical problem supports both library formulations, chosen with the `Formulation` argument of `MPC`:
+the condensed formulation (the default) optimizes only the control points,
+while the sparse formulation keeps the predicted states in the QP decision vector as well.
 
 The library supports the following cost and constraint structure,
 with several optional terms controlled by `Options` (highlighted in red):
