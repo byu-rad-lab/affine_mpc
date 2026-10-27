@@ -7,7 +7,6 @@ existing log (e.g. one written by the C++ example_sim) without simulating.
 # std lib
 import argparse
 from pathlib import Path
-import sys
 import tempfile
 from time import perf_counter
 
@@ -112,36 +111,6 @@ def main():
         simulate()
     if args.plot:
         plot()
-
-
-# Deprecated command names; each still works as before after a notice.
-
-
-def _renamed(command):
-    print(
-        f"Note: {Path(sys.argv[0]).name} is deprecated and will be removed in a "
-        f"future release; use '{command}' instead.",
-        file=sys.stderr,
-    )
-
-
-def run_all():
-    """affine-mpc-example: simulate and plot."""
-    _renamed("affine-mpc-example-msd --plot")
-    simulate()
-    plot()
-
-
-def run_example():
-    """affine-mpc-example-sim: simulate only."""
-    _renamed("affine-mpc-example-msd")
-    simulate()
-
-
-def plot_existing():
-    """affine-mpc-example-plot: plot the existing log only."""
-    _renamed("affine-mpc-example-msd --load --plot")
-    plot()
 
 
 if __name__ == "__main__":
