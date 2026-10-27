@@ -796,8 +796,13 @@ first prepare() or solve().
 SparseMPC stores P in sparse form, so each call also builds the dense matrix;
 not intended for the control loop.
 
+The solver reads only the upper triangle. For CondensedMPC this is the stored P,
+built by matrix products and so symmetric only up to round-off; for SparseMPC
+the lower triangle is mirrored from the upper one, so it is exactly symmetric.
+getQP() returns an exactly symmetric P for both.
+
 Returns:
-    P (matrix): Copy of the full symmetric QP cost matrix.
+    P (matrix): Copy of the full QP cost matrix.
            )doc");
 
   base.def("getQP", &ampc::MPCBase::getQP,

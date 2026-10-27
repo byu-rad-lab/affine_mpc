@@ -760,9 +760,14 @@ public:
    *
    *   SparseMPC stores P in sparse form, so each call fills a dense copy
    *   (allocated at the first call); not intended for the control loop.
-   * @return Reference to the QP cost matrix (full symmetric matrix), valid
-   *   for the lifetime of this object; for SparseMPC it is updated only by
-   *   calls to this function.
+   *
+   *   The solver reads only the upper triangle. For CondensedMPC this is the
+   *   stored P, built by matrix products and so symmetric only up to round-off;
+   *   for SparseMPC the lower triangle is mirrored from the upper one, so it is
+   *   exactly symmetric. getQP() returns an exactly symmetric P for both.
+   * @return Reference to the QP cost matrix (full matrix), valid for the
+   *   lifetime of this object; for SparseMPC it is updated only by calls to
+   *   this function.
    */
   const Eigen::MatrixXd& getQPCostMatrix() const;
 
