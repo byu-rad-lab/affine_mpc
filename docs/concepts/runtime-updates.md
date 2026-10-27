@@ -57,47 +57,108 @@ The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 but they determine the QP structure within which runtime updates occur.
 The runtime-updated inputs that can affect QP sparsity are the model matrices, the weights, and the general and terminal constraint matrices.
 The model offset $\mathbf{w}$ only enters the QP vectors, so it never affects sparsity.
-With `CondensedMPC`,
-the pattern comes from the values at initialization,
-so ensure that any model, weight, or constraint matrix updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
-For example, it is common to compute Jacobians of a nonlinear model for $A$, $B$, and $\mathbf{w}$.
-Often when evaluating those Jacobians at equilibrium points, many entries are exactly zero,
-but they may become nonzero when evaluated at other points.
-In that case,
-initialize the solver using a model whose sparsity pattern covers the operating conditions you expect,
-then update the model to the current operating point before the first call to `solve()`.
-Evaluating the Jacobians at a random state and input usually gives such a pattern
-(a point that is merely nonzero can still give exact zeros, such as $\sin(\pi) = 0$).
-If you switch between several models, such as piecewise or gain-scheduled models,
-initialize with a model whose nonzeros cover all of them.
+### Model Entries: Initial Nonzeros or Full
 
-`SparseMPC` does not have this rule.
-Its pattern comes from the structure of its QP rather than from the values at initialization:
-every entry of the model blocks ($A$ and $B$ at every step),
-every weight position on the diagonal of $P$,
-and every entry of $H_x$, $H_u$, and $H_{\mathrm{f}}$ is in the pattern,
-whatever its value when `initializeSolver()` is called.
-The model, the weights, and the constraint matrices in `SparseMPC` may therefore change between zero and nonzero freely.
+`initializeSolver()` takes a `ModelSparsity` that chooses which entries of $A$ and $B$ the solver tracks:
+
+- `ModelSparsity::InitialNonzeros` (the default): the entries that are nonzero in the model set when `initializeSolver()` is called.
+  An entry that may become nonzero later must already be nonzero then.
+- `ModelSparsity::Full`: every entry of $A$ and $B$, so any entry may change between zero and nonzero later.
+  Supported by `SparseMPC` only for now (`CondensedMPC` throws `std::invalid_argument`, `ValueError` in Python).
+
+=== "Python"
+
+    ```python
+    mpc.initializeSolver()  # ModelSparsity.InitialNonzeros
+    mpc.initializeSolver(model_sparsity=affine_mpc.ModelSparsity.Full)
+    ```
+
+=== "C++"
+
+    ```cpp
+    (void)mpc.initializeSolver(); // ModelSparsity::InitialNonzeros
+    (void)mpc.initializeSolver(affine_mpc::ModelSparsity::Full);
+    ```
+
+This is a trade-off between speed and modeling fidelity.
+OSQP's factorization treats every tracked entry like a nonzero, even when its value is zero,
+so tracking fewer entries makes each solve cheaper when the model has structural zeros
+(in `SparseMPC`, the untracked entries are left out of its constraint matrix entirely).
+In exchange, every later model must be zero outside the tracked entries:
+either zero those entries yourself, or do not compute them.
+
+It is common to compute Jacobians of a nonlinear model for $A$, $B$, and $\mathbf{w}$.
+At an equilibrium many of their entries are exactly zero,
+but they become nonzero at other operating points (e.g. a $g \sin\theta$ term that is zero at hover).
+To track them, set a representative model before `initializeSolver()`,
+then set the actual model before the first call to `solve()`:
+
+- a model at a generic operating point: evaluating the Jacobians at a random state and input usually gives every entry that can become nonzero
+  (a point that is merely nonzero can still give exact zeros, such as $\sin(\pi) = 0$), or
+- a model with ones at the union of the nonzeros over the operating points the model visits, which also covers switching between several models, such as piecewise or gain-scheduled models.
+
+Take the union over the discrete $A$ and $B$, not over $A_c$ and $B_c$:
+the discretization $e^{A_c \Delta t}$ fills in the pattern of $A_c$
+(a chain of integrators has a sparse $A_c$ but an upper triangular $A$).
+
+=== "Python"
+
+    ```python
+    Ad_union, Bd_union = np.zeros((n, n)), np.zeros((n, m))
+    for x, u in operating_points:
+        Ad, Bd, _ = discretizer.discretize(*affine_model(x, u), dt)
+        Ad_union[Ad != 0] = 1.0
+        Bd_union[Bd != 0] = 1.0
+    mpc.setModelDiscrete(Ad_union, Bd_union, np.zeros(n))  # representative
+    mpc.initializeSolver()
+    mpc.setModelContinuous2Discrete(*affine_model(x0, u0), dt)  # actual
+    ```
+
+=== "C++"
+
+    ```cpp
+    Eigen::MatrixXd Ad_union{Eigen::MatrixXd::Zero(n, n)};
+    Eigen::MatrixXd Bd_union{Eigen::MatrixXd::Zero(n, m)};
+    for (const auto& [x, u] : operating_points) {
+      affineModel(x, u, Ac, Bc, wc);
+      discretizer.discretize(Ac, Bc, wc, dt, Ad, Bd, wd);
+      Ad_union = (Ad.array() != 0.0).select(1.0, Ad_union);
+      Bd_union = (Bd.array() != 0.0).select(1.0, Bd_union);
+    }
+    mpc.setModelDiscrete(Ad_union, Bd_union, Eigen::VectorXd::Zero(n));
+    (void)mpc.initializeSolver();
+    affineModel(x0, u0, Ac, Bc, wc);
+    mpc.setModelContinuous2Discrete(Ac, Bc, wc, dt); // actual
+    ```
+
+`ModelSparsity::Full` avoids the representative model at the cost of slower solves when the model has structural zeros.
+
+The rest of the pattern does not depend on this choice.
+`SparseMPC` tracks every weight position on the diagonal of $P$
+and every entry of $H_x$, $H_u$, and $H_{\mathrm{f}}$, whatever their values when `initializeSolver()` is called,
+so its weights and constraint matrices may change between zero and nonzero freely.
 In `CondensedMPC`, the model and the weights enter $P$ and $A_\mathrm{qp}$ through matrix products,
-so the rule above applies to all of them.
+and its whole pattern comes from the values at initialization,
+so ensure that any model, weight, or constraint matrix updates you expect to make later will not introduce new nonzero entries into $P$ or $A_\mathrm{qp}$.
 
 Updates that break these rules are not detected during normal operation,
 because checking would add work to every update.
 Values outside the initialized pattern are silently dropped,
 so the solver solves a different problem than the one you set.
 If you suspect this, call `isWithinSparsityPattern()` after `solve()` or `prepare()`;
-it returns `false` when the current QP matrices have nonzeros outside the initialized pattern
-(never for `SparseMPC`, whose pattern holds every entry its updates can write).
+it returns `false` when the current QP matrices have nonzeros outside the initialized pattern,
+or, for `SparseMPC`, when the model has a nonzero outside its tracked entries.
 It scans the QP matrices, so use it for debugging rather than in a control loop.
+Debug builds of the library also assert in `SparseMPC`'s model setters that the model stays within its tracked entries.
 
 !!! note
 
     OSQP exploits sparsity for efficiency,
-    so with `CondensedMPC`, coefficients that are truly zero throughout the expected operating range should remain exactly zero at initialization.
+    so coefficients that are truly zero throughout the expected operating range should remain exactly zero at initialization.
     Include entries that may become active later,
     but avoid making matrices denser than necessary just to be conservative.
-    `SparseMPC` stores every entry of its model and constraint matrix blocks,
+    `SparseMPC` stores every entry of its constraint matrix blocks ($H_x$, $H_u$, $H_{\mathrm{f}}$, and, with `ModelSparsity::Full`, $A$ and $B$),
     including exact zeros, which OSQP's factorization treats like nonzeros.
 
 ## What Can Change Between Solves?

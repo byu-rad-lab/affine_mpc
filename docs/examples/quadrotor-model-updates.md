@@ -10,7 +10,7 @@ A single run uses one of the strategies described in [Model Update Strategies](.
 - Moving the QP rebuild and refactorization before the measurement with `prepare()`
 - Updating only the model offset with `setModelOffsetContinuous2Discrete()`
 - Logging each run with `MPCLogger`, passing the measured latency as `loop_time` and the run's settings as metadata
-- Initializing the solver with a model at a random state, so the sparsity pattern covers every later model (see [Runtime Updates](../concepts/runtime-updates.md#which-user-inputs-affect-qp-structure))
+- Initializing the solver with a model at a random state, so the sparsity pattern covers every later model (see [Model Entries](../concepts/runtime-updates.md#model-entries-initial-nonzeros-or-full))
 
 ## Run the Example
 
