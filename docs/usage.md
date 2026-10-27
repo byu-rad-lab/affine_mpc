@@ -390,7 +390,7 @@ If input cost is enabled, input references can also be configured (with a [custo
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
 `getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
-Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached` (the paper experiments use 20000):
+Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached`:
 
 === "Python"
 
@@ -426,7 +426,7 @@ The failed solve's iterates may also have diverged, which would slow down the ne
 so call `resetWarmStart()` to start the next solve from zero.
 
 `MaxIterReached` is a partial exception.
-With B-spline parameterizations its iterate is usually close to the solution: in the paper experiments the applied input violated the input limits by at most $8.7 \times 10^{-6}$ of `u_max`.
+With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
 Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
 === "Python"

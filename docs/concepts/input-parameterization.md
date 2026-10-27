@@ -198,7 +198,7 @@ The knot intervals then have lengths proportional to $1, g, g^2, \dots$, scaled 
 With $g > 1$, the short intervals (and so the most flexibility) are at the start of the horizon, whose inputs are applied first, and the long intervals are at the end.
 $g < 1$ does the opposite, and the default $g = 1$ gives uniform knots.
 With `moveBlocking()`, this gives geometric move blocking.
-A good ratio depends on the horizon and the number of control points; tuned geometric knots performed best in the B-spline parameterization experiments.
+A good ratio depends on the horizon, the number of control points, and the system; compare a few values in closed loop, as when choosing the number of control points.
 Intervals shorter than one sample are fine as long as the sampled basis keeps full column rank (see [Accepted Knot Vectors](#accepted-knot-vectors)).
 Otherwise the factory throws and suggests a ratio closer to 1 or fewer control points, which limits $g$ for a given horizon and number of control points.
 `makeClampedKnots(horizon_steps, degree, num_control_points, knot_ratio)` returns the same knot vector, as a starting point for custom knots.
@@ -248,8 +248,7 @@ Construction checks this condition exactly on the sampled basis and throws `std:
   For $p = 0$, a change point at $T-1$ is a valid one-sample block.
 
 Near-coincident knots pass this check, since the rank is still full, but they make the QP ill conditioned.
-Clustered or very short knot intervals make the QP worse conditioned in general, because nearby control points affect almost the same samples.
-In the knot optimization experiments, degree 0 with optimized (clustered) knots had a median QP condition number of $1.45 \times 10^5$, compared with about $10^3$ for uniform or geometric knots.
+Clustered or very short knot intervals make the QP worse conditioned in general, because nearby control points affect almost the same samples, and the condition number can grow by orders of magnitude compared with uniform or geometric knots.
 OSQP then needs more iterations and may stop at `MaxIterReached`.
 A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
 
