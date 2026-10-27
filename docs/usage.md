@@ -558,6 +558,13 @@ Inside the control loop:
 
 See [Logging](logging.md) for output format and workflow details.
 
+### 9. (Optional) Inspect the QP
+
+`getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
+These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
+See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
+
 ## Interface Notes
 
 === "Python"

@@ -33,6 +33,12 @@ dev = [
     "pybind11-stubgen>=3,<4",
     "black",
     "pytest",
+    "scipy",
+]
+# Install these with `pip install ".[sparse]"`: QuadraticProgram.P and .A
+# (MPCBase.getQP(), MPCBase.assembleQP()) convert to scipy.sparse matrices
+sparse = [
+    "scipy",
 ]
 # Install these with `pip install ".[examples]"`
 examples = [

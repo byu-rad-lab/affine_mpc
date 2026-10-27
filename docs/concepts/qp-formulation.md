@@ -840,6 +840,50 @@ State limits on selected states are the special case $H_u = 0$ with $H_x$ holdin
 The general rows add $n_h T$ rows and the terminal rows $n_{h,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
 Their bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), so they are updated at every solve.
 
+## Accessing the QP
+
+`getQP()` returns the QP as last written by `solve()`, `prepare()`, or `assembleQP()`, and `assembleQP(x0, qp)` assembles it for the current settings and an initial state without solving, before or after `initializeSolver()`.
+Both give a `QuadraticProgram` with $P$ and $A$ as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\mathbf{q}$, $\mathbf{l}$, $\mathbf{u}$.
+The cost omits the constant terms of the MPC cost, equality rows have $l = u$, and unbounded sides are $\pm\infty$.
+Neither function is meant for the control loop: both copy the QP, and `assembleQP()` leaves its changes to be sent again by the next `prepare()` or `solve()`.
+
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\mathbf{z}$ and of the rows of $A$, in order, each with its offset and size; only the blocks the options enable are listed.
+
+| Block | Kind | Built from |
+| --- | --- | --- |
+| `control_points` | variables | the input coefficients $\mathbf{c}$ |
+| `states` | variables | `SparseMPC` only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
+| `state_slacks` | variables | soft state bounds: one slack per bounded state |
+| `dynamics` | rows | `SparseMPC` only: the model as equality rows |
+| `input_bounds` | rows | input limits on the control points or the sampled inputs |
+| `initial_slew` | rows | `slew_initial_input` |
+| `control_point_slew` | rows | `slew_control_points` |
+| `state_bounds` | rows | `saturate_states` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
+| `general_constraints` | rows | `num_general_constraints` rows per step, steps in order |
+| `terminal_constraints` | rows | `num_terminal_constraints` rows on $\mathbf{x}_T$ |
+
+For example, to hand the QP to another solver or to count its rows and nonzeros:
+
+=== "Python"
+
+    ```python
+    qp = affine_mpc.QuadraticProgram()
+    mpc.assembleQP(x0, qp)  # or qp = mpc.getQP() after a solve
+    print(qp.P.nnz, qp.A.nnz)
+    for block in mpc.getQPConstraintBlocks():
+        print(block.name, block.offset, block.size)
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::QuadraticProgram qp;
+    mpc.assembleQP(x0, qp); // or auto qp = mpc.getQP(); after a solve
+    std::cout << qp.P.nonZeros() << " " << qp.A.nonZeros() << "\n";
+    for (const affine_mpc::QPBlock& block : mpc.getQPConstraintBlocks())
+      std::cout << block.name << " " << block.offset << " " << block.size << "\n";
+    ```
+
 ## Implementation Mapping
 
 At a high level,

@@ -14,6 +14,8 @@ except ModuleNotFoundError:
 from ._bindings import (
     Options,
     Parameterization,
+    QPBlock,
+    QuadraticProgram,
     Discretizer,
     OSQPSettings,
     SolveStatus,
@@ -27,6 +29,8 @@ from ._bindings import (
 __all__ = [
     "Options",
     "Parameterization",
+    "QPBlock",
+    "QuadraticProgram",
     "Discretizer",
     "OSQPSettings",
     "SolveStatus",

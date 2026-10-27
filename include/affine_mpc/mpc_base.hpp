@@ -18,6 +18,7 @@
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
@@ -779,6 +780,64 @@ public:
    */
   [[nodiscard]] bool isWithinSparsityPattern() const;
 
+  /**
+   * @brief Analysis aid: get the QP as last written by solve(), prepare(), or
+   *   assembleQP(), for analysis, debugging, or handing to another solver.
+   *
+   *   Setters do not change it; to get the QP for the current settings and a
+   *   given initial state without solving, use assembleQP(). After
+   *   initializeSolver() and before the first prepare() or solve(),
+   *   SparseMPC's cost holds unit placeholder weights. Copies the QP, so not
+   *   intended for the control loop.
+   * @return The QP (see QuadraticProgram for its form).
+   */
+  QuadraticProgram getQP() const;
+
+  /**
+   * @brief Analysis aid: assemble the QP for the current settings and the
+   *   initial state x0 without solving it, for analysis, debugging, or handing
+   *   to another solver.
+   *
+   *   Works before or after initializeSolver() and needs the same setup
+   *   (model, input limits, and the setters the options require). It does not
+   *   send anything to the solver: the parts it writes are sent by the next
+   *   prepare() or solve(), which therefore repeats the matrix work once. Not
+   *   intended for the control loop.
+   * @param x0 Initial state (state_dim).
+   * @param qp Output QP (see QuadraticProgram); its storage is reused.
+   * @throws std::logic_error if the setup required by initializeSolver() is
+   *   missing.
+   */
+  void assembleQP(const Eigen::Ref<const Eigen::VectorXd>& x0,
+                  QuadraticProgram& qp);
+
+  /**
+   * @brief The blocks of QP variables z, in order: "control_points" (input
+   *   coefficients, the input_param layout), then for SparseMPC "states"
+   *   (x_1, ..., x_T, state_dim each), then with soft state bounds
+   *   "state_slacks" (one per bounded state). Together they cover every
+   *   variable. For analysis; allocates the list, so not intended for the
+   *   control loop.
+   */
+  std::vector<QPBlock> getQPVariableBlocks() const;
+
+  /**
+   * @brief The blocks of constraint rows of A, in order, listing only the
+   *   blocks the options enable: "dynamics" (SparseMPC's model rows),
+   *   "input_bounds", "initial_slew", "control_point_slew", "state_bounds"
+   *   (soft: the upper rows, the lower rows, then the slack rows s >= 0),
+   *   "general_constraints" (rows per step, steps in order), and
+   *   "terminal_constraints". Together they cover every row. For analysis;
+   *   allocates the list, so not intended for the control loop.
+   */
+  std::vector<QPBlock> getQPConstraintBlocks() const;
+
+  /// @brief Number of QP variables (the size of z).
+  int getNumQPVariables() const noexcept;
+
+  /// @brief Number of QP constraint rows (the rows of A).
+  int getNumQPConstraints() const noexcept;
+
   /// @brief Name of the MPC class (e.g. "CondensedMPC"), as printed by print().
   virtual const char* getClassName() const noexcept { return "MPCBase"; }
 
@@ -823,6 +882,9 @@ protected:
   bool qpUpdateX0(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
 private:
+  // Throw std::logic_error, naming the caller and the action, if a setter
+  // that the solver or the options require has not been called
+  void checkSetup(const char* caller, const char* action) const;
   // Apply the pending changes (x0-independent work) and push what changed to
   // the solver (except the parts applyX0() writes, which it pushes). Returns
   // false if a solver update failed, in which case the categories behind it

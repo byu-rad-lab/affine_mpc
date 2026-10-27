@@ -1,13 +1,16 @@
 #include "affine_mpc/mpc_base.hpp"
 
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <osqp.h>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -157,40 +160,135 @@ const detail::QPBuilder& MPCBase::qpBuilder() const noexcept
   return *qp_builder_;
 }
 
+namespace {
+
+// Write the QP's nonzero entries into the public form, whichever storage the
+// formulation uses: both matrices CSC, and P full symmetric, mirrored from its
+// upper triangle, which is all the solver reads (a dense P from matrix
+// products is symmetric only to round-off).
+void toQuadraticProgram(const detail::QP& qp, QuadraticProgram& out)
+{
+  const auto nonzero{[](const Index&, const Index&, const double& value) {
+    return value != 0.0;
+  }};
+  if (qp.storage == detail::QPStorage::Dense) {
+    MatrixXd P{qp.P.triangularView<Upper>()};
+    P.triangularView<StrictlyLower>() = P.transpose();
+    out.P = P.sparseView();
+    out.A = qp.A.sparseView();
+  } else {
+    // P_csc holds the upper triangle: mirror the entries below the diagonal
+    std::vector<Triplet<double>> entries;
+    entries.reserve(2 * static_cast<std::size_t>(qp.P_csc.nonZeros()));
+    for (Index j{0}; j < qp.P_csc.outerSize(); ++j)
+      for (detail::QP::SparseMatrix::InnerIterator it{qp.P_csc, j}; it; ++it) {
+        if (it.value() == 0.0)
+          continue;
+        entries.emplace_back(it.row(), it.col(), it.value());
+        if (it.row() != it.col())
+          entries.emplace_back(it.col(), it.row(), it.value());
+      }
+    out.P.resize(qp.P_csc.rows(), qp.P_csc.cols());
+    out.P.setFromTriplets(entries.begin(), entries.end());
+    out.A = qp.A_csc;
+    out.A.prune(nonzero);
+  }
+  out.P.makeCompressed();
+  out.A.makeCompressed();
+  out.q = qp.q;
+  out.l = qp.l;
+  out.u = qp.u;
+}
+
+} // namespace
+
+QuadraticProgram MPCBase::getQP() const
+{
+  QuadraticProgram out;
+  toQuadraticProgram(qp(), out);
+  return out;
+}
+
+void MPCBase::assembleQP(const Ref<const VectorXd>& x0, QuadraticProgram& out)
+{
+  validateSize(x0.size(), state_dim_, "assembleQP", "x0");
+  checkSetup("assembleQP", "assembling the QP");
+  // Write the pending changes and x0 into the QP without sending them: the
+  // changes stay pending, so the next prepare() or solve() writes them again
+  // and sends them (the x0 parts are written by every solve anyway)
+  if (!pending_.empty())
+    (void)qp_builder_->apply(pending_, data_);
+  data_.x0 = x0;
+  qp_builder_->applyX0(data_);
+  toQuadraticProgram(qp(), out);
+}
+
+std::vector<QPBlock> MPCBase::getQPVariableBlocks() const
+{
+  const int num_ctrl{input_param_.numCoefficients()};
+  const int own{qp_builder_->formulation().numVariables()};
+  std::vector<QPBlock> blocks{{"control_points", 0, num_ctrl}};
+  if (own > num_ctrl)
+    blocks.push_back({"states", num_ctrl, own - num_ctrl});
+  if (qp_builder_->numVariables() > own)
+    blocks.push_back({"state_slacks", own, qp_builder_->numVariables() - own});
+  return blocks;
+}
+
+std::vector<QPBlock> MPCBase::getQPConstraintBlocks() const
+{
+  const detail::QPRows& rows{qp_builder_->rows()};
+  std::vector<QPBlock> blocks;
+  for (const auto& [name, block] :
+       {std::pair<const char*, detail::RowBlock>{"dynamics", rows.dynamics},
+        {"input_bounds", rows.input_bounds},
+        {"initial_slew", rows.initial_slew},
+        {"control_point_slew", rows.control_point_slew},
+        {"state_bounds", rows.state_bounds},
+        {"general_constraints", rows.general_constraints},
+        {"terminal_constraints", rows.terminal_constraints}})
+    if (block.rows > 0)
+      blocks.push_back({name, block.offset, block.rows});
+  return blocks;
+}
+
+int MPCBase::getNumQPVariables() const noexcept
+{
+  return qp_builder_->numVariables();
+}
+
+int MPCBase::getNumQPConstraints() const noexcept
+{
+  return qp_builder_->numConstraints();
+}
+
+void MPCBase::checkSetup(const char* caller, const char* action) const
+{
+  const auto missing{[&](const char* what, const char* reason) {
+    throw std::logic_error(std::string{"[MPCBase::"} + caller + "] " + what
+                           + " must be set before " + action + reason + ".");
+  }};
+  if (!model_set_)
+    missing("Model", "");
+  if (!u_lims_set_)
+    missing("Input limits", "");
+  if (opts_.slew_control_points && !ctrls_slew_rate_set_)
+    missing("Slew rate", " (slew_control_points is enabled)");
+  if (opts_.slew_initial_input && !slew0_rate_set_)
+    missing("Initial slew rate", " (slew_initial_input is enabled)");
+  if (opts_.saturate_states && !x_lims_set_)
+    missing("State limits", " (saturate_states is enabled)");
+  if (opts_.soft_state_bounds && !x_penalties_set_)
+    missing("State bound penalties", " (soft_state_bounds is enabled)");
+  if (opts_.num_general_constraints > 0 && !general_set_)
+    missing("General constraints", " (num_general_constraints is positive)");
+  if (opts_.num_terminal_constraints > 0 && !terminal_set_)
+    missing("Terminal constraints", " (num_terminal_constraints is positive)");
+}
+
 bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
 {
-  if (!model_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] Model must be set before initializing "
-        "solver.");
-  if (!u_lims_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] Input limits must be set before "
-        "initializing solver.");
-  if (opts_.slew_control_points && !ctrls_slew_rate_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] Slew rate must be set before initializing "
-        "solver (slew_control_points is enabled).");
-  if (opts_.slew_initial_input && !slew0_rate_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] Initial slew rate must be set before "
-        "initializing solver (slew_initial_input is enabled).");
-  if (opts_.saturate_states && !x_lims_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] State limits must be set before "
-        "initializing solver (saturate_states is enabled).");
-  if (opts_.soft_state_bounds && !x_penalties_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] State bound penalties must be set before "
-        "initializing solver (soft_state_bounds is enabled).");
-  if (opts_.num_general_constraints > 0 && !general_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] General constraints must be set before "
-        "initializing solver (num_general_constraints is positive).");
-  if (opts_.num_terminal_constraints > 0 && !terminal_set_)
-    throw std::logic_error(
-        "[MPCBase::initializeSolver] Terminal constraints must be set before "
-        "initializing solver (num_terminal_constraints is positive).");
+  checkSetup("initializeSolver", "initializing solver");
 
   if (solver_initialized_)
     return true;

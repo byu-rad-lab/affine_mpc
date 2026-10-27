@@ -7,6 +7,7 @@ import enum
 import numpy
 import numpy.typing
 import os
+import scipy.sparse
 import typing
 
 __all__: list[str] = [
@@ -17,6 +18,8 @@ __all__: list[str] = [
     "OSQPSettings",
     "Options",
     "Parameterization",
+    "QPBlock",
+    "QuadraticProgram",
     "SolveInfo",
     "SolveStatus",
     "SparseMPC",
@@ -868,6 +871,100 @@ class SolveInfo:
         Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
         """
 
+class QuadraticProgram:
+    """
+    The QP an MPC solves,
+    minimize 1/2 z^T P z + q^T z subject to l <= A z <= u,
+    for analysis or for handing to another solver. Obtain with MPCBase.getQP() or
+    MPCBase.assembleQP().
+
+    P and A are scipy.sparse.csc_matrix objects holding the nonzero entries of the
+    QP, in the same form for every formulation; P is full symmetric (both
+    triangles). Reading P or A needs SciPy (pip install "affine-mpc[sparse]").
+    The cost omits the constant terms of the MPC cost, so its value at the solution
+    is not the full MPC cost. Equality rows have l = u, and unbounded sides are
+    +-inf. The order of the variables z and of the rows of A is given by
+    MPCBase.getQPVariableBlocks() and MPCBase.getQPConstraintBlocks().
+    """
+
+    def __init__(self) -> None:
+        """
+        Empty QP, to pass to MPCBase.assembleQP().
+        """
+
+    @property
+    def A(self) -> scipy.sparse.csc_matrix:
+        """
+        Constraint matrix (scipy.sparse.csc_matrix).
+        """
+
+    @A.setter
+    def A(self, arg0: scipy.sparse.csc_matrix) -> None: ...
+    @property
+    def P(self) -> scipy.sparse.csc_matrix:
+        """
+        Cost matrix (full symmetric, scipy.sparse.csc_matrix).
+        """
+
+    @P.setter
+    def P(self, arg0: scipy.sparse.csc_matrix) -> None: ...
+    @property
+    def l(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Constraint lower bounds.
+        """
+
+    @l.setter
+    def l(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+    @property
+    def q(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Cost vector.
+        """
+
+    @q.setter
+    def q(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+    @property
+    def u(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Constraint upper bounds.
+        """
+
+    @u.setter
+    def u(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+
+class QPBlock:
+    """
+    A named block of QP variables or constraint rows: indices offset, ...,
+    offset + size - 1. Returned by MPCBase.getQPVariableBlocks() and
+    MPCBase.getQPConstraintBlocks().
+    """
+
+    def __repr__(self) -> str: ...
+    @property
+    def name(self) -> str:
+        """
+        Block name, e.g. 'control_points' or 'input_bounds'.
+        """
+
+    @property
+    def offset(self) -> int:
+        """
+        Index of the first variable or row.
+        """
+
+    @property
+    def size(self) -> int:
+        """
+        Number of variables or rows.
+        """
+
 class MPCBase:
     """
     Base class. Use CondensedMPC or SparseMPC.
@@ -893,6 +990,28 @@ class MPCBase:
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    def assembleQP(
+        self,
+        x0: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        qp: QuadraticProgram,
+    ) -> None:
+        """
+        Analysis aid: assemble the QP for the current settings and the initial state x0
+        without solving it, for analysis, debugging, or handing to another solver.
+
+        Works before or after initializeSolver() and needs the same setup (model, input
+        limits, and the setters the options require). It does not send anything to the
+        solver: the parts it writes are sent by the next prepare() or solve(), which
+        therefore repeats the matrix work once. Not intended for the control loop.
+
+        Args:
+            x0 (vector): Initial state (state_dim).
+            qp (QuadraticProgram): Output QP, e.g. QuadraticProgram(); filled in place.
+
+        Raises:
+            RuntimeError: If the setup required by initializeSolver() is missing.
+        """
+
     def getBoundedStates(self) -> list[int]:
         """
         Get the indices of the bounded states (Options.bounded_states, or every state
@@ -1093,6 +1212,16 @@ class MPCBase:
             RuntimeError: If the solver has not been initialized.
         """
 
+    def getNumQPConstraints(self) -> int:
+        """
+        Get the number of QP constraint rows (the rows of A).
+        """
+
+    def getNumQPVariables(self) -> int:
+        """
+        Get the number of QP variables (the size of z).
+        """
+
     def getOptions(self) -> Options:
         """
         Get a copy of the options enabled at construction.
@@ -1153,6 +1282,33 @@ class MPCBase:
                 enabled.
         """
 
+    def getQP(self) -> QuadraticProgram:
+        """
+        Analysis aid: get the QP as last written by solve(), prepare(), or assembleQP(),
+        for analysis, debugging, or handing to another solver.
+
+        Setters do not change it; to get the QP for the current settings and a given
+        initial state without solving, use assembleQP(). After initializeSolver() and
+        before the first prepare() or solve(), SparseMPC's cost holds unit placeholder
+        weights. Copies the QP, so not intended for the control loop.
+
+        Returns:
+            qp (QuadraticProgram): The QP; reading its P or A needs SciPy.
+        """
+
+    def getQPConstraintBlocks(self) -> list[QPBlock]:
+        """
+        Get the blocks of constraint rows of A, in order, listing only the blocks the
+        options enable: "dynamics" (SparseMPC's model rows), "input_bounds",
+        "initial_slew", "control_point_slew", "state_bounds" (soft: the upper rows, the
+        lower rows, then the slack rows s >= 0), "general_constraints" (rows per step,
+        steps in order), and "terminal_constraints". Together they cover every row.
+        For analysis; allocates the list, so not intended for the control loop.
+
+        Returns:
+            blocks (list[QPBlock]): The constraint row blocks in order.
+        """
+
     def getQPCostMatrix(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
@@ -1170,6 +1326,18 @@ class MPCBase:
 
         Returns:
             P (matrix): Copy of the full symmetric QP cost matrix.
+        """
+
+    def getQPVariableBlocks(self) -> list[QPBlock]:
+        """
+        Get the blocks of QP variables z, in order: "control_points" (input
+        coefficients), then for SparseMPC "states" (x_1, ..., x_T, state_dim each), then
+        with soft state bounds "state_slacks" (one per bounded state). Together they
+        cover every variable. For analysis; allocates the list, so not intended for the
+        control loop.
+
+        Returns:
+            blocks (list[QPBlock]): The variable blocks in order.
         """
 
     def getReferenceInputControlPoints(

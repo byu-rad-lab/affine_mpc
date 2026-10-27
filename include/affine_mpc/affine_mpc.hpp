@@ -20,6 +20,7 @@
 #include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
 #include "affine_mpc/mpc_base.hpp"

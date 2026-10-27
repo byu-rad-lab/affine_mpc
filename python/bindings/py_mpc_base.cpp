@@ -800,6 +800,69 @@ Returns:
     P (matrix): Copy of the full symmetric QP cost matrix.
            )doc");
 
+  base.def("getQP", &ampc::MPCBase::getQP,
+           R"doc(
+Analysis aid: get the QP as last written by solve(), prepare(), or assembleQP(),
+for analysis, debugging, or handing to another solver.
+
+Setters do not change it; to get the QP for the current settings and a given
+initial state without solving, use assembleQP(). After initializeSolver() and
+before the first prepare() or solve(), SparseMPC's cost holds unit placeholder
+weights. Copies the QP, so not intended for the control loop.
+
+Returns:
+    qp (QuadraticProgram): The QP; reading its P or A needs SciPy.
+           )doc");
+
+  base.def("assembleQP", &ampc::MPCBase::assembleQP,
+           R"doc(
+Analysis aid: assemble the QP for the current settings and the initial state x0
+without solving it, for analysis, debugging, or handing to another solver.
+
+Works before or after initializeSolver() and needs the same setup (model, input
+limits, and the setters the options require). It does not send anything to the
+solver: the parts it writes are sent by the next prepare() or solve(), which
+therefore repeats the matrix work once. Not intended for the control loop.
+
+Args:
+    x0 (vector): Initial state (state_dim).
+    qp (QuadraticProgram): Output QP, e.g. QuadraticProgram(); filled in place.
+
+Raises:
+    RuntimeError: If the setup required by initializeSolver() is missing.
+           )doc",
+           py::arg("x0"), py::arg("qp"));
+
+  base.def("getQPVariableBlocks", &ampc::MPCBase::getQPVariableBlocks,
+           R"doc(
+Get the blocks of QP variables z, in order: "control_points" (input
+coefficients), then for SparseMPC "states" (x_1, ..., x_T, state_dim each), then
+with soft state bounds "state_slacks" (one per bounded state). Together they
+cover every variable. For analysis; allocates the list, so not intended for the
+control loop.
+
+Returns:
+    blocks (list[QPBlock]): The variable blocks in order.
+           )doc");
+
+  base.def("getQPConstraintBlocks", &ampc::MPCBase::getQPConstraintBlocks,
+           R"doc(
+Get the blocks of constraint rows of A, in order, listing only the blocks the
+options enable: "dynamics" (SparseMPC's model rows), "input_bounds",
+"initial_slew", "control_point_slew", "state_bounds" (soft: the upper rows, the
+lower rows, then the slack rows s >= 0), "general_constraints" (rows per step,
+steps in order), and "terminal_constraints". Together they cover every row.
+For analysis; allocates the list, so not intended for the control loop.
+
+Returns:
+    blocks (list[QPBlock]): The constraint row blocks in order.
+           )doc");
+
+  base.def("getNumQPVariables", &ampc::MPCBase::getNumQPVariables,
+           "Get the number of QP variables (the size of z).");
+  base.def("getNumQPConstraints", &ampc::MPCBase::getNumQPConstraints,
+           "Get the number of QP constraint rows (the rows of A).");
+
   base.def("isSolverInitialized", &ampc::MPCBase::isSolverInitialized,
            "Whether initializeSolver() has succeeded.");
 

@@ -346,3 +346,65 @@ def test_general_and_terminal_constraints(cls):
         cls(2, 1, param).getTerminalConstraintMatrix()
     with pytest.raises(ValueError, match="non-negative"):
         cls(2, 1, param, ampc.Options(num_general_constraints=-1))
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_qp_blocks(cls):
+    mpc = _msd_mpc(cls)
+    sparse = cls is ampc.SparseMPC
+
+    variables = mpc.getQPVariableBlocks()
+    assert [b.name for b in variables] == ["control_points"] + (
+        ["states"] if sparse else []
+    )
+    assert (variables[0].offset, variables[0].size) == (0, 5)
+    assert repr(variables[0]) == "QPBlock(name='control_points', offset=0, size=5)"
+    assert sum(b.size for b in variables) == mpc.getNumQPVariables()
+
+    rows = mpc.getQPConstraintBlocks()
+    assert [b.name for b in rows] == (["dynamics"] if sparse else []) + ["input_bounds"]
+    assert sum(b.size for b in rows) == mpc.getNumQPConstraints()
+
+
+@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
+def test_get_and_assemble_qp(cls):
+    scipy_sparse = pytest.importorskip("scipy.sparse")
+    mpc = _msd_mpc(cls)
+    x0 = np.array([0.2, 0.0])
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+
+    qp = mpc.getQP()
+    nv, nr = mpc.getNumQPVariables(), mpc.getNumQPConstraints()
+    for M in (qp.P, qp.A):
+        assert scipy_sparse.issparse(M) and M.format == "csc"
+    assert qp.P.shape == (nv, nv) and qp.A.shape == (nr, nv)
+    assert qp.q.shape == (nv,) and qp.l.shape == (nr,) and qp.u.shape == (nr,)
+    assert abs(qp.P - qp.P.T).max() == 0.0
+
+    # the solution, in the order of the variable blocks, gives the solver's
+    # objective and satisfies the constraints
+    z = np.empty(nv)
+    for b in mpc.getQPVariableBlocks():
+        if b.name == "control_points":
+            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints()
+        else:
+            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory()
+    objective = 0.5 * z @ (qp.P @ z) + qp.q @ z
+    assert objective == pytest.approx(mpc.getSolveInfo().objective, rel=1e-9, abs=1e-12)
+    Az = qp.A @ z
+    assert np.all(Az >= qp.l - 1e-5) and np.all(Az <= qp.u + 1e-5)
+
+    # assembleQP() fills the given object with the same QP for the same x0
+    out = ampc.QuadraticProgram()
+    mpc.assembleQP(x0, out)
+    assert abs(out.P - qp.P).max() == 0.0 and abs(out.A - qp.A).max() == 0.0
+    for a, b in ((out.q, qp.q), (out.l, qp.l), (out.u, qp.u)):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_assemble_qp_requires_setup():
+    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
+    with pytest.raises(
+        RuntimeError, match="Model must be set before assembling the QP"
+    ):
+        mpc.assembleQP(np.zeros(2), ampc.QuadraticProgram())
