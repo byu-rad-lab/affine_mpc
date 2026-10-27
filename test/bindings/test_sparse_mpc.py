@@ -38,7 +38,7 @@ def test_bspline_mpc_interface():
                 use_input_cost=True,
                 slew_initial_input=True,
                 slew_control_points=True,
-                saturate_states=True,
+                state_bounds=ampc.StateBoundMode.Hard,
             ),
             formulation=ampc.Formulation.Sparse,
         )

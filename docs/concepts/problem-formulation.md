@@ -118,7 +118,7 @@ $$
 \mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} \quad k=1,\dots,T
 $$
 
-Enable this to set state saturation limits.
+Enable this with `state_bounds = StateBoundMode::Hard` (`StateBoundMode.Hard` in Python) and set the limits with `setStateLimits(x_min, x_max)`.
 
 **When you may want to use it:**
 
@@ -144,7 +144,7 @@ $$
 J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \left\lVert \mathbf{s} \right\rVert^2_{\operatorname{diag}(\boldsymbol{\rho}_2)}
 $$
 
-With `soft_state_bounds`, one slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
+With `state_bounds = StateBoundMode::Soft` (`StateBoundMode.Soft` in Python), one slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
 The slack is the largest violation of its state over the horizon.
 
 - The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the limit's Lagrange multiplier, the solution equals the hard-limit solution whenever the limits can be met, and the limits are only violated when they can not.

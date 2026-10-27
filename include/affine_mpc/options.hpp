@@ -3,8 +3,8 @@
 
 /**
  * @file options.hpp
- * @brief Defines the Options struct for configuring the MPC problem and the
- *   ModelSparsity choice of initializeSolver().
+ * @brief Defines the Options struct for configuring the MPC problem, its
+ *   bound modes, and the ModelSparsity choice of initializeSolver().
  */
 
 #include <iosfwd>
@@ -13,21 +13,40 @@
 namespace affine_mpc {
 
 /**
+ * @enum StateBoundMode
+ * @brief Whether and how the MPC bounds the predicted states, chosen with
+ *   Options::state_bounds.
+ */
+enum class StateBoundMode
+{
+  /// No state bounds (the default).
+  Off,
+  /// Hard bounds x_min <= x_k <= x_max on the bounded states at every step
+  /// k = 1, ..., T (set with MPC::setStateLimits()).
+  Hard,
+  /// Soft bounds: one slack s >= 0 per bounded state, shared over the horizon,
+  /// may widen both of its limits, x_min - s <= x_k <= x_max + s, at the cost
+  /// l1^T s + s^T diag(l2) s (set with MPC::setStateLimits() and
+  /// MPC::setStateBoundPenalties()).
+  Soft,
+};
+
+/**
  * @struct Options
- * @brief Controls which optional features are enabled at MPC construction time.
+ * @brief The optional costs and constraints of the MPC problem, chosen at
+ *   construction.
  *
- * All flags default to false (bounded_states to empty, every state, and the
- * constraint counts to zero). These options are immutable after constructing
- * an MPC instance.
+ * Every optional cost and constraint is off by default. The options fix the
+ * layout of the QP, so they can not be changed after constructing an MPC
+ * instance. The fields are grouped as follows.
  *
- * - use_input_cost: Enables input regularization term in the cost function
+ * Costs:
+ * - use_input_cost: Enables the input cost on the control points
  *     ((uref_k - u_k)^T R (uref_k - u_k)).
- * - slew_initial_input: Slew-rate constraint on initial input
- *     (|u0 - u_prev| <= u0_slew).
- * - slew_control_points: Enables slew-rate constraints on parameterization
- *     control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
- *     B-spline parameterization.
- * - saturate_states: Enables state saturation constraints.
+ * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
+ *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+ *
+ * Input constraints (the input limits are always enforced):
  * - saturate_input_trajectory: Enables saturation of the sampled input
  *     trajectory rather than just the control points. Ignored for degree 0,
  *     where the control points are the sampled inputs. For degree 1 only the
@@ -36,13 +55,19 @@ namespace affine_mpc {
  *     degree > 1 every sample is constrained. Allows control points to be
  *     outside of input limits while keeping inputs within limits. A custom
  *     basis (Parameterization::fromBasis()) always constrains every sample.
- * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
- *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
- * - soft_state_bounds: Makes the state limits soft (requires
- *     saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
- *     per bounded state, penalized by l1^T s + s^T diag(l2) s.
- * - bounded_states: Indices of the states with limits (requires
- *     saturate_states). Empty (the default) bounds every state.
+ * - slew_initial_input: Slew-rate constraint on the initial input
+ *     (|u0 - u_prev| <= u0_slew).
+ * - slew_control_points: Slew-rate constraints on the parameterization
+ *     control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
+ *     B-spline parameterization.
+ *
+ * State constraints:
+ * - state_bounds: Off (the default), Hard, or Soft state bounds (see
+ *     StateBoundMode).
+ * - bounded_states: Indices of the states with limits (requires state_bounds
+ *     other than Off). Empty (the default) bounds every state.
+ *
+ * General constraints:
  * - num_general_constraints: Number p of general linear constraints
  *     h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
  *     the measured state). Zero (the default) disables them.
@@ -51,8 +76,23 @@ namespace affine_mpc {
  */
 struct Options
 {
-  /// Enables input cost term in the MPC objective
+  /// @name Costs
+  /// @{
+
+  /// Enables the input cost term in the MPC objective
   bool use_input_cost = false;
+
+  /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
+  /// starting from the previous input (i.e. u_0 - u_prev)
+  bool use_input_rate_cost = false;
+
+  /// @}
+  /// @name Input constraints
+  /// @{
+
+  /// Enables saturation of the sampled input trajectory rather than just the
+  /// control points (ignored for degree 0; knot-adjacent samples for degree 1)
+  bool saturate_input_trajectory = false;
 
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;
@@ -61,27 +101,22 @@ struct Options
   /// between v_i and v_{i+1})
   bool slew_control_points = false;
 
-  /// Enables state saturation constraints
-  bool saturate_states = false;
+  /// @}
+  /// @name State constraints
+  /// @{
 
-  /// Enables saturation of the sampled input trajectory rather than just the
-  /// control points (ignored for degree 0; knot-adjacent samples for degree 1)
-  bool saturate_input_trajectory = false;
+  /// Whether and how the states are bounded (see StateBoundMode)
+  StateBoundMode state_bounds{StateBoundMode::Off};
 
-  /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
-  /// starting from the previous input (i.e. u_0 - u_prev)
-  bool use_input_rate_cost = false;
-
-  /// Makes the state limits soft (requires saturate_states): one slack per
-  /// bounded state, shared over the horizon, may widen both of its limits at a
-  /// cost set with setStateBoundPenalties()
-  bool soft_state_bounds = false;
-
-  /// Indices of the states that have limits (requires saturate_states;
-  /// strictly increasing, in [0, state_dim)). Empty bounds every state. Each
-  /// bounded state adds a row per horizon step, so bounding only the states
-  /// that need it keeps the QP small.
+  /// Indices of the states that have limits (requires state_bounds other than
+  /// Off; strictly increasing, in [0, state_dim)). Empty bounds every state.
+  /// Each bounded state adds a row per horizon step, so bounding only the
+  /// states that need it keeps the QP small.
   std::vector<int> bounded_states{};
+
+  /// @}
+  /// @name General constraints
+  /// @{
 
   /// Number of general linear constraints h_min <= Hx x_k + Hu u_k <= h_max per
   /// step (k = 0, ..., T-1, set with setGeneralConstraints()). Zero disables
@@ -91,6 +126,8 @@ struct Options
   /// Number of terminal constraints hf_min <= Hf x_T <= hf_max (set with
   /// setTerminalConstraints()). Zero disables them.
   int num_terminal_constraints = 0;
+
+  /// @}
 };
 
 /**
@@ -116,6 +153,14 @@ enum class ModelSparsity
   Full,
 };
 
+/**
+ * @brief Stream a one-line summary of every option.
+ * @param os Output stream.
+ * @param opts Options to print.
+ * @param capitalize_bools Print `True`/`False` (Python style) instead of
+ *   `true`/`false`.
+ * @return Reference to the output stream.
+ */
 std::ostream&
 print(std::ostream& os, const Options& opts, bool capitalize_bools);
 
@@ -126,6 +171,9 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools);
  * @return Reference to the output stream.
  */
 std::ostream& operator<<(std::ostream& os, const Options& opts);
+
+/// @brief Stream the name of a state bound mode (e.g. `Hard`).
+std::ostream& operator<<(std::ostream& os, StateBoundMode mode);
 
 } // namespace affine_mpc
 

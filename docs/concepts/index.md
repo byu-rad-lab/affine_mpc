@@ -35,7 +35,7 @@ $$
     &\quad \mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1}) \\
     &\quad \mathbf{u}_{\min} \leq \mathbf{c}_i \leq \mathbf{u}_{\max} \quad \text{OR} \quad
         \underbrace{\mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
-    &\quad \underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\textcolor{red}{\text{saturate states}}} \\
+    &\quad \underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\textcolor{red}{\text{state bounds}}} \\
     &\quad \underbrace{|\mathbf{u}_0 - \mathbf{u}_{{-}1}| \leq \mathbf{u}_{0,\mathrm{slew}}}_{\textcolor{red}{\text{initial slew rate}}} \\
     &\quad \underbrace{|\mathbf{c}_i - \mathbf{c}_{i-1}| \leq \mathbf{c}_{\mathrm{slew}}}_{\textcolor{red}{\text{slew control points}}}
 \end{align}

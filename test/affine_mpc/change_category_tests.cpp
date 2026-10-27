@@ -101,7 +101,7 @@ void setWeights(ampc::MPC& mpc, const Scales& s)
     mpc.setInputWeights(VectorXd::Constant(1, s.weights * 0.1));
   if (mpc.getOptions().use_input_rate_cost)
     mpc.setInputRateWeights(VectorXd::Constant(1, s.weights * 0.5));
-  if (mpc.getOptions().soft_state_bounds) {
+  if (mpc.getOptions().state_bounds == ampc::StateBoundMode::Soft) {
     const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
     mpc.setStateBoundPenalties(VectorXd::Constant(k, s.weights * 10.0),
                                VectorXd::Constant(k, s.weights * 2.0));
@@ -126,7 +126,7 @@ void setInputLimits(ampc::MPC& mpc, const Scales& s)
 
 void setStateLimits(ampc::MPC& mpc, const Scales& s)
 {
-  if (!mpc.getOptions().saturate_states)
+  if (mpc.getOptions().state_bounds == ampc::StateBoundMode::Off)
     return;
   // one entry per bounded state
   const Vector2d lo{-5.0, -6.0}, hi{7.0, 8.0};
@@ -252,18 +252,17 @@ void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
 }
 
 const ampc::Options all_options{.use_input_cost = true,
+                                .use_input_rate_cost = true,
                                 .slew_initial_input = true,
                                 .slew_control_points = true,
-                                .saturate_states = true,
-                                .use_input_rate_cost = true};
+                                .state_bounds = ampc::StateBoundMode::Hard};
 
 // the rate cost alone (it then needs the previous input by itself)
 const ampc::Options rate_cost{.use_input_rate_cost = true};
 
 // soft limits on the velocity only (slack variables, selected states)
 const ampc::Options soft_velocity{.use_input_cost = true,
-                                  .saturate_states = true,
-                                  .soft_state_bounds = true,
+                                  .state_bounds = ampc::StateBoundMode::Soft,
                                   .bounded_states = {1}};
 
 const ampc::Options sampled_bounds{.use_input_cost = true,
@@ -271,7 +270,7 @@ const ampc::Options sampled_bounds{.use_input_cost = true,
 
 // general and terminal constraints (with state bounds on the position)
 const ampc::Options constraints{.use_input_cost = true,
-                                .saturate_states = true,
+                                .state_bounds = ampc::StateBoundMode::Hard,
                                 .bounded_states = {0},
                                 .num_general_constraints = 2,
                                 .num_terminal_constraints = 1};

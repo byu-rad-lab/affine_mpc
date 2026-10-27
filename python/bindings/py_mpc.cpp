@@ -665,10 +665,10 @@ Note:
            py::arg("u_min"), py::arg("u_max"));
   base.def("setStateLimits", &ampc::MPC::setStateLimits,
            R"doc(
-Set state saturation limits.
+Set the state limits.
 
-This function can only be called if `saturate_states` is enabled. Must be
-called prior to `initializeSolver()`, but can also be called after if limits
+This function can only be called with state bounds (Options.state_bounds Hard
+or Soft). Must be called prior to `initializeSolver()`, but can also be called after if limits
 change between solves. The limits have one entry per bounded state
 (Options.bounded_states, all states by default); pass `-inf` or `inf` for a side
 without a limit.
@@ -678,6 +678,7 @@ Args:
     x_max: Upper limits of the bounded states.
 
 Raises:
+    RuntimeError: If Options.state_bounds is Off.
     ValueError: If a size is not the number of bounded states or x_min > x_max.
 
 Note:
@@ -692,8 +693,8 @@ Set the penalties of the soft state limits: the cost gains
 l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state (shared
 over the horizon) that may widen both of its limits.
 
-This function can only be called if `soft_state_bounds` is enabled, and must be
-called prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
+This function can only be called with StateBoundMode.Soft, and must be called
+prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
 the limit's Lagrange multiplier, the limits are only violated when they can not
 be met. The L2 penalty alone always allows a small violation; with the L1
 penalty it does not change the solution while the limits can be met. OSQP
@@ -707,7 +708,7 @@ Args:
     l2: Quadratic penalties, one per bounded state (non-negative).
 
 Raises:
-    RuntimeError: If `soft_state_bounds` is not enabled.
+    RuntimeError: If Options.state_bounds is not Soft.
     ValueError: If a size is not the number of bounded states or a penalty is
         negative.
            )doc",
@@ -962,19 +963,19 @@ Raises:
 Get the lower limits of the bounded states (-inf until setStateLimits()).
 
 Raises:
-    RuntimeError: If `saturate_states` is not enabled.
+    RuntimeError: If Options.state_bounds is Off.
            )doc");
   base.def("getStateMax", &ampc::MPC::getStateMax, copy,
            R"doc(
 Get the upper limits of the bounded states (+inf until setStateLimits()).
 
 Raises:
-    RuntimeError: If `saturate_states` is not enabled.
+    RuntimeError: If Options.state_bounds is Off.
            )doc");
   base.def("getBoundedStates", &ampc::MPC::getBoundedStates,
            R"doc(
 Get the indices of the bounded states (Options.bounded_states, or every state
-when it is empty; none without `saturate_states`).
+when it is empty; none with StateBoundMode.Off).
            )doc");
   base.def("getStateBoundL1Penalties", &ampc::MPC::getStateBoundL1Penalties,
            copy,
@@ -983,7 +984,7 @@ Get the L1 penalties of the soft state limits (zero until
 setStateBoundPenalties()).
 
 Raises:
-    RuntimeError: If `soft_state_bounds` is not enabled.
+    RuntimeError: If Options.state_bounds is not Soft.
            )doc");
   base.def("getStateBoundL2Penalties", &ampc::MPC::getStateBoundL2Penalties,
            copy,
@@ -992,7 +993,7 @@ Get the L2 penalties of the soft state limits (zero until
 setStateBoundPenalties()).
 
 Raises:
-    RuntimeError: If `soft_state_bounds` is not enabled.
+    RuntimeError: If Options.state_bounds is not Soft.
            )doc");
   base.def("getGeneralConstraintStateMatrix",
            &ampc::MPC::getGeneralConstraintStateMatrix, copy,

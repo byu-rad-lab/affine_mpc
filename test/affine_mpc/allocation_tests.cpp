@@ -116,11 +116,11 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
   if (opts.slew_control_points)
     mpc.setSlewRate(VectorXd::Constant(m, 1.0));
-  if (opts.saturate_states) {
+  if (opts.state_bounds != ampc::StateBoundMode::Off) {
     const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
     mpc.setStateLimits(VectorXd::Constant(k, -10), VectorXd::Constant(k, 10));
   }
-  if (opts.soft_state_bounds) {
+  if (opts.state_bounds == ampc::StateBoundMode::Soft) {
     const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
     mpc.setStateBoundPenalties(VectorXd::Constant(k, 10.0),
                                VectorXd::Constant(k, 100.0));
@@ -203,15 +203,14 @@ struct AllocationCase
 std::vector<AllocationCase> allocationCases()
 {
   const ampc::Options all{.use_input_cost = true,
+                          .use_input_rate_cost = true,
                           .slew_initial_input = true,
                           .slew_control_points = true,
-                          .saturate_states = true,
-                          .use_input_rate_cost = true};
+                          .state_bounds = ampc::StateBoundMode::Hard};
   const ampc::Options sampled{.use_input_cost = true,
                               .saturate_input_trajectory = true};
   const ampc::Options soft{.use_input_cost = true,
-                           .saturate_states = true,
-                           .soft_state_bounds = true,
+                           .state_bounds = ampc::StateBoundMode::Soft,
                            .bounded_states = {0}};
   const ampc::Options constraints{.use_input_cost = true,
                                   .num_general_constraints = 1,

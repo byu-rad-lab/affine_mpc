@@ -134,9 +134,10 @@ Case drawCase(Draw& draw)
   o.slew_initial_input = draw.coin();
   o.slew_control_points = draw.coin() && c.param.num_control_points > 1
                           && c.param.type == P::Type::BSpline;
-  o.saturate_states = draw.coin();
-  o.soft_state_bounds = o.saturate_states && draw.coin();
-  if (o.saturate_states && draw.coin())
+  o.state_bounds = draw.coin() ? (draw.coin() ? ampc::StateBoundMode::Soft
+                                              : ampc::StateBoundMode::Hard)
+                               : ampc::StateBoundMode::Off;
+  if (o.state_bounds != ampc::StateBoundMode::Off && draw.coin())
     for (int i{0}; i < c.n; ++i)
       if (draw.coin())
         o.bounded_states.push_back(i);
@@ -176,9 +177,9 @@ void setAll(ampc::MPC& mpc,
   mpc.setReferenceStateTrajectory(draw.sparse(n * T, 1));
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   const int k{c.num_bounded};
-  if (o.saturate_states)
+  if (o.state_bounds != ampc::StateBoundMode::Off)
     mpc.setStateLimits(VectorXd::Constant(k, -5.0), VectorXd::Constant(k, 5.0));
-  if (o.soft_state_bounds)
+  if (o.state_bounds == ampc::StateBoundMode::Soft)
     mpc.setStateBoundPenalties(draw.weights(k), draw.weights(k));
   if (o.num_general_constraints > 0) {
     const int p{o.num_general_constraints};
@@ -208,9 +209,9 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.degree) + " opts "};
   for (const bool b :
        {o.use_input_cost, o.use_input_rate_cost, o.saturate_input_trajectory,
-        o.slew_initial_input, o.slew_control_points, o.saturate_states,
-        o.soft_state_bounds})
+        o.slew_initial_input, o.slew_control_points})
     s += b ? '1' : '0';
+  s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
   s += " bounded " + std::to_string(o.bounded_states.size()) + " p"
        + std::to_string(o.num_general_constraints) + " pf"
        + std::to_string(o.num_terminal_constraints);
@@ -539,7 +540,7 @@ template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
       {"control_points", c.m * c.param.num_control_points}};
   if (sparse)
     expected.push_back({"states", c.n * T});
-  if (o.soft_state_bounds)
+  if (o.state_bounds == ampc::StateBoundMode::Soft)
     expected.push_back({"state_slacks", k});
   ASSERT_EQ(vars.size(), expected.size());
   for (std::size_t i{0}; i < vars.size(); ++i) {
@@ -560,9 +561,10 @@ template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
   if (o.slew_control_points)
     expected.push_back(
         {"control_point_slew", c.m * (c.param.num_control_points - 1)});
-  if (o.saturate_states)
+  if (o.state_bounds != ampc::StateBoundMode::Off)
     expected.push_back(
-        {"state_bounds", o.soft_state_bounds ? 2 * k * T + k : k * T});
+        {"state_bounds",
+         o.state_bounds == ampc::StateBoundMode::Soft ? 2 * k * T + k : k * T});
   if (o.num_general_constraints > 0)
     expected.push_back({"general_constraints", o.num_general_constraints * T});
   if (o.num_terminal_constraints > 0)
@@ -676,10 +678,11 @@ namespace {
 
 // Mass-spring-damper with every constraint kind (hard state bounds)
 const ampc::Options constrained_msd_opts{.use_input_cost = true,
+                                         .use_input_rate_cost = true,
                                          .slew_initial_input = true,
                                          .slew_control_points = true,
-                                         .saturate_states = true,
-                                         .use_input_rate_cost = true,
+                                         .state_bounds =
+                                             ampc::StateBoundMode::Hard,
                                          .num_general_constraints = 1,
                                          .num_terminal_constraints = 1};
 

@@ -44,17 +44,16 @@ constexpr int validateInputDim(int input_dim)
   return input_dim;
 }
 
-// The state bound options need saturate_states, and the bounded states must
-// be valid indices. Control-point slew relies on B-spline properties.
+// The bounded states need state bounds and must be valid indices.
+// Control-point slew relies on B-spline properties.
 const Options& validateOptions(const Options& opts,
                                int state_dim,
                                const Parameterization& param)
 {
-  if (!opts.saturate_states
-      && (opts.soft_state_bounds || !opts.bounded_states.empty()))
+  if (opts.state_bounds == StateBoundMode::Off && !opts.bounded_states.empty())
     throw std::invalid_argument(
-        "[MPC::validateOptions] soft_state_bounds and bounded_states "
-        "require saturate_states.");
+        "[MPC::validateOptions] bounded_states requires state_bounds "
+        "(StateBoundMode::Hard or Soft).");
   int previous{-1};
   for (const int i : opts.bounded_states) {
     if (i <= previous || i >= state_dim)
@@ -304,10 +303,10 @@ void MPC::checkSetup(const char* caller, const char* action) const
     missing("Slew rate", " (slew_control_points is enabled)");
   if (opts_.slew_initial_input && !slew0_rate_set_)
     missing("Initial slew rate", " (slew_initial_input is enabled)");
-  if (opts_.saturate_states && !x_lims_set_)
-    missing("State limits", " (saturate_states is enabled)");
-  if (opts_.soft_state_bounds && !x_penalties_set_)
-    missing("State bound penalties", " (soft_state_bounds is enabled)");
+  if (opts_.state_bounds != StateBoundMode::Off && !x_lims_set_)
+    missing("State limits", " (state_bounds is Hard or Soft)");
+  if (opts_.state_bounds == StateBoundMode::Soft && !x_penalties_set_)
+    missing("State bound penalties", " (state_bounds is Soft)");
   if (opts_.num_general_constraints > 0 && !general_set_)
     missing("General constraints", " (num_general_constraints is positive)");
   if (opts_.num_terminal_constraints > 0 && !terminal_set_)
@@ -740,9 +739,9 @@ void MPC::setInputLimits(const Ref<const VectorXd>& u_min,
 void MPC::setStateLimits(const Ref<const VectorXd>& x_min,
                          const Ref<const VectorXd>& x_max)
 {
-  if (!opts_.saturate_states)
-    throw std::logic_error(
-        "[MPC::setStateLimits] State saturation is not enabled.");
+  if (opts_.state_bounds == StateBoundMode::Off)
+    throw std::logic_error("[MPC::setStateLimits] State bounds are not enabled "
+                           "(state_bounds is Off).");
   // one entry per bounded state
   const Index num_bounded{static_cast<Index>(bounded_states_.size())};
   validateSize(x_min.size(), num_bounded, "setStateLimits", "x_min");
@@ -759,9 +758,10 @@ void MPC::setStateLimits(const Ref<const VectorXd>& x_min,
 void MPC::setStateBoundPenalties(const Ref<const VectorXd>& l1,
                                  const Ref<const VectorXd>& l2)
 {
-  if (!opts_.soft_state_bounds)
+  if (opts_.state_bounds != StateBoundMode::Soft)
     throw std::logic_error("[MPC::setStateBoundPenalties] Soft state "
-                           "bounds are not enabled.");
+                           "bounds are not enabled (state_bounds is not "
+                           "Soft).");
   const Index num_bounded{static_cast<Index>(bounded_states_.size())};
   validateSize(l1.size(), num_bounded, "setStateBoundPenalties", "l1");
   validateSize(l2.size(), num_bounded, "setStateBoundPenalties", "l2");
@@ -891,33 +891,35 @@ const VectorXd& MPC::getInputRateWeights() const
 
 const VectorXd& MPC::getStateMin() const
 {
-  if (!opts_.saturate_states)
-    throw std::logic_error(
-        "[MPC::getStateMin] State saturation is not enabled.");
+  if (opts_.state_bounds == StateBoundMode::Off)
+    throw std::logic_error("[MPC::getStateMin] State bounds are not enabled "
+                           "(state_bounds is Off).");
   return data_.x_min;
 }
 
 const VectorXd& MPC::getStateMax() const
 {
-  if (!opts_.saturate_states)
-    throw std::logic_error(
-        "[MPC::getStateMax] State saturation is not enabled.");
+  if (opts_.state_bounds == StateBoundMode::Off)
+    throw std::logic_error("[MPC::getStateMax] State bounds are not enabled "
+                           "(state_bounds is Off).");
   return data_.x_max;
 }
 
 const VectorXd& MPC::getStateBoundL1Penalties() const
 {
-  if (!opts_.soft_state_bounds)
+  if (opts_.state_bounds != StateBoundMode::Soft)
     throw std::logic_error("[MPC::getStateBoundL1Penalties] Soft state "
-                           "bounds are not enabled.");
+                           "bounds are not enabled (state_bounds is not "
+                           "Soft).");
   return data_.x_soft_l1;
 }
 
 const VectorXd& MPC::getStateBoundL2Penalties() const
 {
-  if (!opts_.soft_state_bounds)
+  if (opts_.state_bounds != StateBoundMode::Soft)
     throw std::logic_error("[MPC::getStateBoundL2Penalties] Soft state "
-                           "bounds are not enabled.");
+                           "bounds are not enabled (state_bounds is not "
+                           "Soft).");
   return data_.x_soft_l2;
 }
 
@@ -1039,10 +1041,10 @@ std::ostream& print(std::ostream& os, const MPC& mpc, bool capitalize_bools)
     os << "\n  R_rate = " << mpc.getInputRateWeights().format(fmt);
   os << "\n  u_min = " << mpc.getInputMin().format(fmt)
      << "\n  u_max = " << mpc.getInputMax().format(fmt);
-  if (mpc.getOptions().saturate_states)
+  if (mpc.getOptions().state_bounds != StateBoundMode::Off)
     os << "\n  x_min = " << mpc.getStateMin().format(fmt)
        << "\n  x_max = " << mpc.getStateMax().format(fmt);
-  if (mpc.getOptions().soft_state_bounds)
+  if (mpc.getOptions().state_bounds == StateBoundMode::Soft)
     os << "\n  x_soft_l1 = " << mpc.getStateBoundL1Penalties().format(fmt)
        << "\n  x_soft_l2 = " << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)
@@ -1089,10 +1091,10 @@ printInline(std::ostream& os, const MPC& mpc, bool capitalize_bools)
     os << ", R_rate=" << mpc.getInputRateWeights().format(fmt);
   os << ", u_min=" << mpc.getInputMin().format(fmt)
      << ", u_max=" << mpc.getInputMax().format(fmt);
-  if (mpc.getOptions().saturate_states)
+  if (mpc.getOptions().state_bounds != StateBoundMode::Off)
     os << ", x_min=" << mpc.getStateMin().format(fmt)
        << ", x_max=" << mpc.getStateMax().format(fmt);
-  if (mpc.getOptions().soft_state_bounds)
+  if (mpc.getOptions().state_bounds == StateBoundMode::Soft)
     os << ", x_soft_l1=" << mpc.getStateBoundL1Penalties().format(fmt)
        << ", x_soft_l2=" << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)

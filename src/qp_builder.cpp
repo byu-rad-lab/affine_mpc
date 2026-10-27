@@ -109,12 +109,13 @@ QPBuilder::QPBuilder(const Formulation kind,
   if (opts.slew_control_points)
     rows_.control_point_slew =
         add<ControlPointSlew>(layout, input_param).rows();
-  if (opts.saturate_states) {
-    const StateBounds& bounds{add<StateBounds>(
-        layout, boundedStates(opts, state_dim), state_dim,
-        input_param.parameterization().horizon_steps, opts.soft_state_bounds)};
+  if (opts.state_bounds != StateBoundMode::Off) {
+    const StateBounds& bounds{
+        add<StateBounds>(layout, boundedStates(opts, state_dim), state_dim,
+                         input_param.parameterization().horizon_steps,
+                         opts.state_bounds == StateBoundMode::Soft)};
     rows_.state_bounds = bounds.rows();
-    if (opts.soft_state_bounds)
+    if (opts.state_bounds == StateBoundMode::Soft)
       add<SoftStatePenalty>(layout, bounds.slack());
   }
   if (opts.num_general_constraints > 0)

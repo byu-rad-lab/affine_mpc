@@ -23,25 +23,33 @@ __all__: list[str] = [
     "QuadraticProgram",
     "SolveInfo",
     "SolveStatus",
+    "StateBoundMode",
 ]
+
+class StateBoundMode(enum.Enum):
+    """
+    Whether and how the MPC bounds the predicted states, chosen with Options.state_bounds.
+    """
+
+    Hard: typing.ClassVar[StateBoundMode]
+    Off: typing.ClassVar[StateBoundMode]
+    Soft: typing.ClassVar[StateBoundMode]
 
 class Options:
     """
-    Controls which optional features are enabled at MPC construction time.
+    The optional costs and constraints of the MPC problem, chosen at construction.
 
-    All flags default to false (bounded_states to empty, every state, and the
-    constraint counts to zero). These options are immutable after constructing an
-    MPC instance.
+    Every optional cost and constraint is off by default. The options fix the layout
+    of the QP, so they can not be changed after constructing an MPC instance. The
+    fields are grouped as follows.
 
-    Attributes:
-        use_input_cost: Enables input regularization term in the cost function
+    Costs:
+        use_input_cost: Enables the input cost on the control points
             ((uref_k - u_k)^T R (uref_k - u_k)).
-        slew_initial_input: Slew-rate constraint on initial input
-            (|u0 - u_prev| <= u0_slew).
-        slew_control_points: Enables slew-rate constraints on parameterization
-            control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
-            B-spline parameterization.
-        saturate_states: Enables state saturation constraints.
+        use_input_rate_cost: Enables a cost on the change of the sampled inputs
+            ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+
+    Input constraints (the input limits are always enforced):
         saturate_input_trajectory: Enables saturation of the sampled input
             trajectory rather than just the control points. Ignored for degree 0,
             where the control points are the sampled inputs. For degree 1 only the
@@ -50,13 +58,18 @@ class Options:
             degree > 1 every sample is constrained. Allows control points to be
             outside of input limits while keeping inputs within limits. A custom
             basis (Parameterization.fromBasis()) always constrains every sample.
-        use_input_rate_cost: Enables a cost on the change of the sampled inputs
-            ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
-        soft_state_bounds: Makes the state limits soft (requires
-            saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
-            per bounded state, penalized by l1^T s + s^T diag(l2) s.
-        bounded_states: Indices of the states with limits (requires
-            saturate_states). Empty (the default) bounds every state.
+        slew_initial_input: Slew-rate constraint on the initial input
+            (|u0 - u_prev| <= u0_slew).
+        slew_control_points: Slew-rate constraints on the parameterization control
+            points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
+            parameterization.
+
+    State constraints:
+        state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
+        bounded_states: Indices of the states with limits (requires state_bounds
+            other than Off). Empty (the default) bounds every state.
+
+    General constraints:
         num_general_constraints: Number p of general linear constraints
             h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
             the measured state). Zero (the default) disables them.
@@ -66,52 +79,43 @@ class Options:
     """
 
     saturate_input_trajectory: bool
-    saturate_states: bool
     slew_control_points: bool
     slew_initial_input: bool
-    soft_state_bounds: bool
+    state_bounds: StateBoundMode
     use_input_cost: bool
     use_input_rate_cost: bool
     def __init__(
         self,
+        *,
         use_input_cost: bool = False,
+        use_input_rate_cost: bool = False,
+        saturate_input_trajectory: bool = False,
         slew_initial_input: bool = False,
         slew_control_points: bool = False,
-        saturate_states: bool = False,
-        saturate_input_trajectory: bool = False,
-        use_input_rate_cost: bool = False,
-        soft_state_bounds: bool = False,
+        state_bounds: StateBoundMode = StateBoundMode.Off,
         bounded_states: collections.abc.Sequence[int] = [],
         num_general_constraints: int = 0,
-        num_terminal_constraints: int = 0,
+        num_terminal_constraints: int = 0
     ) -> None:
         """
-        Construct an Options struct defining optional MPC configuration features.
+        Construct an Options struct defining optional MPC configuration features. All
+        arguments are keyword-only.
 
         Args:
-            use_input_cost: Enables input regularization term in the cost function
+            use_input_cost: Enables the input cost on the control points
                 ((uref_k - u_k)^T R (uref_k - u_k)).
-            slew_initial_input: Slew-rate constraint on initial input
-                (|u0 - u_prev| <= u0_slew).
-            slew_control_points: Enables slew-rate constraints on parameterization
-                control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
-                B-spline parameterization.
-            saturate_states: Enables state saturation constraints.
-            saturate_input_trajectory: Enables saturation of the sampled input
-                trajectory rather than just the control points. Ignored for degree 0,
-                where the control points are the sampled inputs. For degree 1 only the
-                samples adjacent to each knot are constrained (at most
-                2*num_control_points-2 rows), which is exact for non-integer knots. For
-                degree > 1 every sample is constrained. Allows control points to be
-                outside of input limits while keeping inputs within limits. A custom
-                basis (Parameterization.fromBasis()) always constrains every sample.
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
-            soft_state_bounds: Makes the state limits soft (requires
-                saturate_states): x_min - s <= x_k <= x_max + s with one slack s >= 0
-                per bounded state, penalized by l1^T s + s^T diag(l2) s.
-            bounded_states: Indices of the states with limits (requires
-                saturate_states). Empty (the default) bounds every state.
+            saturate_input_trajectory: Enables saturation of the sampled input
+                trajectory rather than just the control points (see Options).
+            slew_initial_input: Slew-rate constraint on the initial input
+                (|u0 - u_prev| <= u0_slew).
+            slew_control_points: Slew-rate constraints on the parameterization control
+                points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
+                parameterization.
+            state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
+            bounded_states: Indices of the states with limits (requires state_bounds
+                other than Off). Empty (the default) bounds every state.
             num_general_constraints: Number p of general linear constraints
                 h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
                 the measured state). Zero (the default) disables them.
@@ -1073,7 +1077,7 @@ class MPC:
     def getBoundedStates(self) -> list[int]:
         """
         Get the indices of the bounded states (Options.bounded_states, or every state
-        when it is empty; none without `saturate_states`).
+        when it is empty; none with StateBoundMode.Off).
         """
 
     def getFormulation(self) -> Formulation:
@@ -1473,7 +1477,7 @@ class MPC:
         setStateBoundPenalties()).
 
         Raises:
-            RuntimeError: If `soft_state_bounds` is not enabled.
+            RuntimeError: If Options.state_bounds is not Soft.
         """
 
     def getStateBoundL2Penalties(
@@ -1484,7 +1488,7 @@ class MPC:
         setStateBoundPenalties()).
 
         Raises:
-            RuntimeError: If `soft_state_bounds` is not enabled.
+            RuntimeError: If Options.state_bounds is not Soft.
         """
 
     def getStateMax(
@@ -1494,7 +1498,7 @@ class MPC:
         Get the upper limits of the bounded states (+inf until setStateLimits()).
 
         Raises:
-            RuntimeError: If `saturate_states` is not enabled.
+            RuntimeError: If Options.state_bounds is Off.
         """
 
     def getStateMin(
@@ -1504,7 +1508,7 @@ class MPC:
         Get the lower limits of the bounded states (-inf until setStateLimits()).
 
         Raises:
-            RuntimeError: If `saturate_states` is not enabled.
+            RuntimeError: If Options.state_bounds is Off.
         """
 
     def getStateWeights(
@@ -2049,8 +2053,8 @@ class MPC:
         l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state (shared
         over the horizon) that may widen both of its limits.
 
-        This function can only be called if `soft_state_bounds` is enabled, and must be
-        called prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
+        This function can only be called with StateBoundMode.Soft, and must be called
+        prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
         the limit's Lagrange multiplier, the limits are only violated when they can not
         be met. The L2 penalty alone always allows a small violation; with the L1
         penalty it does not change the solution while the limits can be met. OSQP
@@ -2064,7 +2068,7 @@ class MPC:
             l2: Quadratic penalties, one per bounded state (non-negative).
 
         Raises:
-            RuntimeError: If `soft_state_bounds` is not enabled.
+            RuntimeError: If Options.state_bounds is not Soft.
             ValueError: If a size is not the number of bounded states or a penalty is
                 negative.
         """
@@ -2075,10 +2079,10 @@ class MPC:
         x_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
     ) -> None:
         """
-        Set state saturation limits.
+        Set the state limits.
 
-        This function can only be called if `saturate_states` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
+        This function can only be called with state bounds (Options.state_bounds Hard
+        or Soft). Must be called prior to `initializeSolver()`, but can also be called after if limits
         change between solves. The limits have one entry per bounded state
         (Options.bounded_states, all states by default); pass `-inf` or `inf` for a side
         without a limit.
@@ -2088,6 +2092,7 @@ class MPC:
             x_max: Upper limits of the bounded states.
 
         Raises:
+            RuntimeError: If Options.state_bounds is Off.
             ValueError: If a size is not the number of bounded states or x_min > x_max.
 
         Note:

@@ -146,7 +146,7 @@ The logger records configuration metadata such as:
 - formulation (`formulation`: `condensed` or `sparse`)
 - parameterization type (`bspline` or `custom`)
 - B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
-- enabled options
+- enabled options (`opt_*`), with the state bounds as `opt_state_bounds` (`off`, `hard`, or `soft`) and `opt_saturate_states` (1 unless they are off), kept for readers of earlier logs
 - limits
 - weights
 - prediction stride

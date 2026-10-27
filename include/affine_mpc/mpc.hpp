@@ -480,15 +480,17 @@ public:
                       const Eigen::Ref<const Eigen::VectorXd>& u_max);
 
   /**
-   * @brief Set state saturation limits.
+   * @brief Set the state limits.
    *
-   *    This function can only be called if `saturate_states` is enabled. Must
-   *    be called prior to `initializeSolver()`, but can also be called after if
-   *    limits change between solves. The limits have one entry per bounded
-   *    state (Options::bounded_states, all states by default); pass `-inf` or
-   *    `inf` for a side without a limit.
+   *    This function can only be called with state bounds
+   * (Options::state_bounds Hard or Soft). Must be called prior to
+   * `initializeSolver()`, but can also be called after if limits change between
+   * solves. The limits have one entry per bounded state
+   * (Options::bounded_states, all states by default); pass `-inf` or `inf` for
+   * a side without a limit.
    * @param x_min Lower limits of the bounded states.
    * @param x_max Upper limits of the bounded states.
+   * @throws std::logic_error if Options::state_bounds is Off.
    * @throws std::invalid_argument if a size is not the number of bounded
    *   states or x_min > x_max.
    * @note The QP is updated in the next prepare() or solve(), which report
@@ -502,7 +504,7 @@ public:
    *   l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state
    *   (shared over the horizon) that may widen both of its limits.
    *
-   *   This function can only be called if `soft_state_bounds` is enabled, and
+   *   This function can only be called with StateBoundMode::Soft, and
    *   must be called prior to `initializeSolver()`. The L1 penalty is exact:
    *   when it exceeds the limit's Lagrange multiplier, the limits are only
    *   violated when they can not be met. The L2 penalty alone always allows a
@@ -514,7 +516,7 @@ public:
    *   L1 penalty depends on the problem.
    * @param l1 Linear penalties, one per bounded state (non-negative).
    * @param l2 Quadratic penalties, one per bounded state (non-negative).
-   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   * @throws std::logic_error if Options::state_bounds is not Soft.
    * @throws std::invalid_argument if a size is not the number of bounded
    *   states or a penalty is negative.
    */
@@ -682,20 +684,20 @@ public:
   /**
    * @brief Get the lower limits of the bounded states (-inf until
    *   setStateLimits()).
-   * @throws std::logic_error if `saturate_states` is not enabled.
+   * @throws std::logic_error if Options::state_bounds is Off.
    */
   const Eigen::VectorXd& getStateMin() const;
 
   /**
    * @brief Get the upper limits of the bounded states (+inf until
    *   setStateLimits()).
-   * @throws std::logic_error if `saturate_states` is not enabled.
+   * @throws std::logic_error if Options::state_bounds is Off.
    */
   const Eigen::VectorXd& getStateMax() const;
 
   /**
    * @brief Get the indices of the bounded states (Options::bounded_states, or
-   *   every state when it is empty; none without `saturate_states`).
+   *   every state when it is empty; none with StateBoundMode::Off).
    */
   const std::vector<int>& getBoundedStates() const noexcept
   {
@@ -705,14 +707,14 @@ public:
   /**
    * @brief Get the L1 penalties of the soft state limits (zero until
    *   setStateBoundPenalties()).
-   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   * @throws std::logic_error if Options::state_bounds is not Soft.
    */
   const Eigen::VectorXd& getStateBoundL1Penalties() const;
 
   /**
    * @brief Get the L2 penalties of the soft state limits (zero until
    *   setStateBoundPenalties()).
-   * @throws std::logic_error if `soft_state_bounds` is not enabled.
+   * @throws std::logic_error if Options::state_bounds is not Soft.
    */
   const Eigen::VectorXd& getStateBoundL2Penalties() const;
 

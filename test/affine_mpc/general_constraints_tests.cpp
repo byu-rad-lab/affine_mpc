@@ -107,9 +107,10 @@ template <ampc::Formulation F> void checkIdentityRowsMatchStateLimits()
   for (const Case& c : cases) {
     const auto p{static_cast<int>(c.states.size())};
     SCOPED_TRACE(::testing::Message() << p << " bounded states");
-    ampc::MPC bounded{
-        2, 1, param,
-        ampc::Options{.saturate_states = true, .bounded_states = c.states}, F};
+    ampc::MPC bounded{2, 1, param,
+                      ampc::Options{.state_bounds = ampc::StateBoundMode::Hard,
+                                    .bounded_states = c.states},
+                      F};
     configure(bounded);
     bounded.setStateLimits(c.lo, c.hi);
 
@@ -475,7 +476,7 @@ TEST(GeneralConstraintsTester, givenSetters_MarkMatricesOnlyWhenChanged)
 
 TEST(GeneralConstraintsTester, givenOptions_AddRowsAfterTheOtherBlocks)
 {
-  const ampc::Options opts{.saturate_states = true,
+  const ampc::Options opts{.state_bounds = ampc::StateBoundMode::Hard,
                            .num_general_constraints = 3,
                            .num_terminal_constraints = 2};
   ConstraintInspector mpc{2, 1, param, opts, ampc::Formulation::Sparse};

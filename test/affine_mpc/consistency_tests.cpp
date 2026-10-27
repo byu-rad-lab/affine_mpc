@@ -247,7 +247,8 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingStateLimits_Throws)
 {
   const int n{2}, m{1}, T{5}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
-  ConsistencyTester tester{n, m, param, {.saturate_states = true}};
+  ConsistencyTester tester{
+      n, m, param, {.state_bounds = ampc::StateBoundMode::Hard}};
   tester.setModel();
   tester.setInputLimits();
 
@@ -569,7 +570,7 @@ TEST(ConsistencyTester,
       n,
       m,
       param,
-      {.slew_initial_input = true, .saturate_input_trajectory = true}};
+      {.saturate_input_trajectory = true, .slew_initial_input = true}};
   tester.setup(); // input limits are [0, 3]
   for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&tester.condensed),
                          static_cast<ampc::MPC*>(&tester.sparse)}) {
@@ -617,7 +618,7 @@ void configureMsdLimits(ampc::MPC& mpc, const ampc::Options& opts)
     mpc.setReferenceInput(VectorXd::Zero(1));
   if (opts.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
-  if (opts.saturate_states)
+  if (opts.state_bounds != ampc::StateBoundMode::Off)
     mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
 }
 
@@ -628,7 +629,7 @@ void configureMsd(ampc::MPC& mpc, const ampc::Options& opts)
   mpc.setReferenceState(Vector2d{1.0, 0.0});
   if (opts.use_input_cost)
     mpc.setReferenceInput(VectorXd::Zero(1));
-  if (opts.saturate_states)
+  if (opts.state_bounds != ampc::StateBoundMode::Off)
     mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
 }
 
@@ -676,7 +677,7 @@ TEST(ConsistencyTester, givenModelOutsideInitValues_LeavesPatternUnlessFull)
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   // state saturation puts the condensed prediction matrix S into A
-  const ampc::Options opts{.saturate_states = true};
+  const ampc::Options opts{.state_bounds = ampc::StateBoundMode::Hard};
 
   // Ad = 0.9 I and Bd = [0, 0.1] leave the first state uncoupled, so the
   // values at initialization have no entries for that coupling
@@ -987,12 +988,14 @@ TEST(ConsistencyTester,
     expectEigenNear(u, u_first, 1e-12);
   };
 
-  for (const bool saturate_states : {false, true}) {
+  for (const bool state_bounds : {false, true}) {
     const ampc::Options opts{.use_input_cost = true,
-                             .saturate_states = saturate_states};
+                             .state_bounds = state_bounds
+                                                 ? ampc::StateBoundMode::Hard
+                                                 : ampc::StateBoundMode::Off};
     for (const bool nan_in_weights : {false, true}) {
       SCOPED_TRACE(::testing::Message()
-                   << "saturate_states=" << saturate_states
+                   << "state_bounds=" << state_bounds
                    << " nan_in_weights=" << nan_in_weights);
       {
         SCOPED_TRACE("condensed");
@@ -1109,7 +1112,8 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
     opts.use_input_cost = mask & 1;
     opts.slew_initial_input = mask & 2;
     opts.slew_control_points = mask & 4;
-    opts.saturate_states = mask & 8;
+    opts.state_bounds =
+        mask & 8 ? ampc::StateBoundMode::Hard : ampc::StateBoundMode::Off;
     opts.saturate_input_trajectory = mask & 16;
 
     for (int degree{0}; degree <= 3; ++degree) {
@@ -1120,7 +1124,7 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
                      << " use_input_cost=" << opts.use_input_cost
                      << " slew_initial_input=" << opts.slew_initial_input
                      << " slew_control_points=" << opts.slew_control_points
-                     << " saturate_states=" << opts.saturate_states
+                     << " state_bounds=" << opts.state_bounds
                      << " saturate_input_trajectory="
                      << opts.saturate_input_trajectory);
         const int n{static_cast<int>(sys->Ad.rows())};
@@ -1146,7 +1150,7 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
           }
           if (opts.slew_control_points)
             mpc.setSlewRate(scale * VectorXd::LinSpaced(m, 0.3, 0.5));
-          if (opts.saturate_states)
+          if (opts.state_bounds != ampc::StateBoundMode::Off)
             mpc.setStateLimits(-scale * VectorXd::LinSpaced(n, 5.0, 6.0),
                                scale * VectorXd::LinSpaced(n, 7.0, 8.0));
         };
@@ -1301,7 +1305,7 @@ TEST(ConsistencyTester, givenModelOffsetUpdate_MatchesModelSetWithThatOffset)
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   Matrix2d Ad;
   Ad << 0.99, 0.1, -0.06, 0.98;
   const Vector2d Bd{0.001, 0.02}, w1{0.0, 0.0}, w2{0.002, -0.01};

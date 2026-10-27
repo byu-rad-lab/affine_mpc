@@ -236,9 +236,9 @@ private:
 };
 
 /// x_min <= x_{k,i} <= x_max at every step k for each bounded state i
-/// (`saturate_states`; `bounded_states` selects them).
+/// (StateBoundMode::Hard or Soft; `bounded_states` selects them).
 ///
-/// Soft (`soft_state_bounds`): one slack s_j >= 0 per bounded state, shared
+/// Soft (StateBoundMode::Soft): one slack s_j >= 0 per bounded state, shared
 /// over the horizon, widens both of its limits,
 /// x_min,j - s_j <= x_{k,i_j} <= x_max,j + s_j. One row can not hold a slack
 /// on both sides, so each limit is its own one-sided row (2 T rows per
@@ -346,7 +346,7 @@ private:
   StateRows state_rows_;
 };
 
-/// l1^T s + s^T diag(l2) s on the state bound slacks s (`soft_state_bounds`),
+/// l1^T s + s^T diag(l2) s on the state bound slacks s (StateBoundMode::Soft),
 /// in the units of the rest of the cost (so 1/2 of it enters the QP).
 class SoftStatePenalty final : public QPTerm
 {

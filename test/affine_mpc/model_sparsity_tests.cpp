@@ -57,7 +57,7 @@ void model(double tilt, MatrixXd& Ad, MatrixXd& Bd)
 
 const ampc::Options opts{.use_input_cost = true,
                          .slew_initial_input = true,
-                         .saturate_states = true};
+                         .state_bounds = ampc::StateBoundMode::Hard};
 
 OSQPSettings tightSettings()
 {

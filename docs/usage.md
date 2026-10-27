@@ -77,10 +77,10 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```python
     opts = affine_mpc.Options(
         use_input_cost=True,
+        saturate_input_trajectory=False,
         slew_initial_input=False,
         slew_control_points=True,
-        saturate_states=False,
-        saturate_input_trajectory=False,
+        state_bounds=affine_mpc.StateBoundMode.Off,
     )
     ```
 
@@ -89,10 +89,10 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```cpp
     affine_mpc::Options opts;
     opts.use_input_cost = true;
+    opts.saturate_input_trajectory = false;
     opts.slew_initial_input = false;
     opts.slew_control_points = true;
-    opts.saturate_states = false;
-    opts.saturate_input_trajectory = false;
+    opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
 See [Concepts](concepts/index.md) for more details on options.
@@ -140,7 +140,7 @@ In Python, `formulation` is a keyword-only argument.
     // affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts, affine_mpc::Formulation::Sparse);
     ```
 
-!!! note "Migrating from `CondensedMPC`, `SparseMPC`, and `MPCBase`"
+!!! note "Migrating from 0.3"
 
     Before 0.4.0, each formulation was its own class.
     These names still work in 0.4.0 but are deprecated (C++ `[[deprecated]]` warnings, Python `DeprecationWarning`) and will be removed in 0.5.0:
@@ -150,6 +150,10 @@ In Python, `formulation` is a keyword-only argument.
     - `MPCBase` is `MPC`, declared in `affine_mpc/mpc.hpp`
 
     The logger records the formulation in the `formulation` metadata entry, and `print()` shows it.
+
+    The `Options` field `saturate_states` was removed in 0.4.0: replace `saturate_states = true` with `state_bounds = StateBoundMode::Hard` (`state_bounds=StateBoundMode.Hard` in Python).
+    The logger still writes `opt_saturate_states`, now derived from the mode, next to the new `opt_state_bounds`.
+    The Python `Options` arguments are now keyword-only.
 
 ### 4. Configure the MPC object
 
@@ -232,9 +236,9 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
         mpc.setPreviousInput(u_prev)  # defaults to zeros
     if opts.slew_control_points:
         mpc.setSlewRate(u_slew)
-    if opts.saturate_states:
+    if opts.state_bounds != affine_mpc.StateBoundMode.Off:
         mpc.setStateLimits(x_min, x_max)  # one entry per bounded state
-    if opts.soft_state_bounds:
+    if opts.state_bounds == affine_mpc.StateBoundMode.Soft:
         mpc.setStateBoundPenalties(l1, l2)  # one entry per bounded state
     if opts.num_general_constraints > 0:
         mpc.setGeneralConstraints(Hx, Hu, h_min, h_max)  # h_min <= Hx x_k + Hu u_k <= h_max
@@ -252,10 +256,10 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     if (opts.slew_control_points) {
       mpc.setSlewRate(u_slew);
     }
-    if (opts.saturate_states) {
+    if (opts.state_bounds != affine_mpc::StateBoundMode::Off) {
       mpc.setStateLimits(x_min, x_max); // one entry per bounded state
     }
-    if (opts.soft_state_bounds) {
+    if (opts.state_bounds == affine_mpc::StateBoundMode::Soft) {
       mpc.setStateBoundPenalties(l1, l2); // one entry per bounded state
     }
     if (opts.num_general_constraints > 0) {

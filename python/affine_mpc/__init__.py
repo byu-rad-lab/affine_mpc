@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 from ._bindings import (
     Options,
+    StateBoundMode,
     ModelSparsity,
     Parameterization,
     QPBlock,
@@ -32,6 +33,7 @@ from ._compat import CondensedMPC, SparseMPC
 
 __all__ = [
     "Options",
+    "StateBoundMode",
     "ModelSparsity",
     "Parameterization",
     "QPBlock",

@@ -118,13 +118,13 @@ constexpr DataChangeSet operator|(DataChange lhs, DataChange rhs) noexcept
 }
 
 /**
- * @brief Internal: the indices of the bounded states with `saturate_states`
+ * @brief Internal: the indices of the bounded states with state bounds
  *   (Options::bounded_states, or every state when it is empty), and none
- *   without it.
+ *   with StateBoundMode::Off.
  */
 inline std::vector<int> boundedStates(const Options& opts, int state_dim)
 {
-  if (!opts.saturate_states)
+  if (opts.state_bounds == StateBoundMode::Off)
     return {};
   if (!opts.bounded_states.empty())
     return opts.bounded_states;
@@ -180,12 +180,12 @@ struct MPCData
       R_rate.setOnes(input_dim);
     if (opts.slew_control_points)
       ctrls_slew.setConstant(input_dim, inf);
-    if (opts.saturate_states) {
+    if (opts.state_bounds != StateBoundMode::Off) {
       const int num_bounded{
           static_cast<int>(boundedStates(opts, state_dim).size())};
       x_min.setConstant(num_bounded, -inf);
       x_max.setConstant(num_bounded, inf);
-      if (opts.soft_state_bounds) {
+      if (opts.state_bounds == StateBoundMode::Soft) {
         x_soft_l1.setZero(num_bounded);
         x_soft_l2.setZero(num_bounded);
       }
@@ -222,10 +222,10 @@ struct MPCData
   Eigen::VectorXd ctrls_ref; ///< stacked reference control points
 
   Eigen::VectorXd u_min, u_max; ///< input limits
-  /// limits of the bounded states (`saturate_states`, see boundedStates())
+  /// limits of the bounded states (`state_bounds`, see boundedStates())
   Eigen::VectorXd x_min, x_max;
   /// L1 and L2 penalties on the slack of each bounded state
-  /// (`soft_state_bounds`)
+  /// (StateBoundMode::Soft)
   Eigen::VectorXd x_soft_l1, x_soft_l2;
   Eigen::VectorXd ctrls_slew; ///< control point slew rate
   Eigen::VectorXd u0_slew;    ///< initial input slew rate

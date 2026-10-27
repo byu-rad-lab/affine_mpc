@@ -6,6 +6,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "affine_mpc/mpc.hpp"
@@ -214,6 +215,35 @@ TEST(MPCLoggerFormulationTest, givenEachFormulation_RecordsItInParams)
     EXPECT_NE(params.find(std::string{"formulation: "} + name + "\n"),
               std::string::npos)
         << params;
+  }
+  fs::remove_all(test_dir);
+}
+
+TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsModeAndReleasedKey)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_state_bounds")};
+  const auto param{ampc::Parameterization::linearInterp(5, 2)};
+  for (const auto& [mode, name, saturate] :
+       {std::tuple{ampc::StateBoundMode::Off, "off", 0},
+        std::tuple{ampc::StateBoundMode::Hard, "hard", 1},
+        std::tuple{ampc::StateBoundMode::Soft, "soft", 1}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, ampc::Options{.state_bounds = mode}};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_state_bounds: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_NE(
+        params.find("opt_saturate_states: " + std::to_string(saturate) + "\n"),
+        std::string::npos)
+        << params;
+    EXPECT_EQ(params.find("opt_soft_state_bounds"), std::string::npos);
   }
   fs::remove_all(test_dir);
 }

@@ -210,9 +210,9 @@ TEST(SparseMPCProtectedTester,
      givenStateSaturation_FormsStateSaturationConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.saturate_states = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   const Vector2d x_min{-1.0, -5.0}, x_max{3.0, 5.0};
@@ -250,7 +250,8 @@ TEST(SparseMPCProtectedTester,
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.slew_control_points = true, .saturate_states = true}};
+      ampc::Options{.slew_control_points = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   VectorXd slew{1};
@@ -546,7 +547,8 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
   const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .saturate_states = true}};
+      ampc::Options{.use_input_cost = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

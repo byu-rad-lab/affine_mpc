@@ -201,7 +201,8 @@ TEST(CondensedMPCProtectedTester,
   const int n{2}, m{1}, T{100}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .saturate_states = true}};
+      ampc::Options{.use_input_cost = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   msd_mpc.setModel();
 
   msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

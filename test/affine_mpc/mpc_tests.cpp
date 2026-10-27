@@ -108,14 +108,14 @@ TEST(MPCTester, givenConfiguration_GettersReturnSetValues)
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, param, opts};
 
   const ampc::Options& got{base.getOptions()};
   EXPECT_EQ(got.use_input_cost, opts.use_input_cost);
   EXPECT_EQ(got.slew_initial_input, opts.slew_initial_input);
   EXPECT_EQ(got.slew_control_points, opts.slew_control_points);
-  EXPECT_EQ(got.saturate_states, opts.saturate_states);
+  EXPECT_EQ(got.state_bounds, opts.state_bounds);
   EXPECT_EQ(got.saturate_input_trajectory, opts.saturate_input_trajectory);
 
   // defaults before the setters are called
@@ -167,9 +167,9 @@ TEST(MPCTester, givenDisabledOptions_OptionalGettersThrow)
       [&]() { (void)base.getReferenceInputControlPoints(); },
       "Input cost is not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMin(); },
-                              "State saturation is not enabled");
+                              "State bounds are not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMax(); },
-                              "State saturation is not enabled");
+                              "State bounds are not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getSlewRate(); },
                               "Slew rate is not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getSlewRateInitial(); },
@@ -187,7 +187,7 @@ TEST(MPCTester, givenSetters_MarkTheirChangeCategoriesOnly)
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
   using ampc::detail::DataChange;
   using ampc::detail::DataChangeSet;
@@ -493,7 +493,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   ampc::MPC condensed{2, 1, param, opts};
   ampc::MPC sparse{2, 1, param, opts, ampc::Formulation::Sparse};
 
@@ -520,10 +520,10 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false, use_input_rate_cost=false, "
-            "soft_state_bounds=false, bounded_states=[], "
+            "  options = Options(use_input_cost=true, "
+            "use_input_rate_cost=false, saturate_input_trajectory=false, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
@@ -542,10 +542,10 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "MPC(formulation=Condensed, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false, use_input_rate_cost=false, "
-            "soft_state_bounds=false, bounded_states=[], "
+            "options=Options(use_input_cost=true, "
+            "use_input_rate_cost=false, saturate_input_trajectory=false, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
             "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
@@ -561,10 +561,10 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false, use_input_rate_cost=false, "
-            "soft_state_bounds=false, bounded_states=[], "
+            "  options = Options(use_input_cost=true, "
+            "use_input_rate_cost=false, saturate_input_trajectory=false, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
@@ -583,10 +583,10 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "MPC(formulation=Sparse, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false, use_input_rate_cost=false, "
-            "soft_state_bounds=false, bounded_states=[], "
+            "options=Options(use_input_cost=true, "
+            "use_input_rate_cost=false, saturate_input_trajectory=false, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
             "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
@@ -757,7 +757,7 @@ TEST(MPCTester, stateSaturationDisabledButUsed_Throws)
   Eigen::Vector<double, 2> x_min{-1, -1}, x_max{1, 1};
   expectLogicErrorWithMessage(
       [&base, &x_min, &x_max]() { base.setStateLimits(x_min, x_max); },
-      "State saturation is not enabled");
+      "State bounds are not enabled");
 }
 
 TEST(MPCTester, givenNegativeSlewRate_Throws)
@@ -785,7 +785,8 @@ TEST(MPCTester, givenNegativeInitialSlewRate_Throws)
 TEST(MPCTester, givenInvalidInputLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   Eigen::Vector<double, 1> u_min{1}, u_max{0};
   expectInvalidArgumentWithMessage(
@@ -796,7 +797,8 @@ TEST(MPCTester, givenInvalidInputLimits_Throws)
 TEST(MPCTester, givenInvalidStateLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   Eigen::Vector<double, 2> x_min{1, 1}, x_max{-1, -1};
   expectInvalidArgumentWithMessage(
@@ -834,7 +836,7 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, {T, deg, nc}, opts};
 
   const MatrixXd A2{MatrixXd::Identity(n, n)}, A3{MatrixXd::Identity(3, 3)};
@@ -910,7 +912,8 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
 TEST(MPCTester, givenWrongSizeLimits_ThrowsSizeErrorBeforeOrderCheck)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   // the size check must run before (u_max - u_min) is formed
   const VectorXd u_min{VectorXd::Ones(m)}, u_max{VectorXd::Zero(2)};

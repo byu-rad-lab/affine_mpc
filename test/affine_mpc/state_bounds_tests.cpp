@@ -51,10 +51,10 @@ void configure(ampc::MPC& mpc)
 const auto param{ampc::Parameterization::bspline(20, 2, 8)};
 const VectorXd x_lo{VectorXd::Constant(1, -0.5)};
 const VectorXd x_hi{VectorXd::Constant(1, 0.5)};
-const ampc::Options position_only{.saturate_states = true,
+const ampc::Options position_only{.state_bounds = ampc::StateBoundMode::Hard,
                                   .bounded_states = {0}};
-const ampc::Options soft_position{
-    .saturate_states = true, .soft_state_bounds = true, .bounded_states = {0}};
+const ampc::Options soft_position{.state_bounds = ampc::StateBoundMode::Soft,
+                                  .bounded_states = {0}};
 
 // Polishing makes the solutions of equivalent QPs agree to round-off
 bool initialize(ampc::MPC& mpc)
@@ -89,7 +89,9 @@ double positionViolation(const ampc::MPC& mpc)
 // unbounded, with one row per step fewer
 template <ampc::Formulation F> void checkSubsetMatchesInfiniteLimits()
 {
-  BoundsInspector full{2, 1, param, ampc::Options{.saturate_states = true}, F};
+  BoundsInspector full{
+      2, 1, param, ampc::Options{.state_bounds = ampc::StateBoundMode::Hard},
+      F};
   configure(full);
   full.setStateLimits(Vector2d{-0.5, -inf}, Vector2d{0.5, inf});
   BoundsInspector partial{2, 1, param, position_only, F};
@@ -176,9 +178,10 @@ std::vector<MatrixXd> assembledQP(const ampc::Options& opts)
 // Listing every state is the same as the default (all states)
 template <ampc::Formulation F> void checkExplicitAllMatchesDefault()
 {
-  const auto implicit{assembledQP<F>({.saturate_states = true})};
-  const auto explicit_all{
-      assembledQP<F>({.saturate_states = true, .bounded_states = {0, 1}})};
+  const auto implicit{
+      assembledQP<F>({.state_bounds = ampc::StateBoundMode::Hard})};
+  const auto explicit_all{assembledQP<F>(
+      {.state_bounds = ampc::StateBoundMode::Hard, .bounded_states = {0, 1}})};
   for (size_t i{0}; i < implicit.size(); ++i)
     EXPECT_TRUE(expectEigenNear(explicit_all[i], implicit[i], 0.0)) << i;
 }
@@ -241,14 +244,15 @@ TEST(StateBoundsTester, givenInvalidOptions_Throws)
     ampc::MPC mpc{2, 1, param, opts};
   };
   expectInvalidArgumentWithMessage([&]() { make({.bounded_states = {0}}); },
-                                   "require saturate_states");
-  expectInvalidArgumentWithMessage([&]() { make({.soft_state_bounds = true}); },
-                                   "require saturate_states");
+                                   "bounded_states requires state_bounds");
   for (const std::vector<int>& bad :
        {std::vector<int>{1, 0}, std::vector<int>{0, 0}, std::vector<int>{2},
         std::vector<int>{-1}}) {
     expectInvalidArgumentWithMessage(
-        [&]() { make({.saturate_states = true, .bounded_states = bad}); },
+        [&]() {
+          make({.state_bounds = ampc::StateBoundMode::Hard,
+                .bounded_states = bad});
+        },
         "strictly increasing");
   }
 }
@@ -277,7 +281,8 @@ TEST(StateBoundsTester, givenSoftBoundsWithoutPenalties_InitializeThrows)
   EXPECT_EQ(mpc.getStateBoundL2Penalties()(0), 3.0);
   EXPECT_TRUE(mpc.initializeSolver());
 
-  ampc::MPC hard{2, 1, param, ampc::Options{.saturate_states = true}};
+  ampc::MPC hard{2, 1, param,
+                 ampc::Options{.state_bounds = ampc::StateBoundMode::Hard}};
   expectLogicErrorWithMessage(
       [&]() {
         hard.setStateBoundPenalties(Vector2d::Ones(), Vector2d::Ones());

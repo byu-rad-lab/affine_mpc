@@ -22,7 +22,7 @@ def test_mpc_interface():
         opts.use_input_cost = True
         opts.slew_control_points = True
         opts.slew_initial_input = True
-        opts.saturate_states = True
+        opts.state_bounds = ampc.StateBoundMode.Hard
         mpc = ampc.MPC(n, m, param, opts)
 
         mpc.setModelDiscrete(Ad=np.eye(n), Bd=np.ones(n), wd=np.zeros(n))
@@ -67,7 +67,7 @@ def test_mpc_interface():
 
     assert (
         repr(mpc)
-        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False, soft_state_bounds=False, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, use_input_rate_cost=False, saturate_input_trajectory=False, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
     assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -92,7 +92,7 @@ def _all_options_mpc(n=2, m=2, T=6, nc=3):
         use_input_cost=True,
         slew_initial_input=True,
         slew_control_points=True,
-        saturate_states=True,
+        state_bounds=ampc.StateBoundMode.Hard,
     )
     return ampc.MPC(n, m, param, opts), param, opts
 
@@ -274,12 +274,12 @@ def test_partial_and_soft_state_bounds(formulation):
         mpc.setReferenceState(np.array([1.0, 0.0]))
         mpc.setInputLimits(u_min=np.array([-3.0]), u_max=np.array([3.0]))
         mpc.setStateLimits(x_min=np.array([-0.5]), x_max=np.array([0.5]))
-        if opts.soft_state_bounds:
+        if opts.state_bounds == ampc.StateBoundMode.Soft:
             mpc.setStateBoundPenalties(l1=np.array([10.0]), l2=np.array([100.0]))
         assert mpc.initializeSolver(settings)
         return mpc, mpc.solve(x0)
 
-    opts = ampc.Options(saturate_states=True, bounded_states=[0])
+    opts = ampc.Options(state_bounds=ampc.StateBoundMode.Hard, bounded_states=[0])
     assert opts.bounded_states == [0]
     assert "bounded_states=[0]" in repr(opts)
     hard, status = build(opts, np.zeros(2))
@@ -288,7 +288,7 @@ def test_partial_and_soft_state_bounds(formulation):
     x_traj = hard.getPredictedStateTrajectory().reshape(-1, 2)
     assert x_traj[:, 0].max() == pytest.approx(0.5, abs=1e-7)
 
-    soft_opts = ampc.Options(saturate_states=True, soft_state_bounds=True, bounded_states=[0])
+    soft_opts = ampc.Options(state_bounds=ampc.StateBoundMode.Soft, bounded_states=[0])
     soft, status = build(soft_opts, np.zeros(2))
     assert status == ampc.SolveStatus.Success
     np.testing.assert_allclose(
@@ -307,7 +307,7 @@ def test_partial_and_soft_state_bounds(formulation):
             2,
             1,
             param,
-            ampc.Options(saturate_states=True, bounded_states=[1, 0]),
+            ampc.Options(state_bounds=ampc.StateBoundMode.Hard, bounded_states=[1, 0]),
             formulation=formulation,
         )
 

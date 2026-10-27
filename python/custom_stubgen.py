@@ -68,6 +68,8 @@ pybind11_stubgen.main(
         "Mode$:MPCLogger",
         "--enum-class-locations",
         "ModelSparsity$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "StateBoundMode$:affine_mpc._bindings",
     ]
 )
 

@@ -420,7 +420,7 @@ The condensed formulation may be preferable when:
 
 - the horizon is short
 - the state dimension is small
-- state saturation is not enabled
+- state bounds are not enabled
 
 !!! note
 
@@ -858,7 +858,7 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | `input_bounds` | rows | input limits on the control points or the sampled inputs |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
-| `state_bounds` | rows | `saturate_states` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
+| `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
 | `general_constraints` | rows | `num_general_constraints` rows per step, steps in order |
 | `terminal_constraints` | rows | `num_terminal_constraints` rows on $\mathbf{x}_T$ |
 

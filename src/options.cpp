@@ -20,14 +20,12 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
     return value ? "true" : "false";
   };
   os << "Options(use_input_cost=" << boolStr(opts.use_input_cost)
-     << ", slew_initial_input=" << boolStr(opts.slew_initial_input)
-     << ", slew_control_points=" << boolStr(opts.slew_control_points)
-     << ", saturate_states=" << boolStr(opts.saturate_states)
+     << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
      << ", saturate_input_trajectory="
      << boolStr(opts.saturate_input_trajectory)
-     << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
-     << ", soft_state_bounds=" << boolStr(opts.soft_state_bounds)
-     << ", bounded_states=[";
+     << ", slew_initial_input=" << boolStr(opts.slew_initial_input)
+     << ", slew_control_points=" << boolStr(opts.slew_control_points)
+     << ", state_bounds=" << opts.state_bounds << ", bounded_states=[";
   for (size_t i{0}; i < opts.bounded_states.size(); ++i)
     os << (i ? ", " : "") << opts.bounded_states[i];
   os << "], num_general_constraints=" << opts.num_general_constraints
@@ -39,6 +37,19 @@ std::ostream& operator<<(std::ostream& os, const Options& opts)
 {
   const bool capitalize_bools{false};
   return print(os, opts, capitalize_bools);
+}
+
+std::ostream& operator<<(std::ostream& os, const StateBoundMode mode)
+{
+  switch (mode) {
+  case StateBoundMode::Off:
+    return os << "Off";
+  case StateBoundMode::Hard:
+    return os << "Hard";
+  case StateBoundMode::Soft:
+    return os << "Soft";
+  }
+  return os << "StateBoundMode(" << static_cast<int>(mode) << ')';
 }
 
 } // namespace affine_mpc

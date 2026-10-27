@@ -54,6 +54,19 @@ std::string loggingModeToString(affine_mpc::MPCLogger::Mode mode)
   return "Unknown";
 }
 
+std::string stateBoundModeToString(affine_mpc::StateBoundMode mode)
+{
+  switch (mode) {
+  case StateBoundMode::Off:
+    return "off";
+  case StateBoundMode::Hard:
+    return "hard";
+  case StateBoundMode::Soft:
+    return "soft";
+  }
+  return "unknown";
+}
+
 std::string makeShapeString(const std::vector<size_t>& shape)
 {
   std::ostringstream oss;
@@ -176,14 +189,15 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().slew_initial_input));
   addMetadata("opt_slew_control_points",
               static_cast<int>(mpc_->getOptions().slew_control_points));
+  // released key, derived from the mode (also logged as opt_state_bounds)
   addMetadata("opt_saturate_states",
-              static_cast<int>(mpc_->getOptions().saturate_states));
+              int{mpc_->getOptions().state_bounds != StateBoundMode::Off});
   addMetadata("opt_saturate_input_trajectory",
               static_cast<int>(mpc_->getOptions().saturate_input_trajectory));
   addMetadata("opt_use_input_rate_cost",
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
-  addMetadata("opt_soft_state_bounds",
-              static_cast<int>(mpc_->getOptions().soft_state_bounds));
+  addMetadata("opt_state_bounds",
+              stateBoundModeToString(mpc_->getOptions().state_bounds));
   addMetadata("opt_num_general_constraints",
               mpc_->getOptions().num_general_constraints);
   addMetadata("opt_num_terminal_constraints",
@@ -200,7 +214,7 @@ void MPCLogger::captureMPCSnapshot()
     addMetadata("R_rate_diag", mpc_->getInputRateWeights());
   if (mpc_->getOptions().slew_control_points)
     addMetadata("control_point_slew", mpc_->getSlewRate());
-  if (mpc_->getOptions().saturate_states) {
+  if (mpc_->getOptions().state_bounds != StateBoundMode::Off) {
     // x_min and x_max have one entry per bounded state
     const std::vector<int>& bounded{mpc_->getBoundedStates()};
     addMetadata("bounded_states",
@@ -208,7 +222,7 @@ void MPCLogger::captureMPCSnapshot()
     addMetadata("x_min", mpc_->getStateMin());
     addMetadata("x_max", mpc_->getStateMax());
   }
-  if (mpc_->getOptions().soft_state_bounds) {
+  if (mpc_->getOptions().state_bounds == StateBoundMode::Soft) {
     addMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
     addMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
   }
