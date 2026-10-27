@@ -1,7 +1,6 @@
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
 #include <cstddef>
@@ -92,7 +91,7 @@ template <typename Fn> std::size_t countAllocations(Fn&& fn)
   return num_allocations;
 }
 
-template <typename MPC>
+template <ampc::Formulation F>
 void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
                                        const ampc::Options& opts,
                                        bool use_prepare)
@@ -101,7 +100,7 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
 #endif
   const int n{2}, m{1};
-  MPC mpc{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, F};
   Matrix2d Ac;
   Ac << 0, 1, -0.6, -0.1;
   const Vector2d Bc{0, 0.2};
@@ -117,8 +116,24 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
   if (opts.slew_control_points)
     mpc.setSlewRate(VectorXd::Constant(m, 1.0));
-  if (opts.saturate_states)
-    mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
+  if (opts.state_bounds != ampc::StateBoundMode::Off) {
+    const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
+    mpc.setStateLimits(VectorXd::Constant(k, -10), VectorXd::Constant(k, 10));
+  }
+  if (opts.state_bounds == ampc::StateBoundMode::Soft) {
+    const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
+    mpc.setStateBoundPenalties(VectorXd::Constant(k, 10.0),
+                               VectorXd::Constant(k, 100.0));
+  }
+  // x + 0.1 v + 0.5 u <= 5 at every step, x + v <= 5 at the end
+  const RowVector2d Hx{1.0, 0.1}, Hf{1.0, 1.0};
+  const VectorXd Hu{VectorXd::Constant(1, 0.5)};
+  const VectorXd h_min{VectorXd::Constant(1, -5.0)};
+  const VectorXd h_max{VectorXd::Constant(1, 5.0)};
+  if (opts.num_general_constraints > 0)
+    mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
+  if (opts.num_terminal_constraints > 0)
+    mpc.setTerminalConstraints(Hf, h_min, h_max);
   ASSERT_TRUE(mpc.initializeSolver());
 
   const Vector2d x0{0.5, -0.2};
@@ -162,6 +177,16 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "references";
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "limits";
+  if (opts.num_general_constraints > 0) {
+    mpc.setGeneralConstraints(1.1 * Hx, Hu, h_min, h_max);
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "constraint matrices";
+  }
+  if (opts.num_terminal_constraints > 0) {
+    mpc.setTerminalConstraints(Hf, 2.0 * h_min, 2.0 * h_max);
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "constraint limits";
+  }
   ASSERT_EQ(status, ampc::SolveStatus::Success);
 }
 
@@ -178,16 +203,26 @@ struct AllocationCase
 std::vector<AllocationCase> allocationCases()
 {
   const ampc::Options all{.use_input_cost = true,
+                          .use_input_rate_cost = true,
                           .slew_initial_input = true,
                           .slew_control_points = true,
-                          .saturate_states = true};
+                          .state_bounds = ampc::StateBoundMode::Hard};
   const ampc::Options sampled{.use_input_cost = true,
-                              .saturate_input_trajectory = true};
+                              .input_bounds = ampc::InputBoundMode::Exact};
+  const ampc::Options soft{.use_input_cost = true,
+                           .state_bounds = ampc::StateBoundMode::Soft,
+                           .bounded_states = {0}};
+  const ampc::Options constraints{.use_input_cost = true,
+                                  .num_general_constraints = 1,
+                                  .num_terminal_constraints = 1};
   return {
       {"defaults", ampc::Parameterization::linearInterp(10, 4), {}},
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
+      {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
+      {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),
+       constraints},
   };
 }
 
@@ -196,27 +231,27 @@ class AllocationTester : public ::testing::TestWithParam<AllocationCase>
 
 TEST_P(AllocationTester, givenInitializedCondensedMPC_SolveDoesNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
-                                                        GetParam().opts, false);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, false);
 }
 
 TEST_P(AllocationTester, givenInitializedSparseMPC_SolveDoesNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
-                                                     GetParam().opts, false);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Sparse>(
+      GetParam().param, GetParam().opts, false);
 }
 
 TEST_P(AllocationTester,
        givenInitializedCondensedMPC_PrepareAndSolveDoNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
-                                                        GetParam().opts, true);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, true);
 }
 
 TEST_P(AllocationTester, givenInitializedSparseMPC_PrepareAndSolveDoNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
-                                                     GetParam().opts, true);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Sparse>(
+      GetParam().param, GetParam().opts, true);
 }
 
 TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
@@ -229,7 +264,7 @@ TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
   // allocate.
   const int n{4}, m{2}, T{300}, nc{60};
   const ampc::Options opts{.use_input_cost = true};
-  ampc::CondensedMPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
+  ampc::MPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
   MatrixXd Ad{MatrixXd::Identity(n, n)};
   Ad.topRightCorner(n - 1, n - 1).diagonal().setConstant(0.01);
   MatrixXd Bd{MatrixXd::Zero(n, m)};

@@ -2,15 +2,51 @@
 #define UTILS_HPP
 
 #include <Eigen/Core>
+#include <cmath>
+#include <filesystem>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <random>
 #include <stdexcept>
+#include <string>
+
+#include "affine_mpc/detail/qp.hpp"
+#include "affine_mpc/parameterization.hpp"
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
 
+// A temp directory named after the running test plus an id drawn once per
+// process, so tests run in parallel (ctest -j, or two builds at once) never
+// share a directory
+inline std::filesystem::path uniqueTempDir(const std::string& stem)
+{
+  static const std::string run_id{std::to_string(std::random_device{}())};
+  const auto* info{::testing::UnitTest::GetInstance()->current_test_info()};
+  return std::filesystem::temp_directory_path()
+         / (stem + "_" + info->test_suite_name() + "_" + info->name() + "_"
+            + run_id);
+}
+
+// The QP's cost matrix (full symmetric) and constraint matrix as dense
+// matrices, whichever storage the formulation uses
+inline Eigen::MatrixXd denseP(const affine_mpc::detail::QP& qp)
+{
+  Eigen::MatrixXd P;
+  affine_mpc::detail::denseCostMatrix(qp, P);
+  return P;
+}
+inline Eigen::MatrixXd denseA(const affine_mpc::detail::QP& qp)
+{
+  Eigen::MatrixXd A;
+  affine_mpc::detail::denseConstraintMatrix(qp, A);
+  return A;
+}
+
 // Records a GoogleTest failure (and returns false) unless mat1 and mat2 have
-// the same size and every element differs by at most delta. The return value
-// also allows ASSERT_TRUE(expectEigenNear(...)) to stop the test.
+// the same size and every element differs by at most delta. Equal elements,
+// including infinite bounds of the same sign, differ by zero; a NaN in either
+// matrix always fails. The return value also allows
+// ASSERT_TRUE(expectEigenNear(...)) to stop the test.
 template <typename Derived1, typename Derived2>
 bool expectEigenNear(const Eigen::MatrixBase<Derived1>& mat1,
                      const Eigen::MatrixBase<Derived2>& mat2,
@@ -23,10 +59,28 @@ bool expectEigenNear(const Eigen::MatrixBase<Derived1>& mat1,
   }
   if (mat1.size() == 0)
     return true;
-  const double max_diff{
-      static_cast<double>((mat1 - mat2).cwiseAbs().maxCoeff())};
-  if (!(max_diff <= delta)) { // also fails on NaN
-    ADD_FAILURE() << "max |difference| " << max_diff << " exceeds " << delta;
+  // Element by element: maxCoeff() may drop NaNs (it does with SSE on x86,
+  // not with NEON on ARM), and inf - inf is NaN
+  const Eigen::ArrayXXd a1{mat1.template cast<double>().array()};
+  const Eigen::ArrayXXd a2{mat2.template cast<double>().array()};
+  double max_diff{0.0};
+  Eigen::Index row{0}, col{0};
+  for (Eigen::Index j{0}; j < a1.cols(); ++j)
+    for (Eigen::Index i{0}; i < a1.rows(); ++i) {
+      const double diff{a1(i, j) == a2(i, j) ? 0.0
+                                             : std::abs(a1(i, j) - a2(i, j))};
+      if (std::isnan(diff) || diff > max_diff) {
+        max_diff = diff;
+        row = i;
+        col = j;
+        if (std::isnan(diff))
+          break;
+      }
+    }
+  if (!(max_diff <= delta)) {
+    ADD_FAILURE() << "max |difference| " << max_diff << " exceeds " << delta
+                  << " at (" << row << ", " << col << "): " << a1(row, col)
+                  << " vs " << a2(row, col);
     return false;
   }
   return true;
@@ -59,6 +113,38 @@ template <typename MPC> DiscreteModel readModel(const MPC& mpc)
     model.Bd.col(j) = x_next - model.wd;
   }
   return model;
+}
+
+// Dense sampled basis (horizon_steps x num_control_points) of a
+// parameterization, from its band
+inline Eigen::MatrixXd denseBasis(const affine_mpc::Parameterization& p)
+{
+  Eigen::MatrixXd basis{
+      Eigen::MatrixXd::Zero(p.horizon_steps, p.num_control_points)};
+  for (int k{0}; k < p.horizon_steps; ++k)
+    basis.row(k).segment(p.band_start(k), p.band_width) =
+        p.band_weights.col(k).transpose();
+  return basis;
+}
+
+// Discrete Laguerre functions (Wang, 2004): row k is L(k), with
+// L(0) = sqrt(1 - a^2) [1, -a, a^2, ...] and L(k+1) = Omega L(k)
+inline Eigen::MatrixXd laguerreBasis(int T, int N, double a)
+{
+  const double beta{1.0 - a * a};
+  Eigen::MatrixXd omega{Eigen::MatrixXd::Zero(N, N)};
+  for (int i{0}; i < N; ++i)
+    for (int j{0}; j <= i; ++j)
+      omega(i, j) = i == j ? a : beta * std::pow(-a, i - j - 1);
+  Eigen::VectorXd L{N};
+  for (int i{0}; i < N; ++i)
+    L(i) = std::sqrt(beta) * std::pow(-a, i);
+  Eigen::MatrixXd basis{T, N};
+  for (int k{0}; k < T; ++k) {
+    basis.row(k) = L.transpose();
+    L = omega * L;
+  }
+  return basis;
 }
 
 void expectInvalidArgumentWithMessage(const std::function<void()>& fn,

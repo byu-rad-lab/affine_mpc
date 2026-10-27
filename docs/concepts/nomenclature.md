@@ -8,6 +8,7 @@
     | ---    | ---     |
     | $n$    | state dimension |
     | $m$    | input dimension |
+    | $n_b$  | number of bounded states (`bounded_states`; $n_b = n$ by default) |
     | $T$    | number of steps in the prediction horizon |
     | $\eta$ | number of control points that parameterize the input trajectory |
     | $\mathbf{x}_k \in \mathbb{R}^n$ | state vector at horizon step $k$ |
@@ -22,6 +23,12 @@
     | $Q \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal state weights |
     | $Q_{\mathrm{f}} \in \mathbb{R}^{n \times n} \succeq 0$ | diagonal terminal state weights |
     | $R \in \mathbb{R}^{m \times m} \succeq 0$ | diagonal input (control point) weights |
+    | $R_\Delta \in \mathbb{R}^{m \times m} \succeq 0$ | diagonal input rate weights |
+    | $n_h$, $n_{h,\mathrm{f}}$ | number of general and terminal constraints |
+    | $H_x \in \mathbb{R}^{n_h \times n}$, $H_u \in \mathbb{R}^{n_h \times m}$ | state and input matrices of the general constraints |
+    | $\mathbf{h}_{\min}, \mathbf{h}_{\max} \in \mathbb{R}^{n_h}$ | bounds of the general constraints |
+    | $H_{\mathrm{f}} \in \mathbb{R}^{n_{h,\mathrm{f}} \times n}$ | state matrix of the terminal constraints |
+    | $\mathbf{h}_{\mathrm{f},\min}, \mathbf{h}_{\mathrm{f},\max} \in \mathbb{R}^{n_{h,\mathrm{f}}}$ | bounds of the terminal constraints |
 
 <!-- --8<-- [end:mpc-terms] -->
 

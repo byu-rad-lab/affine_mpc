@@ -14,7 +14,7 @@ This section is the fastest path to installing `affine_mpc` and running a first 
 
 - Read [Concepts](../concepts/index.md) to understand the supported problem class and mathematical structure.
 - Read [Usage](../usage.md) to learn the normal API workflow.
-- Read [Examples](../examples.md) for more detail on the mass-spring-damper walkthrough.
+- Read [Mass-Spring-Damper](../examples/mass-spring-damper.md) for more detail on the example walkthrough.
 - Read [Logging](../logging.md) to inspect saved outputs and prediction logs.
 
 ## Contributing

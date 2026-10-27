@@ -123,9 +123,9 @@ All of these can be installed from source (see their docs), but here are install
 After running the `example_sim` executable from above, you should see:
 
 - The example runs successfully, printing the log path to the console.
-- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory.
+- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory, replacing the log of any earlier run.
 
-For more detail on what the example demonstrates and how to interpret the outputs, see [Examples](../examples.md).
+For more detail on what the example demonstrates and how to interpret the outputs, see [Mass-Spring-Damper](../examples/mass-spring-damper.md).
 
 !!! note
 

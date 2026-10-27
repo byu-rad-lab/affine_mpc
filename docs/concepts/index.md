@@ -13,9 +13,9 @@ $$
 
 and solves a finite-horizon tracking MPC problem in which the dense input trajectory is parameterized by control points through some mapping
 $\mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1})$.
-The same mathematical problem supports both library formulations:
-`CondensedMPC` optimizes only the control points,
-while `SparseMPC` keeps the predicted states in the QP decision vector as well.
+The same mathematical problem supports both library formulations, chosen with the `Formulation` argument of `MPC`:
+the condensed formulation (the default) optimizes only the control points,
+while the sparse formulation keeps the predicted states in the QP decision vector as well.
 
 The library supports the following cost and constraint structure,
 with several optional terms controlled by `Options` (highlighted in red):
@@ -34,8 +34,8 @@ $$
     &\quad \mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w} \\
     &\quad \mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1}) \\
     &\quad \mathbf{u}_{\min} \leq \mathbf{c}_i \leq \mathbf{u}_{\max} \quad \text{OR} \quad
-        \underbrace{\mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}}_{\textcolor{red}{\text{saturate input trajectory}}} \\
-    &\quad \underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\textcolor{red}{\text{saturate states}}} \\
+        \underbrace{\mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}}_{\textcolor{red}{\text{exact input bounds}}} \\
+    &\quad \underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\textcolor{red}{\text{state bounds}}} \\
     &\quad \underbrace{|\mathbf{u}_0 - \mathbf{u}_{{-}1}| \leq \mathbf{u}_{0,\mathrm{slew}}}_{\textcolor{red}{\text{initial slew rate}}} \\
     &\quad \underbrace{|\mathbf{c}_i - \mathbf{c}_{i-1}| \leq \mathbf{c}_{\mathrm{slew}}}_{\textcolor{red}{\text{slew control points}}}
 \end{align}
@@ -56,6 +56,7 @@ $$
 - [QP Formulation](qp-formulation.md): conversion from MPC to QP.
 - [Runtime Updates](runtime-updates.md): OSQP sparsity rules and what may change between solves.
 - [Modeling Patterns](modeling-patterns.md): operating points, offset-free tracking, input delay, and deviation form.
+- [Model Update Strategies](model-updates.md): when to update the model of a nonlinear plant relative to the state measurement, and where the library work goes in each case.
 
 <!-- ## Practical Takeaway -->
 <!---->

@@ -8,31 +8,27 @@
 #include <utility>
 #include <vector>
 
-#include "affine_mpc/condensed_mpc.hpp"
-#include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
+#include "qp_builder.hpp" // internal (src/): the row layout
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
 using namespace Eigen;
 using ampc::operator<<;
 
-// Tests use varying parameters for the MPCBase class, so a GTest fixture is not
-// used
-class MPCBaseTester : public ampc::MPCBase
+// Tests use varying parameters for the MPC class, so a GTest fixture is not
+// used. The shared rows (input bounds and slew rates) are the same in every
+// formulation; the condensed one has no rows of its own.
+class MPCTester : public ampc::MPC
 {
 public:
-  MPCBaseTester(const int n,
-                const int m,
-                const ampc::Parameterization& param,
-                const ampc::Options& opts = {}) :
-      MPCBase{n, m, param, opts, m * param.num_control_points, 0}
-  {}
-  virtual ~MPCBaseTester() = default;
-  void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> /*x_traj*/) const noexcept override final
+  MPCTester(const int n,
+            const int m,
+            const ampc::Parameterization& param,
+            const ampc::Options& opts = {}) :
+      MPC{n, m, param, opts}
   {}
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
@@ -42,59 +38,59 @@ public:
   auto getRbig() const { return data().R_big; }
   // the bound rows are written when the pending changes are applied; the
   // views are read-only so a test can not write into the QP storage
-  auto getASlew() const { return A_.middleRows(slew0_idx_, totalSlewDim()); }
+  MatrixXd getASlew() const
+  {
+    return denseA(this->qp()).middleRows(slewOffset(), slewRows());
+  }
   auto getLSlew()
   {
     applyChanges();
-    return std::as_const(l_).segment(slew0_idx_, totalSlewDim());
+    return this->qp().l.segment(slewOffset(), slewRows());
   }
   auto getUSlew()
   {
     applyChanges();
-    return std::as_const(u_).segment(slew0_idx_, totalSlewDim());
+    return this->qp().u.segment(slewOffset(), slewRows());
   }
-  auto getASatU() const { return A_.middleRows(u_sat_idx_, u_sat_dim_); }
+  MatrixXd getASatU() const
+  {
+    return denseA(this->qp())
+        .middleRows(inputBounds().offset, inputBounds().rows);
+  }
   auto getLSatU()
   {
     applyChanges();
-    return std::as_const(l_).segment(u_sat_idx_, u_sat_dim_);
+    return this->qp().l.segment(inputBounds().offset, inputBounds().rows);
   }
   auto getUSatU()
   {
     applyChanges();
-    return std::as_const(u_).segment(u_sat_idx_, u_sat_dim_);
+    return this->qp().u.segment(inputBounds().offset, inputBounds().rows);
   }
   DataChangeSet getPendingChanges() const { return pendingChanges(); }
   void applyChanges() { (void)qpUpdateX0(Eigen::VectorXd::Zero(state_dim_)); }
 
-private:
-  DataChangeSet qpApplyChanges(DataChangeSet changes) override final
-  {
-    applied_changes = applied_changes | changes;
-    return {};
-  }
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& /*x0*/) override final
-  {
-    return true;
-  }
-
-public:
-  DataChangeSet applied_changes{};
-
 protected:
-  int totalSlewDim() const
+  ampc::detail::RowBlock inputBounds() const
   {
-    return slew_dim_ + input_dim_ * opts_.slew_initial_input;
+    return qpBuilder().rows().input_bounds;
+  }
+  // the initial slew rows directly precede the control point slew rows
+  int slewOffset() const { return inputBounds().offset + inputBounds().rows; }
+  int slewRows() const
+  {
+    const ampc::detail::QPRows& rows{qpBuilder().rows()};
+    return rows.initial_slew.rows + rows.control_point_slew.rows;
   }
 };
 
-TEST(MPCBaseTester, givenParams_StoresParameterization)
+TEST(MPCTester, givenParams_StoresParameterization)
 {
   // the banded basis itself is tested in parameterization_tests.cpp
   const int n{2}, m{1}, T{10}, n_ctrls{5}, deg{2};
   const ampc::Parameterization param{
       ampc::Parameterization::bspline(T, deg, n_ctrls)};
-  MPCBaseTester msd_mpc{n, m, param};
+  MPCTester msd_mpc{n, m, param};
 
   const ampc::Parameterization& stored{msd_mpc.getParameterization()};
   EXPECT_EQ(stored.horizon_steps, T);
@@ -105,22 +101,22 @@ TEST(MPCBaseTester, givenParams_StoresParameterization)
   EXPECT_TRUE(expectEigenNear(stored.band_weights, param.band_weights, 0.0));
 }
 
-TEST(MPCBaseTester, givenConfiguration_GettersReturnSetValues)
+TEST(MPCTester, givenConfiguration_GettersReturnSetValues)
 {
   const int n{2}, m{2}, T{6}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
-  MPCBaseTester base{n, m, param, opts};
+                           .state_bounds = ampc::StateBoundMode::Hard};
+  MPCTester base{n, m, param, opts};
 
   const ampc::Options& got{base.getOptions()};
   EXPECT_EQ(got.use_input_cost, opts.use_input_cost);
   EXPECT_EQ(got.slew_initial_input, opts.slew_initial_input);
   EXPECT_EQ(got.slew_control_points, opts.slew_control_points);
-  EXPECT_EQ(got.saturate_states, opts.saturate_states);
-  EXPECT_EQ(got.saturate_input_trajectory, opts.saturate_input_trajectory);
+  EXPECT_EQ(got.state_bounds, opts.state_bounds);
+  EXPECT_EQ(got.input_bounds, opts.input_bounds);
 
   // defaults before the setters are called
   // isConstant() compares approximately, which fails for infinities
@@ -162,41 +158,43 @@ TEST(MPCBaseTester, givenConfiguration_GettersReturnSetValues)
       expectEigenNear(base.getReferenceInputControlPoints(), ctrls_ref, 0.0));
 }
 
-TEST(MPCBaseTester, givenDisabledOptions_OptionalGettersThrow)
+TEST(MPCTester, givenDisabledOptions_OptionalGettersThrow)
 {
-  MPCBaseTester base{2, 1, ampc::Parameterization::linearInterp(5, 3)};
+  MPCTester base{2, 1, ampc::Parameterization::linearInterp(5, 3)};
   expectLogicErrorWithMessage([&]() { (void)base.getInputWeights(); },
                               "Input cost is not enabled");
   expectLogicErrorWithMessage(
       [&]() { (void)base.getReferenceInputControlPoints(); },
       "Input cost is not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMin(); },
-                              "State saturation is not enabled");
+                              "State bounds are not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMax(); },
-                              "State saturation is not enabled");
+                              "State bounds are not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getSlewRate(); },
                               "Slew rate is not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getSlewRateInitial(); },
                               "Initial slew rate is not enabled");
-  expectLogicErrorWithMessage([&]() { (void)base.getPreviousInput(); },
-                              "Initial slew rate is not enabled");
+  expectLogicErrorWithMessage(
+      [&]() { (void)base.getPreviousInput(); },
+      "The initial slew rate and the input rate cost are not enabled");
+  expectLogicErrorWithMessage([&]() { (void)base.getInputRateWeights(); },
+                              "Input rate cost is not enabled");
 }
 
-TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
+TEST(MPCTester, givenSetters_MarkTheirChangeCategoriesOnly)
 {
   const int n{2}, m{1};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
-  MPCBaseTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
+                           .state_bounds = ampc::StateBoundMode::Hard};
+  MPCTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
   using ampc::detail::DataChange;
   using ampc::detail::DataChangeSet;
 
   // nothing is in the QP before the first update, so everything is pending
   EXPECT_EQ(base.getPendingChanges(), DataChangeSet::all());
   base.applyChanges();
-  EXPECT_EQ(base.applied_changes, DataChangeSet::all());
   EXPECT_TRUE(base.getPendingChanges().empty());
 
   const Vector2d v2{Vector2d::Ones()};
@@ -206,9 +204,7 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
     SCOPED_TRACE(name);
     setter();
     EXPECT_EQ(base.getPendingChanges(), expected);
-    base.applied_changes = {};
     base.applyChanges();
-    EXPECT_EQ(base.applied_changes, expected);
     EXPECT_TRUE(base.getPendingChanges().empty());
   };
 
@@ -257,10 +253,10 @@ TEST(MPCBaseTester, givenSetters_MarkTheirChangeCategoriesOnly)
             DataChange::Weights | DataChange::References);
 }
 
-TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
+TEST(MPCTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A << 0, 1, -0.6, -0.1;
@@ -282,11 +278,11 @@ TEST(MPCBaseTester, givenContinuousLinearSystem_DiscretizesCorrectly)
 
 // This is a Quadcopter system (with throttle and angular rates as inputs)
 // linearized about equilibrium
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenContinuousSystemLinearizedAtEquilibrium_DiscretizesCorrectly)
 {
   const int n{9}, m{4}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::MatrixXd A{n, n}, B{n, m}, w{n, 1};
   A.setZero();
@@ -335,10 +331,10 @@ TEST(MPCBaseTester,
 }
 
 // ||A*dt|| = 10, outside the range where an unscaled Taylor series is reliable
-TEST(MPCBaseTester, givenStiffScalarSystem_DiscretizesCorrectly)
+TEST(MPCTester, givenStiffScalarSystem_DiscretizesCorrectly)
 {
   const int n{1}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   const double a{-100}, b{3}, w{2}, dt{0.1};
   base.setModelContinuous2Discrete(MatrixXd::Constant(1, 1, a),
@@ -353,10 +349,10 @@ TEST(MPCBaseTester, givenStiffScalarSystem_DiscretizesCorrectly)
 }
 
 // Singular A (integrator) with a fast pole: ||A*dt|| = 50
-TEST(MPCBaseTester, givenIntegratorWithFastPole_DiscretizesCorrectly)
+TEST(MPCTester, givenIntegratorWithFastPole_DiscretizesCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   const double a{-500}, dt{0.1};
   Matrix2d A;
@@ -377,10 +373,10 @@ TEST(MPCBaseTester, givenIntegratorWithFastPole_DiscretizesCorrectly)
 }
 
 // Undamped oscillator with ||A*dt|| = 20 (does not decay, unlike stiff cases)
-TEST(MPCBaseTester, givenFastOscillator_DiscretizesCorrectly)
+TEST(MPCTester, givenFastOscillator_DiscretizesCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   const double omega{200}, dt{0.1};
   Matrix2d A;
@@ -400,10 +396,10 @@ TEST(MPCBaseTester, givenFastOscillator_DiscretizesCorrectly)
   ASSERT_TRUE(expectEigenNear(base.getWd(), wd_expected, 1e-12));
 }
 
-TEST(MPCBaseTester, givenZeroStateMatrix_DiscretizesCorrectly)
+TEST(MPCTester, givenZeroStateMatrix_DiscretizesCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   const double dt{0.1};
   const Vector2d B{1, 2}, w{3, 4};
@@ -416,10 +412,10 @@ TEST(MPCBaseTester, givenZeroStateMatrix_DiscretizesCorrectly)
   ASSERT_TRUE(expectEigenNear(base.getWd(), wd_expected, 1e-15));
 }
 
-TEST(MPCBaseTester, givenInvalidDiscretizationArgs_Throws)
+TEST(MPCTester, givenInvalidDiscretizationArgs_Throws)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Matrix2d A;
   A << 0, 1, -0.6, -0.1;
@@ -438,10 +434,10 @@ TEST(MPCBaseTester, givenInvalidDiscretizationArgs_Throws)
       "Ac*dt must be finite");
 }
 
-TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
+TEST(MPCTester, givenQandR_FormsQbigAndRbigCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
   Eigen::Vector2d Q{1, 2}, R{3, 4};
   base.setWeights(Q, R);
 
@@ -457,15 +453,49 @@ TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
                               base.getRbig().diagonal(), 1e-6));
 }
 
-TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
+TEST(MPCConstructorTester, givenEachConstructor_StoresFormulationAndOptions)
+{
+  using ampc::Formulation;
+  const auto param{ampc::Parameterization::linearInterp(10, 4)};
+  const ampc::Options opts{.use_input_cost = true};
+  struct Case
+  {
+    ampc::MPC mpc;
+    Formulation formulation;
+    bool input_cost;
+    int num_control_points;
+  };
+  const Case cases[]{
+      {{2, 1, param}, Formulation::Condensed, false, 4},
+      {{2, 1, param, opts}, Formulation::Condensed, true, 4},
+      {{2, 1, param, opts, Formulation::Sparse}, Formulation::Sparse, true, 4},
+      {{2, 1, param, Formulation::Sparse}, Formulation::Sparse, false, 4},
+      {{2, 1, 10}, Formulation::Condensed, false, 10},
+      {{2, 1, 10, opts}, Formulation::Condensed, true, 10},
+      {{2, 1, 10, opts, Formulation::Sparse}, Formulation::Sparse, true, 10},
+      {{2, 1, 10, Formulation::Sparse}, Formulation::Sparse, false, 10},
+  };
+  for (const Case& c : cases) {
+    EXPECT_EQ(c.mpc.getFormulation(), c.formulation);
+    EXPECT_EQ(c.mpc.getOptions().use_input_cost, c.input_cost);
+    EXPECT_EQ(c.mpc.getNumControlPoints(), c.num_control_points);
+    EXPECT_EQ(c.mpc.getHorizonSteps(), 10);
+    EXPECT_STREQ(c.mpc.getClassName(), "MPC");
+    // only the sparse formulation has the states as QP variables
+    const int num_states{c.formulation == Formulation::Sparse ? 2 * 10 : 0};
+    EXPECT_EQ(c.mpc.getNumQPVariables(), c.num_control_points + num_states);
+  }
+}
+
+TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
 {
   const ampc::Parameterization param{5, 1, 3};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
-  ampc::CondensedMPC condensed{2, 1, param, opts};
-  ampc::SparseMPC sparse{2, 1, param, opts};
+                           .state_bounds = ampc::StateBoundMode::Hard};
+  ampc::MPC condensed{2, 1, param, opts};
+  ampc::MPC sparse{2, 1, param, opts, ampc::Formulation::Sparse};
 
   condensed.setStateWeights(Vector2d{1.0, 2.0}, Vector2d{3.0, 4.0});
   condensed.setInputWeights(Vector<double, 1>{5.0});
@@ -484,14 +514,17 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream condensed_ss;
   condensed_ss << condensed;
   EXPECT_EQ(condensed_ss.str(),
-            "CondensedMPC:\n"
+            "MPC:\n"
+            "  formulation = Condensed\n"
             "  state_dim = 2\n"
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false)\n"
+            "  options = Options(use_input_cost=true, "
+            "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
+            "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
             "  Qf = [3, 4]\n"
@@ -506,12 +539,15 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream condensed_summary_ss;
   ampc::printInline(condensed_summary_ss, condensed);
   EXPECT_EQ(condensed_summary_ss.str(),
-            "CondensedMPC(state_dim=2, input_dim=1, "
+            "MPC(formulation=Condensed, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false), solver_initialized=false, "
+            "options=Options(use_input_cost=true, "
+            "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
+            "num_general_constraints=0, num_terminal_constraints=0), "
+            "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
             "control_point_slew=[13])");
@@ -519,14 +555,17 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream sparse_ss;
   sparse_ss << sparse;
   EXPECT_EQ(sparse_ss.str(),
-            "SparseMPC:\n"
+            "MPC:\n"
+            "  formulation = Sparse\n"
             "  state_dim = 2\n"
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false)\n"
+            "  options = Options(use_input_cost=true, "
+            "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
+            "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
             "  Q = [1, 2]\n"
             "  Qf = [3, 4]\n"
@@ -541,21 +580,24 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream sparse_summary_ss;
   ampc::printInline(sparse_summary_ss, sparse);
   EXPECT_EQ(sparse_summary_ss.str(),
-            "SparseMPC(state_dim=2, input_dim=1, "
+            "MPC(formulation=Sparse, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, slew_initial_input=true, "
-            "slew_control_points=true, saturate_states=true, "
-            "saturate_input_trajectory=false), solver_initialized=false, "
+            "options=Options(use_input_cost=true, "
+            "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "slew_initial_input=true, slew_control_points=true, "
+            "state_bounds=Hard, bounded_states=[], "
+            "num_general_constraints=0, num_terminal_constraints=0), "
+            "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
             "control_point_slew=[13])");
 }
 
-TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
+TEST(MPCTester, askedToUpdateTrajectories_updatesCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector2d x_des{1, 2}, u_des{3, 4};
   base.setReferenceState(x_des);
@@ -572,10 +614,10 @@ TEST(MPCBaseTester, askedToUpdateTrajectories_updatesCorrectly)
                               base.getReferenceInputControlPoints(), 1e-6));
 }
 
-TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
+TEST(MPCTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
 
@@ -595,10 +637,10 @@ TEST(MPCBaseTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
       expectEigenNear(Q_big_diag_expected, base.getQbig().diagonal(), 1e-15));
 }
 
-TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
+TEST(MPCTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector<double, 1> R{3.0};
 
@@ -611,10 +653,10 @@ TEST(MPCBaseTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
       expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
 }
 
-TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
+TEST(MPCTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
   Eigen::Vector<double, 1> R{3.0};
@@ -643,34 +685,34 @@ TEST(MPCBaseTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
       expectEigenNear(R_big_diag_expected, base.getRbig().diagonal(), 1e-15));
 }
 
-TEST(MPCBaseTester, givenInvalidStateDim_Throws)
+TEST(MPCTester, givenInvalidStateDim_Throws)
 {
   auto testInvalidStateDim = [](int invalid_n) {
     const int m{1}, T{4}, nc{3}, deg{1};
     expectInvalidArgumentWithMessage(
-        [&]() { MPCBaseTester base(invalid_n, m, {T, deg, nc}); },
+        [&]() { MPCTester base(invalid_n, m, {T, deg, nc}); },
         "state_dim must be positive");
   };
   testInvalidStateDim(0);
   testInvalidStateDim(-1);
 }
 
-TEST(MPCBaseTester, givenInvalidInputDim_Throws)
+TEST(MPCTester, givenInvalidInputDim_Throws)
 {
   auto testInvalidInputDim = [](int invalid_m) {
     const int n{2}, T{4}, nc{3}, deg{1};
     expectInvalidArgumentWithMessage(
-        [&]() { MPCBaseTester base(n, invalid_m, {T, deg, nc}); },
+        [&]() { MPCTester base(n, invalid_m, {T, deg, nc}); },
         "input_dim must be positive");
   };
   testInvalidInputDim(0);
   testInvalidInputDim(-1);
 }
 
-TEST(MPCBaseTester, inputCostDisabledButUsed_Throws)
+TEST(MPCTester, inputCostDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{1}, deg{0};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> R{1.0};
   expectLogicErrorWithMessage([&base, &R]() { base.setInputWeights(R); },
@@ -682,10 +724,10 @@ TEST(MPCBaseTester, inputCostDisabledButUsed_Throws)
       "Input cost is not enabled");
 }
 
-TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
+TEST(MPCTester, initialSlewRateDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> ctrls_slew{0.5};
   expectLogicErrorWithMessage(
@@ -693,13 +735,13 @@ TEST(MPCBaseTester, initialSlewRateDisabledButUsed_Throws)
       "Initial slew rate is not enabled");
   expectLogicErrorWithMessage(
       [&base, &ctrls_slew]() { base.setPreviousInput(ctrls_slew); },
-      "Initial slew rate is not enabled");
+      "The initial slew rate and the input rate cost are not enabled");
 }
 
-TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)
+TEST(MPCTester, slewRateDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 1> ctrls_slew{0.5};
   expectLogicErrorWithMessage(
@@ -707,21 +749,21 @@ TEST(MPCBaseTester, slewRateDisabledButUsed_Throws)
       "Slew rate is not enabled");
 }
 
-TEST(MPCBaseTester, stateSaturationDisabledButUsed_Throws)
+TEST(MPCTester, stateSaturationDisabledButUsed_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector<double, 2> x_min{-1, -1}, x_max{1, 1};
   expectLogicErrorWithMessage(
       [&base, &x_min, &x_max]() { base.setStateLimits(x_min, x_max); },
-      "State saturation is not enabled");
+      "State bounds are not enabled");
 }
 
-TEST(MPCBaseTester, givenNegativeSlewRate_Throws)
+TEST(MPCTester, givenNegativeSlewRate_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
 
   Eigen::Vector<double, 1> ctrls_slew{-0.5};
   expectInvalidArgumentWithMessage(
@@ -729,10 +771,10 @@ TEST(MPCBaseTester, givenNegativeSlewRate_Throws)
       "Slew rate must be non-negative");
 }
 
-TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
+TEST(MPCTester, givenNegativeInitialSlewRate_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
 
   Eigen::Vector<double, 1> ctrls_slew{-0.5};
   expectInvalidArgumentWithMessage(
@@ -740,10 +782,11 @@ TEST(MPCBaseTester, givenNegativeInitialSlewRate_Throws)
       "Slew rate must be non-negative");
 }
 
-TEST(MPCBaseTester, givenInvalidInputLimits_Throws)
+TEST(MPCTester, givenInvalidInputLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   Eigen::Vector<double, 1> u_min{1}, u_max{0};
   expectInvalidArgumentWithMessage(
@@ -751,10 +794,11 @@ TEST(MPCBaseTester, givenInvalidInputLimits_Throws)
       "u_min cannot be greater than u_max");
 }
 
-TEST(MPCBaseTester, givenInvalidStateLimits_Throws)
+TEST(MPCTester, givenInvalidStateLimits_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   Eigen::Vector<double, 2> x_min{1, 1}, x_max{-1, -1};
   expectInvalidArgumentWithMessage(
@@ -762,10 +806,10 @@ TEST(MPCBaseTester, givenInvalidStateLimits_Throws)
       "x_min cannot be greater than x_max");
 }
 
-TEST(MPCBaseTester, givenInvalidStateWeights_Throws)
+TEST(MPCTester, givenInvalidStateWeights_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Vector2d Q{-1, 1}, Q2{1, 1};
   expectInvalidArgumentWithMessage([&base, &Q]() { base.setStateWeights(Q); },
@@ -776,24 +820,24 @@ TEST(MPCBaseTester, givenInvalidStateWeights_Throws)
       "State weights must be non-negative");
 }
 
-TEST(MPCBaseTester, givenInvalidInputWeights_Throws)
+TEST(MPCTester, givenInvalidInputWeights_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   Eigen::Vector<double, 1> R{-1};
   expectInvalidArgumentWithMessage([&base, &R]() { base.setInputWeights(R); },
                                    "Input weights must be non-negative");
 }
 
-TEST(MPCBaseTester, givenWrongSizeArguments_Throws)
+TEST(MPCTester, givenWrongSizeArguments_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
                            .slew_control_points = true,
-                           .saturate_states = true};
-  MPCBaseTester base{n, m, {T, deg, nc}, opts};
+                           .state_bounds = ampc::StateBoundMode::Hard};
+  MPCTester base{n, m, {T, deg, nc}, opts};
 
   const MatrixXd A2{MatrixXd::Identity(n, n)}, A3{MatrixXd::Identity(3, 3)};
   const MatrixXd B{MatrixXd::Ones(n, m)}, B_wide{MatrixXd::Ones(n, 2)};
@@ -803,12 +847,12 @@ TEST(MPCBaseTester, givenWrongSizeArguments_Throws)
   // the message should name the function, the argument, and both sizes
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A3, B, x2); },
-      "[MPCBase::setModelDiscrete] Ad must be 2x2, got 3x3.");
+      "[MPC::setModelDiscrete] Ad must be 2x2, got 3x3.");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A2, B_wide, x2); }, "Bd must be 2x1");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A2, B, x3); },
-      "[MPCBase::setModelDiscrete] wd must have size 2, got 3.");
+      "[MPC::setModelDiscrete] wd must have size 2, got 3.");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelContinuous2Discrete(A3, B, x2, 0.1); },
       "Ac must be 2x2");
@@ -865,10 +909,11 @@ TEST(MPCBaseTester, givenWrongSizeArguments_Throws)
       "x_next must have size 2");
 }
 
-TEST(MPCBaseTester, givenWrongSizeLimits_ThrowsSizeErrorBeforeOrderCheck)
+TEST(MPCTester, givenWrongSizeLimits_ThrowsSizeErrorBeforeOrderCheck)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_states = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.state_bounds = ampc::StateBoundMode::Hard}};
 
   // the size check must run before (u_max - u_min) is formed
   const VectorXd u_min{VectorXd::Ones(m)}, u_max{VectorXd::Zero(2)};
@@ -879,14 +924,16 @@ TEST(MPCBaseTester, givenWrongSizeLimits_ThrowsSizeErrorBeforeOrderCheck)
                                    "x_max must have size 2");
 }
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenControlPointSatOption_FormsInputSaturationConstraintsCorrectly)
 {
 
   auto test = [&](bool sat_u_traj) {
     const int n{2}, m{1}, T{4}, nc{3}, deg{0};
-    const ampc::Options opts{.saturate_input_trajectory = sat_u_traj};
-    MPCBaseTester base{n, m, {T, deg, nc}, opts};
+    const ampc::Options opts{
+        .input_bounds = sat_u_traj ? ampc::InputBoundMode::Exact
+                                   : ampc::InputBoundMode::ControlPoints};
+    MPCTester base{n, m, {T, deg, nc}, opts};
 
     Eigen::Vector<double, 1> u_min{-1}, u_max{2};
     base.setInputLimits(u_min, u_max);
@@ -913,25 +960,26 @@ TEST(MPCBaseTester,
   test(true);
 }
 
-TEST(MPCBaseTester, givenDeg1WithoutInputTrajSat_SaturatesControlPoints)
+TEST(MPCTester, givenDeg1WithoutInputTrajSat_SaturatesControlPoints)
 {
   // active knots {0, 2.5, 6, 9}: still control points without the option
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6, 9, 9;
-  MPCBaseTester base{n, m, {T, deg, knots}};
+  MPCTester base{n, m, {T, deg, knots}};
 
   const MatrixXd A = base.getASatU();
   ASSERT_EQ(A.rows(), m * 4);
   ASSERT_TRUE(A.isIdentity());
 }
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenInputTrajSatOptionDeg1IntegerKnots_SaturatesKnotSamplesOnly)
 {
   // uniform active knots {0, 3, 6, 9}: every knot is a sample, one row per knot
   const int n{2}, m{1}, T{10}, nc{4}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -948,7 +996,7 @@ TEST(MPCBaseTester,
 namespace {
 
 // Expected input saturation rows: sampled inputs at the given sample indices
-MatrixXd expectedSatRows(const MPCBaseTester& base,
+MatrixXd expectedSatRows(const MPCTester& base,
                          int m,
                          int deg,
                          int num_ctrls,
@@ -969,15 +1017,15 @@ MatrixXd expectedSatRows(const MPCBaseTester& base,
 
 } // namespace
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenInputTrajSatOptionDeg1FractionalKnots_SaturatesKnotAdjacentSamples)
 {
   // active knots {0, 2.5, 6, 9}: samples {0, 2, 3, 6, 9}
   const int n{2}, m{2}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6, 9, 9;
-  MPCBaseTester base{
-      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -997,15 +1045,15 @@ TEST(MPCBaseTester,
       expectEigenNear(u, VectorXd{u_max.replicate(num_rows, 1)}, 1e-15));
 }
 
-TEST(MPCBaseTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
+TEST(MPCTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
 {
   // active knots {0, 2.3, 2.7, 3.5, 9}: floor/ceil give {0, 2, 3, 2, 3, 3, 4,
   // 9}
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{7};
   knots << 0, 0, 2.3, 2.7, 3.5, 9, 9;
-  MPCBaseTester base{
-      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   const std::vector<int> samples{0, 2, 3, 4, 9};
   const MatrixXd A = base.getASatU();
@@ -1014,14 +1062,14 @@ TEST(MPCBaseTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
       expectEigenNear(A, expectedSatRows(base, m, deg, 5, samples), 1e-15));
 }
 
-TEST(MPCBaseTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
+TEST(MPCTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
 {
   // knots within round-off of an integer are treated as that integer
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 3 + 1e-12, 6 - 1e-12, 9, 9;
-  MPCBaseTester base{
-      n, m, {T, deg, knots}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   const std::vector<int> samples{0, 3, 6, 9};
   const MatrixXd A = base.getASatU();
@@ -1030,15 +1078,44 @@ TEST(MPCBaseTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
       expectEigenNear(A, expectedSatRows(base, m, deg, 4, samples), 1e-9));
 }
 
-TEST(MPCBaseTester,
-     givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
+TEST(MPCTester, givenInputTrajSatOptionDeg1RepeatedKnots_BoundsBothSides)
+{
+  // a double knot makes the spline jump, so the last sample before the knot
+  // is constrained too: active knots {0, 4, 4, 6.5, 6.5, 9} give samples
+  // {0, 3, 4, 6, 7, 9}
+  const int n{2}, m{1}, T{10}, deg{1};
+  VectorXd knots{8};
+  knots << 0, 0, 4, 4, 6.5, 6.5, 9, 9;
+  const ampc::Parameterization param{T, deg, knots};
+  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+
+  const std::vector<int> samples{0, 3, 4, 6, 7, 9};
+  const int num_rows{static_cast<int>(samples.size())};
+  const MatrixXd A = base.getASatU();
+  ASSERT_EQ(A.rows(), m * num_rows);
+  ASSERT_TRUE(expectEigenNear(
+      A, expectedSatRows(base, m, deg, param.num_control_points, samples),
+      1e-15));
+
+  // the extreme sampled inputs always lie on the constrained samples
+  std::srand(0);
+  for (int trial{0}; trial < 100; ++trial) {
+    const VectorXd ctrls{VectorXd::Random(m * param.num_control_points)};
+    const VectorXd u_traj{param.evaluate(m, ctrls)};
+    const VectorXd u_cons{A * ctrls};
+    EXPECT_NEAR(u_cons.maxCoeff(), u_traj.maxCoeff(), 1e-12);
+    EXPECT_NEAR(u_cons.minCoeff(), u_traj.minCoeff(), 1e-12);
+  }
+}
+
+TEST(MPCTester, givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
 {
   // active knots {0, 1.5, 4.2, 4.8, 11, 19}: samples {0, 1, 2, 4, 5, 11, 19}
   const int n{2}, m{2}, T{20}, deg{1};
   VectorXd knots{8};
   knots << 0, 0, 1.5, 4.2, 4.8, 11, 19, 19;
   const ampc::Parameterization param{T, deg, knots};
-  MPCBaseTester base{n, m, param, {.saturate_input_trajectory = true}};
+  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   const std::vector<int> samples{0, 1, 2, 4, 5, 11, 19};
   const int num_rows{static_cast<int>(samples.size())};
@@ -1047,7 +1124,7 @@ TEST(MPCBaseTester,
 
   std::srand(0);
   for (int trial{0}; trial < 100; ++trial) {
-    // Parameterization::evaluate is independent of MPCBase's spline weights
+    // Parameterization::evaluate is independent of MPC's spline weights
     const VectorXd ctrls{VectorXd::Random(m * param.num_control_points)};
     const VectorXd u_traj{param.evaluate(m, ctrls)};
     const VectorXd u_cons{A * ctrls};
@@ -1069,8 +1146,7 @@ TEST(MPCBaseTester,
   }
 }
 
-TEST(MPCBaseTester,
-     givenInputTrajSatOptionDeg1_AllowsControlPointsOutsideLimits)
+TEST(MPCTester, givenInputTrajSatOptionDeg1_AllowsControlPointsOutsideLimits)
 {
   // active knots {0, 2.5, 6.5, 12}: the control points at 2.5 and 6.5 are
   // never sampled, so they can leave [0, 1] while every sample stays inside
@@ -1078,7 +1154,7 @@ TEST(MPCBaseTester,
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 12, 12;
   const ampc::Parameterization param{T, deg, knots};
-  MPCBaseTester base{n, m, param, {.saturate_input_trajectory = true}};
+  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   Eigen::Vector<double, 1> u_min{0}, u_max{1};
   base.setInputLimits(u_min, u_max);
@@ -1101,11 +1177,12 @@ TEST(MPCBaseTester,
   EXPECT_TRUE(((u - u_cons).array() >= -1e-12).all());
 }
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenInputTrajSatOptionSimpleCase_FormsInputSaturationConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -1130,11 +1207,12 @@ TEST(MPCBaseTester,
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
 }
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      givenInputTrajSatOptionMIMO_FormsInputSaturationConstraintsCorrectly)
 {
   const int n{4}, m{2}, T{10}, nc{5}, deg{2};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.saturate_input_trajectory = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -1171,10 +1249,10 @@ TEST(MPCBaseTester,
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
 }
 
-TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
+TEST(MPCTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.slew_initial_input = true}};
 
   Eigen::Vector<double, 1> u0_slew{0.5}, u_prev{0.1};
   base.setSlewRateInitial(u0_slew);
@@ -1197,10 +1275,10 @@ TEST(MPCBaseTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
 }
 
-TEST(MPCBaseTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
+TEST(MPCTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
 
   Eigen::Vector<double, 1> ctrls_slew{0.5};
   base.setSlewRate(ctrls_slew);
@@ -1225,12 +1303,12 @@ TEST(MPCBaseTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
 }
 
-TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
+TEST(MPCTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
   affine_mpc::Options opts{.slew_initial_input = true,
                            .slew_control_points = true};
-  MPCBaseTester base{n, m, {T, deg, nc}, opts};
+  MPCTester base{n, m, {T, deg, nc}, opts};
 
   Eigen::Vector<double, 1> slew{0.5}, u_prev{0.1};
   base.setSlewRate(slew);
@@ -1258,10 +1336,10 @@ TEST(MPCBaseTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));
 }
 
-TEST(MPCBaseTester, givenModel_PropagatesModelCorrectly)
+TEST(MPCTester, givenModel_PropagatesModelCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;
@@ -1280,11 +1358,11 @@ TEST(MPCBaseTester, givenModel_PropagatesModelCorrectly)
   ASSERT_TRUE(expectEigenNear(x_next, x_next_expected, 1e-12));
 }
 
-TEST(MPCBaseTester, givenModel_PropagateModelAllowsAliasing)
+TEST(MPCTester, givenModel_PropagateModelAllowsAliasing)
 {
   // x_next = x0 is a common pattern in simulation loops
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}};
+  MPCTester base{n, m, {T, deg, nc}};
 
   Eigen::Matrix2d A;
   Eigen::Vector2d B, w;
@@ -1302,10 +1380,10 @@ TEST(MPCBaseTester, givenModel_PropagateModelAllowsAliasing)
   ASSERT_TRUE(expectEigenNear(x, x_expected, 1e-12));
 }
 
-TEST(MPCBaseTester, givenInputControlPointsReference_SetsUgoalCorrectly)
+TEST(MPCTester, givenInputControlPointsReference_SetsUgoalCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0;
@@ -1317,14 +1395,14 @@ TEST(MPCBaseTester, givenInputControlPointsReference_SetsUgoalCorrectly)
                               1e-15));
 }
 
-TEST(MPCBaseTester,
+TEST(MPCTester,
      setReferenceInputAndSetReferenceInputControlPoints_ProduceDifferentUref)
 {
   // setReferenceInput replicates a single step; setReferenceInputControlPoints
   // sets the full control-point vector directly. Verify they differ for a
   // non-trivial target.
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCBaseTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
 
   VectorXd u_step{m};
   u_step << 2.0;

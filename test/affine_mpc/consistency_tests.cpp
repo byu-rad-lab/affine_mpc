@@ -1,7 +1,6 @@
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
@@ -9,6 +8,8 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
+#include <string>
+#include <utility>
 
 #include "utils.hpp"
 
@@ -23,7 +24,7 @@ public:
                     const ampc::Parameterization& param,
                     const ampc::Options& opts = {}) :
       condensed{n, m, param, opts},
-      sparse{n, m, param, opts},
+      sparse{n, m, param, opts, ampc::Formulation::Sparse},
       opts{opts},
       n{n},
       m{m} {
@@ -86,13 +87,13 @@ public:
   }
 
   // member variables for testing
-  ampc::CondensedMPC condensed;
-  ampc::SparseMPC sparse;
+  ampc::MPC condensed;
+  ampc::MPC sparse;
   ampc::Options opts;
   const int n, m;
 };
 
-// ---- CondensedMPC vs SparseMPC consistency test ----------------------------
+// ---- Condensed vs sparse formulation consistency test ---------------------
 
 TEST(ConsistencyTester, givenSameSystem_CondensedAndSparseMPCAgree)
 {
@@ -246,7 +247,8 @@ TEST(ConsistencyTester, initializeSolverWithoutSettingStateLimits_Throws)
 {
   const int n{2}, m{1}, T{5}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
-  ConsistencyTester tester{n, m, param, {.saturate_states = true}};
+  ConsistencyTester tester{
+      n, m, param, {.state_bounds = ampc::StateBoundMode::Hard}};
   tester.setModel();
   tester.setInputLimits();
 
@@ -318,10 +320,10 @@ TEST(ConsistencyTester, givenWrongSizeSolveAndGetterArgs_Throws)
                std::invalid_argument);
 
   tester.setup();
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     expectInvalidArgumentWithMessage(
         [&]() { (void)mpc.solve(VectorXd::Zero(3)); },
-        "[MPCBase::solve] x0 must have size 2, got 3.");
+        "[MPC::solve] x0 must have size 2, got 3.");
     ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
 
     VectorXd wrong{VectorXd::Zero(4)};
@@ -496,7 +498,7 @@ TEST(ConsistencyTester,
 {
   const int n{2}, m{1}, T{10}, nc{5}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -527,7 +529,7 @@ TEST(ConsistencyTester,
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 9, 9;
   const ampc::Parameterization param{T, 1, knots};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -564,14 +566,14 @@ TEST(ConsistencyTester,
   const Vector2d x0{0, 0}, x_ref{0.3, 0};
   const double u_max{3.0};
 
-  ConsistencyTester tester{
-      n,
-      m,
-      param,
-      {.slew_initial_input = true, .saturate_input_trajectory = true}};
+  ConsistencyTester tester{n,
+                           m,
+                           param,
+                           {.input_bounds = ampc::InputBoundMode::Exact,
+                            .slew_initial_input = true}};
   tester.setup(); // input limits are [0, 3]
-  for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&tester.condensed),
-                             static_cast<ampc::MPCBase*>(&tester.sparse)}) {
+  for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&tester.condensed),
+                         static_cast<ampc::MPC*>(&tester.sparse)}) {
     mpc->setReferenceState(x_ref);
     ASSERT_EQ(mpc->solve(x0), ampc::SolveStatus::Success);
     VectorXd ctrls{m * param.num_control_points}, u_traj{m * T};
@@ -599,7 +601,7 @@ TEST(ConsistencyTester,
 namespace {
 
 // mass-spring-damper discretized at 0.1 s (every entry of Ad and Bd nonzero)
-void setMsdModel(ampc::MPCBase& mpc)
+void setMsdModel(ampc::MPC& mpc)
 {
   Matrix2d A;
   A << 0, 1, -0.6, -0.1;
@@ -608,7 +610,7 @@ void setMsdModel(ampc::MPCBase& mpc)
 }
 
 // Everything but the model
-void configureMsdLimits(ampc::MPCBase& mpc, const ampc::Options& opts)
+void configureMsdLimits(ampc::MPC& mpc, const ampc::Options& opts)
 {
   mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
   mpc.setReferenceState(Vector2d{1.0, 0.0});
@@ -616,18 +618,18 @@ void configureMsdLimits(ampc::MPCBase& mpc, const ampc::Options& opts)
     mpc.setReferenceInput(VectorXd::Zero(1));
   if (opts.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
-  if (opts.saturate_states)
+  if (opts.state_bounds != ampc::StateBoundMode::Off)
     mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
 }
 
-void configureMsd(ampc::MPCBase& mpc, const ampc::Options& opts)
+void configureMsd(ampc::MPC& mpc, const ampc::Options& opts)
 {
   setMsdModel(mpc);
   mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
   mpc.setReferenceState(Vector2d{1.0, 0.0});
   if (opts.use_input_cost)
     mpc.setReferenceInput(VectorXd::Zero(1));
-  if (opts.saturate_states)
+  if (opts.state_bounds != ampc::StateBoundMode::Off)
     mpc.setStateLimits(Vector2d::Constant(-10), Vector2d::Constant(10));
 }
 
@@ -640,7 +642,7 @@ TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
   const ampc::Options opts{.use_input_cost = true};
   const auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
 
-  ampc::SparseMPC late{n, m, param, opts};
+  ampc::MPC late{n, m, param, opts, ampc::Formulation::Sparse};
   configureMsd(late, opts);
   late.setWeights(Vector2d{1, 0}, VectorXd::Zero(m));
   ASSERT_TRUE(late.initializeSolver(settings));
@@ -649,7 +651,7 @@ TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
   const VectorXd R{VectorXd::Constant(m, 1e-2)};
   late.setWeights(Q, R);
 
-  ampc::SparseMPC reference{n, m, param, opts};
+  ampc::MPC reference{n, m, param, opts, ampc::Formulation::Sparse};
   configureMsd(reference, opts);
   reference.setWeights(Q, R);
   ASSERT_TRUE(reference.initializeSolver(settings));
@@ -665,43 +667,77 @@ TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
   ASSERT_TRUE(expectEigenNear(u_late, u_reference, 1e-4));
 }
 
-TEST(ConsistencyTester, givenModelOutsideInitPattern_IsWithinPatternIsFalse)
+// With ModelSparsity::InitialNonzeros (the default), the solver tracks the
+// model entries nonzero at initialization, so an entry that was zero then is
+// dropped and reported. With ModelSparsity::Full (sparse only), every model
+// entry is tracked, so the same change stays within the pattern and is solved
+// exactly.
+TEST(ConsistencyTester, givenModelOutsideInitValues_LeavesPatternUnlessFull)
 {
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   // state saturation puts the condensed prediction matrix S into A
-  const ampc::Options opts{.saturate_states = true};
+  const ampc::Options opts{.state_bounds = ampc::StateBoundMode::Hard};
 
   // Ad = 0.9 I and Bd = [0, 0.1] leave the first state uncoupled, so the
-  // initialized pattern has no entries for that coupling
+  // values at initialization have no entries for that coupling
   const Matrix2d Ad_diag{Matrix2d::Identity() * 0.9};
   const Vector2d Bd{0, 0.1}, wd{0, 0};
   const Vector2d x0{0.5, -0.2};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc, const ampc::ModelSparsity sparsity) {
+    const bool full{sparsity == ampc::ModelSparsity::Full};
     configureMsd(mpc, opts);
     mpc.setModelDiscrete(Ad_diag, Bd, wd);
     EXPECT_TRUE(mpc.isWithinSparsityPattern()); // not initialized yet
-    ASSERT_TRUE(mpc.initializeSolver());
+    ASSERT_TRUE(mpc.initializeSolver(sparsity));
+    EXPECT_EQ(mpc.getModelSparsity(), sparsity);
     ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
     EXPECT_TRUE(mpc.isWithinSparsityPattern());
 
-    // the solver silently drops the new coupling terms
+#ifndef NDEBUG
+    // the sparse model setters assert on untracked entries
+    if (!full && mpc.getFormulation() == ampc::Formulation::Sparse)
+      return;
+#endif
+    // initial nonzeros: the solver silently drops the new coupling terms
     setMsdModel(mpc);
     (void)mpc.solve(x0);
-    EXPECT_FALSE(mpc.isWithinSparsityPattern());
+    EXPECT_EQ(mpc.isWithinSparsityPattern(), full);
 
-    // back within the pattern (w never affects the pattern)
+    // back within the values at initialization (w never affects the pattern)
     mpc.setModelDiscrete(Ad_diag * 0.5, Bd, Vector2d{0.1, 0.2});
     ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
     EXPECT_TRUE(mpc.isWithinSparsityPattern());
   };
 
-  ampc::CondensedMPC condensed{n, m, param, opts};
-  check(condensed);
+  ampc::MPC condensed{n, m, param, opts};
+  check(condensed, ampc::ModelSparsity::InitialNonzeros);
 
-  ampc::SparseMPC sparse{n, m, param, opts};
-  check(sparse);
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
+  check(sparse, ampc::ModelSparsity::InitialNonzeros);
+
+  ampc::MPC sparse_full{n, m, param, opts, ampc::Formulation::Sparse};
+  check(sparse_full, ampc::ModelSparsity::Full);
+
+  // with Full, the sparse solution for the coupled model matches a solver
+  // initialized with that model
+  ampc::MPC changed{n, m, param, opts, ampc::Formulation::Sparse},
+      fresh{n, m, param, opts, ampc::Formulation::Sparse};
+  configureMsd(changed, opts);
+  changed.setModelDiscrete(Ad_diag, Bd, wd);
+  ASSERT_TRUE(changed.initializeSolver(ampc::ModelSparsity::Full));
+  ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
+  setMsdModel(changed);
+  changed.resetWarmStart();
+  configureMsd(fresh, opts);
+  ASSERT_TRUE(fresh.initializeSolver());
+  ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(fresh.solve(x0), ampc::SolveStatus::Success);
+  VectorXd c_changed{m * nc}, c_fresh{m * nc};
+  changed.getInputControlPoints(c_changed);
+  fresh.getInputControlPoints(c_fresh);
+  EXPECT_TRUE(expectEigenNear(c_changed, c_fresh, 1e-4));
 }
 
 TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
@@ -709,7 +745,7 @@ TEST(ConsistencyTester, givenCondensedModelZeroBecomingNonzero_CanStayInPattern)
   // Without state saturation, A_qp has no model terms and P = S^T Q S is
   // already dense, so a model zero becoming nonzero adds no QP nonzeros
   const int n{2}, m{1}, T{10};
-  ampc::CondensedMPC mpc{n, m, T};
+  ampc::MPC mpc{n, m, T};
 
   Matrix2d Ad;
   Ad << 1, 0.1, 0, 0.99;
@@ -731,7 +767,7 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.use_input_cost = true};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::NotInitialized);
 
     configureMsd(mpc, opts);
@@ -751,10 +787,10 @@ TEST(ConsistencyTester, askedForSolveInfo_ReportsLastSolve)
     EXPECT_GE(info.mpc_solve_time, info.qp_solve_time);
   };
 
-  ampc::CondensedMPC condensed{n, m, param, opts};
+  ampc::MPC condensed{n, m, param, opts};
   check(condensed);
 
-  ampc::SparseMPC sparse{n, m, param, opts};
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
   check(sparse);
 }
 
@@ -765,7 +801,7 @@ TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
   const ampc::Options opts{.slew_initial_input = true};
   const VectorXd u_prev{VectorXd::Constant(m, 0.2)};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     configureMsd(mpc, opts);
     mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
     auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
@@ -779,7 +815,7 @@ TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
     EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u_prev, 0.0));
   };
 
-  auto check_infeasible = [&](ampc::MPCBase& mpc) {
+  auto check_infeasible = [&](ampc::MPC& mpc) {
     configureMsd(mpc, opts);
     mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
     ASSERT_TRUE(mpc.initializeSolver());
@@ -800,14 +836,14 @@ TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
     EXPECT_TRUE(expectEigenNear(mpc.getPreviousInput(), u0, 0.0));
   };
 
-  ampc::CondensedMPC condensed{n, m, param, opts};
+  ampc::MPC condensed{n, m, param, opts};
   check(condensed);
-  ampc::SparseMPC sparse{n, m, param, opts};
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
   check(sparse);
 
-  ampc::CondensedMPC condensed_infeasible{n, m, param, opts};
+  ampc::MPC condensed_infeasible{n, m, param, opts};
   check_infeasible(condensed_infeasible);
-  ampc::SparseMPC sparse_infeasible{n, m, param, opts};
+  ampc::MPC sparse_infeasible{n, m, param, opts, ampc::Formulation::Sparse};
   check_infeasible(sparse_infeasible);
 }
 
@@ -820,25 +856,25 @@ TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
   const VectorXd R{VectorXd::Constant(m, 0.5)};
   const Vector2d x0{0.5, -0.2};
 
-  // SparseMPC: P is diagonal with R on the control points and Q on the states
-  ampc::SparseMPC sparse{n, m, param, opts};
+  // sparse: P is diagonal with R on the control points and Q on the states
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
   configureMsd(sparse, opts);
   sparse.setWeights(Q, R);
   ASSERT_TRUE(sparse.initializeSolver());
-  // unit placeholder weights until the first solve
-  EXPECT_TRUE(sparse.getQPCostMatrix().isIdentity());
-  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
 
   const int ctrls_dim{m * nc}, x_traj_dim{n * T};
   MatrixXd P_expected{
       MatrixXd::Zero(ctrls_dim + x_traj_dim, ctrls_dim + x_traj_dim)};
   P_expected.diagonal().head(ctrls_dim) = R.replicate(nc, 1);
   P_expected.diagonal().tail(x_traj_dim) = Q.replicate(T, 1);
+  // the weights as set, from initializeSolver() on (zero ones included)
+  EXPECT_TRUE(expectEigenNear(sparse.getQPCostMatrix(), P_expected, 1e-15));
+  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
   EXPECT_TRUE(expectEigenNear(sparse.getQPCostMatrix(), P_expected, 1e-15));
 
-  // CondensedMPC: P is dense over the control points and updated at the next
+  // condensed: P is dense over the control points and updated at the next
   // solve after a weight change
-  ampc::CondensedMPC condensed{n, m, param, opts};
+  ampc::MPC condensed{n, m, param, opts};
   configureMsd(condensed, opts);
   condensed.setWeights(Q, R);
   ASSERT_TRUE(condensed.initializeSolver());
@@ -870,7 +906,7 @@ TEST(ConsistencyTester, askedToResetWarmStart_NextSolveStartsFromZero)
   settings.check_termination = 1;
   const Vector2d x0{0.5, -0.2};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     mpc.resetWarmStart(); // no-op before initialization
     configureMsd(mpc, opts);
     ASSERT_TRUE(mpc.initializeSolver(settings));
@@ -897,10 +933,10 @@ TEST(ConsistencyTester, askedToResetWarmStart_NextSolveStartsFromZero)
     expectEigenNear(u_cold, u_first, 0.0);
   };
 
-  ampc::CondensedMPC condensed{n, m, param, opts};
+  ampc::MPC condensed{n, m, param, opts};
   check(condensed);
 
-  ampc::SparseMPC sparse{n, m, param, opts};
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
   check(sparse);
 }
 
@@ -918,7 +954,7 @@ TEST(ConsistencyTester,
 
   // OSQP rejects the matrix update, so solve() must not report Success on
   // the stale QP. Restoring valid data must recover the original solve.
-  auto check = [&](ampc::MPCBase& mpc, const ampc::Options& opts,
+  auto check = [&](ampc::MPC& mpc, const ampc::Options& opts,
                    bool nan_in_weights) {
     configureMsd(mpc, opts);
     mpc.setStateWeights(Vector2d::Ones());
@@ -952,21 +988,23 @@ TEST(ConsistencyTester,
     expectEigenNear(u, u_first, 1e-12);
   };
 
-  for (const bool saturate_states : {false, true}) {
+  for (const bool state_bounds : {false, true}) {
     const ampc::Options opts{.use_input_cost = true,
-                             .saturate_states = saturate_states};
+                             .state_bounds = state_bounds
+                                                 ? ampc::StateBoundMode::Hard
+                                                 : ampc::StateBoundMode::Off};
     for (const bool nan_in_weights : {false, true}) {
       SCOPED_TRACE(::testing::Message()
-                   << "saturate_states=" << saturate_states
+                   << "state_bounds=" << state_bounds
                    << " nan_in_weights=" << nan_in_weights);
       {
-        SCOPED_TRACE("CondensedMPC");
-        ampc::CondensedMPC condensed{n, m, param, opts};
+        SCOPED_TRACE("condensed");
+        ampc::MPC condensed{n, m, param, opts};
         check(condensed, opts, nan_in_weights);
       }
       {
-        SCOPED_TRACE("SparseMPC");
-        ampc::SparseMPC sparse{n, m, param, opts};
+        SCOPED_TRACE("sparse");
+        ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
         check(sparse, opts, nan_in_weights);
       }
     }
@@ -975,26 +1013,27 @@ TEST(ConsistencyTester,
 
 // ---- exhaustive QP equivalence over every option combination ---------------
 
-// Exposes the assembled QP (P, A, q, l, u) of a formulation for comparison.
-template <class Formulation> class QPAccess : public Formulation
+// The QP (P, A, q, l, u) of an MPC, assembled with the public assembleQP()
+struct QPAccess
 {
-public:
-  using Formulation::Formulation;
-  void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
-  const MatrixXd& P() const { return this->P_; }
-  const MatrixXd& A() const { return this->A_; }
-  const VectorXd& q() const { return this->q_; }
-  const VectorXd& l() const { return this->l_; }
-  const VectorXd& u() const { return this->u_; }
+  ampc::MPC& mpc;
+  ampc::QuadraticProgram qp{};
+  void assemble(const Ref<const VectorXd>& x0) { mpc.assembleQP(x0, qp); }
+  MatrixXd P() const { return MatrixXd{qp.P}; }
+  MatrixXd A() const { return MatrixXd{qp.A}; }
+  const VectorXd& q() const { return qp.q; }
+  const VectorXd& l() const { return qp.l; }
+  const VectorXd& u() const { return qp.u; }
 };
 
-// Checks that CondensedMPC and SparseMPC define the same QP, without solving:
-// for random control points z, with y = [z; x(z)] where x(z) propagates the
-// model, the costs must differ by the same constant for every z, the sparse
-// model rows must hold exactly, and every other constraint row must have the
-// same margins to its bounds (the rows match one to one after the model rows).
-void expectSameQP(const QPAccess<ampc::CondensedMPC>& condensed,
-                  const QPAccess<ampc::SparseMPC>& sparse,
+// Checks that the condensed and sparse formulations define the same QP, without
+// solving: for random control points z, with y = [z; x(z)] where x(z)
+// propagates the model, the costs must differ by the same constant for every z,
+// the sparse model rows must hold exactly, and every other constraint row must
+// have the same margins to its bounds (the rows match one to one after the
+// model rows).
+void expectSameQP(const QPAccess& condensed,
+                  const QPAccess& sparse,
                   const ampc::Parameterization& param,
                   const VectorXd& x0)
 {
@@ -1017,7 +1056,7 @@ void expectSameQP(const QPAccess<ampc::CondensedMPC>& condensed,
     VectorXd y{nz + num_model_rows}, x{x0};
     y.head(nz) = z;
     for (int k{0}; k < T; ++k) {
-      condensed.propagateModel(x, u_traj.segment(k * m, m), x);
+      condensed.mpc.propagateModel(x, u_traj.segment(k * m, m), x);
       y.segment(nz + k * n, n) = x;
     }
 
@@ -1073,8 +1112,10 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
     opts.use_input_cost = mask & 1;
     opts.slew_initial_input = mask & 2;
     opts.slew_control_points = mask & 4;
-    opts.saturate_states = mask & 8;
-    opts.saturate_input_trajectory = mask & 16;
+    opts.state_bounds =
+        mask & 8 ? ampc::StateBoundMode::Hard : ampc::StateBoundMode::Off;
+    opts.input_bounds = mask & 16 ? ampc::InputBoundMode::Exact
+                                  : ampc::InputBoundMode::ControlPoints;
 
     for (int degree{0}; degree <= 3; ++degree) {
       const auto param{ampc::Parameterization::bspline(T, degree, nc)};
@@ -1084,14 +1125,13 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
                      << " use_input_cost=" << opts.use_input_cost
                      << " slew_initial_input=" << opts.slew_initial_input
                      << " slew_control_points=" << opts.slew_control_points
-                     << " saturate_states=" << opts.saturate_states
-                     << " saturate_input_trajectory="
-                     << opts.saturate_input_trajectory);
+                     << " state_bounds=" << opts.state_bounds
+                     << " input_bounds=" << opts.input_bounds);
         const int n{static_cast<int>(sys->Ad.rows())};
         const int m{static_cast<int>(sys->Bd.cols())};
 
         // distinct, nonuniform values so mismatched rows or columns show up
-        auto configure = [&](ampc::MPCBase& mpc, double scale) {
+        auto configure = [&](ampc::MPC& mpc, double scale) {
           mpc.setModelDiscrete(sys->Ad, scale * sys->Bd, scale * sys->wd);
           mpc.setInputLimits(-scale * VectorXd::LinSpaced(m, 1.0, 2.0),
                              scale * VectorXd::LinSpaced(m, 1.5, 2.5));
@@ -1110,35 +1150,36 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
           }
           if (opts.slew_control_points)
             mpc.setSlewRate(scale * VectorXd::LinSpaced(m, 0.3, 0.5));
-          if (opts.saturate_states)
+          if (opts.state_bounds != ampc::StateBoundMode::Off)
             mpc.setStateLimits(-scale * VectorXd::LinSpaced(n, 5.0, 6.0),
                                scale * VectorXd::LinSpaced(n, 7.0, 8.0));
         };
 
-        QPAccess<ampc::CondensedMPC> condensed{n, m, param, opts};
-        QPAccess<ampc::SparseMPC> sparse{n, m, param, opts};
+        ampc::MPC condensed{n, m, param, opts};
+        ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
         configure(condensed, 1.0);
         configure(sparse, 1.0);
         ASSERT_TRUE(condensed.initializeSolver());
         ASSERT_TRUE(sparse.initializeSolver());
+        QPAccess condensed_qp{condensed}, sparse_qp{sparse};
 
         // after initialization (sparse weights are applied at the next update)
-        condensed.assemble(sys->x0);
-        sparse.assemble(sys->x0);
+        condensed_qp.assemble(sys->x0);
+        sparse_qp.assemble(sys->x0);
         {
           SCOPED_TRACE("after initialization");
-          expectSameQP(condensed, sparse, param, sys->x0);
+          expectSameQP(condensed_qp, sparse_qp, param, sys->x0);
         }
 
         // after runtime updates of every parameter, within the sparsity pattern
         configure(condensed, 1.3);
         configure(sparse, 1.3);
         const VectorXd x0_new{-0.5 * sys->x0};
-        condensed.assemble(x0_new);
-        sparse.assemble(x0_new);
+        condensed_qp.assemble(x0_new);
+        sparse_qp.assemble(x0_new);
         {
           SCOPED_TRACE("after runtime updates");
-          expectSameQP(condensed, sparse, param, x0_new);
+          expectSameQP(condensed_qp, sparse_qp, param, x0_new);
         }
         EXPECT_TRUE(condensed.isWithinSparsityPattern());
         EXPECT_TRUE(sparse.isWithinSparsityPattern());
@@ -1155,7 +1196,7 @@ TEST(ConsistencyTester, givenClosedLoopSimulation_ConvergesToReference)
   const Vector2d x_ref{1.0, 0.0};
   const ampc::Options opts{.use_input_cost = true, .slew_initial_input = true};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     setMsdModel(mpc);
     mpc.setInputLimits(VectorXd::Constant(m, -5.0), VectorXd::Constant(m, 5.0));
     mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
@@ -1178,9 +1219,9 @@ TEST(ConsistencyTester, givenClosedLoopSimulation_ConvergesToReference)
   for (const auto& param : {ampc::Parameterization::moveBlocking(T, 5),
                             ampc::Parameterization::linearInterp(T, 5),
                             ampc::Parameterization::bspline(T, 3, 6)}) {
-    ampc::CondensedMPC condensed{n, m, param, opts};
+    ampc::MPC condensed{n, m, param, opts};
     check(condensed);
-    ampc::SparseMPC sparse{n, m, param, opts};
+    ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
     check(sparse);
   }
 }
@@ -1230,7 +1271,7 @@ TEST(ConsistencyTester, givenNoActiveConstraints_SolutionMatchesLeastSquares)
                    + R_big.asDiagonal() * c_ref};
   const VectorXd c_expected{H.ldlt().solve(g)};
 
-  auto check = [&](ampc::MPCBase& mpc) {
+  auto check = [&](ampc::MPC& mpc) {
     mpc.setModelDiscrete(A, B, w);
     const double inf{std::numeric_limits<double>::infinity()};
     mpc.setInputLimits(VectorXd::Constant(m, -inf), VectorXd::Constant(m, inf));
@@ -1249,9 +1290,10 @@ TEST(ConsistencyTester, givenNoActiveConstraints_SolutionMatchesLeastSquares)
     EXPECT_TRUE(expectEigenNear(x_traj, S * c_expected + v, 1e-6));
   };
 
-  ampc::CondensedMPC condensed{n, m, param, {.use_input_cost = true}};
+  ampc::MPC condensed{n, m, param, {.use_input_cost = true}};
   check(condensed);
-  ampc::SparseMPC sparse{n, m, param, {.use_input_cost = true}};
+  ampc::MPC sparse{
+      n, m, param, {.use_input_cost = true}, ampc::Formulation::Sparse};
   check(sparse);
 }
 
@@ -1263,18 +1305,18 @@ TEST(ConsistencyTester, givenModelOffsetUpdate_MatchesModelSetWithThatOffset)
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.use_input_cost = true,
                            .slew_initial_input = true,
-                           .saturate_states = true};
+                           .state_bounds = ampc::StateBoundMode::Hard};
   Matrix2d Ad;
   Ad << 0.99, 0.1, -0.06, 0.98;
   const Vector2d Bd{0.001, 0.02}, w1{0.0, 0.0}, w2{0.002, -0.01};
   const Vector2d x0{0.5, -0.2};
 
-  auto configure = [&](ampc::MPCBase& mpc, const Vector2d& w) {
+  auto configure = [&](ampc::MPC& mpc, const Vector2d& w) {
     mpc.setModelDiscrete(Ad, Bd, w);
     configureMsdLimits(mpc, opts);
     ASSERT_TRUE(mpc.initializeSolver());
   };
-  auto check = [&](ampc::MPCBase& updated, ampc::MPCBase& reference) {
+  auto check = [&](ampc::MPC& updated, ampc::MPC& reference) {
     configure(updated, w1);
     ASSERT_EQ(updated.solve(x0), ampc::SolveStatus::Success);
     updated.setModelOffsetDiscrete(w2);
@@ -1299,10 +1341,10 @@ TEST(ConsistencyTester, givenModelOffsetUpdate_MatchesModelSetWithThatOffset)
     EXPECT_TRUE(expectEigenNear(x_next, Vector2d{Ad * x0 + Bd + w2}, 1e-15));
   };
 
-  ampc::CondensedMPC condensed{n, m, param, opts},
-      condensed_ref{n, m, param, opts};
+  ampc::MPC condensed{n, m, param, opts}, condensed_ref{n, m, param, opts};
   check(condensed, condensed_ref);
-  ampc::SparseMPC sparse{n, m, param, opts}, sparse_ref{n, m, param, opts};
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse},
+      sparse_ref{n, m, param, opts, ampc::Formulation::Sparse};
   check(sparse, sparse_ref);
 }
 
@@ -1316,7 +1358,7 @@ TEST(ConsistencyTester, givenContinuousModelOffsetUpdate_ReusesDiscretization)
   const Vector2d x{0.5, -0.2};
   const VectorXd u{VectorXd::Constant(m, 1.5)};
 
-  ampc::CondensedMPC updated{n, m, 10}, reference{n, m, 10};
+  ampc::MPC updated{n, m, 10}, reference{n, m, 10};
   updated.setModelContinuous2Discrete(Ac, Bc, wc1, dt);
   updated.setModelOffsetContinuous2Discrete(wc2);
   reference.setModelContinuous2Discrete(Ac, Bc, wc2, dt);
@@ -1329,7 +1371,7 @@ TEST(ConsistencyTester, givenContinuousModelOffsetUpdate_ReusesDiscretization)
 
 TEST(ConsistencyTester, givenInvalidModelOffsetUpdate_Throws)
 {
-  ampc::SparseMPC mpc{2, 1, 10};
+  ampc::MPC mpc{2, 1, 10, ampc::Formulation::Sparse};
   expectLogicErrorWithMessage(
       [&] { mpc.setModelOffsetDiscrete(Vector2d::Zero()); },
       "Model must be set");
@@ -1386,4 +1428,149 @@ TEST(ConsistencyTester, givenUnclampedKnots_CondensedAndSparseMPCAgree)
   tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
   tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
+}
+
+TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
+{
+  // a double knot (degree 2: continuous with a kink) and a triple knot
+  // (degree 2: a jump), with the sampled inputs bounded
+  const int n{2}, m{1}, T{12};
+  for (const int mult : {2, 3}) {
+    VectorXd active{3 + mult};
+    active << 0, 2.5, VectorXd::Constant(mult, 5.0), T - 1.0;
+    const auto param{ampc::Parameterization::bspline(T, 2, active)};
+    const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
+    ConsistencyTester tester{n, m, param, opts};
+    tester.setup(); // input limits are [0, 3]
+
+    const Vector2d x0{0.5, -0.2};
+    ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd u_condensed{m * T}, u_sparse{m * T};
+    tester.condensed.getInputTrajectory(u_condensed);
+    tester.sparse.getInputTrajectory(u_sparse);
+    EXPECT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-4));
+    EXPECT_LE(u_sparse.maxCoeff(), 3.0 + 1e-4);
+    EXPECT_GE(u_sparse.minCoeff(), -1e-4);
+
+    VectorXd x_condensed{n * T}, x_sparse{n * T};
+    tester.condensed.getPredictedStateTrajectory(x_condensed);
+    tester.sparse.getPredictedStateTrajectory(x_sparse);
+    EXPECT_TRUE(expectEigenNear(x_condensed, x_sparse, 1e-4));
+  }
+}
+
+// ---- Custom basis ----------------------------------------------------------
+
+namespace {
+
+// Mass-spring-damper with input limits [0, 3], tracking x = 1, solved by
+// polished OSQP
+void setupCustomBasisMsd(ampc::MPC& mpc, const ampc::Options& opts)
+{
+  Matrix2d A;
+  A << 0, 1, -0.6, -0.1;
+  mpc.setModelContinuous2Discrete(A, Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
+  mpc.setInputLimits(VectorXd::Constant(1, 0.0), VectorXd::Constant(1, 3.0));
+  mpc.setStateWeights(Vector2d{1.0, 0.1});
+  mpc.setReferenceState(Vector2d{1.0, 0.0});
+  if (opts.use_input_cost)
+    mpc.setInputWeights(VectorXd::Constant(1, 1e-3));
+  if (opts.slew_initial_input)
+    mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
+  auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  settings.polishing = true;
+  settings.max_iter = 20000;
+  ASSERT_TRUE(mpc.initializeSolver(settings));
+}
+
+} // namespace
+
+TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
+{
+  // The custom basis bounds every sample, as the B-spline does with
+  // InputBoundMode::Exact for degree > 1, and the input cost weights the
+  // coefficients in both (reference zero).
+  const int n{2}, m{1}, T{15}, nc{6};
+  const auto bspline{ampc::Parameterization::bspline(T, 2, nc, 1.3)};
+  const auto custom{ampc::Parameterization::fromBasis(T, denseBasis(bspline))};
+  const ampc::Options opts{.use_input_cost = true, .slew_initial_input = true};
+  ampc::Options bspline_opts{opts};
+  bspline_opts.input_bounds = ampc::InputBoundMode::Exact;
+
+  ampc::MPC condensed_b{n, m, bspline, bspline_opts};
+  ampc::MPC condensed_c{n, m, custom, opts};
+  ampc::MPC sparse_b{n, m, bspline, bspline_opts, ampc::Formulation::Sparse};
+  ampc::MPC sparse_c{n, m, custom, opts, ampc::Formulation::Sparse};
+  setupCustomBasisMsd(condensed_b, bspline_opts);
+  setupCustomBasisMsd(condensed_c, opts);
+  setupCustomBasisMsd(sparse_b, bspline_opts);
+  setupCustomBasisMsd(sparse_c, opts);
+
+  const Vector2d x0{0.5, -0.2};
+  VectorXd ctrls_b{nc}, ctrls_c{nc}, u_b{T}, u_c{T};
+  const std::pair<ampc::MPC*, ampc::MPC*> pairs[]{{&condensed_b, &condensed_c},
+                                                  {&sparse_b, &sparse_c}};
+  for (const auto& [b, c] : pairs) {
+    ASSERT_EQ(b->solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(c->solve(x0), ampc::SolveStatus::Success);
+    b->getInputControlPoints(ctrls_b);
+    c->getInputControlPoints(ctrls_c);
+    EXPECT_TRUE(expectEigenNear(ctrls_c, ctrls_b, 1e-6));
+    b->getInputTrajectory(u_b);
+    c->getInputTrajectory(u_c);
+    EXPECT_TRUE(expectEigenNear(u_c, u_b, 1e-6));
+    // the upper limit and the initial slew limit are active
+    EXPECT_NEAR(u_c.maxCoeff(), 3.0, 1e-6);
+    EXPECT_NEAR(u_c(0), 0.5, 1e-6);
+  }
+}
+
+TEST(CustomBasisTester, givenLaguerreBasis_BoundsEverySampledInput)
+{
+  // With InputBoundMode::ControlPoints, a custom basis still bounds every
+  // sample (bounding Laguerre coefficients would bound nothing useful).
+  const int n{2}, m{1}, T{30};
+  const auto param{
+      ampc::Parameterization::fromBasis(T, laguerreBasis(T, 4, 0.8))};
+  const ampc::Options opts{.use_input_cost = true};
+
+  ampc::MPC condensed{n, m, param, opts};
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
+  setupCustomBasisMsd(condensed, opts);
+  setupCustomBasisMsd(sparse, opts);
+
+  const Vector2d x0{0.5, -0.2};
+  VectorXd u_condensed{T}, u_sparse{T};
+  ASSERT_EQ(condensed.solve(x0), ampc::SolveStatus::Success);
+  ASSERT_EQ(sparse.solve(x0), ampc::SolveStatus::Success);
+  condensed.getInputTrajectory(u_condensed);
+  sparse.getInputTrajectory(u_sparse);
+  EXPECT_TRUE(expectEigenNear(u_condensed, u_sparse, 1e-6));
+  EXPECT_LE(u_sparse.maxCoeff(), 3.0 + 1e-6);
+  EXPECT_GE(u_sparse.minCoeff(), -1e-6);
+  EXPECT_NEAR(u_sparse.maxCoeff(), 3.0, 1e-6); // the limit is active
+}
+
+TEST(CustomBasisTester, givenBsplineOnlyFeatures_Throws)
+{
+  const auto param{
+      ampc::Parameterization::fromBasis(10, laguerreBasis(10, 3, 0.5))};
+  expectInvalidArgumentWithMessage(
+      [&] { ampc::MPC(2, 1, param, {.slew_control_points = true}); },
+      "slew_control_points requires a B-spline parameterization");
+  expectInvalidArgumentWithMessage(
+      [&] {
+        ampc::MPC(2, 1, param, {.slew_control_points = true},
+                  ampc::Formulation::Sparse);
+      },
+      "slew_control_points requires a B-spline parameterization");
+
+  ampc::MPC mpc{2, 1, param, {.use_input_cost = true}};
+  expectLogicErrorWithMessage(
+      [&] { mpc.setReferenceInput(VectorXd::Zero(1)); },
+      "A custom basis has no control points that represent a constant input");
+  mpc.setReferenceInputControlPoints(VectorXd::Ones(3));
+  EXPECT_TRUE(mpc.getReferenceInputControlPoints().isOnes());
 }

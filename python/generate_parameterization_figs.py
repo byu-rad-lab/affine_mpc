@@ -252,7 +252,7 @@ def make_knot_placement_figure(output_dir: Path):
 
 
 def degree1_saturation_samples(active_knots: np.ndarray) -> np.ndarray:
-    """Samples bounded by MPCBase for degree 1 when saturating the trajectory."""
+    """Samples bounded by MPC for degree 1 when saturating the trajectory."""
     samples = []
     for tau in active_knots:
         tau_round = np.round(tau)
@@ -329,7 +329,7 @@ def make_degree1_saturation_figure(output_dir: Path):
     degree = 1
     active_knots = np.array([0.0, 2.5, 6.5, horizon_steps - 1.0])
     knots = make_clamped_knots_from_active(horizon_steps, degree, active_knots)
-    # same control points as the MPCBase degree 1 saturation test: u_3 = u_max
+    # same control points as the MPC degree 1 saturation test: u_3 = u_max
     # and u_7 = u_min while the control points at 2.5 and 6.5 leave the limits
     cp_traj = np.array([0.0, 0.0, -0.08, 0.8])
     cp_traj[1] = (4.0 - 0.5 * cp_traj[2]) / 3.5

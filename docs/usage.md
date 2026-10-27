@@ -19,8 +19,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Discretizer`
     - `Options`
     - `OSQPSettings`
-    - `CondensedMPC`
-    - `SparseMPC`
+    - `MPC` and `Formulation`
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
@@ -34,9 +33,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
-    - `MPCBase`
-    - `CondensedMPC`
-    - `SparseMPC`
+    - `MPC` and `Formulation` (`affine_mpc/mpc.hpp`)
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
@@ -55,6 +52,7 @@ Factory methods are provided for
 
 When creating a `Parameterization` object, you can either specify how many control points to use (uniform knots by default, or geometrically spaced knots with `knot_ratio`) or you can supply a custom knot vector.
 For unclamped splines, you must use the regular constructor directly.
+Other bases, such as Laguerre functions, can be supplied as a sampled basis matrix with `fromBasis()` (see [Custom Bases](concepts/input-parameterization.md#custom-bases)).
 
 If you are unsure what to use, linear interpolation is a good default:
 
@@ -79,10 +77,10 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```python
     opts = affine_mpc.Options(
         use_input_cost=True,
+        input_bounds=affine_mpc.InputBoundMode.ControlPoints,
         slew_initial_input=False,
         slew_control_points=True,
-        saturate_states=False,
-        saturate_input_trajectory=False,
+        state_bounds=affine_mpc.StateBoundMode.Off,
     )
     ```
 
@@ -91,37 +89,41 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```cpp
     affine_mpc::Options opts;
     opts.use_input_cost = true;
+    opts.input_bounds = affine_mpc::InputBoundMode::ControlPoints;
     opts.slew_initial_input = false;
     opts.slew_control_points = true;
-    opts.saturate_states = false;
-    opts.saturate_input_trajectory = false;
+    opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
+The options are grouped into costs (`use_input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+In Python they are keyword arguments; in C++20, designated initializers must follow this order.
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
 
-Choose between `CondensedMPC` and `SparseMPC` (they have the same interfaces).
+The formulation chooses how the QP represents the predicted states; the interface is the same for both, and so is the solution (up to the solver tolerance).
 
-- `CondensedMPC`: usually the best starting point, especially for shorter horizons and moderate dimensions
-- `SparseMPC`: useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
+- Condensed (`Formulation.Condensed` in Python, `Formulation::Condensed` in C++, the default): the states are eliminated with the model, so only the control points are QP variables; usually the best starting point, especially for shorter horizons and moderate dimensions
+- Sparse (`Formulation.Sparse`, `Formulation::Sparse`): the predicted states are QP variables too, and the model is a set of equality constraints; useful when you want to preserve more explicit sparsity structure or work with larger problems, such as many control points over a long horizon
 
 The best way to know which is faster for your problem is to try them both.
+In Python, `formulation` is a keyword-only argument.
 
 **With Parameterization:**
 
 === "Python"
 
     ```python
-    mpc = affine_mpc.CondensedMPC(state_dim=n, input_dim=m, param=param, opts=opts)
-    # mpc = affine_mpc.SparseMPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    mpc = affine_mpc.MPC(state_dim=n, input_dim=m, param=param, opts=opts)
+    # mpc = affine_mpc.MPC(n, m, param, opts, formulation=affine_mpc.Formulation.Sparse)
     ```
 
 === "C++"
 
     ```cpp
-    affine_mpc::CondensedMPC mpc(state_dim, input_dim, param, opts);
-    // affine_mpc::SparseMPC mpc(state_dim, input_dim, param, opts);
+    affine_mpc::MPC mpc(state_dim, input_dim, param, opts);
+    // affine_mpc::MPC mpc(state_dim, input_dim, param, opts, affine_mpc::Formulation::Sparse);
+    // affine_mpc::MPC mpc(state_dim, input_dim, param, affine_mpc::Formulation::Sparse);  // default options
     ```
 
 **No Parameterization:**
@@ -129,15 +131,15 @@ The best way to know which is faster for your problem is to try them both.
 === "Python"
 
     ```python
-    mpc = affine_mpc.CondensedMPC(state_dim, input_dim, horizon_steps, opts)
-    # mpc = affine_mpc.SparseMPC(state_dim, input_dim, horizon_steps, opts)
+    mpc = affine_mpc.MPC(state_dim, input_dim, horizon_steps, opts)
+    # mpc = affine_mpc.MPC(state_dim, input_dim, horizon_steps, opts, formulation=affine_mpc.Formulation.Sparse)
     ```
 
 === "C++"
 
     ```cpp
-    affine_mpc::CondensedMPC mpc(state_dim, input_dim, horizon_steps, opts);
-    // affine_mpc::SparseMPC mpc(state_dim, input_dim, horizon_steps, opts);
+    affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts);
+    // affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts, affine_mpc::Formulation::Sparse);
     ```
 
 ### 4. Configure the MPC object
@@ -221,8 +223,14 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
         mpc.setPreviousInput(u_prev)  # defaults to zeros
     if opts.slew_control_points:
         mpc.setSlewRate(u_slew)
-    if opts.saturate_states:
-        mpc.setStateLimits(x_min, x_max)
+    if opts.state_bounds != affine_mpc.StateBoundMode.Off:
+        mpc.setStateLimits(x_min, x_max)  # one entry per bounded state
+    if opts.state_bounds == affine_mpc.StateBoundMode.Soft:
+        mpc.setStateBoundPenalties(l1, l2)  # one entry per bounded state
+    if opts.num_general_constraints > 0:
+        mpc.setGeneralConstraints(Hx, Hu, h_min, h_max)  # h_min <= Hx x_k + Hu u_k <= h_max
+    if opts.num_terminal_constraints > 0:
+        mpc.setTerminalConstraints(Hf, hf_min, hf_max)  # hf_min <= Hf x_T <= hf_max
     ```
 
 === "C++"
@@ -235,10 +243,24 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     if (opts.slew_control_points) {
       mpc.setSlewRate(u_slew);
     }
-    if (opts.saturate_states) {
-      mpc.setStateLimits(x_min, x_max);
+    if (opts.state_bounds != affine_mpc::StateBoundMode::Off) {
+      mpc.setStateLimits(x_min, x_max); // one entry per bounded state
+    }
+    if (opts.state_bounds == affine_mpc::StateBoundMode::Soft) {
+      mpc.setStateBoundPenalties(l1, l2); // one entry per bounded state
+    }
+    if (opts.num_general_constraints > 0) {
+      // h_min <= Hx x_k + Hu u_k <= h_max
+      mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
+    }
+    if (opts.num_terminal_constraints > 0) {
+      mpc.setTerminalConstraints(Hf, hf_min, hf_max); // hf_min <= Hf x_T <= hf_max
     }
     ```
+
+To limit only some states, list them in the options, e.g. `bounded_states=[3, 4]` in Python or `opts.bounded_states = {3, 4};` in C++ (see [State Saturation](concepts/problem-formulation.md#state-saturation-constraint)).
+
+For linear constraints on combinations of states and inputs, set the number of rows in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
 
 #### Set weights
 
@@ -288,6 +310,20 @@ The input weight `R` weights the control points, not the sampled inputs.
 With non-uniform knots, a control point on a short early interval is weighted the same as one on a long late interval, even though it affects fewer samples.
 Keep this in mind when comparing input penalties across parameterizations.
 
+With input rate cost (`use_input_rate_cost`), which penalizes changes of the sampled inputs instead:
+
+=== "Python"
+
+    ```python
+    mpc.setInputRateWeights(R_rate_diag)  # defaults to ones
+    ```
+
+=== "C++"
+
+    ```cpp
+    mpc.setInputRateWeights(R_rate_diag); // defaults to ones
+    ```
+
 #### Set references
 
 State step reference:
@@ -318,7 +354,7 @@ State trajectory reference:
     mpc.setReferenceStateTrajectory(x_traj);
     ```
 
-If input cost is enabled, input references can also be configured:
+If input cost is enabled, input references can also be configured (with a [custom basis](concepts/input-parameterization.md#custom-bases), only `setReferenceInputControlPoints()`, which sets the coefficient references):
 
 === "Python"
 
@@ -355,7 +391,7 @@ If input cost is enabled, input references can also be configured:
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
 `getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
-Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached` (the paper experiments use 20000):
+Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached`:
 
 === "Python"
 
@@ -391,7 +427,7 @@ The failed solve's iterates may also have diverged, which would slow down the ne
 so call `resetWarmStart()` to start the next solve from zero.
 
 `MaxIterReached` is a partial exception.
-With B-spline parameterizations its iterate is usually close to the solution: in the paper experiments the applied input violated the input limits by at most $8.7 \times 10^{-6}$ of `u_max`.
+With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
 Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
 === "Python"
@@ -523,6 +559,13 @@ Inside the control loop:
 
 See [Logging](logging.md) for output format and workflow details.
 
+### 9. (Optional) Inspect the QP
+
+`getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
+These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
+See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
+
 ## Interface Notes
 
 === "Python"
@@ -581,6 +624,7 @@ You can propagate the internal model one step with:
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`.
 - QP matrix sparsity is fixed after initialization, so later updates must not introduce new nonzero structure.
 - Runtime updates to model terms and weights must preserve the initialized QP sparsity pattern.
-- If a model coefficient or cost weight may become nonzero later, initialize with that structure already present (`SparseMPC` weights are exempt; see [Runtime Updates](concepts/runtime-updates.md)).
+- If a model coefficient may become nonzero later, initialize with that structure already present, e.g. with a representative model set before `initializeSolver()`; with the sparse formulation you can instead pass `ModelSparsity::Full` (see [Model Entries](concepts/runtime-updates.md#model-entries-initial-nonzeros-or-full)).
+- With the condensed formulation, the same holds for cost weights and constraint matrix entries (the sparse formulation tracks every one of them).
 - To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()` or `prepare()`.
 - If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.

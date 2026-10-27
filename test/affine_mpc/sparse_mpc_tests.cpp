@@ -1,6 +1,6 @@
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
 #include <gtest/gtest.h>
@@ -11,11 +11,15 @@ using namespace Eigen;
 namespace ampc = affine_mpc;
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class SparseMPCProtectedTester : public affine_mpc::SparseMPC
+class SparseMPCProtectedTester : public affine_mpc::MPC
 {
 public:
-  using SparseMPC::SparseMPC;
-  virtual ~SparseMPCProtectedTester() = default;
+  SparseMPCProtectedTester(int n,
+                           int m,
+                           const affine_mpc::Parameterization& param,
+                           const affine_mpc::Options& opts = {}) :
+      MPC{n, m, param, opts, affine_mpc::Formulation::Sparse}
+  {}
 
   void setModel()
   {
@@ -27,19 +31,16 @@ public:
     setModelContinuous2Discrete(A, B, w, 0.1);
   }
 
-  void updateQPTerms(const Ref<const VectorXd>& x0)
-  {
-    affine_mpc::SparseMPC::qpUpdateX0(x0);
-  }
+  void updateQPTerms(const Ref<const VectorXd>& x0) { (void)qpUpdateX0(x0); }
 
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
   auto getWd() const { return readModel(*this).wd; }
   auto getP() const { return getQPCostMatrix(); }
-  auto getQ() const { return this->q_; }
-  auto getA() const { return this->A_; }
-  auto getL() const { return this->l_; }
-  auto getU() const { return this->u_; }
+  auto getQ() const { return this->qp().q; }
+  auto getA() const { return denseA(this->qp()); }
+  auto getL() const { return this->qp().l; }
+  auto getU() const { return this->qp().u; }
 };
 
 // ---- Constraint tests ------------------------------------------------------
@@ -139,7 +140,7 @@ TEST(SparseMPCProtectedTester,
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   SparseMPCProtectedTester mpc{n, m, param, opts};
   SparseMPCProtectedTester mpc_no_sat{n, m, param};
   mpc.setModel();
@@ -209,9 +210,9 @@ TEST(SparseMPCProtectedTester,
      givenStateSaturation_FormsStateSaturationConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.saturate_states = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   const Vector2d x_min{-1.0, -5.0}, x_max{3.0, 5.0};
@@ -249,7 +250,8 @@ TEST(SparseMPCProtectedTester,
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.slew_control_points = true, .saturate_states = true}};
+      ampc::Options{.slew_control_points = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   VectorXd slew{1};
@@ -312,8 +314,7 @@ TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
   SparseMPCProtectedTester mpc{n, m,
                                ampc::Parameterization::linearInterp(T, nc)};
   mpc.setModel();
-  // assemble as during solves (before initialization, P holds unit weights
-  // to fix the sparsity pattern)
+  // assemble as during solves
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
   ASSERT_TRUE(mpc.initializeSolver());
 
@@ -344,7 +345,7 @@ TEST(SparseMPCProtectedTester, givenStateWeightsOnly_FormsCorrectCostTerms)
 }
 
 TEST(SparseMPCProtectedTester,
-     givenZeroWeightsBeforeInit_AssemblesUnitWeightsForPattern)
+     givenZeroWeightsBeforeInit_WeightsCanBecomeNonzeroLater)
 {
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{n, m,
@@ -352,11 +353,21 @@ TEST(SparseMPCProtectedTester,
                                ampc::Options{.use_input_cost = true}};
   mpc.setModel();
   mpc.setWeights(Vector2d{1.0, 0.0}, VectorXd::Zero(m));
+  mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
 
-  // initializeSolver() assembles P this way before handing it to OSQP
-  mpc.updateQPTerms(Vector2d::Zero());
-  const MatrixXd P = mpc.getP();
-  ASSERT_TRUE(P.isIdentity());
+  // initializeSolver() hands OSQP the weights as set: the zero weights are in
+  // the pattern anyway (every weight position on P's diagonal is stored)
+  ASSERT_TRUE(mpc.initializeSolver());
+  MatrixXd P_expected{MatrixXd::Zero(n * T + m * nc, n * T + m * nc)};
+  P_expected.diagonal().tail(n * T) = Vector2d{1.0, 0.0}.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(mpc.getP(), P_expected, 0.0));
+
+  mpc.setWeights(Vector2d{1.0, 2.0}, VectorXd::Constant(m, 0.5));
+  ASSERT_EQ(mpc.prepare(), ampc::SolveStatus::Success);
+  P_expected.diagonal().head(m * nc).setConstant(0.5);
+  P_expected.diagonal().tail(n * T) = Vector2d{1.0, 2.0}.replicate(T, 1);
+  ASSERT_TRUE(expectEigenNear(mpc.getP(), P_expected, 0.0));
+  EXPECT_TRUE(mpc.isWithinSparsityPattern());
 }
 
 TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
@@ -366,8 +377,7 @@ TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
                                ampc::Parameterization::linearInterp(T, nc),
                                ampc::Options{.use_input_cost = true}};
   mpc.setModel();
-  // assemble as during solves (before initialization, P holds unit weights
-  // to fix the sparsity pattern)
+  // assemble as during solves
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
   ASSERT_TRUE(mpc.initializeSolver());
 
@@ -537,7 +547,8 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
   const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .saturate_states = true}};
+      ampc::Options{.use_input_cost = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

@@ -1,5 +1,6 @@
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include <gtest/gtest.h>
 #include <limits>
 #include <sstream>
@@ -147,12 +148,13 @@ TEST(OSQPSolverProtectedTester, givenSparseP_FormsCscPCorrectly)
   bool success = base.testInitializeP(P);
   ASSERT_TRUE(!success); // non-convex test case should fail
 
-  Eigen::Matrix<OSQPFloat, 6, 1> px_true;
-  px_true << 1, 2, 3, 4, 5, 6;
-  Eigen::Matrix<OSQPInt, 6, 1> pi_true;
-  pi_true << 0, 1, 3, 0, 2, 5;
+  // the upper triangle's nonzeros plus the whole diagonal (zeros included)
+  Eigen::Matrix<OSQPFloat, 9, 1> px_true;
+  px_true << 1, 0, 0, 2, 3, 4, 5, 0, 6;
+  Eigen::Matrix<OSQPInt, 9, 1> pi_true;
+  pi_true << 0, 1, 2, 1, 3, 0, 2, 4, 5;
   Eigen::Matrix<OSQPInt, 7, 1> pp_true;
-  pp_true << 0, 1, 1, 1, 3, 5, 6;
+  pp_true << 0, 1, 2, 3, 5, 8, 9;
 
   ASSERT_TRUE(expectEigenNear(px_true, base.getPx(), 1e-6));
   ASSERT_TRUE(expectEigenNear(pi_true, base.getPi(), 1e-6));
@@ -514,7 +516,7 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_GT(info.iterations, 0);
   EXPECT_NEAR(info.objective, 1.88, 1e-5);
   EXPECT_GE(info.qp_solve_time, 0.0);
-  // only MPCBase::solve() measures the whole call
+  // only MPC::solve() measures the whole call
   EXPECT_EQ(info.mpc_solve_time, 0.0);
 
   std::ostringstream oss;
@@ -668,4 +670,165 @@ TEST(OSQPSolverProtectedTester, givenInfiniteBounds_ConvergesToUnconstrainedMin)
   ASSERT_TRUE(base.updateBounds(l, u));
   ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
   EXPECT_TRUE(expectEigenNear(solution, expected, 1e-5));
+}
+
+namespace {
+
+using SparseMatrixXF = affine_mpc::OSQPSolver::SparseMatrixXF;
+using MatrixXF = affine_mpc::OSQPSolver::MatrixXF;
+using Mask = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>;
+
+// M's values on the entries of a mask, stored even where they are zero
+SparseMatrixXF stored(const MatrixXF& M, const Mask& mask)
+{
+  SparseMatrixXF S{M.rows(), M.cols()};
+  S.reserve(Eigen::VectorXi::Constant(M.cols(), static_cast<int>(M.rows())));
+  for (Eigen::Index j{0}; j < M.cols(); ++j)
+    for (Eigen::Index i{0}; i < M.rows(); ++i)
+      if (mask(i, j))
+        S.insert(i, j) = M(i, j);
+  S.makeCompressed();
+  return S;
+}
+
+struct SparseProblem
+{
+  MatrixXF P{3, 3}, A{2, 3};
+  Mask P_mask{3, 3}, A_mask{2, 3};
+  Eigen::Vector3d q{1.0, -1.0, 0.5};
+  Eigen::Vector2d l{-1.0, 0.0}, u{1.0, 2.0};
+  SparseProblem()
+  {
+    // stored zeros (P(0, 1), P(0, 2), P(1, 1), A(1, 0)) and a stored lower
+    // entry P(1, 0), which the solver ignores
+    P << 4, 0, 0, 0, 0, 0, 0, 0, 3;
+    P_mask << 1, 1, 1, 1, 1, 0, 0, 0, 1;
+    A << 1, 0, 1, 0, 1, 1;
+    A_mask << 1, 0, 1, 1, 1, 1;
+  }
+};
+
+} // namespace
+
+TEST(OSQPSolverProtectedTester, givenSparseMatrices_PatternIsTheStoredEntries)
+{
+  SparseProblem p;
+  OSQPSolverProtectedTester sparse{3, 2};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  SparseMatrixXF Ps{stored(p.P, p.P_mask)}, As{stored(p.A, p.A_mask)};
+  ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
+
+  // every stored entry of P's upper triangle and of A, zero or not (the
+  // stored lower entry P(1, 0) is ignored)
+  const Eigen::Matrix<OSQPInt, 4, 1> pp_true{0, 1, 3, 5};
+  const Eigen::Matrix<OSQPInt, 5, 1> pi_true{0, 0, 1, 0, 2};
+  const Eigen::Matrix<OSQPFloat, 5, 1> px_true{4, 0, 0, 0, 3};
+  const Eigen::Matrix<OSQPInt, 4, 1> ap_true{0, 2, 3, 5};
+  const Eigen::Matrix<OSQPInt, 5, 1> ai_true{0, 1, 1, 0, 1};
+  const Eigen::Matrix<OSQPFloat, 5, 1> ax_true{1, 0, 1, 1, 1};
+  EXPECT_TRUE(expectEigenNear(sparse.getPp(), pp_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getPi(), pi_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getPx(), px_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAp(), ap_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAi(), ai_true, 0.0));
+  EXPECT_TRUE(expectEigenNear(sparse.getAx(), ax_true, 0.0));
+  Eigen::Vector3d z_sparse, z_dense;
+  ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
+
+  // stored entries that were zero become nonzero, through each update; the
+  // solutions match a dense solver initialized with the new values
+  auto expectSolvesLikeFreshDense = [&]() {
+    OSQPSolverProtectedTester dense{3, 2};
+    ASSERT_TRUE(dense.initialize(p.P, p.A, p.q, p.l, p.u, settings));
+    ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
+    ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
+    EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 1e-5));
+  };
+  p.P(0, 1) = p.P(1, 0) = 0.5;
+  p.P(1, 1) = 2.0;
+  ASSERT_TRUE(sparse.updateCostMatrix(stored(p.P, p.P_mask)));
+  p.A(1, 0) = 0.7;
+  ASSERT_TRUE(sparse.updateConstraintMatrix(stored(p.A, p.A_mask)));
+  expectSolvesLikeFreshDense();
+  p.P(0, 2) = p.P(2, 0) = 0.3;
+  p.A(0, 0) = 0.0;
+  ASSERT_TRUE(
+      sparse.updateMatrices(stored(p.P, p.P_mask), stored(p.A, p.A_mask)));
+  expectSolvesLikeFreshDense();
+
+  // the update kind must match the initialization
+  OSQPSolverProtectedTester dense{3, 2};
+  ASSERT_TRUE(dense.initialize(p.P, p.A, p.q, p.l, p.u, settings));
+  Ps = stored(p.P, p.P_mask);
+  As = stored(p.A, p.A_mask);
+  EXPECT_FALSE(dense.updateCostMatrix(Ps));
+  EXPECT_FALSE(dense.updateMatrices(Ps, As));
+  EXPECT_FALSE(sparse.updateCostMatrix(p.P));
+  EXPECT_FALSE(sparse.updateConstraintMatrix(p.A));
+  EXPECT_FALSE(dense.isWithinSparsityPattern(Ps, As));
+  EXPECT_FALSE(sparse.isWithinSparsityPattern(p.P, p.A));
+}
+
+TEST(OSQPSolverProtectedTester, givenSparseFullPattern_UpdatesWithoutCopy)
+{
+  // every stored entry nonzero: the stored values are OSQP's values
+  MatrixXF P{2, 2}, A{2, 2};
+  P << 4, 1, 1, 2;
+  A << 1, 1, 0, 1;
+  Mask P_mask{2, 2}, A_mask{2, 2};
+  P_mask << 1, 1, 0, 1;
+  A_mask << 1, 1, 0, 1;
+  const Eigen::Vector2d q{1.0, 1.0}, l{1.0, 0.0}, u{1.0, 0.7};
+  OSQPSolverProtectedTester dense{2, 2}, sparse{2, 2};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  ASSERT_TRUE(dense.initialize(P, A, q, l, u, settings));
+  ASSERT_TRUE(sparse.initialize(stored(P, P_mask), stored(A, A_mask), q, l, u,
+                                settings));
+  P << 5, 1.5, 1.5, 1;
+  A << 1.2, 1.1, 0, 0.8;
+  ASSERT_TRUE(dense.updateMatrices(P, A));
+  ASSERT_TRUE(sparse.updateMatrices(stored(P, P_mask), stored(A, A_mask)));
+  Eigen::Vector2d z_dense, z_sparse;
+  ASSERT_EQ(dense.solve(z_dense), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(sparse.solve(z_sparse), affine_mpc::SolveStatus::Success);
+  EXPECT_TRUE(expectEigenNear(z_sparse, z_dense, 0.0));
+}
+
+TEST(OSQPSolverProtectedTester, givenSparsePWithoutDiagonal_InitializeFails)
+{
+  MatrixXF P{2, 2}, A{1, 2};
+  P << 1, 0, 0, 1;
+  A << 1, 1;
+  Mask P_mask{2, 2}, A_mask{1, 2};
+  P_mask << 1, 0, 0, 0; // P(1, 1) not stored
+  A_mask << 1, 1;
+  const Eigen::Vector2d q{0.0, 0.0};
+  const Eigen::Matrix<double, 1, 1> l{0.0}, u{1.0};
+  OSQPSolverProtectedTester sparse{2, 1};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  EXPECT_FALSE(sparse.initialize(stored(P, P_mask), stored(A, A_mask), q, l, u,
+                                 settings));
+}
+
+TEST(OSQPSolverProtectedTester,
+     givenSparseStoredEntries_AreWithinSparsityPatternWhateverTheirValues)
+{
+  SparseProblem p;
+  OSQPSolverProtectedTester sparse{3, 2};
+  SparseMatrixXF Ps{stored(p.P, p.P_mask)}, As{stored(p.A, p.A_mask)};
+  EXPECT_FALSE(sparse.isWithinSparsityPattern(Ps, As)); // not initialized
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
+  EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
+
+  // stored entries that were zero at initialization, and a stored lower entry
+  // of P (not read)
+  Ps.coeffRef(1, 1) = 2.0;
+  Ps.coeffRef(0, 2) = 0.5;
+  Ps.coeffRef(1, 0) = 7.0;
+  As.coeffRef(1, 0) = 1.0;
+  EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
+  // explicit zeros
+  As.coeffRef(0, 0) = 0.0;
+  EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
 }

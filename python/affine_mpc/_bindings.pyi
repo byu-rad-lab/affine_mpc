@@ -2,85 +2,160 @@
 Affine MPC module
 """
 
+import collections.abc
 import enum
 import numpy
 import numpy.typing
 import os
+import scipy.sparse
 import typing
 
 __all__: list[str] = [
-    "CondensedMPC",
     "Discretizer",
-    "MPCBase",
+    "Formulation",
+    "InputBoundMode",
+    "MPC",
     "MPCLogger",
+    "ModelSparsity",
     "OSQPSettings",
     "Options",
     "Parameterization",
+    "QPBlock",
+    "QuadraticProgram",
     "SolveInfo",
     "SolveStatus",
-    "SparseMPC",
+    "StateBoundMode",
 ]
+
+class StateBoundMode(enum.Enum):
+    """
+    Whether and how the MPC bounds the predicted states, chosen with Options.state_bounds.
+    """
+
+    Hard: typing.ClassVar[StateBoundMode]
+    Off: typing.ClassVar[StateBoundMode]
+    Soft: typing.ClassVar[StateBoundMode]
+
+class InputBoundMode(enum.Enum):
+    """
+    How the MPC enforces the input limits u_min <= u_k <= u_max, chosen with
+    Options.input_bounds.
+
+    Bounding the control points of a B-spline bounds every sampled input (the convex
+    hull property), but for degree > 1, or degree 1 with non-integer knots, it can
+    keep the samples away from the limits, so the inputs do not use the full range.
+    A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
+    inputs are always bounded, whatever the mode. Refined bounds, between the two in
+    rows and accuracy, are planned.
+    """
+
+    ControlPoints: typing.ClassVar[InputBoundMode]
+    Exact: typing.ClassVar[InputBoundMode]
 
 class Options:
     """
-    Controls which optional features are enabled at MPC construction time.
+    The optional costs and constraints of the MPC problem, chosen at construction.
 
-    All fields default to false. These options are immutable after constructing an
-    MPC instance.
+    Every optional cost and constraint is off by default. The options fix the layout
+    of the QP, so they can not be changed after constructing an MPC instance. The
+    fields are grouped as follows.
 
-    Attributes:
-        use_input_cost: Enables input regularization term in the cost function
+    Costs:
+        use_input_cost: Enables the input cost on the control points
             ((uref_k - u_k)^T R (uref_k - u_k)).
-        slew_initial_input: Slew-rate constraint on initial input
+        use_input_rate_cost: Enables a cost on the change of the sampled inputs
+            ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+
+    Input constraints (the input limits are always enforced):
+        input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
+            default) or the sampled inputs (InputBoundMode.Exact).
+        slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
-        slew_control_points: Enables slew-rate constraints on parameterization
-            control points (|v_{i+1} - v_i| <= control_point_slew).
-        saturate_states: Enables state saturation constraints.
-        saturate_input_trajectory: Enables saturation of the sampled input
-            trajectory rather than just the control points. Ignored for degree 0,
-            where the control points are the sampled inputs. For degree 1 only the
-            samples adjacent to each knot are constrained (at most
-            2*num_control_points-2 rows), which is exact for non-integer knots. For
-            degree > 1 every sample is constrained. Allows control points to be
-            outside of input limits while keeping inputs within limits.
+        slew_control_points: Slew-rate constraints on the parameterization control
+            points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
+            parameterization.
+
+    State constraints:
+        state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
+        bounded_states: Indices of the states with limits (requires state_bounds
+            other than Off). Empty (the default) bounds every state.
+
+    General constraints:
+        num_general_constraints: Number p of general linear constraints
+            h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
+            the measured state). Zero (the default) disables them.
+        num_terminal_constraints: Number of terminal constraints
+            hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
 
     """
 
-    saturate_input_trajectory: bool
-    saturate_states: bool
+    input_bounds: InputBoundMode
     slew_control_points: bool
     slew_initial_input: bool
+    state_bounds: StateBoundMode
     use_input_cost: bool
+    use_input_rate_cost: bool
     def __init__(
         self,
+        *,
         use_input_cost: bool = False,
+        use_input_rate_cost: bool = False,
+        input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         slew_initial_input: bool = False,
         slew_control_points: bool = False,
-        saturate_states: bool = False,
-        saturate_input_trajectory: bool = False,
+        state_bounds: StateBoundMode = StateBoundMode.Off,
+        bounded_states: collections.abc.Sequence[int] = [],
+        num_general_constraints: int = 0,
+        num_terminal_constraints: int = 0
     ) -> None:
         """
-        Construct an Options struct defining optional MPC configuration features.
+        Construct an Options struct defining optional MPC configuration features. All
+        arguments are keyword-only.
 
         Args:
-            use_input_cost: Enables input regularization term in the cost function
+            use_input_cost: Enables the input cost on the control points
                 ((uref_k - u_k)^T R (uref_k - u_k)).
-            slew_initial_input: Slew-rate constraint on initial input
+            use_input_rate_cost: Enables a cost on the change of the sampled inputs
+                ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
+            input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
+                default) or the sampled inputs (InputBoundMode.Exact).
+            slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
-            slew_control_points: Enables slew-rate constraints on parameterization
-                control points (|v_{i+1} - v_i| <= control_point_slew).
-            saturate_states: Enables state saturation constraints.
-            saturate_input_trajectory: Enables saturation of the sampled input
-                trajectory rather than just the control points. Ignored for degree 0,
-                where the control points are the sampled inputs. For degree 1 only the
-                samples adjacent to each knot are constrained (at most
-                2*num_control_points-2 rows), which is exact for non-integer knots. For
-                degree > 1 every sample is constrained. Allows control points to be
-                outside of input limits while keeping inputs within limits.
+            slew_control_points: Slew-rate constraints on the parameterization control
+                points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
+                parameterization.
+            state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
+            bounded_states: Indices of the states with limits (requires state_bounds
+                other than Off). Empty (the default) bounds every state.
+            num_general_constraints: Number p of general linear constraints
+                h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
+                the measured state). Zero (the default) disables them.
+            num_terminal_constraints: Number of terminal constraints
+                hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
         """
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    @property
+    def bounded_states(self) -> list[int]: ...
+    @bounded_states.setter
+    def bounded_states(self, arg0: collections.abc.Sequence[int]) -> None: ...
+    @property
+    def num_general_constraints(self) -> int: ...
+    @num_general_constraints.setter
+    def num_general_constraints(self, arg0: int) -> None: ...
+    @property
+    def num_terminal_constraints(self) -> int: ...
+    @num_terminal_constraints.setter
+    def num_terminal_constraints(self, arg0: int) -> None: ...
+
+class ModelSparsity(enum.Enum):
+    """
+    Which entries of the discrete model Ad and Bd the solver tracks, chosen with MPC.initializeSolver(). OSQP fixes the sparsity pattern at initialization, and later updates only change the values of the tracked entries: a model entry outside them must stay zero (a nonzero one is silently dropped). Tracking fewer entries makes each solve cheaper when the model has structural zeros.
+    """
+
+    Full: typing.ClassVar[ModelSparsity]
+    InitialNonzeros: typing.ClassVar[ModelSparsity]
 
 class Parameterization:
     """
@@ -88,16 +163,20 @@ class Parameterization:
 
     Provides constructors and factory methods for generating knot vectors and
     metadata to map control points to per-step input trajectories over the
-    prediction horizon.
+    prediction horizon. fromBasis() instead takes any sampled basis matrix (e.g.
+    Laguerre functions), whose coefficients play the role of the control points.
 
     The preferred usage is via the static factory methods for common
     parameterizations.
 
     Attributes:
         horizon_steps: Number of discrete steps in the MPC horizon.
-        degree: Degree of B-spline polynomials.
-        num_control_points: Number of B-spline control points.
-        knots: Full knot vector of size num_control_points + degree + 1.
+        degree: Degree of B-spline polynomials (-1 for a custom basis).
+        num_control_points: Number of B-spline control points (basis coefficients
+            for a custom basis).
+        knots: Full knot vector of size num_control_points + degree + 1 (empty for
+            a custom basis).
+        type: Kind of basis (Parameterization.Type).
 
     Static Methods:
         makeClampedKnots: Generate a uniform or geometric knot vector to modify.
@@ -105,8 +184,17 @@ class Parameterization:
         moveBlocking: Factory method for move-blocking parameterization.
         linearInterp: Factory method for linear interpolation parameterization.
         bspline: Factory method for clamped B-spline parameterization.
+        fromBasis: Factory method for a custom sampled basis.
 
     """
+
+    class Type(enum.Enum):
+        """
+        Kind of basis. Some MPC features rely on B-spline properties (see fromBasis()).
+        """
+
+        BSpline: typing.ClassVar[Parameterization.Type]
+        Custom: typing.ClassVar[Parameterization.Type]
 
     @staticmethod
     @typing.overload
@@ -132,8 +220,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest knot interval is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the knot intervals are so short that the sampled basis
+                does not have full column rank, or if any argument is invalid.
 
         returns:
             out: Parameterization instance with clamped B-spline structure.
@@ -159,6 +247,43 @@ class Parameterization:
         """
 
     @staticmethod
+    def fromBasis(
+        horizon_steps: int,
+        basis: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+    ) -> Parameterization:
+        """
+        Factory method for a custom basis given by its samples, e.g. Laguerre
+        functions. The input at step k is sum_i basis[k, i] * control_point[i], where
+        the control points are the basis coefficients.
+
+        A custom basis is treated as dense (every coefficient can affect every sample:
+        band_width = num_control_points, band_start = 0, band_weights = basis
+        transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
+        the B-spline convex hull property does not hold, an MPC with a custom basis
+        always bounds every sampled input (whatever Options.input_bounds is), rejects
+        slew_control_points, and rejects setReferenceInput(); the input cost weights the
+        coefficients.
+
+        Args:
+            horizon_steps: Number of discrete steps in the MPC horizon.
+            basis: Basis sampled at k = 0, ..., horizon_steps-1, of shape
+                (horizon_steps, num_control_points) (one column per coefficient), with
+                finite entries and full column rank: its smallest singular value must
+                exceed 1e-9 times its largest. Full rank does not make the QP well
+                conditioned; orthonormalizing the columns (e.g. by numpy.linalg.qr)
+                helps for bases such as slowly decaying Laguerre functions.
+
+        Raises:
+            ValueError: If the shape is wrong, an entry is not finite, or the basis
+                does not have full column rank.
+
+        returns:
+            out: Parameterization instance with a custom basis.
+        """
+
+    @staticmethod
     @typing.overload
     def linearInterp(
         horizon_steps: int, num_control_points: int, knot_ratio: float = 1.0
@@ -178,8 +303,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest segment is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the segments are so short that the sampled basis does not
+                have full column rank, or if any argument is invalid.
 
         returns:
             out: Parameterization instance with linear interpolation structure.
@@ -227,8 +352,8 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest knot interval is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the knot intervals are so short that the sampled basis
+                does not have full column rank, or if any argument is invalid.
 
         Returns:
             knots: The clamped knot vector.
@@ -272,8 +397,9 @@ class Parameterization:
                 the horizon and a ratio below 1 puts them at the end.
 
         Raises:
-            ValueError: If the shortest block is shorter than one sample, or
-                if any argument is invalid.
+            ValueError: If the blocks are so short that some block has no sample of
+                its own (the sampled basis would not have full column rank), or if
+                any argument is invalid.
 
         returns:
             out: Parameterization instance with move-blocking structure.
@@ -333,10 +459,12 @@ class Parameterization:
                 len(knots)-degree-1) must be horizon_steps-1; for unclamped splines
                 the knots outside them extend beyond [0, horizon_steps-1]. Knots
                 among the first and last degree+1 are snapped to 0 and
-                horizon_steps-1 when within 1e-9 * horizon_steps (round-off). Every
-                control point must influence at least one sampled input (its basis
-                function can not be zero at every sample k = 0, ...,
-                horizon_steps-1).
+                horizon_steps-1 when within 1e-9 * horizon_steps (round-off). The
+                basis sampled at k = 0, ..., horizon_steps-1 must have full column
+                rank: every control point needs its own sample, in increasing order,
+                at which its basis function is nonzero (Schoenberg-Whitney). Repeated
+                knots are allowed, except an interior knot equal to the first active
+                knot or, for degree > 0, the last.
         """
 
     def __repr__(self) -> str: ...
@@ -390,6 +518,11 @@ class Parameterization:
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]: ...
     @property
     def num_control_points(self) -> int: ...
+    @property
+    def type(self) -> Parameterization.Type:
+        """
+        Kind of basis.
+        """
 
 class Discretizer:
     """
@@ -719,9 +852,9 @@ class SolveStatus(enum.Enum):
 class SolveInfo:
     """
     Solver diagnostics from the most recent solve. Obtain with
-    MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
+    MPC.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
     outside the QP solver (QP assembly, data updates, and refactorization). Work
-    done in MPCBase.prepare() is reported separately in prepare_time.
+    done in MPC.prepare() is reported separately in prepare_time.
     """
 
     def __repr__(self) -> str: ...
@@ -761,40 +894,252 @@ class SolveInfo:
         Result of the solve. NotInitialized before initializeSolver(), and OtherFailure after initialization but before the first solve.
         """
 
-class MPCBase:
+class QuadraticProgram:
     """
-    Abstract class. Not usable on its own.
+    The QP an MPC solves,
+    minimize 1/2 z^T P z + q^T z subject to l <= A z <= u,
+    for analysis or for handing to another solver. Obtain with MPC.getQP() or
+    MPC.assembleQP().
+
+    P and A are scipy.sparse.csc_matrix objects holding the nonzero entries of the
+    QP, in the same form for every formulation; P is full symmetric (both
+    triangles). Reading P or A needs SciPy (pip install "affine-mpc[sparse]").
+    The cost omits the constant terms of the MPC cost, so its value at the solution
+    is not the full MPC cost. Equality rows have l = u, and unbounded sides are
+    +-inf. The order of the variables z and of the rows of A is given by
+    MPC.getQPVariableBlocks() and MPC.getQPConstraintBlocks().
     """
 
+    def __init__(self) -> None:
+        """
+        Empty QP, to pass to MPC.assembleQP().
+        """
+
+    @property
+    def A(self) -> scipy.sparse.csc_matrix:
+        """
+        Constraint matrix (scipy.sparse.csc_matrix).
+        """
+
+    @A.setter
+    def A(self, arg0: scipy.sparse.csc_matrix) -> None: ...
+    @property
+    def P(self) -> scipy.sparse.csc_matrix:
+        """
+        Cost matrix (full symmetric, scipy.sparse.csc_matrix).
+        """
+
+    @P.setter
+    def P(self, arg0: scipy.sparse.csc_matrix) -> None: ...
+    @property
+    def l(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Constraint lower bounds.
+        """
+
+    @l.setter
+    def l(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+    @property
+    def q(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Cost vector.
+        """
+
+    @q.setter
+    def q(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+    @property
+    def u(self) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Constraint upper bounds.
+        """
+
+    @u.setter
+    def u(
+        self, arg0: typing.Annotated[numpy.typing.ArrayLike, numpy.float64, "[m, 1]"]
+    ) -> None: ...
+
+class QPBlock:
+    """
+    A named block of QP variables or constraint rows: indices offset, ...,
+    offset + size - 1. Returned by MPC.getQPVariableBlocks() and
+    MPC.getQPConstraintBlocks().
+    """
+
+    def __repr__(self) -> str: ...
+    @property
+    def name(self) -> str:
+        """
+        Block name, e.g. 'control_points' or 'input_bounds'.
+        """
+
+    @property
+    def offset(self) -> int:
+        """
+        Index of the first variable or row.
+        """
+
+    @property
+    def size(self) -> int:
+        """
+        Number of variables or rows.
+        """
+
+class Formulation(enum.Enum):
+    """
+    How the QP represents the predicted states.
+
+    Both formulations solve the same MPC problem and give the same solution (up to
+    the solver tolerance); they differ in the size and sparsity of the QP, and so
+    in solve time.
+    """
+
+    Condensed: typing.ClassVar[Formulation]
+    Sparse: typing.ClassVar[Formulation]
+
+class MPC:
+    """
+    Model predictive control of an affine model, solved as a QP with OSQP.
+
+    Optimizes the control points of an input trajectory parameterization
+    (B-splines, move-blocking, or a custom basis) subject to the costs and
+    constraints enabled in Options. The formulation (condensed or sparse) chooses
+    how the QP represents the predicted states; it is fixed at construction and
+    does not change the interface.
+
+    Setters only validate and store their values; all QP work happens in solve(),
+    or earlier in the optional prepare().
+    """
+
+    @typing.overload
     def __init__(
         self,
         state_dim: int,
         input_dim: int,
         param: Parameterization,
-        opts: Options,
-        num_design_vars: int,
-        num_custom_constraints: int,
+        opts: Options = Options(),
+        *,
+        formulation: Formulation = Formulation.Condensed
     ) -> None:
         """
-        Constructor for MPCBase.
-
-        This is an abstract class and not meant to be used directly. It is defined
-        here for testing and so derived classes share its methods. Subclassing it in
-        Python to define a custom formulation is not supported.
+        Construct an MPC with an input parameterization, options, and formulation.
 
         Args:
-            state_dim: Dimension of state vector.
-            input_dim: Dimension of input vector.
-            parameterization: Input trajectory parameterization.
+            state_dim: State vector dimension.
+            input_dim: Input vector dimension.
+            param: Input trajectory parameterization.
             opts: Optional MPC configuration features to enable.
-            num_design_vars: Number of decision variables in the optimization problem.
-            num_custom_constraints: Number of custom constraints in the optimization
-                problem (beyond those implemented by MPCBase: input/state limits, slew
-                rates, and input trajectory saturation).
+            formulation: How the QP represents the predicted states (keyword only).
+
+        Raises:
+            ValueError: If a dimension is not positive or the options are invalid for
+                the dimensions or the parameterization.
+        """
+
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        horizon_steps: int,
+        opts: Options = Options(),
+        *,
+        formulation: Formulation = Formulation.Condensed
+    ) -> None:
+        """
+        Construct an MPC that optimizes every input of the horizon (no
+        parameterization: move-blocking with one control point per step).
+
+        Args:
+            state_dim: State vector dimension.
+            input_dim: Input vector dimension.
+            horizon_steps: Number of discrete time steps in the horizon.
+            opts: Optional MPC configuration features to enable.
+            formulation: How the QP represents the predicted states (keyword only).
         """
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    def assembleQP(
+        self,
+        x0: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        qp: QuadraticProgram,
+    ) -> None:
+        """
+        Analysis aid: assemble the QP for the current settings and the initial state x0
+        without solving it, for analysis, debugging, or handing to another solver.
+
+        Works before or after initializeSolver() and needs the same setup (model, input
+        limits, and the setters the options require). It does not send anything to the
+        solver: the parts it writes are sent by the next prepare() or solve(), which
+        therefore repeats the matrix work once. Not intended for the control loop.
+
+        Args:
+            x0 (vector): Initial state (state_dim).
+            qp (QuadraticProgram): Output QP, e.g. QuadraticProgram(); filled in place.
+
+        Raises:
+            RuntimeError: If the setup required by initializeSolver() is missing.
+        """
+
+    def getBoundedStates(self) -> list[int]:
+        """
+        Get the indices of the bounded states (Options.bounded_states, or every state
+        when it is empty; none with StateBoundMode.Off).
+        """
+
+    def getFormulation(self) -> Formulation:
+        """
+        Get the formulation chosen at construction.
+        """
+
+    def getGeneralConstraintInputMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the input matrix Hu of the general constraints (zero until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper bounds of the general constraints (+inf until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower bounds of the general constraints (-inf until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
+    def getGeneralConstraintStateMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the state matrix Hx of the general constraints (zero until
+        setGeneralConstraints()).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+        """
+
     @typing.overload
     def getInputControlPoints(
         self,
@@ -849,6 +1194,16 @@ class MPCBase:
         Get the lower input limit (-inf until setInputLimits()).
         """
 
+    def getInputRateWeights(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the diagonal of the input rate weight matrix R_rate (size input_dim).
+
+        Raises:
+            RuntimeError: If `use_input_rate_cost` is not enabled.
+        """
+
     @typing.overload
     def getInputTrajectory(
         self,
@@ -896,6 +1251,11 @@ class MPCBase:
             RuntimeError: If `use_input_cost` is not enabled.
         """
 
+    def getModelSparsity(self) -> ModelSparsity:
+        """
+        The model sparsity passed to initializeSolver() (the default, ModelSparsity.InitialNonzeros, before it is called).
+        """
+
     @typing.overload
     def getNextInput(
         self,
@@ -933,6 +1293,16 @@ class MPCBase:
 
         Raises:
             RuntimeError: If the solver has not been initialized.
+        """
+
+    def getNumQPConstraints(self) -> int:
+        """
+        Get the number of QP constraint rows (the rows of A).
+        """
+
+    def getNumQPVariables(self) -> int:
+        """
+        Get the number of QP variables (the size of z).
         """
 
     def getOptions(self) -> Options:
@@ -986,11 +1356,40 @@ class MPCBase:
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the previous input used by the initial slew rate constraint. Updated
-        automatically after each solve that returns `Success` or `SolvedInaccurate`.
+        Get the previous input used by the initial slew rate constraint and the input
+        rate cost. Updated automatically after each solve that returns `Success` or
+        `SolvedInaccurate`.
 
         Raises:
-            RuntimeError: If `slew_initial_input` is not enabled.
+            RuntimeError: If neither `slew_initial_input` nor `use_input_rate_cost` is
+                enabled.
+        """
+
+    def getQP(self) -> QuadraticProgram:
+        """
+        Analysis aid: get the QP as last written by solve(), prepare(), or assembleQP(),
+        for analysis, debugging, or handing to another solver.
+
+        Setters do not change it; to get the QP for the current settings and a given
+        initial state without solving, use assembleQP(). Copies the QP, so not intended
+        for the control loop.
+
+        Returns:
+            qp (QuadraticProgram): The QP; reading its P or A needs SciPy.
+        """
+
+    def getQPConstraintBlocks(self) -> list[QPBlock]:
+        """
+        Get the blocks of constraint rows of A, in order, listing only the blocks the
+        options enable: "dynamics" (the sparse formulation's model rows),
+        "input_bounds", "initial_slew", "control_point_slew", "state_bounds" (soft: the
+        upper rows, the lower rows, then the slack rows s >= 0), "general_constraints"
+        (rows per step, steps in order), and "terminal_constraints". Together they
+        cover every row. For analysis; allocates the list, so not intended for the
+        control loop.
+
+        Returns:
+            blocks (list[QPBlock]): The constraint row blocks in order.
         """
 
     def getQPCostMatrix(
@@ -1001,12 +1400,31 @@ class MPCBase:
         analysis and debugging.
 
         Reflects the matrix used by the last solve() or prepare(): setters do not change
-        it, model or weight changes are applied by the next prepare() or solve(), and
-        SparseMPC holds unit placeholder weights between initializeSolver() and the
-        first prepare() or solve().
+        it, and model or weight changes are applied by the next prepare() or solve().
+
+        The sparse formulation stores P in sparse form, so each call also builds the
+        dense matrix; not intended for the control loop.
+
+        The solver reads only the upper triangle. For the condensed formulation this is
+        the stored P, built by matrix products and so symmetric only up to round-off;
+        for the sparse formulation the lower triangle is mirrored from the upper one,
+        so it is exactly symmetric.
+        getQP() returns an exactly symmetric P for both.
 
         Returns:
-            P (matrix): Copy of the full symmetric QP cost matrix.
+            P (matrix): Copy of the full QP cost matrix.
+        """
+
+    def getQPVariableBlocks(self) -> list[QPBlock]:
+        """
+        Get the blocks of QP variables z, in order: "control_points" (input
+        coefficients), then for the sparse formulation "states" (x_1, ..., x_T,
+        state_dim each), then with soft state bounds "state_slacks" (one per bounded
+        state). Together they cover every variable. For analysis; allocates the list,
+        so not intended for the control loop.
+
+        Returns:
+            blocks (list[QPBlock]): The variable blocks in order.
         """
 
     def getReferenceInputControlPoints(
@@ -1062,24 +1480,46 @@ class MPCBase:
                 initializeSolver().
         """
 
+    def getStateBoundL1Penalties(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the L1 penalties of the soft state limits (zero until
+        setStateBoundPenalties()).
+
+        Raises:
+            RuntimeError: If Options.state_bounds is not Soft.
+        """
+
+    def getStateBoundL2Penalties(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the L2 penalties of the soft state limits (zero until
+        setStateBoundPenalties()).
+
+        Raises:
+            RuntimeError: If Options.state_bounds is not Soft.
+        """
+
     def getStateMax(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the upper state limit (+inf until setStateLimits()).
+        Get the upper limits of the bounded states (+inf until setStateLimits()).
 
         Raises:
-            RuntimeError: If `saturate_states` is not enabled.
+            RuntimeError: If Options.state_bounds is Off.
         """
 
     def getStateMin(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the lower state limit (-inf until setStateLimits()).
+        Get the lower limits of the bounded states (-inf until setStateLimits()).
 
         Raises:
-            RuntimeError: If `saturate_states` is not enabled.
+            RuntimeError: If Options.state_bounds is Off.
         """
 
     def getStateWeights(
@@ -1089,6 +1529,39 @@ class MPCBase:
         Get the diagonal of the state weight matrix Q (size state_dim).
         """
 
+    def getTerminalConstraintMatrix(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, n]"]:
+        """
+        Get the state matrix Hf of the terminal constraints (zero until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
+    def getTerminalConstraintMax(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the upper bounds of the terminal constraints (+inf until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
+    def getTerminalConstraintMin(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the lower bounds of the terminal constraints (-inf until
+        setTerminalConstraints()).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+        """
+
     def getTerminalStateWeights(
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
@@ -1096,7 +1569,11 @@ class MPCBase:
         Get the diagonal of the terminal state weight matrix Q_f (size state_dim).
         """
 
-    def initializeSolver(self, solver_settings: OSQPSettings = OSQPSettings()) -> bool:
+    def initializeSolver(
+        self,
+        solver_settings: OSQPSettings = OSQPSettings(),
+        model_sparsity: ModelSparsity = ModelSparsity.InitialNonzeros,
+    ) -> bool:
         """
         Initialize OSQP solver after configuring MPC setup. Calling this method after
         a successful initialization will simply return True without doing anything.
@@ -1106,11 +1583,28 @@ class MPCBase:
         function. For example, if state saturation is enabled then `setStateLimits()`
         must be called beforehand.
 
+        Initialization fixes the solver's sparsity pattern; later updates only change
+        the values of the entries it tracks. `model_sparsity` chooses the tracked
+        entries of Ad and Bd: with the default ModelSparsity.InitialNonzeros, the
+        entries nonzero in the model set at this call, so an entry that may become
+        nonzero later must be nonzero now (set a representative model before this call
+        and the actual model after it), and every later model must be zero outside them
+        (a nonzero outside them is silently dropped; see isWithinSparsityPattern()).
+        With ModelSparsity.Full, every entry, which costs more per solve when the model
+        has structural zeros. The condensed formulation supports only
+        ModelSparsity.InitialNonzeros for now.
+
         Args:
             solver_settings: OSQP solver settings. Defaults to recommended settings.
+            model_sparsity: Which entries of Ad and Bd the solver tracks.
 
         Returns:
             success: True if initialization succeeds, false otherwise.
+
+        Raises:
+            RuntimeError: If a setter the solver or the options require has not been
+                called.
+            ValueError: For ModelSparsity.Full with the condensed formulation.
         """
 
     def isSolverInitialized(self) -> bool:
@@ -1123,15 +1617,17 @@ class MPCBase:
         Debugging aid: check whether the current QP matrices fit the sparsity pattern
         fixed by initializeSolver().
 
-        Model or weight updates that add nonzeros outside that pattern are silently
-        dropped by the solver, so the MPC solves a different problem than the one you
-        set. Call this after prepare() or solve() (setters do not update the QP) to
-        detect that. It scans every entry of the QP matrices, so avoid calling it in
-        time-critical loops.
+        Model, weight, or constraint matrix updates that add nonzeros outside that
+        pattern are silently dropped by the solver, so the MPC solves a different
+        problem than the one you set. Call this after prepare() or solve() (setters do
+        not update the QP) to detect that. The sparse formulation's QP holds only the
+        entries it tracks, so it always fits OSQP's pattern; instead, the model must be
+        zero outside the tracked entries of Ad and Bd (see ModelSparsity), which this
+        also checks. It scans the QP matrices, so avoid calling it in time-critical loops.
 
         Returns:
-            within_pattern (bool): True if the QP matrices fit the pattern, or if the
-                solver is not initialized yet. False otherwise.
+            within_pattern (bool): True if the model and the QP matrices fit the
+                pattern, or if the solver is not initialized yet. False otherwise.
         """
 
     def prepare(self) -> SolveStatus:
@@ -1214,6 +1710,53 @@ class MPCBase:
         solution getters. No-op before initializeSolver().
         """
 
+    def setGeneralConstraints(
+        self,
+        Hx: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        Hu: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        h_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        h_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the general linear constraints h_min <= Hx x_k + Hu u_k <= h_max, applied at
+        every step k = 0, ..., T-1.
+
+        This function can only be called if `num_general_constraints` (p) is positive.
+        Must be called prior to `initializeSolver()`, but can also be called after if
+        the constraints change between solves. x_0 is the measured state passed to
+        solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
+        (a zero row of Hu) only checks x_0 at k = 0, and the problem is infeasible if x_0
+        violates it. The predicted states x_1, ..., x_{T-1} are paired with the inputs
+        u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
+        Pass `-inf` or `inf` for a side without a bound.
+
+        Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a model
+        change), while changing only the bounds updates QP vectors: Hx and Hu count as
+        changed only when a value differs from the stored one. With the condensed
+        formulation, as with the model, an entry of Hx or Hu that may become nonzero
+        later must be nonzero when initializeSolver() is called, since that fixes the
+        solver's sparsity pattern; the sparse formulation keeps every entry of Hx and Hu
+        in its pattern.
+
+        Args:
+            Hx: State matrix (p x state_dim).
+            Hu: Input matrix (p x input_dim).
+            h_min: Lower bounds (size p).
+            h_max: Upper bounds (size p).
+
+        Raises:
+            RuntimeError: If `num_general_constraints` is zero.
+            ValueError: If a shape is wrong or h_min > h_max.
+
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
+        """
+
     def setInputLimits(
         self,
         u_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
@@ -1232,6 +1775,24 @@ class MPCBase:
         Note:
             The QP is updated in the next prepare() or solve(), which report update
             failures.
+        """
+
+    def setInputRateWeights(
+        self,
+        R_rate_diag: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the weights of the input rate cost
+        sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
+        where u_{-1} is the previous input (see setPreviousInput()). Defaults to ones.
+
+        This method can only be called if `use_input_rate_cost` is enabled. Unlike `R`
+        (which weights the control points), the rate cost acts on the sampled inputs,
+        so it penalizes the same input change equally for every basis.
+
+        Args:
+            R_rate_diag: Diagonal of the input rate weight matrix (size input_dim,
+                non-negative).
         """
 
     def setInputWeights(
@@ -1362,18 +1923,17 @@ class MPCBase:
         self, u_prev: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set the previous input, which is only used with the `slew_initial_input`
-        constraint option. Defaults to zeros, but should be set prior to first solve if
-        a different value is desired.
+        Set the previous input, which is used by the `slew_initial_input` constraint
+        and the `use_input_rate_cost` cost. Defaults to zeros, but should be set prior
+        to first solve if a different value is desired.
 
         This value is automatically set to the next input after each solve that returns
         `Success` or `SolvedInaccurate`, so you really only need to call this function
         once before the first solve, or after a failed solve (which leaves it unchanged)
         if you apply an input other than the stored one.
 
-        This function can only be called if `slew_initial_input` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        This function can only be called if `slew_initial_input` or
+        `use_input_rate_cost` is enabled.
 
         Args:
             u_prev: Previous input vector.
@@ -1390,7 +1950,9 @@ class MPCBase:
         Set reference input trajectory as a step command (reference for all control
         points set to this value).
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `use_input_cost` is enabled, and not with a
+        custom basis (Parameterization.fromBasis()), whose coefficients do not
+        represent a constant input; use setReferenceInputControlPoints() there.
 
         Args:
             u_step: Reference input vector to use for entire trajectory.
@@ -1492,21 +2054,57 @@ class MPCBase:
             failures.
         """
 
+    def setStateBoundPenalties(
+        self,
+        l1: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        l2: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the penalties of the soft state limits: the cost gains
+        l1^T s + s^T diag(l2) s, where s >= 0 holds one slack per bounded state (shared
+        over the horizon) that may widen both of its limits.
+
+        This function can only be called with StateBoundMode.Soft, and must be called
+        prior to `initializeSolver()`. The L1 penalty is exact: when it exceeds
+        the limit's Lagrange multiplier, the limits are only violated when they can not
+        be met. The L2 penalty alone always allows a small violation; with the L1
+        penalty it does not change the solution while the limits can be met. OSQP
+        converges much faster with an L2 penalty on the scale of the state weights or
+        larger (with a tiny one, soft limits can take 10 to 30 times the iterations of
+        hard limits), and slower with a very large L1 penalty. There is no default: a
+        large enough L1 penalty depends on the problem.
+
+        Args:
+            l1: Linear penalties, one per bounded state (non-negative).
+            l2: Quadratic penalties, one per bounded state (non-negative).
+
+        Raises:
+            RuntimeError: If Options.state_bounds is not Soft.
+            ValueError: If a size is not the number of bounded states or a penalty is
+                negative.
+        """
+
     def setStateLimits(
         self,
         x_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
         x_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
     ) -> None:
         """
-        Set state saturation limits.
+        Set the state limits.
 
-        This function can only be called if `saturate_states` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        This function can only be called with state bounds (Options.state_bounds Hard
+        or Soft). Must be called prior to `initializeSolver()`, but can also be called after if limits
+        change between solves. The limits have one entry per bounded state
+        (Options.bounded_states, all states by default); pass `-inf` or `inf` for a side
+        without a limit.
 
         Args:
-            x_min: Lower bound on state vector.
-            x_max: Upper bound on state vector.
+            x_min: Lower limits of the bounded states.
+            x_max: Upper limits of the bounded states.
+
+        Raises:
+            RuntimeError: If Options.state_bounds is Off.
+            ValueError: If a size is not the number of bounded states or x_min > x_max.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -1538,6 +2136,41 @@ class MPCBase:
         Args:
             Q_diag: Vector for diagonal of state weight matrix (non-negative).
             Qf_diag: Vector for diagonal of terminal state weight matrix (non-negative).
+        """
+
+    def setTerminalConstraints(
+        self,
+        Hf: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, n]", "flags.f_contiguous"
+        ],
+        hf_min: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        hf_max: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+    ) -> None:
+        """
+        Set the terminal constraints hf_min <= Hf x_T <= hf_max on the final predicted
+        state.
+
+        This function can only be called if `num_terminal_constraints` (p_T) is
+        positive. Must be called prior to `initializeSolver()`, but can also be called
+        after if the constraints change between solves. Pass `-inf` or `inf` for a side
+        without a bound. As with setGeneralConstraints(), changing Hf rebuilds QP
+        matrices and makes OSQP refactor, changing only the bounds updates QP vectors,
+        and with the condensed formulation an entry of Hf that may become nonzero later
+        must be nonzero when initializeSolver() is called (the sparse formulation keeps
+        every entry of Hf in its pattern).
+
+        Args:
+            Hf: State matrix (p_T x state_dim).
+            hf_min: Lower bounds (size p_T).
+            hf_max: Upper bounds (size p_T).
+
+        Raises:
+            RuntimeError: If `num_terminal_constraints` is zero.
+            ValueError: If a shape is wrong or hf_min > hf_max.
+
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
         """
 
     @typing.overload
@@ -1619,106 +2252,6 @@ class MPCBase:
     @property
     def state_dim(self) -> int: ...
 
-class CondensedMPC(MPCBase):
-    """
-    MPC formulation where only parameterization control points are optimization
-    design variables (condensed QP).
-
-    Eliminates state variables analytically by implicitly wrapping the model into
-    the cost function rather than as a constraint, resulting in a smaller dense
-    QP. Preferred for shorter horizons and lower-dimensional problems.
-    Converts the MPC problem to QP form for OSQP, using input parameterization.
-
-    """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct CondensedMPC with specified input parameterization and MPC
-        configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct CondensedMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
-        """
-
-class SparseMPC(MPCBase):
-    """
-    MPC formulation where the predicted state trajectory and parameterization
-    control points are both optimization design variables (sparse QP).
-
-    Retains state and input variables with model as an optimization constraint,
-    exploiting sparsity for scalability. Preferred for longer horizons or larger
-    state dimensions. Converts the MPC problem to QP form for OSQP, using input
-    parameterization.
-
-    """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with specified input parameterization and MPC
-        configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
-        """
-
 class MPCLogger:
     """
     High-performance binary logger for MPC data and metadata.
@@ -1747,7 +2280,7 @@ class MPCLogger:
 
     def __init__(
         self,
-        mpc: MPCBase,
+        mpc: MPC,
         save_dir: os.PathLike[str] | str | bytes,
         ts: float,
         prediction_stride: int = 1,
@@ -1836,7 +2369,7 @@ class MPCLogger:
 
         Args:
             t: Current simulation time (time of solve).
-            x0: Current state at time t (same as provided to solve() since MPCBase does
+            x0: Current state at time t (same as provided to solve() since MPC does
                 not store this).
             loop_time: Optional user-measured time (seconds), e.g. of the whole control
                 loop iteration on hardware. Logged as `loop_time` (-1 when not

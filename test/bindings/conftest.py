@@ -84,7 +84,7 @@ def _probe_installed_has_zlib() -> str:
     import affine_mpc as ampc
 
     opts = ampc.Options(use_input_cost=False)
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
 
     A = np.array([[1.0, 0.1], [0.0, 1.0]])
     B = np.array([0.0, 0.1])

@@ -1,10 +1,16 @@
 #include "affine_mpc/mpc_logger.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
+#include <iterator>
 #include <stdexcept>
+#include <string>
+#include <tuple>
+#include <utility>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
+#include "utils.hpp"
 
 namespace ampc = affine_mpc;
 namespace fs = std::filesystem;
@@ -14,7 +20,7 @@ class MPCLoggerTest : public ::testing::Test
 protected:
   void SetUp() override
   {
-    test_dir_ = fs::temp_directory_path() / "mpc_logger_test";
+    test_dir_ = uniqueTempDir("mpc_logger_test");
     if (fs::exists(test_dir_)) {
       fs::remove_all(test_dir_);
     }
@@ -22,7 +28,7 @@ protected:
     const int n{2}, m{1}, T{5}, p{2};
     const auto param{ampc::Parameterization::linearInterp(T, p)};
     const ampc::Options opts{.use_input_cost = true};
-    mpc_ = std::make_unique<ampc::CondensedMPC>(n, m, param, opts);
+    mpc_ = std::make_unique<ampc::MPC>(n, m, param, opts);
 
     Eigen::Matrix2d A;
     A << 1, 0.1, 0, 1;
@@ -44,7 +50,7 @@ protected:
   }
 
   fs::path test_dir_;
-  std::unique_ptr<ampc::CondensedMPC> mpc_;
+  std::unique_ptr<ampc::MPC> mpc_;
 };
 
 TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
@@ -127,15 +133,14 @@ TEST_F(MPCLoggerTest, NpzUncompressedModeWritesArchive)
 
 TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
 {
-  const fs::path test_dir =
-      fs::temp_directory_path() / "mpc_logger_no_input_cost";
+  const fs::path test_dir{uniqueTempDir("mpc_logger_no_input_cost")};
   if (fs::exists(test_dir)) {
     fs::remove_all(test_dir);
   }
 
   const int n{2}, m{1}, T{5}, p{2};
   const auto param{ampc::Parameterization::linearInterp(T, p)};
-  ampc::CondensedMPC mpc{n, m, param};
+  ampc::MPC mpc{n, m, param};
 
   Eigen::Matrix2d A;
   A << 1, 0.1, 0, 1;
@@ -163,15 +168,14 @@ TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
 
 TEST(MPCLoggerUninitializedTest, LogStepBeforeInitializeSolver_Throws)
 {
-  const fs::path test_dir =
-      fs::temp_directory_path() / "mpc_logger_uninitialized";
+  const fs::path test_dir{uniqueTempDir("mpc_logger_uninitialized")};
   if (fs::exists(test_dir)) {
     fs::remove_all(test_dir);
   }
 
   const int n{2}, m{1}, T{5}, p{2};
   const auto param{ampc::Parameterization::linearInterp(T, p)};
-  ampc::CondensedMPC mpc{n, m, param};
+  ampc::MPC mpc{n, m, param};
 
   {
     ampc::MPCLogger logger{&mpc, test_dir, 0.1, 1, false, "uninitialized"};
@@ -190,4 +194,83 @@ TEST_F(MPCLoggerTest, LogStepWithWrongSizeState_Throws)
   ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
   EXPECT_THROW(logger.logStep(0.0, Eigen::Vector3d{1.0, 0.5, 0.0}),
                std::invalid_argument);
+}
+
+TEST(MPCLoggerFormulationTest, givenEachFormulation_RecordsItInParams)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_formulation")};
+  const auto param{ampc::Parameterization::linearInterp(5, 2)};
+  for (const auto& [formulation, name] :
+       {std::pair{ampc::Formulation::Condensed, "condensed"},
+        std::pair{ampc::Formulation::Sparse, "sparse"}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, formulation};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"formulation: "} + name + "\n"),
+              std::string::npos)
+        << params;
+  }
+  fs::remove_all(test_dir);
+}
+
+TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsModeAndReleasedKey)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_state_bounds")};
+  const auto param{ampc::Parameterization::linearInterp(5, 2)};
+  for (const auto& [mode, name, saturate] :
+       {std::tuple{ampc::StateBoundMode::Off, "off", 0},
+        std::tuple{ampc::StateBoundMode::Hard, "hard", 1},
+        std::tuple{ampc::StateBoundMode::Soft, "soft", 1}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, ampc::Options{.state_bounds = mode}};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_state_bounds: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_NE(
+        params.find("opt_saturate_states: " + std::to_string(saturate) + "\n"),
+        std::string::npos)
+        << params;
+    EXPECT_EQ(params.find("opt_soft_state_bounds"), std::string::npos);
+  }
+  fs::remove_all(test_dir);
+}
+
+TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_input_bounds")};
+  const auto param{ampc::Parameterization::bspline(5, 2, 3)};
+  for (const auto& [mode, name, saturate] :
+       {std::tuple{ampc::InputBoundMode::ControlPoints, "control_points", 0},
+        std::tuple{ampc::InputBoundMode::Exact, "exact", 1}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, ampc::Options{.input_bounds = mode}};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_input_bounds: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_NE(params.find("opt_saturate_input_trajectory: "
+                          + std::to_string(saturate) + "\n"),
+              std::string::npos)
+        << params;
+  }
+  fs::remove_all(test_dir);
 }

@@ -33,17 +33,27 @@ dev = [
     "pybind11-stubgen>=3,<4",
     "black",
     "pytest",
+    "scipy",
+]
+# Install these with `pip install ".[sparse]"`: QuadraticProgram.P and .A
+# (MPC.getQP(), MPC.assembleQP()) convert to scipy.sparse matrices
+sparse = [
+    "scipy",
 ]
 # Install these with `pip install ".[examples]"`
 examples = [
     "matplotlib",
     "abracatabra[qt-pyside6]",
+    "tqdm",
 ]
 
 [project.scripts]
+affine-mpc-example-msd = "affine_mpc._examples.sim:main"
+affine-mpc-example-quadrotor = "affine_mpc._examples.quadrotor_model_updates:main"
+# deprecated names of affine-mpc-example-msd (print a notice, then run as before)
 affine-mpc-example = "affine_mpc._examples.sim:run_all"
 affine-mpc-example-sim = "affine_mpc._examples.sim:run_example"
-affine-mpc-example-plot = "affine_mpc._examples.plot_sim:main"
+affine-mpc-example-plot = "affine_mpc._examples.sim:plot_existing"
 
 # see https://scikit-build-core.readthedocs.io/en/latest/#configuration for 
 # configuration options

@@ -143,8 +143,10 @@ Here:
 The logger records configuration metadata such as:
 
 - dimensions
-- knot vector
-- enabled options
+- formulation (`formulation`: `condensed` or `sparse`)
+- parameterization type (`bspline` or `custom`)
+- B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
+- enabled options (`opt_*`), with the bound modes as `opt_input_bounds` (`control_points` or `exact`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`) and `opt_saturate_states` (1 unless `off`) are kept for readers of earlier logs
 - limits
 - weights
 - prediction stride

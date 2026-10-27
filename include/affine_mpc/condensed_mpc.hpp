@@ -3,78 +3,46 @@
 
 /**
  * @file condensed_mpc.hpp
- * @brief Defines the CondensedMPC class (condensed MPC formulation).
+ * @brief Defines the deprecated CondensedMPC, the former name of MPC with
+ *   Formulation::Condensed.
  */
 
-#include <Eigen/Core>
-
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/options.hpp"
+#include "affine_mpc/parameterization.hpp"
 
 namespace affine_mpc {
 
 /**
  * @class CondensedMPC
- * @brief MPC formulation where only parameterization control points are
- * optimization design variables (condensed QP).
- *
- * Eliminates state variables analytically by implicitly wrapping the model into
- * the cost function rather than as a constraint, resulting in a smaller dense
- * QP. Preferred for shorter horizons and lower-dimensional problems.
- * Converts the MPC problem to QP form for OSQP, using input parameterization.
+ * @brief MPC with Formulation::Condensed.
+ * @deprecated Use MPC, whose formulation defaults to Formulation::Condensed.
+ *   CondensedMPC will be removed in 0.5.0.
  */
-class CondensedMPC : public MPCBase
+class [[deprecated("use MPC with Formulation::Condensed (removed in 0.5.0)")]]
+CondensedMPC final : public MPC
 {
 public:
-  /**
-   * @brief Construct CondensedMPC with specified input parameterization and
-   *   MPC configuration options.
-   * @param state_dim State vector dimension.
-   * @param input_dim Input vector dimension.
-   * @param param Input trajectory parameterization.
-   * @param opts Optional MPC configuration features to enable.
-   */
+  /// @brief Same as MPC(state_dim, input_dim, param, opts,
+  ///   Formulation::Condensed).
   CondensedMPC(int state_dim,
                int input_dim,
                const Parameterization& param,
-               const Options& opts = Options{});
+               const Options& opts = Options{}) :
+      MPC(state_dim, input_dim, param, opts, Formulation::Condensed)
+  {}
 
-  /**
-   * @brief Construct CondensedMPC with no parameterization (full input
-   *   trajectory will be optimized) and MPC configuration options.
-   * @param state_dim State vector dimension.
-   * @param input_dim Input vector dimension.
-   * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param opts Optional MPC configuration features to enable.
-   */
+  /// @brief Same as MPC(state_dim, input_dim, horizon_steps, opts,
+  ///   Formulation::Condensed).
   CondensedMPC(int state_dim,
                int input_dim,
                int horizon_steps,
-               const Options& opts = Options{});
-
-  virtual ~CondensedMPC() = default;
-
-  /**
-   * @brief Get the predicted state trajectory over the horizon.
-   * @param x_traj Output vector for state trajectory.
-   */
-  void getPredictedStateTrajectory(
-      Eigen::Ref<Eigen::VectorXd> x_traj) const override final;
+               const Options& opts = Options{}) :
+      MPC(state_dim, input_dim, horizon_steps, opts, Formulation::Condensed)
+  {}
 
   const char* getClassName() const noexcept override { return "CondensedMPC"; }
-
-protected: // for testing
-  void updateS();
-  void updateV(const Eigen::Ref<const Eigen::VectorXd>& x0);
-
-  Eigen::MatrixXd S_;
-  Eigen::VectorXd v_;
-
-private:
-  DataChangeSet qpApplyChanges(DataChangeSet changes) override final;
-  bool qpApplyX0(const Eigen::Ref<const Eigen::VectorXd>& x0) override final;
-
-  Eigen::VectorXd weighted_state_err_; // Q_big * (v_ - x_ref), avoids a temp
-  Eigen::MatrixXd weighted_S_;         // Q_big * S_, avoids a temp for P_
 };
 
 } // namespace affine_mpc

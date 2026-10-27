@@ -13,6 +13,8 @@ $$
 \mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}.
 $$
 
+A [custom basis](input-parameterization.md#custom-bases) takes the place of $\Psi^p(\boldsymbol{\tau})$ in everything below, with the coefficients in place of the control points; it is dense, so the band of every sample holds every coefficient.
+
 ## Quadratic Program (QP)
 
 The form of a QP is
@@ -259,7 +261,7 @@ $$
 
 ### Input Saturation
 
-**Saturate control points:**
+**Bound the control points** (`InputBoundMode::ControlPoints`, the default):
 
 $$
 \begin{bmatrix}
@@ -287,7 +289,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Saturate input trajectory:**
+**Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
@@ -316,6 +318,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -417,7 +420,7 @@ The condensed formulation may be preferable when:
 
 - the horizon is short
 - the state dimension is small
-- state saturation is not enabled
+- state bounds are not enabled
 
 !!! note
 
@@ -619,7 +622,7 @@ $$
 
 ### Input Saturation
 
-**Saturate control points:**
+**Bound the control points** (`InputBoundMode::ControlPoints`, the default):
 
 $$
 \begin{bmatrix}
@@ -645,7 +648,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Saturate input trajectory:**
+**Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
@@ -672,6 +675,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -764,6 +768,121 @@ $$
     This makes the constraint matrix less sparse.
     Thus, it may be more efficient to use the sparse formulation when saturating states,
     but the best way to find out for your system is to try both!
+    Bounding only the states that need limits (below) keeps only their rows of $S$.
+
+## Selected and Soft State Limits
+
+With `bounded_states` listing $n_b$ of the $n$ states, let $H_x \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
+The state saturation rows become $(I_T \otimes H_x)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes H_x)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
+In the condensed formulation these are the selected rows of $S$, so no product is needed.
+
+Soft limits add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
+A row can not hold one slack on both of its sides, so each limit becomes its own one-sided row:
+
+$$
+(I_T \otimes H_x)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} \leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}},
+\qquad
+(I_T \otimes H_x)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} \geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}},
+\qquad
+\mathbf{s} \geq \mathbf{0},
+$$
+
+which is $2 n_b T + n_b$ rows.
+The penalty $J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \mathbf{s}^\top \operatorname{diag}(\boldsymbol{\rho}_2) \mathbf{s}$ is scaled by $\frac{1}{2}$ like the rest of the cost, so the slack block of $P$ is $\operatorname{diag}(\boldsymbol{\rho}_2)$ and the slack part of $\mathbf{q}$ is $\frac{1}{2} \boldsymbol{\rho}_1$.
+
+## Input Rate Cost
+
+The input rate cost only involves the control points, which come first in both $\mathbf{z}_{\mathrm{s}}$ and $\mathbf{z}_{\mathrm{c}}$, so it adds the same terms to both formulations.
+With the difference matrix $D = (I_T - I_T^{(-1)}) \otimes I_m$, the input changes are
+
+$$
+\begin{bmatrix} \mathbf{u}_0 - \mathbf{u}_{-1} \\ \vdots \\ \mathbf{u}_{T-1} - \mathbf{u}_{T-2} \end{bmatrix}
+= D \Psi^p(\boldsymbol{\tau}) \, \mathbf{c} - \mathbf{e}_1 \otimes \mathbf{u}_{-1},
+$$
+
+so with $\bar{R}_\Delta = I_T \otimes R_\Delta$,
+
+$$
+J_{\Delta u}
+    =
+    \mathbf{c}^\top (D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) \, \mathbf{c}
+    - 2 \left( \Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) \right)^\top \mathbf{c}
+    + \text{const},
+$$
+
+using $D^\top (\mathbf{e}_1 \otimes \mathbf{v}) = \mathbf{e}_1 \otimes \mathbf{v}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)$ and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
+
+With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) = G \otimes R_\Delta$ with $G = (D_1 \Phi)^\top (D_1 \Phi)$, where $\Phi$ is the $T \times \eta$ basis and $D_1 = I_T - I_T^{(-1)}$.
+$G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
+The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
+
+## General and Terminal Constraints
+
+The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
+
+$$
+\mathbf{h}_{\min} - H_x \mathbf{x}_0 \leq H_u \mathbf{u}_0 \leq \mathbf{h}_{\max} - H_x \mathbf{x}_0,
+\qquad
+\mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max} \quad k = 1, \dots, T-1.
+$$
+
+With $\mathbf{u} = \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$, the input part of all $n_h T$ rows is $(I_T \otimes H_u)\, \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$: row block $k$ holds $H_u$ times the basis weights of $\mathbf{u}_k$ on the control points of its band.
+The state part of the rows for $k \geq 1$ is $H_x$ applied to $\mathbf{x}_1, \dots, \mathbf{x}_{T-1}$, which each formulation writes as it writes state rows:
+
+- Sparse: $H_x$ on the columns of $\mathbf{x}_k$ in $\mathbf{z}_{\mathrm{s}}$, with bounds $\mathbf{h}_{\min}$ and $\mathbf{h}_{\max}$.
+- Condensed: $H_x S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\mathbf{x}_k$, with bounds $\mathbf{h}_{\min} - H_x \mathbf{v}_k$ and $\mathbf{h}_{\max} - H_x \mathbf{v}_k$.
+  Row $i$ of $H_x S_k$ is a sum over the nonzero entries of row $i$ of $H_x$, so a sparse $H_x$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
+
+The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $H_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $H_{\mathrm{f}} S_T$ with bounds shifted by $-H_{\mathrm{f}} \mathbf{v}_T$ (condensed).
+State limits on selected states are the special case $H_u = 0$ with $H_x$ holding rows of $I_n$.
+
+The general rows add $n_h T$ rows and the terminal rows $n_{h,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
+Their bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), so they are updated at every solve.
+
+## Accessing the QP
+
+`getQP()` returns the QP as last written by `solve()`, `prepare()`, or `assembleQP()`, and `assembleQP(x0, qp)` assembles it for the current settings and an initial state without solving, before or after `initializeSolver()`.
+Both give a `QuadraticProgram` with $P$ and $A$ as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\mathbf{q}$, $\mathbf{l}$, $\mathbf{u}$.
+The cost omits the constant terms of the MPC cost, equality rows have $l = u$, and unbounded sides are $\pm\infty$.
+Neither function is meant for the control loop: both copy the QP, and `assembleQP()` leaves its changes to be sent again by the next `prepare()` or `solve()`.
+
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\mathbf{z}$ and of the rows of $A$, in order, each with its offset and size; only the blocks the options enable are listed.
+
+| Block | Kind | Built from |
+| --- | --- | --- |
+| `control_points` | variables | the input coefficients $\mathbf{c}$ |
+| `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
+| `state_slacks` | variables | soft state bounds: one slack per bounded state |
+| `dynamics` | rows | sparse formulation only: the model as equality rows |
+| `input_bounds` | rows | input limits on the control points or the sampled inputs |
+| `initial_slew` | rows | `slew_initial_input` |
+| `control_point_slew` | rows | `slew_control_points` |
+| `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
+| `general_constraints` | rows | `num_general_constraints` rows per step, steps in order |
+| `terminal_constraints` | rows | `num_terminal_constraints` rows on $\mathbf{x}_T$ |
+
+For example, to hand the QP to another solver or to count its rows and nonzeros:
+
+=== "Python"
+
+    ```python
+    qp = affine_mpc.QuadraticProgram()
+    mpc.assembleQP(x0, qp)  # or qp = mpc.getQP() after a solve
+    print(qp.P.nnz, qp.A.nnz)
+    for block in mpc.getQPConstraintBlocks():
+        print(block.name, block.offset, block.size)
+    ```
+
+=== "C++"
+
+    ```cpp
+    affine_mpc::QuadraticProgram qp;
+    mpc.assembleQP(x0, qp); // or auto qp = mpc.getQP(); after a solve
+    std::cout << qp.P.nonZeros() << " " << qp.A.nonZeros() << "\n";
+    for (const affine_mpc::QPBlock& block : mpc.getQPConstraintBlocks())
+      std::cout << block.name << " " << block.offset << " " << block.size << "\n";
+    ```
 
 ## Implementation Mapping
 
@@ -771,9 +890,9 @@ At a high level,
 the derivation maps to the implementation as follows:
 
 - `Parameterization` defines the evaluation map $\Psi^p(\boldsymbol{\tau})$
-- `CondensedMPC` uses the condensed relation between $\mathbf{c}$ and $\mathbf{x}$
-- `SparseMPC` keeps $\mathbf{x}$ directly in the QP decision vector
-- `MPCBase` manages the shared model, references, weights, constraints, and solver lifecycle
+- `Formulation::Condensed` (`Formulation.Condensed` in Python) uses the condensed relation between $\mathbf{c}$ and $\mathbf{x}$
+- `Formulation::Sparse` keeps $\mathbf{x}$ directly in the QP decision vector
+- `MPC` manages the model, references, weights, constraints, and solver lifecycle the same way for both
 
 The final mathematical ingredient needed for robust usage is understanding what may be updated after initialization and why OSQP imposes fixed sparsity constraints.
 That is covered in [Runtime Updates](runtime-updates.md).

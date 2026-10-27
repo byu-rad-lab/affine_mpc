@@ -22,6 +22,7 @@ For a continuous-time model $\dot{\mathbf{x}} = f_{\mathrm{c}}(\mathbf{x}, \math
 
 To update the approximation about a new operating point (e.g. the current state and the last applied input), set the new model before each solve.
 This changes $A$ and $B$, so the QP matrices are rebuilt and refactored at the next solve (see [Runtime Updates](runtime-updates.md)).
+[Model Update Strategies](model-updates.md) compares updating the model about the measured state after the measurement with updating it about a predicted state before the measurement, which lets `prepare()` do the rebuild ahead of time.
 
 B-splines are a partition of unity, so a constant trim input $\mathbf{u}_{\mathrm{p}}$ is represented exactly by setting every control point to $\mathbf{u}_{\mathrm{p}}$, e.g. with `setReferenceInput(u_p)`.
 
@@ -58,13 +59,14 @@ Give the input part of the state zero weight in `Q` (weights only need to be non
 ## Deviation Form for Other Bases
 
 The patterns above use absolute inputs, which works because every built-in parameterization can hold a constant input.
-A basis that decays to zero (e.g. Laguerre functions) can not, and is better used in deviation form $\tilde{\mathbf{u}} = \mathbf{u} - \mathbf{u}_{\mathrm{ss}}$, where $\mathbf{u}_{\mathrm{ss}}$ is the input that holds the plant at the reference in steady state.
+A basis that decays to zero (e.g. Laguerre functions through `Parameterization.fromBasis()`, see [Custom Bases](input-parameterization.md#custom-bases)) can not, and is better used in deviation form $\tilde{\mathbf{u}} = \mathbf{u} - \mathbf{u}_{\mathrm{ss}}$, where $\mathbf{u}_{\mathrm{ss}}$ is the input that holds the plant at the reference in steady state.
 The input settles to $\mathbf{u}_{\mathrm{ss}}$ as the basis decays, so this choice lets the prediction end at the reference.
 This is a change of variables you can apply yourself:
 
 1. Use the model offset $\mathbf{w} + B \mathbf{u}_{\mathrm{ss}}$ (or $\mathbf{w}_{\mathrm{c}} + B_{\mathrm{c}} \mathbf{u}_{\mathrm{ss}}$ before discretizing).
 1. Use the input limits $\mathbf{u}_{\min} - \mathbf{u}_{\mathrm{ss}}$ and $\mathbf{u}_{\max} - \mathbf{u}_{\mathrm{ss}}$, and the input reference $\mathbf{u}_{\mathrm{ref}} - \mathbf{u}_{\mathrm{ss}}$.
-1. Keep the control point slew rate unchanged, and pass $\mathbf{u}_{-1} - \mathbf{u}_{\mathrm{ss}}$ to `setPreviousInput()` for the initial slew rate.
+   With a custom basis, `setReferenceInput()` is not available; the default zero coefficient reference corresponds to $\mathbf{u}_{\mathrm{ref}} = \mathbf{u}_{\mathrm{ss}}$.
+1. Keep the control point slew rate unchanged (B-splines only), and pass $\mathbf{u}_{-1} - \mathbf{u}_{\mathrm{ss}}$ to `setPreviousInput()` for the initial slew rate.
 1. Keep the states, state limits, and `Q` unchanged.
 1. Add $\mathbf{u}_{\mathrm{ss}}$ back to the results of `getNextInput()` and `getInputTrajectory()`.
 

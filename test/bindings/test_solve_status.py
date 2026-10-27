@@ -24,7 +24,7 @@ if __name__ == "__main__":
 def test_solve_info_from_mpc():
     import numpy as np
 
-    mpc = ampc.CondensedMPC(2, 1, 10)
+    mpc = ampc.MPC(2, 1, 10)
     assert mpc.getSolveInfo().status == ampc.SolveStatus.NotInitialized
 
     mpc.setModelDiscrete(
@@ -47,10 +47,12 @@ def test_solve_info_from_mpc():
     assert info.prepare_time == 0.0  # prepare() was never called
 
 
-def _configured_mpc(cls):
+def _configured_mpc(formulation):
     import numpy as np
 
-    mpc = cls(2, 1, ampc.Parameterization.bspline(10, 2, 5))
+    mpc = ampc.MPC(
+        2, 1, ampc.Parameterization.bspline(10, 2, 5), formulation=formulation
+    )
     mpc.setModelDiscrete(
         np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
     )
@@ -62,8 +64,8 @@ def _configured_mpc(cls):
 def test_prepare_then_solve_matches_solve_alone():
     import numpy as np
 
-    for cls in (ampc.CondensedMPC, ampc.SparseMPC):
-        prepared, direct = _configured_mpc(cls), _configured_mpc(cls)
+    for formulation in ampc.Formulation:
+        prepared, direct = _configured_mpc(formulation), _configured_mpc(formulation)
         assert prepared.prepare() == ampc.SolveStatus.NotInitialized
         assert prepared.initializeSolver() and direct.initializeSolver()
 
@@ -92,7 +94,7 @@ def test_prepare_then_solve_matches_solve_alone():
 def test_prepare_time_covers_one_cycle():
     import numpy as np
 
-    mpc = _configured_mpc(ampc.CondensedMPC)
+    mpc = _configured_mpc(ampc.Formulation.Condensed)
     assert mpc.initializeSolver()
     x0 = np.array([0.3, -0.1])
     assert mpc.solve(x0) == ampc.SolveStatus.Success

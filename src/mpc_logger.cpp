@@ -54,6 +54,30 @@ std::string loggingModeToString(affine_mpc::MPCLogger::Mode mode)
   return "Unknown";
 }
 
+std::string stateBoundModeToString(affine_mpc::StateBoundMode mode)
+{
+  switch (mode) {
+  case StateBoundMode::Off:
+    return "off";
+  case StateBoundMode::Hard:
+    return "hard";
+  case StateBoundMode::Soft:
+    return "soft";
+  }
+  return "unknown";
+}
+
+std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
+{
+  switch (mode) {
+  case InputBoundMode::ControlPoints:
+    return "control_points";
+  case InputBoundMode::Exact:
+    return "exact";
+  }
+  return "unknown";
+}
+
 std::string makeShapeString(const std::vector<size_t>& shape)
 {
   std::ostringstream oss;
@@ -69,7 +93,7 @@ std::string makeShapeString(const std::vector<size_t>& shape)
 
 } // namespace
 
-MPCLogger::MPCLogger(const MPCBase* const mpc,
+MPCLogger::MPCLogger(const MPC* const mpc,
                      const std::filesystem::path& save_dir,
                      double ts,
                      int prediction_stride,
@@ -148,10 +172,27 @@ void MPCLogger::captureMPCSnapshot()
   addMetadata("state_dim", mpc_->getStateDim());
   addMetadata("input_dim", mpc_->getInputDim());
   addMetadata("horizon_steps", mpc_->getHorizonSteps());
-  addMetadata("spline_degree", mpc_->getParameterization().degree);
+  addMetadata("formulation",
+              std::string{mpc_->getFormulation() == Formulation::Sparse
+                              ? "sparse"
+                              : "condensed"});
+  const Parameterization& param{mpc_->getParameterization()};
+  const bool bspline{param.type == Parameterization::Type::BSpline};
+  addMetadata("parameterization_type",
+              std::string{bspline ? "bspline" : "custom"});
+  if (bspline)
+    addMetadata("spline_degree", param.degree);
   addMetadata("num_control_points", mpc_->getNumControlPoints());
 
-  addMetadata("knots", mpc_->getParameterization().knots);
+  if (bspline) {
+    addMetadata("knots", param.knots);
+  } else {
+    // the basis row by row (horizon_steps x num_control_points), so control
+    // points can be evaluated offline
+    addMetadata("basis",
+                Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
+                    param.band_weights.data(), param.band_weights.size()}});
+  }
 
   addMetadata("opt_use_input_cost",
               static_cast<int>(mpc_->getOptions().use_input_cost));
@@ -159,10 +200,22 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().slew_initial_input));
   addMetadata("opt_slew_control_points",
               static_cast<int>(mpc_->getOptions().slew_control_points));
+  // released key, derived from the mode (also logged as opt_state_bounds)
   addMetadata("opt_saturate_states",
-              static_cast<int>(mpc_->getOptions().saturate_states));
+              int{mpc_->getOptions().state_bounds != StateBoundMode::Off});
+  // released key, derived from the mode (also logged as opt_input_bounds)
   addMetadata("opt_saturate_input_trajectory",
-              static_cast<int>(mpc_->getOptions().saturate_input_trajectory));
+              int{mpc_->getOptions().input_bounds == InputBoundMode::Exact});
+  addMetadata("opt_use_input_rate_cost",
+              static_cast<int>(mpc_->getOptions().use_input_rate_cost));
+  addMetadata("opt_input_bounds",
+              inputBoundModeToString(mpc_->getOptions().input_bounds));
+  addMetadata("opt_state_bounds",
+              stateBoundModeToString(mpc_->getOptions().state_bounds));
+  addMetadata("opt_num_general_constraints",
+              mpc_->getOptions().num_general_constraints);
+  addMetadata("opt_num_terminal_constraints",
+              mpc_->getOptions().num_terminal_constraints);
 
   addMetadata("u_min", mpc_->getInputMin());
   addMetadata("u_max", mpc_->getInputMax());
@@ -171,11 +224,42 @@ void MPCLogger::captureMPCSnapshot()
 
   if (mpc_->getOptions().use_input_cost)
     addMetadata("R_diag", mpc_->getInputWeights());
+  if (mpc_->getOptions().use_input_rate_cost)
+    addMetadata("R_rate_diag", mpc_->getInputRateWeights());
   if (mpc_->getOptions().slew_control_points)
     addMetadata("control_point_slew", mpc_->getSlewRate());
-  if (mpc_->getOptions().saturate_states) {
+  if (mpc_->getOptions().state_bounds != StateBoundMode::Off) {
+    // x_min and x_max have one entry per bounded state
+    const std::vector<int>& bounded{mpc_->getBoundedStates()};
+    addMetadata("bounded_states",
+                std::vector<double>(bounded.begin(), bounded.end()));
     addMetadata("x_min", mpc_->getStateMin());
     addMetadata("x_max", mpc_->getStateMax());
+  }
+  if (mpc_->getOptions().state_bounds == StateBoundMode::Soft) {
+    addMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
+    addMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
+  }
+  // constraint matrices are stored row-major (reshape to rows x state_dim or
+  // rows x input_dim)
+  auto rowMajor = [](const Eigen::MatrixXd& mat) {
+    std::vector<double> values;
+    values.reserve(static_cast<size_t>(mat.size()));
+    for (Eigen::Index i{0}; i < mat.rows(); ++i)
+      for (Eigen::Index j{0}; j < mat.cols(); ++j)
+        values.push_back(mat(i, j));
+    return values;
+  };
+  if (mpc_->getOptions().num_general_constraints > 0) {
+    addMetadata("Hx", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
+    addMetadata("Hu", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
+    addMetadata("h_min", mpc_->getGeneralConstraintMin());
+    addMetadata("h_max", mpc_->getGeneralConstraintMax());
+  }
+  if (mpc_->getOptions().num_terminal_constraints > 0) {
+    addMetadata("Hf", rowMajor(mpc_->getTerminalConstraintMatrix()));
+    addMetadata("hf_min", mpc_->getTerminalConstraintMin());
+    addMetadata("hf_max", mpc_->getTerminalConstraintMax());
   }
 }
 

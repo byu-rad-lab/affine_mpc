@@ -1,8 +1,10 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "formulation.hpp" // internal (src/): the condensed state map
+#include "qp_builder.hpp"
 #include "utils.hpp"
 
 using namespace Eigen;
@@ -10,11 +12,10 @@ namespace ampc = affine_mpc;
 
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class CondensedMPCProtectedTester : public ampc::CondensedMPC
+class CondensedMPCProtectedTester : public ampc::MPC
 {
 public:
-  using CondensedMPC::CondensedMPC;
-  virtual ~CondensedMPCProtectedTester() = default;
+  using MPC::MPC;
 
   void setModel()
   {
@@ -27,10 +28,10 @@ public:
     setModelContinuous2Discrete(A, B, w, ts);
   }
 
+  // assembling the QP computes the condensed state map x = S c + v
   void findSAndV(const Eigen::Ref<const Eigen::VectorXd>& x0)
   {
-    updateS();
-    updateV(x0);
+    (void)qpUpdateX0(x0);
   }
 
   void findPAndQ(const Eigen::Ref<const Eigen::VectorXd>& x0)
@@ -41,10 +42,17 @@ public:
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
   auto getWd() const { return readModel(*this).wd; }
-  auto getS() const { return this->S_; }
-  auto getV() const { return this->v_; }
+  auto getS() const { return formulation().S(); }
+  auto getV() const { return formulation().v(); }
   auto getP() const { return getQPCostMatrix(); }
-  auto getQ() const { return this->q_; }
+  auto getQ() const { return this->qp().q; }
+
+private:
+  const ampc::detail::CondensedFormulation& formulation() const
+  {
+    return static_cast<const ampc::detail::CondensedFormulation&>(
+        qpBuilder().formulation());
+  }
 };
 
 TEST(CondensedMPCProtectedTester, givenModel_FormsSandVcorrectly)
@@ -193,7 +201,8 @@ TEST(CondensedMPCProtectedTester,
   const int n{2}, m{1}, T{100}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .saturate_states = true}};
+      ampc::Options{.use_input_cost = true,
+                    .state_bounds = ampc::StateBoundMode::Hard}};
   msd_mpc.setModel();
 
   msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

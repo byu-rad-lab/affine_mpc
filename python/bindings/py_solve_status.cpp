@@ -38,9 +38,9 @@ void moduleAddSolveStatus(py::module& m)
   py::class_<ampc::SolveInfo>(m, "SolveInfo",
                               R"doc(
 Solver diagnostics from the most recent solve. Obtain with
-MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
+MPC.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
 outside the QP solver (QP assembly, data updates, and refactorization). Work
-done in MPCBase.prepare() is reported separately in prepare_time.
+done in MPC.prepare() is reported separately in prepare_time.
 )doc")
       .def_readonly("status", &ampc::SolveInfo::status,
                     "Result of the solve. NotInitialized before "

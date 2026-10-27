@@ -65,7 +65,13 @@ pybind11_stubgen.main(
         "--numpy-array-use-type-var",
         # "--numpy-array-wrap-with-annotated",
         "--enum-class-locations",
-        "Mode:MPCLogger",
+        "Mode$:MPCLogger",
+        "--enum-class-locations",
+        "ModelSparsity$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "StateBoundMode$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "InputBoundMode$:affine_mpc._bindings",
     ]
 )
 
@@ -125,6 +131,9 @@ content = re.sub(
 content = re.sub(r"import affine_mpc\n", "", content)
 content = re.sub(r"Options = \.\.\.", "Options = Options()", content)
 content = re.sub(r"OSQPSettings = \.\.\.", "OSQPSettings = OSQPSettings()", content)
+content = re.sub(
+    r"Formulation = \.\.\.", "Formulation = Formulation.Condensed", content
+)
 
 try:
     import black

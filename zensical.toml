@@ -22,9 +22,15 @@ nav = [
         "concepts/qp-formulation.md",
         "concepts/runtime-updates.md",
         "concepts/modeling-patterns.md",
+        "concepts/model-updates.md",
     ]},
     {"Usage" = "usage.md"},
-    {"Examples" = "examples.md"},
+    {"Examples" = [
+        "examples/index.md",
+        "examples/mass-spring-damper.md",
+        "examples/quadrotor-model-updates.md",
+        "examples/laguerre.md",
+    ]},
     {"Logging" = "logging.md"},
     {"Development" = "development.md"},
 ]

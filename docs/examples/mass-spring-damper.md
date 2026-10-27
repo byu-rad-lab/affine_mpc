@@ -1,7 +1,7 @@
-# Examples
+# Mass-Spring-Damper
 
-`affine_mpc` ships with a shared example workflow centered on a simple mass-spring-damper tracking problem (a linear 2nd-order system).
-The same problem is implemented in both C++ and Python so users can learn one conceptual workflow and choose the interface that best matches their application.
+This is the introductory example: a mass-spring-damper (a linear 2nd-order system) tracking a constant position target.
+The same problem is implemented in both C++ and Python, so you can learn one workflow and choose the interface that best matches your application.
 
 ## Example Files
 
@@ -14,12 +14,12 @@ The log file is saved to the same location, so running `plot_sim.py` works after
 
 The C++ version of `affine_mpc` does not come with plotting capabilities.
 It is designed to log `.npz` files that can be loaded in Python with `numpy.load()`.
-Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` will also plot the results when run directly.
+Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` can also plot the results (`python examples/sim.py --plot`, or `affine-mpc-example-msd --plot` when installed with `pip`).
 
 ## What the Example Demonstrates
 
 - Building a linear interpolation parameterization
-- Configuring a `CondensedMPC`
+- Configuring an `MPC` (condensed formulation)
 - Setting model, limits, weights, and references
 - Solving in a closed loop
 - Logging outputs with `MPCLogger`
@@ -29,9 +29,9 @@ Since Python can natively plot the logged results, the only difference between t
 
 The simulation can be run from either interface, but visualization is currently supported from Python only.
 
-- To run the Python example, see [Python Getting Started](getting-started/python.md).
-- To build and run the C++ example, see [C++ Getting Started](getting-started/cpp.md).
-- To inspect logs produced by either interface, use the Python plotting workflow described in [Python Getting Started](getting-started/python.md#plot-the-results).
+- To run the Python example, see [Python Getting Started](../getting-started/python.md).
+- To build and run the C++ example, see [C++ Getting Started](../getting-started/cpp.md).
+- To inspect logs produced by either interface, use the Python plotting workflow described in [Python Getting Started](../getting-started/python.md#plot-the-results).
 
 ## Core Example Structure
 
@@ -39,7 +39,7 @@ The two implementations follow the same steps:
 
 1. Define the model dimensions
 1. Choose a `Parameterization` and `Options`
-1. Construct `CondensedMPC`
+1. Construct `MPC` with `Formulation::Condensed` (`Formulation.Condensed` in Python)
 1. Set model, limits, weights, and references
 1. Call `initializeSolver()`
 1. Solve in a loop
@@ -48,7 +48,7 @@ The two implementations follow the same steps:
 
 ## What the Example Produces
 
-The example writes output into the system temp directory under `ampc_example`.
+The example writes output into the system temp directory under `ampc_example`, replacing the log of any earlier run (from either interface).
 
 The two outputs are:
 
@@ -57,7 +57,7 @@ The two outputs are:
 
 The controller tracks a constant position target for the mass-spring-damper system.
 The logger records both the realized trajectory and selected predictions.
-Logs produced by either interface can be visualized with the Python plotting workflow described in [Python Getting Started](getting-started/python.md#plot-the-results).
+Logs produced by either interface can be visualized with the Python plotting workflow described in [Python Getting Started](../getting-started/python.md#plot-the-results).
 
 The plot shows:
 

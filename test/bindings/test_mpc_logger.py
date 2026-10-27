@@ -13,9 +13,9 @@ def _has_zlib() -> bool:
     return os.environ.get("AFFINE_MPC_HAS_ZLIB") == "1"
 
 
-def _make_mpc(use_input_cost: bool = True) -> ampc.CondensedMPC:
+def _make_mpc(use_input_cost: bool = True) -> ampc.MPC:
     opts = ampc.Options(use_input_cost=use_input_cost)
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
 
     A = np.array([[1.0, 0.1], [0.0, 1.0]])
     B = np.array([0.0, 0.1])
@@ -254,7 +254,7 @@ def test_mpc_logger_raw_recoverable_mode_outputs_sidecars():
 
 
 def test_log_step_before_initialize_raises():
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 2))
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 2))
     with tempfile.TemporaryDirectory() as tmpdir:
         logger = ampc.MPCLogger(mpc=mpc, save_dir=Path(tmpdir), ts=0.1)
         with pytest.raises(RuntimeError, match="must be initialized"):

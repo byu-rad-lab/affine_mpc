@@ -2,10 +2,12 @@
 
 #include <Eigen/Core>
 #include <cassert>
+#include <cstddef>
 #include <memory>
 #include <osqp_api_functions.h>
 #include <osqp_api_types.h>
 #include <ostream>
+#include <vector>
 
 #include "affine_mpc/solve_status.hpp"
 
@@ -82,7 +84,7 @@ SolveInfo OSQPSolver::getSolveInfo() const noexcept
   if (!initialized_)
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
-  // mpc_solve_time and prepare_time are only known to MPCBase
+  // mpc_solve_time and prepare_time are only known to MPC
   return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
                    static_cast<int>(info.iter),
                    info.obj_val,
@@ -125,6 +127,32 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
   assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
   initializeCostMatrix(P);
   initializeConstraintMatrix(A);
+  sparse_input_ = false;
+  return setup(q, l, u, settings);
+}
+
+bool OSQPSolver::initialize(const SparseMatrixXF& P,
+                            const SparseMatrixXF& A,
+                            const Eigen::Ref<const VectorXF>& q,
+                            const Eigen::Ref<const VectorXF>& l,
+                            const Eigen::Ref<const VectorXF>& u,
+                            const OSQPSettings& settings)
+{
+  assert(q.size() == n_ && l.size() == m_ && u.size() == m_);
+  assert(P.rows() == n_ && P.cols() == n_);
+  assert(A.rows() == m_ && A.cols() == n_);
+  if (!P.isCompressed() || !A.isCompressed() || !initializeCostMatrix(P))
+    return false;
+  initializeConstraintMatrix(A);
+  sparse_input_ = true;
+  return setup(q, l, u, settings);
+}
+
+bool OSQPSolver::setup(const Eigen::Ref<const VectorXF>& q,
+                       const Eigen::Ref<const VectorXF>& l,
+                       const Eigen::Ref<const VectorXF>& u,
+                       const OSQPSettings& settings)
+{
   clampBounds(l, u);
 
   ::OSQPSolver* raw_solver = nullptr;
@@ -138,7 +166,7 @@ bool OSQPSolver::initialize(const Eigen::Ref<const MatrixXF>& P,
 
 bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 {
-  if (!initialized_)
+  if (!initialized_ || sparse_input_)
     return false;
   assert(P.rows() == n_ && P.cols() == n_);
 
@@ -150,7 +178,7 @@ bool OSQPSolver::updateCostMatrix(const Eigen::Ref<const MatrixXF>& P)
 
 bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 {
-  if (!initialized_)
+  if (!initialized_ || sparse_input_)
     return false;
   assert(A.rows() == m_ && A.cols() == n_);
 
@@ -163,7 +191,7 @@ bool OSQPSolver::updateConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
 bool OSQPSolver::updateMatrices(const Eigen::Ref<const MatrixXF>& P,
                                 const Eigen::Ref<const MatrixXF>& A)
 {
-  if (!initialized_)
+  if (!initialized_ || sparse_input_)
     return false;
   assert(P.rows() == n_ && P.cols() == n_);
   assert(A.rows() == m_ && A.cols() == n_);
@@ -176,8 +204,107 @@ bool OSQPSolver::updateMatrices(const Eigen::Ref<const MatrixXF>& P,
   return exit_status == 0;
 }
 
+bool OSQPSolver::updateCostMatrix(const SparseMatrixXF& P)
+{
+  if (!initialized_ || !sparse_input_)
+    return false;
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), costValues(P),
+                                           OSQP_NULL, P_nnz_, OSQP_NULL,
+                                           OSQP_NULL, 0)};
+  return exit_status == 0;
+}
+
+bool OSQPSolver::updateConstraintMatrix(const SparseMatrixXF& A)
+{
+  if (!initialized_ || !sparse_input_)
+    return false;
+  OSQPInt exit_status{osqp_update_data_mat(solver_.get(), OSQP_NULL, OSQP_NULL,
+                                           0, constraintValues(A), OSQP_NULL,
+                                           A_nnz_)};
+  return exit_status == 0;
+}
+
+bool OSQPSolver::updateMatrices(const SparseMatrixXF& P,
+                                const SparseMatrixXF& A)
+{
+  if (!initialized_ || !sparse_input_)
+    return false;
+  OSQPInt exit_status{
+      osqp_update_data_mat(solver_.get(), costValues(P), OSQP_NULL, P_nnz_,
+                           constraintValues(A), OSQP_NULL, A_nnz_)};
+  return exit_status == 0;
+}
+
+namespace {
+
+// OSQP's values gathered from the positions src in values
+void gather(const std::vector<OSQPInt>& src,
+            const OSQPFloat* values,
+            OSQPFloat* dst)
+{
+  const std::size_t size{src.size()};
+  for (std::size_t k{0}; k < size; ++k)
+    dst[k] = values[src[k]];
+}
+
+// The positions col * stride + row of the entries of a CSC pattern
+void densePositions(const OSQPSolver::VectorXI& p,
+                    const OSQPSolver::VectorXI& i,
+                    const Eigen::Index stride,
+                    std::vector<OSQPInt>& src)
+{
+  src.resize(static_cast<std::size_t>(p(p.size() - 1)));
+  for (Eigen::Index col{0}; col + 1 < p.size(); ++col)
+    for (OSQPInt k{p(col)}; k < p(col + 1); ++k)
+      src[static_cast<std::size_t>(k)] =
+          static_cast<OSQPInt>(col * stride) + i(k);
+}
+
+// Whether every nonzero stored value of M (with row <= col if upper) is at an
+// index in src (increasing)
+bool storedNonzerosIn(const OSQPSolver::SparseMatrixXF& M,
+                      const std::vector<OSQPInt>& src,
+                      const bool upper)
+{
+  std::size_t next{0};
+  for (OSQPInt col{0}; col < M.outerSize(); ++col) {
+    for (OSQPInt k{M.outerIndexPtr()[col]}; k < M.outerIndexPtr()[col + 1];
+         ++k) {
+      if (next < src.size() && src[next] == k)
+        ++next;
+      else if (M.valuePtr()[k] != 0.0 && !(upper && M.innerIndexPtr()[k] > col))
+        return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+const OSQPFloat* OSQPSolver::costValues(const SparseMatrixXF& P)
+{
+  assert(P.rows() == n_ && P.cols() == n_ && P.isCompressed());
+  if (P_direct_)
+    return P.valuePtr();
+  gather(P_src_, P.valuePtr(), P_x_.data());
+  return P_x_.data();
+}
+
+const OSQPFloat* OSQPSolver::constraintValues(const SparseMatrixXF& A)
+{
+  assert(A.rows() == m_ && A.cols() == n_ && A.isCompressed());
+  if (A_direct_)
+    return A.valuePtr();
+  gather(A_src_, A.valuePtr(), A_x_.data());
+  return A_x_.data();
+}
+
 void OSQPSolver::fillCostValues(const Eigen::Ref<const MatrixXF>& P)
 {
+  if (P.outerStride() == P_stride_) {
+    gather(P_src_, P.data(), P_x_.data());
+    return;
+  }
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col) {
     idx_diff = P_p_(col + 1) - P_p_(col);
@@ -191,6 +318,10 @@ void OSQPSolver::fillCostValues(const Eigen::Ref<const MatrixXF>& P)
 
 void OSQPSolver::fillConstraintValues(const Eigen::Ref<const MatrixXF>& A)
 {
+  if (A.outerStride() == A_stride_) {
+    gather(A_src_, A.data(), A_x_.data());
+    return;
+  }
   int idx{0}, idx_diff, row;
   for (int col{0}; col < n_; ++col) {
     idx_diff = A_p_(col + 1) - A_p_(col);
@@ -237,7 +368,7 @@ bool OSQPSolver::isWithinSparsityPattern(
     const Eigen::Ref<const MatrixXF>& P,
     const Eigen::Ref<const MatrixXF>& A) const
 {
-  if (!initialized_)
+  if (!initialized_ || sparse_input_)
     return false;
   assert(P.rows() == n_ && P.cols() == n_);
   assert(A.rows() == m_ && A.cols() == n_);
@@ -262,14 +393,26 @@ bool OSQPSolver::isWithinSparsityPattern(
   return true;
 }
 
+bool OSQPSolver::isWithinSparsityPattern(const SparseMatrixXF& P,
+                                         const SparseMatrixXF& A) const
+{
+  if (!initialized_ || !sparse_input_)
+    return false;
+  assert(P.rows() == n_ && P.cols() == n_ && P.isCompressed());
+  assert(A.rows() == m_ && A.cols() == n_ && A.isCompressed());
+  return storedNonzerosIn(P, P_src_, true)
+         && storedNonzerosIn(A, A_src_, false);
+}
+
 int OSQPSolver::countUpperTriangle(const Eigen::Ref<const MatrixXF>& mat)
 {
+  // the diagonal is always stored (see initializeCostMatrix())
   int count{0};
   for (int col{0}; col < n_; ++col) {
     for (int row{0}; row < n_; ++row) {
       if (row > col)
         break;
-      if (mat(row, col) != 0.0)
+      if (mat(row, col) != 0.0 || row == col)
         ++count;
     }
   }
@@ -284,6 +427,10 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
   P_x_.setZero(P_nnz_);
   P_i_.setZero(P_nnz_);
 
+  // Store the whole diagonal even where it is zero now, so a diagonal weight
+  // that is zero at initialization can become nonzero later. This costs
+  // nothing in solves: OSQP's KKT system always includes P's diagonal (it adds
+  // sigma to it).
   P_nnz_ = 0;
   OSQPFloat val;
   for (int col{0}; col < n_; ++col) {
@@ -292,7 +439,7 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
       if (row > col)
         break;
       val = P(row, col);
-      if (val != 0.0) {
+      if (val != 0.0 || row == col) {
         P_x_(P_nnz_) = val;
         P_i_(P_nnz_++) = row;
       }
@@ -302,6 +449,51 @@ void OSQPSolver::initializeCostMatrix(const Eigen::Ref<const MatrixXF>& P)
   P_.reset(
       OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data()));
   P_is_set_ = true;
+  P_stride_ = P.outerStride();
+  densePositions(P_p_, P_i_, P_stride_, P_src_);
+}
+
+bool OSQPSolver::initializeCostMatrix(const SparseMatrixXF& P)
+{
+  assert(!P_is_set_);
+  // The stored entries of the upper triangle, zero or not: the pattern is
+  // the matrix's structure, so later values may be nonzero anywhere in it
+  const OSQPInt* outer{P.outerIndexPtr()};
+  const OSQPInt* inner{P.innerIndexPtr()};
+  const OSQPFloat* values{P.valuePtr()};
+  auto kept = [&](const OSQPInt k, const OSQPInt col) {
+    return inner[k] <= col;
+  };
+  P_nnz_ = 0;
+  for (OSQPInt col{0}; col < n_; ++col) {
+    bool diagonal{false};
+    for (OSQPInt k{outer[col]}; k < outer[col + 1]; ++k) {
+      diagonal |= inner[k] == col;
+      P_nnz_ += kept(k, col) ? 1 : 0;
+    }
+    if (!diagonal)
+      return false;
+  }
+  P_x_.setZero(P_nnz_);
+  P_i_.setZero(P_nnz_);
+  P_src_.resize(static_cast<std::size_t>(P_nnz_));
+  P_nnz_ = 0;
+  for (OSQPInt col{0}; col < n_; ++col) {
+    P_p_(col) = P_nnz_;
+    for (OSQPInt k{outer[col]}; k < outer[col + 1]; ++k) {
+      if (kept(k, col)) {
+        P_x_(P_nnz_) = values[k];
+        P_i_(P_nnz_) = inner[k];
+        P_src_[static_cast<std::size_t>(P_nnz_++)] = k;
+      }
+    }
+  }
+  P_p_(n_) = P_nnz_;
+  P_direct_ = P_nnz_ == P.nonZeros();
+  P_.reset(
+      OSQPCscMatrix_new(n_, n_, P_nnz_, P_x_.data(), P_i_.data(), P_p_.data()));
+  P_is_set_ = true;
+  return true;
 }
 
 void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
@@ -325,6 +517,35 @@ void OSQPSolver::initializeConstraintMatrix(const Eigen::Ref<const MatrixXF>& A)
     }
   }
   A_p_(n_) = A_nnz_;
+  A_.reset(
+      OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
+  A_is_set_ = true;
+  A_stride_ = A.outerStride();
+  densePositions(A_p_, A_i_, A_stride_, A_src_);
+}
+
+void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
+{
+  assert(!A_is_set_);
+  // every stored entry, zero or not (as for P)
+  const OSQPInt* outer{A.outerIndexPtr()};
+  const OSQPInt* inner{A.innerIndexPtr()};
+  const OSQPFloat* values{A.valuePtr()};
+  A_nnz_ = outer[n_];
+  A_x_.setZero(A_nnz_);
+  A_i_.setZero(A_nnz_);
+  A_src_.resize(static_cast<std::size_t>(A_nnz_));
+  A_nnz_ = 0;
+  for (OSQPInt col{0}; col < n_; ++col) {
+    A_p_(col) = A_nnz_;
+    for (OSQPInt k{outer[col]}; k < outer[col + 1]; ++k) {
+      A_x_(A_nnz_) = values[k];
+      A_i_(A_nnz_) = inner[k];
+      A_src_[static_cast<std::size_t>(A_nnz_++)] = k;
+    }
+  }
+  A_p_(n_) = A_nnz_;
+  A_direct_ = A_nnz_ == A.nonZeros();
   A_.reset(
       OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
   A_is_set_ = true;
