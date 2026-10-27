@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 from ._bindings import (
     Options,
+    ModelSparsity,
     Parameterization,
     QPBlock,
     QuadraticProgram,
@@ -28,6 +29,7 @@ from ._bindings import (
 
 __all__ = [
     "Options",
+    "ModelSparsity",
     "Parameterization",
     "QPBlock",
     "QuadraticProgram",

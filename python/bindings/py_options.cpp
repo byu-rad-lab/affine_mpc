@@ -1,5 +1,6 @@
 #include "affine_mpc_py_module.hpp"
 
+#include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <sstream>
@@ -171,6 +172,25 @@ Args:
     oss << ")";
     return oss.str();
   });
+
+  py::native_enum<ampc::ModelSparsity>(
+      m, "ModelSparsity", "enum.Enum",
+      "Which entries of the discrete model Ad and Bd the solver tracks, chosen "
+      "with MPCBase.initializeSolver(). OSQP fixes the sparsity pattern at "
+      "initialization, and later updates only change the values of the "
+      "tracked entries: a model entry outside them must stay zero (a nonzero "
+      "one is silently dropped). Tracking fewer entries makes each solve "
+      "cheaper when the model has structural zeros.")
+      .value("InitialNonzeros", ampc::ModelSparsity::InitialNonzeros,
+             "Track the entries of Ad and Bd that are nonzero when "
+             "initializeSolver() is called (the default). Entries that may "
+             "become nonzero later must be nonzero then, e.g. by setting a "
+             "representative model before it and the actual model after it.")
+      .value("Full", ampc::ModelSparsity::Full,
+             "Track every entry of Ad and Bd, so any entry may change between "
+             "zero and nonzero later. Costs more per solve when the model has "
+             "structural zeros. Supported by SparseMPC only for now.")
+      .finalize();
 }
 
 } // namespace affine_mpc_py

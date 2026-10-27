@@ -3,7 +3,8 @@
 
 /**
  * @file options.hpp
- * @brief Defines the Options struct for configuring the MPC problem.
+ * @brief Defines the Options struct for configuring the MPC problem and the
+ *   ModelSparsity choice of initializeSolver().
  */
 
 #include <iosfwd>
@@ -90,6 +91,29 @@ struct Options
   /// Number of terminal constraints hf_min <= Hf x_T <= hf_max (set with
   /// setTerminalConstraints()). Zero disables them.
   int num_terminal_constraints = 0;
+};
+
+/**
+ * @enum ModelSparsity
+ * @brief Which entries of the discrete model Ad and Bd the solver tracks,
+ *   chosen with MPCBase::initializeSolver().
+ *
+ * OSQP fixes the sparsity pattern of the QP at initialization, and later
+ * updates only change the values of the tracked entries: a model entry outside
+ * them must stay zero (a nonzero one is silently dropped). Tracking fewer
+ * entries makes each solve cheaper when the model has structural zeros.
+ */
+enum class ModelSparsity
+{
+  /// Track the entries of Ad and Bd that are nonzero when initializeSolver()
+  /// is called (the default). Entries that may become nonzero later must be
+  /// nonzero at initializeSolver(), e.g. by setting a representative model
+  /// before it and the actual model after it.
+  InitialNonzeros,
+  /// Track every entry of Ad and Bd (full blocks), so any entry may change
+  /// between zero and nonzero later. Costs more per solve when the model has
+  /// structural zeros. Supported by SparseMPC only for now.
+  Full,
 };
 
 std::ostream&

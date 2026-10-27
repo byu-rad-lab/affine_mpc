@@ -83,12 +83,37 @@ public:
    *   limits. You must also provide parameters for all enabled options before
    *   calling this function. For example, if state saturation is enabled then
    *   `setStateLimits()` must be called beforehand.
+   *
+   *   Initialization fixes the solver's sparsity pattern; later updates only
+   *   change the values of the entries it tracks. `model_sparsity` chooses the
+   *   tracked entries of Ad and Bd: with the default
+   *   ModelSparsity::InitialNonzeros, the entries nonzero in the model set at
+   *   this call, so an entry that may become nonzero later must be nonzero
+   *   now (set a representative model before this call and the actual model
+   *   after it), and every later model must be zero outside them (a nonzero
+   *   outside them is silently dropped; see isWithinSparsityPattern()). With
+   *   ModelSparsity::Full, every entry, which costs more per solve when the
+   *   model has structural zeros. CondensedMPC supports only
+   *   ModelSparsity::InitialNonzeros for now.
    * @param solver_settings OSQP solver settings (optional). Defaults to
    *   recommended settings.
+   * @param model_sparsity Which entries of Ad and Bd the solver tracks.
    * @return True if initialization succeeds, false otherwise.
+   * @throws std::logic_error if a setter the solver or the options require
+   *   has not been called.
+   * @throws std::invalid_argument for ModelSparsity::Full with CondensedMPC.
    */
-  [[nodiscard]] bool initializeSolver(const OSQPSettings& solver_settings =
-                                          OSQPSolver::getRecommendedSettings());
+  [[nodiscard]] bool initializeSolver(
+      const OSQPSettings& solver_settings =
+          OSQPSolver::getRecommendedSettings(),
+      ModelSparsity model_sparsity = ModelSparsity::InitialNonzeros);
+
+  /**
+   * @brief Initialize the solver with the recommended settings and the given
+   *   model sparsity; see initializeSolver(const OSQPSettings&,
+   *   ModelSparsity).
+   */
+  [[nodiscard]] bool initializeSolver(ModelSparsity model_sparsity);
 
   /**
    * @brief Solve the optimization problem for the given initial state.
@@ -555,6 +580,9 @@ public:
   constexpr int getNumControlPoints() const noexcept { return num_ctrl_pts_; };
   /// @brief Whether initializeSolver() has succeeded.
   bool isSolverInitialized() const noexcept { return solver_initialized_; }
+  /// @brief The model sparsity passed to initializeSolver() (the default,
+  /// ModelSparsity::InitialNonzeros, before it is called).
+  ModelSparsity getModelSparsity() const noexcept { return model_sparsity_; }
 
   /// @brief Get the input trajectory parameterization.
   const Parameterization& getParameterization() const noexcept
@@ -780,11 +808,12 @@ public:
    *   that pattern are silently dropped by the solver, so the MPC solves a
    *   different problem than the one you set. Call this after prepare() or
    *   solve() (setters do not update the QP) to detect that. SparseMPC's
-   *   pattern holds every entry its updates can write, so its QP always
-   *   fits. It scans the QP matrices, so avoid calling it in time-critical
-   *   loops.
-   * @return True if the QP matrices fit the pattern, or if the solver is not
-   *   initialized yet. False otherwise.
+   *   QP holds only the entries it tracks, so it always fits OSQP's pattern;
+   *   instead, the model must be zero outside the tracked entries of Ad and
+   *   Bd (see ModelSparsity), which this also checks. It scans the QP
+   *   matrices, so avoid calling it in time-critical loops.
+   * @return True if the model and the QP matrices fit the pattern, or if the
+   *   solver is not initialized yet. False otherwise.
    */
   [[nodiscard]] bool isWithinSparsityPattern() const;
 
@@ -898,6 +927,9 @@ private:
   bool applyPendingChanges();
   // Send the matrices P and/or A to the solver in the QP's storage
   bool sendMatrices(bool P, bool A);
+  // Whether the model is zero outside the entries the solver tracks (true
+  // before initializeSolver())
+  bool modelWithinTrackedEntries() const;
   // Whether an option uses the previous input u_prev
   bool usesPreviousInput() const noexcept
   {
@@ -915,6 +947,7 @@ private:
   bool x_penalties_set_, general_set_, terminal_set_;
   bool slew0_rate_set_, ctrls_slew_rate_set_;
   bool solver_initialized_;
+  ModelSparsity model_sparsity_; // passed to initializeSolver()
   double mpc_solve_time_; ///< duration of the last solve() call (seconds)
   double prepare_time_;   ///< prepare() time reported by the last solve() (s)
   double unsolved_prepare_time_; ///< prepare() time since the last solve() (s)

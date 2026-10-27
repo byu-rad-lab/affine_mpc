@@ -22,10 +22,12 @@ std::unique_ptr<Formulation>
 makeFormulation(const FormulationKind kind,
                 const int state_dim,
                 const VectorParameterization& input_param,
+                const ModelEntries& model_entries,
                 QP& qp)
 {
   if (kind == FormulationKind::Sparse)
-    return std::make_unique<SparseFormulation>(state_dim, input_param, qp);
+    return std::make_unique<SparseFormulation>(state_dim, input_param,
+                                               model_entries, qp);
   return std::make_unique<CondensedFormulation>(state_dim, input_param, qp);
 }
 
@@ -84,8 +86,10 @@ const Term& QPBuilder::add(QPLayout& layout, Args&&... args)
 QPBuilder::QPBuilder(const FormulationKind kind,
                      const int state_dim,
                      const VectorParameterization& input_param,
-                     const Options& opts) :
-    formulation_{makeFormulation(kind, state_dim, input_param, qp_)}
+                     const Options& opts,
+                     const ModelEntries& model_entries) :
+    formulation_{
+        makeFormulation(kind, state_dim, input_param, model_entries, qp_)}
 {
   // The options select the terms; each term's rows follow the previous ones
   QPLayout layout{formulation_->numVariables()};

@@ -350,8 +350,50 @@ void CondensedFormulation::updateV(const MPCData& d)
 
 // ---- SparseFormulation ------------------------------------------------------
 
+namespace {
+
+// The column-major indices of the nonzero entries of M; false (and no list)
+// when every entry is nonzero
+bool nonzeroIndices(const MatrixXd& M, std::vector<Index>& indices)
+{
+  indices.clear();
+  for (Index i{0}; i < M.size(); ++i)
+    if (M.data()[i] != 0.0)
+      indices.push_back(i);
+  if (static_cast<Index>(indices.size()) < M.size())
+    return true;
+  indices.clear();
+  return false;
+}
+
+// Whether M is zero outside the listed entries (sorted column-major indices)
+bool zeroOutside(const MatrixXd& M, const std::vector<Index>& listed)
+{
+  auto next{listed.begin()};
+  for (Index i{0}; i < M.size(); ++i) {
+    if (next != listed.end() && *next == i) {
+      ++next;
+      continue;
+    }
+    if (M.data()[i] != 0.0)
+      return false;
+  }
+  return true;
+}
+
+} // namespace
+
+ModelEntries ModelEntries::nonzerosOf(const MPCData& d)
+{
+  ModelEntries entries;
+  entries.Ad_full = !nonzeroIndices(d.Ad, entries.Ad);
+  entries.Bd_full = !nonzeroIndices(d.Bd, entries.Bd);
+  return entries;
+}
+
 SparseFormulation::SparseFormulation(const int state_dim,
                                      const VectorParameterization& input_param,
+                                     const ModelEntries& model_entries,
                                      QP& qp) :
     Formulation{qp},
     n_{state_dim},
@@ -359,8 +401,31 @@ SparseFormulation::SparseFormulation(const int state_dim,
     T_{input_param.parameterization().horizon_steps},
     nx_{state_dim * T_},
     nc_{input_param.numCoefficients()},
-    input_param_{input_param}
+    input_param_{input_param},
+    model_entries_{model_entries}
 {}
+
+bool SparseFormulation::modelWithinTrackedEntries(const MPCData& d) const
+{
+  return (model_entries_.Ad_full || zeroOutside(d.Ad, model_entries_.Ad))
+         && (model_entries_.Bd_full || zeroOutside(d.Bd, model_entries_.Bd));
+}
+
+void SparseFormulation::declareModelBlock(QPEntries& entries,
+                                          const int row,
+                                          const int col,
+                                          const int rows,
+                                          const int cols,
+                                          const std::vector<Index>* listed)
+{
+  if (listed == nullptr) {
+    entries.declareBlock(row, col, rows, cols);
+    return;
+  }
+  for (const Index i : *listed)
+    entries.declare(row + static_cast<int>(i % rows),
+                    col + static_cast<int>(i / rows));
+}
 
 RowBlock SparseFormulation::declare(QPLayout& layout)
 {
@@ -376,19 +441,27 @@ RowBlock SparseFormulation::declare(QPLayout& layout)
 
   // the dynamics rows (the first rows of A)
   const RowBlock rows{layout.addRows(nx_)};
+  // Ad and Bd at every step: the tracked entries, or full blocks
   const Parameterization& param{input_param_.parameterization()};
-  Bd_entries_.reserve(
-      static_cast<std::size_t>(T_ * param.band_width * n_ * m_));
-  Ad_entries_.reserve(static_cast<std::size_t>((T_ - 1) * n_ * n_));
+  const ModelEntries& tracked{model_entries_};
+  const std::vector<Index>* Bd_listed{tracked.Bd_full ? nullptr : &tracked.Bd};
+  const std::vector<Index>* Ad_listed{tracked.Ad_full ? nullptr : &tracked.Ad};
+  const std::size_t Bd_count{tracked.Bd_full ? static_cast<std::size_t>(n_ * m_)
+                                             : tracked.Bd.size()};
+  const std::size_t Ad_count{tracked.Ad_full ? static_cast<std::size_t>(n_ * n_)
+                                             : tracked.Ad.size()};
+  Bd_entries_.reserve(static_cast<std::size_t>(T_ * param.band_width)
+                      * Bd_count);
+  Ad_entries_.reserve(static_cast<std::size_t>(T_ - 1) * Ad_count);
   for (int k{0}, row{rows.offset}; k < T_; ++k, row += n_) {
     for (int i{0}; i < param.band_width; ++i) {
       const int col{input_param_.coefficientIndex(0, param.band_start(k) + i)};
-      Bd_entries_.declareBlock(row, col, n_, m_);
+      declareModelBlock(Bd_entries_, row, col, n_, m_, Bd_listed);
     }
   }
   for (int k{1}, row{rows.offset + n_}, col{nc_}; k < T_;
        ++k, row += n_, col += n_)
-    Ad_entries_.declareBlock(row, col, n_, n_);
+    declareModelBlock(Ad_entries_, row, col, n_, n_, Ad_listed);
   minus_I_entries_.reserve(static_cast<std::size_t>(nx_));
   for (int i{0}; i < nx_; ++i)
     minus_I_entries_.declare(rows.offset + i, nc_ + i);
@@ -565,17 +638,35 @@ void SparseFormulation::setStateBounds(const StateRows& rows,
 void SparseFormulation::setDynamicsMatrixBlocks(const MPCData& d)
 {
   // set model constraints that multiply controls, in declaration order
+  // (only the tracked entries: the model is zero outside them)
   const Parameterization& param{input_param_.parameterization()};
   Index first{0};
-  for (int k{0}; k < T_; ++k) {
-    for (int i{0}; i < param.band_width; ++i, first += d.Bd.size())
-      Bd_entries_.assignBlock(first, param.band_weights(i, k), d.Bd);
+  if (!model_entries_.Bd_full) {
+    const double* Bd{d.Bd.data()};
+    for (int k{0}; k < T_; ++k)
+      for (int i{0}; i < param.band_width; ++i) {
+        const double s{param.band_weights(i, k)};
+        for (const Index j : model_entries_.Bd)
+          Bd_entries_.set(first++, s * Bd[j]);
+      }
+  } else {
+    for (int k{0}; k < T_; ++k) {
+      for (int i{0}; i < param.band_width; ++i, first += d.Bd.size())
+        Bd_entries_.assignBlock(first, param.band_weights(i, k), d.Bd);
+    }
   }
 
   // set model constraints that multiply states
   first = 0;
-  for (int k{1}; k < T_; ++k, first += d.Ad.size())
-    Ad_entries_.assignBlock(first, d.Ad);
+  if (!model_entries_.Ad_full) {
+    const double* Ad{d.Ad.data()};
+    for (int k{1}; k < T_; ++k)
+      for (const Index j : model_entries_.Ad)
+        Ad_entries_.set(first++, Ad[j]);
+  } else {
+    for (int k{1}; k < T_; ++k, first += d.Ad.size())
+      Ad_entries_.assignBlock(first, d.Ad);
+  }
 }
 
 void SparseFormulation::setDynamicsOffsetBounds(const MPCData& d)

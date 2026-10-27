@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "affine_mpc/condensed_mpc.hpp"
@@ -219,7 +220,8 @@ TEST(QPPatternTester, givenSparseMPC_NonzerosAreWithinDeclaredEntries)
     mpc.assemble(x0);
     EXPECT_EQ(mpc.undeclaredNonzeros(), std::vector<std::string>{})
         << "assembled";
-    (void)mpc.initializeSolver();
+    // every model entry tracked, since the drawn models change their zeros
+    (void)mpc.initializeSolver(ampc::ModelSparsity::Full);
     EXPECT_EQ(mpc.undeclaredNonzeros(), std::vector<std::string>{})
         << "initialized";
     for (int change{0}; change < 4; ++change) {
@@ -349,7 +351,8 @@ TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
     PatternInspector mpc{c.n, c.m, c.param, c.opts};
     setAll(mpc, c, draw);
     mpc.assemble(draw.sparse(c.n, 1));
-    if (!mpc.initializeSolver())
+    // every model entry tracked, since the drawn models change their zeros
+    if (!mpc.initializeSolver(ampc::ModelSparsity::Full))
       continue;
     ++initialized;
     // the QP as sent by initializeSolver()
@@ -520,6 +523,15 @@ TEST(QPAccessTester, givenAnyOptions_GetQPAndBlocksDescribeTheQP)
 
 namespace {
 
+// Track every model entry where the formulation supports it (the drawn models
+// change their zeros; CondensedMPC has no model check to trip)
+template <class MPC> constexpr ampc::ModelSparsity allModelEntries()
+{
+  return std::is_same_v<MPC, ampc::SparseMPC>
+             ? ampc::ModelSparsity::Full
+             : ampc::ModelSparsity::InitialNonzeros;
+}
+
 template <class MPC> void checkAssemble(unsigned seed)
 {
   // two MPCs set up with the same draws
@@ -543,7 +555,8 @@ template <class MPC> void checkAssemble(unsigned seed)
 
   // after it, assembling for another x0 with new values pending leaves the
   // next solve as if assembleQP() had not been called
-  ASSERT_EQ(a.initializeSolver(), b.initializeSolver());
+  ASSERT_EQ(a.initializeSolver(allModelEntries<MPC>()),
+            b.initializeSolver(allModelEntries<MPC>()));
   if (!a.isSolverInitialized())
     return;
   setAll(a, c, draw_a);

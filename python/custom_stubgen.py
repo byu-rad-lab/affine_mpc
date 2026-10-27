@@ -65,7 +65,9 @@ pybind11_stubgen.main(
         "--numpy-array-use-type-var",
         # "--numpy-array-wrap-with-annotated",
         "--enum-class-locations",
-        "Mode:MPCLogger",
+        "Mode$:MPCLogger",
+        "--enum-class-locations",
+        "ModelSparsity$:affine_mpc._bindings",
     ]
 )
 

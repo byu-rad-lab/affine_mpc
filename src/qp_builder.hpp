@@ -38,11 +38,13 @@ class QPBuilder
 {
 public:
   /// Builds the term list and allocates the QP (zero); call
-  /// writeConstantParts() before the first update.
+  /// writeConstantParts() before the first update. The sparse formulation
+  /// declares the given entries of Ad and Bd (every entry by default).
   QPBuilder(FormulationKind kind,
             int state_dim,
             const VectorParameterization& input_param,
-            const Options& opts);
+            const Options& opts,
+            const ModelEntries& model_entries = ModelEntries::all());
   // the formulation keeps a reference to qp_
   QPBuilder(const QPBuilder&) = delete;
   QPBuilder& operator=(const QPBuilder&) = delete;

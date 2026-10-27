@@ -22,6 +22,22 @@ struct RowBlock
   int rows{0};
 };
 
+/**
+ * The entries of Ad and Bd that the sparse formulation tracks in its dynamics
+ * rows, as column-major indices into each matrix, or every entry (`full`).
+ * Model values outside the tracked entries must be zero.
+ */
+struct ModelEntries
+{
+  bool Ad_full{true}, Bd_full{true};
+  std::vector<Eigen::Index> Ad, Bd; ///< sorted, used when not full
+
+  /// Every entry of both matrices.
+  static ModelEntries all() { return {}; }
+  /// The nonzero entries of d.Ad and d.Bd (full when a matrix has no zero).
+  static ModelEntries nonzerosOf(const MPCData& d);
+};
+
 /// A contiguous block of QP variables.
 struct VarBlock
 {
@@ -179,6 +195,13 @@ public:
   virtual void updateX0(const MPCData& d) = 0;
   /// Whether updateX0() writes bounds (those are then sent at every solve).
   virtual bool updateX0WritesBounds() const noexcept = 0;
+
+  /// Whether the model is zero outside the entries the formulation tracks
+  /// (for debugging; formulations that track every entry return true).
+  virtual bool modelWithinTrackedEntries(const MPCData& /*d*/) const
+  {
+    return true;
+  }
 
   /// Predicted states x = (x_1, ..., x_T) for the QP solution z.
   virtual void
@@ -407,12 +430,16 @@ private:
 /**
  * Sparse: z = (c, x), and the model is kept as equality rows
  * x_{k+1} = Ad x_k + Bd u_k + wd, the formulation's own rows.
+ *
+ * The dynamics rows declare the tracked entries of Ad and Bd (ModelEntries)
+ * at every step: full blocks, or only the listed entries.
  */
 class SparseFormulation final : public Formulation
 {
 public:
   SparseFormulation(int state_dim,
                     const VectorParameterization& input_param,
+                    const ModelEntries& model_entries,
                     QP& qp);
 
   int numVariables() const noexcept override { return nc_ + nx_; }
@@ -427,6 +454,7 @@ public:
   void
   predictStates(const Eigen::Ref<const Eigen::VectorXd>& z,
                 Eigen::Ref<Eigen::VectorXd> x_traj) const noexcept override;
+  bool modelWithinTrackedEntries(const MPCData& d) const override;
 
   void
   addStateQuadraticMatrix(const Eigen::Ref<const Eigen::VectorXd>& Q) override;
@@ -462,6 +490,14 @@ private:
   void endOwnCostVector() override;
   // dynamics blocks of A (Bd times the basis weights, and Ad)
   void setDynamicsMatrixBlocks(const MPCData& d);
+  // Declare a rows x cols block at (row, col): every entry, or only the
+  // entries listed in `listed` (column-major indices into the block)
+  static void declareModelBlock(QPEntries& entries,
+                                int row,
+                                int col,
+                                int rows,
+                                int cols,
+                                const std::vector<Eigen::Index>* listed);
   // dynamics-row bounds -wd for steps k >= 1 (k = 0 also depends on x0)
   void setDynamicsOffsetBounds(const MPCData& d);
 
@@ -491,6 +527,8 @@ private:
   // The dynamics rows: Bd times the basis weights (an n x m block per step and
   // band entry), Ad on x_k (n x n per step k >= 1), and -x_{k+1}
   QPEntries Bd_entries_, Ad_entries_, minus_I_entries_;
+  // the tracked entries of Ad and Bd (full blocks, or the listed entries)
+  const ModelEntries model_entries_;
   // the entries of the state rows (one set per declareStateRows())
   std::vector<std::unique_ptr<QPEntries>> state_rows_;
 };

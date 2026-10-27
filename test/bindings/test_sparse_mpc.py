@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import affine_mpc as ampc
 
@@ -99,21 +100,25 @@ if __name__ == "__main__":
     print("All tests passed!")
 
 
-def test_is_within_sparsity_pattern():
+@pytest.mark.parametrize(
+    "model_sparsity", [ampc.ModelSparsity.InitialNonzeros, ampc.ModelSparsity.Full]
+)
+def test_is_within_sparsity_pattern(model_sparsity):
     n, m, T = 2, 1, 10
     mpc = ampc.SparseMPC(state_dim=n, input_dim=m, horizon_steps=T)
     mpc.setModelDiscrete(Ad=0.9 * np.eye(n), Bd=np.array([0.0, 0.1]), wd=np.zeros(n))
     mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
     mpc.setReferenceState(x_step=np.ones(n))
-    assert mpc.initializeSolver()
+    assert mpc.initializeSolver(model_sparsity=model_sparsity)
+    assert mpc.getModelSparsity() == model_sparsity
 
     x0 = np.zeros(n)
     assert mpc.solve(x0) == ampc.SolveStatus.Success
     assert mpc.isWithinSparsityPattern()
 
-    # off-diagonal Ad entries were zero at initialization, but SparseMPC's
-    # pattern holds every entry of the model blocks
+    # off-diagonal Ad entries were zero at initialization: only Full tracks
+    # them
     Ad = np.array([[1.0, 0.1], [-0.06, 0.99]])
     mpc.setModelDiscrete(Ad=Ad, Bd=np.array([0.0, 0.1]), wd=np.zeros(n))
     assert mpc.solve(x0) == ampc.SolveStatus.Success
-    assert mpc.isWithinSparsityPattern()
+    assert mpc.isWithinSparsityPattern() == (model_sparsity == ampc.ModelSparsity.Full)

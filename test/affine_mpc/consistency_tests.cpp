@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <limits>
+#include <string>
 #include <utility>
 
 #include "utils.hpp"
@@ -666,12 +667,12 @@ TEST(ConsistencyTester, givenZeroWeightsAtInit_SparseMPCAppliesLaterWeights)
   ASSERT_TRUE(expectEigenNear(u_late, u_reference, 1e-4));
 }
 
-// Condensed: the solver's pattern comes from the values at initialization, so
-// a model entry that was zero then is dropped. Sparse: the pattern is the
-// declared structure (full model blocks), so the same change stays within it
-// and is solved exactly.
-TEST(ConsistencyTester,
-     givenModelOutsideInitValues_CondensedLeavesPatternSparseStaysWithin)
+// With ModelSparsity::InitialNonzeros (the default), the solver tracks the
+// model entries nonzero at initialization, so an entry that was zero then is
+// dropped and reported. With ModelSparsity::Full (sparse only), every model
+// entry is tracked, so the same change stays within the pattern and is solved
+// exactly.
+TEST(ConsistencyTester, givenModelOutsideInitValues_LeavesPatternUnlessFull)
 {
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
@@ -684,18 +685,25 @@ TEST(ConsistencyTester,
   const Vector2d Bd{0, 0.1}, wd{0, 0};
   const Vector2d x0{0.5, -0.2};
 
-  auto check = [&](ampc::MPCBase& mpc, const bool structural) {
+  auto check = [&](ampc::MPCBase& mpc, const ampc::ModelSparsity sparsity) {
+    const bool full{sparsity == ampc::ModelSparsity::Full};
     configureMsd(mpc, opts);
     mpc.setModelDiscrete(Ad_diag, Bd, wd);
     EXPECT_TRUE(mpc.isWithinSparsityPattern()); // not initialized yet
-    ASSERT_TRUE(mpc.initializeSolver());
+    ASSERT_TRUE(mpc.initializeSolver(sparsity));
+    EXPECT_EQ(mpc.getModelSparsity(), sparsity);
     ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
     EXPECT_TRUE(mpc.isWithinSparsityPattern());
 
-    // condensed: the solver silently drops the new coupling terms
+#ifndef NDEBUG
+    // SparseMPC's model setters assert on untracked entries
+    if (!full && std::string{mpc.getClassName()} == "SparseMPC")
+      return;
+#endif
+    // initial nonzeros: the solver silently drops the new coupling terms
     setMsdModel(mpc);
     (void)mpc.solve(x0);
-    EXPECT_EQ(mpc.isWithinSparsityPattern(), structural);
+    EXPECT_EQ(mpc.isWithinSparsityPattern(), full);
 
     // back within the values at initialization (w never affects the pattern)
     mpc.setModelDiscrete(Ad_diag * 0.5, Bd, Vector2d{0.1, 0.2});
@@ -704,17 +712,20 @@ TEST(ConsistencyTester,
   };
 
   ampc::CondensedMPC condensed{n, m, param, opts};
-  check(condensed, false);
+  check(condensed, ampc::ModelSparsity::InitialNonzeros);
 
   ampc::SparseMPC sparse{n, m, param, opts};
-  check(sparse, true);
+  check(sparse, ampc::ModelSparsity::InitialNonzeros);
 
-  // the sparse solution for the coupled model matches a solver initialized
-  // with that model
+  ampc::SparseMPC sparse_full{n, m, param, opts};
+  check(sparse_full, ampc::ModelSparsity::Full);
+
+  // with Full, the sparse solution for the coupled model matches a solver
+  // initialized with that model
   ampc::SparseMPC changed{n, m, param, opts}, fresh{n, m, param, opts};
   configureMsd(changed, opts);
   changed.setModelDiscrete(Ad_diag, Bd, wd);
-  ASSERT_TRUE(changed.initializeSolver());
+  ASSERT_TRUE(changed.initializeSolver(ampc::ModelSparsity::Full));
   ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
   setMsdModel(changed);
   changed.resetWarmStart();

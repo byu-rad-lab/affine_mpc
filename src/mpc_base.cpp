@@ -133,6 +133,7 @@ MPCBase::MPCBase(int state_dim,
     slew0_rate_set_{false},
     ctrls_slew_rate_set_{false},
     solver_initialized_{false},
+    model_sparsity_{ModelSparsity::InitialNonzeros},
     mpc_solve_time_{0.0},
     prepare_time_{0.0},
     unsolved_prepare_time_{0.0},
@@ -286,12 +287,38 @@ void MPCBase::checkSetup(const char* caller, const char* action) const
     missing("Terminal constraints", " (num_terminal_constraints is positive)");
 }
 
-bool MPCBase::initializeSolver(const OSQPSettings& solver_settings)
+bool MPCBase::initializeSolver(const ModelSparsity model_sparsity)
+{
+  return initializeSolver(OSQPSolver::getRecommendedSettings(), model_sparsity);
+}
+
+bool MPCBase::initializeSolver(const OSQPSettings& solver_settings,
+                               const ModelSparsity model_sparsity)
 {
   checkSetup("initializeSolver", "initializing solver");
 
   if (solver_initialized_)
     return true;
+
+  const bool sparse{qp().storage == detail::QPStorage::Sparse};
+  if (model_sparsity == ModelSparsity::Full && !sparse)
+    throw std::invalid_argument(
+        "[MPCBase::initializeSolver] ModelSparsity::Full is not supported yet "
+        "by CondensedMPC; use ModelSparsity::InitialNonzeros.");
+  model_sparsity_ = model_sparsity;
+  // The sparse QP declares every entry of Ad and Bd at construction; with
+  // InitialNonzeros, rebuild it with only the nonzero entries of the model
+  // (the condensed QP is dense, and the solver takes its nonzeros below)
+  if (sparse && model_sparsity == ModelSparsity::InitialNonzeros) {
+    const detail::ModelEntries entries{detail::ModelEntries::nonzerosOf(data_)};
+    if (!entries.Ad_full || !entries.Bd_full) {
+      qp_builder_ = std::make_unique<detail::QPBuilder>(
+          detail::FormulationKind::Sparse, state_dim_, input_param_, opts_,
+          entries);
+      qp_builder_->writeConstantParts(data_);
+      pending_ = DataChangeSet::all();
+    }
+  }
 
   // x0 only affects vector terms (q, l, u) so the values don't matter to set
   // initial sparsity structure. Setting to ones. The solver is not
@@ -431,10 +458,18 @@ bool MPCBase::sendMatrices(const bool P, const bool A)
   return solver_->updateConstraintMatrix(qp_data.A);
 }
 
+bool MPCBase::modelWithinTrackedEntries() const
+{
+  return !solver_initialized_
+         || qp_builder_->formulation().modelWithinTrackedEntries(data_);
+}
+
 bool MPCBase::isWithinSparsityPattern() const
 {
   if (!solver_initialized_)
     return true;
+  if (!modelWithinTrackedEntries())
+    return false;
   const detail::QP& qp_data{qp()};
   if (qp_data.storage == detail::QPStorage::Sparse)
     return solver_->isWithinSparsityPattern(qp_data.P_csc, qp_data.A_csc);
@@ -499,6 +534,10 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   data_.Ad = Ad;
   data_.Bd = Bd;
   data_.wd = wd;
+  // not checked in Release, where it would cost every model update
+  assert(modelWithinTrackedEntries()
+         && "[MPCBase::setModelDiscrete] Ad or Bd has a nonzero entry the "
+            "solver does not track (see ModelSparsity).");
   model_set_ = true;
   model_from_continuous_ = false;
   pending_ |= DataChange::Model | DataChange::ModelOffset;
@@ -518,6 +557,10 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   // Discretization stays in the setter: it is needed once per call anyway, and
   // the user controls when the setter runs. Only the QP work is deferred.
   discretizer_.discretize(Ac, Bc, wc, dt, data_.Ad, data_.Bd, data_.wd, tol);
+  // not checked in Release, where it would cost every model update
+  assert(modelWithinTrackedEntries()
+         && "[MPCBase::setModelContinuous2Discrete] The discrete Ad or Bd has "
+            "a nonzero entry the solver does not track (see ModelSparsity).");
   model_set_ = true;
   model_from_continuous_ = true;
   pending_ |= DataChange::Model | DataChange::ModelOffset;

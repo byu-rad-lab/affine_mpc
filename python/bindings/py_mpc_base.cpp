@@ -66,7 +66,10 @@ Args:
            py::arg("state_dim"), py::arg("input_dim"), py::arg("param"),
            py::arg("opts"));
 
-  base.def("initializeSolver", &ampc::MPCBase::initializeSolver,
+  base.def("initializeSolver",
+           static_cast<bool (ampc::MPCBase::*)(const OSQPSettings&,
+                                               ampc::ModelSparsity)>(
+               &ampc::MPCBase::initializeSolver),
            R"doc(
 Initialize OSQP solver after configuring MPC setup. Calling this method after
 a successful initialization will simply return True without doing anything.
@@ -76,14 +79,32 @@ You must also provide parameters for all enabled options before calling this
 function. For example, if state saturation is enabled then `setStateLimits()`
 must be called beforehand.
 
+Initialization fixes the solver's sparsity pattern; later updates only change
+the values of the entries it tracks. `model_sparsity` chooses the tracked
+entries of Ad and Bd: with the default ModelSparsity.InitialNonzeros, the
+entries nonzero in the model set at this call, so an entry that may become
+nonzero later must be nonzero now (set a representative model before this call
+and the actual model after it), and every later model must be zero outside them
+(a nonzero outside them is silently dropped; see isWithinSparsityPattern()).
+With ModelSparsity.Full, every entry, which costs more per solve when the model
+has structural zeros. CondensedMPC supports only ModelSparsity.InitialNonzeros
+for now.
+
 Args:
     solver_settings: OSQP solver settings. Defaults to recommended settings.
+    model_sparsity: Which entries of Ad and Bd the solver tracks.
 
 Returns:
     success: True if initialization succeeds, false otherwise.
+
+Raises:
+    RuntimeError: If a setter the solver or the options require has not been
+        called.
+    ValueError: For ModelSparsity.Full with CondensedMPC.
            )doc",
            py::arg("solver_settings") =
-               ampc::OSQPSolver::getRecommendedSettings());
+               ampc::OSQPSolver::getRecommendedSettings(),
+           py::arg("model_sparsity") = ampc::ModelSparsity::InitialNonzeros);
 
   base.def("solve", &ampc::MPCBase::solve,
            R"doc(
@@ -867,6 +888,9 @@ Returns:
   base.def("getNumQPConstraints", &ampc::MPCBase::getNumQPConstraints,
            "Get the number of QP constraint rows (the rows of A).");
 
+  base.def("getModelSparsity", &ampc::MPCBase::getModelSparsity,
+           "The model sparsity passed to initializeSolver() (the default, "
+           "ModelSparsity.InitialNonzeros, before it is called).");
   base.def("isSolverInitialized", &ampc::MPCBase::isSolverInitialized,
            "Whether initializeSolver() has succeeded.");
 
@@ -1072,13 +1096,14 @@ fixed by initializeSolver().
 Model, weight, or constraint matrix updates that add nonzeros outside that
 pattern are silently dropped by the solver, so the MPC solves a different
 problem than the one you set. Call this after prepare() or solve() (setters do
-not update the QP) to detect that. SparseMPC's pattern holds every entry its
-updates can write, so its QP always fits. It scans the QP matrices, so avoid
-calling it in time-critical loops.
+not update the QP) to detect that. SparseMPC's QP holds only the entries it
+tracks, so it always fits OSQP's pattern; instead, the model must be zero
+outside the tracked entries of Ad and Bd (see ModelSparsity), which this also
+checks. It scans the QP matrices, so avoid calling it in time-critical loops.
 
 Returns:
-    within_pattern (bool): True if the QP matrices fit the pattern, or if the
-        solver is not initialized yet. False otherwise.
+    within_pattern (bool): True if the model and the QP matrices fit the
+        pattern, or if the solver is not initialized yet. False otherwise.
            )doc");
 
   base.def_property_readonly("state_dim", &ampc::MPCBase::getStateDim);
