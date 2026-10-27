@@ -22,9 +22,11 @@ def model(tilt):
     return Ad, Bd
 
 
-def build(cls, init_tilt, **init_kwargs):
+def build(formulation, init_tilt, **init_kwargs):
     opts = ampc.Options(use_input_cost=True, saturate_states=True)
-    mpc = cls(N, M, ampc.Parameterization.bspline(T, 2, NC), opts)
+    mpc = ampc.MPC(
+        N, M, ampc.Parameterization.bspline(T, 2, NC), opts, formulation=formulation
+    )
     mpc.setModelDiscrete(*model(init_tilt), np.zeros(N))
     mpc.setInputLimits(-np.ones(M), np.ones(M))
     mpc.setStateLimits(np.full(N, -3.0), np.full(N, 3.0))
@@ -38,18 +40,20 @@ def build(cls, init_tilt, **init_kwargs):
 
 
 @pytest.mark.parametrize(
-    "cls, init_tilt, kwargs",
+    "formulation, init_tilt, kwargs",
     [
         # a representative model at initialization tracks every later entry
-        (ampc.CondensedMPC, 1.0, {}),
-        (ampc.SparseMPC, 1.0, {}),
+        (ampc.Formulation.Condensed, 1.0, {}),
+        (ampc.Formulation.Sparse, 1.0, {}),
         # Full tracks entries that are zero at initialization
-        (ampc.SparseMPC, 0.0, {"model_sparsity": ampc.ModelSparsity.Full}),
+        (ampc.Formulation.Sparse, 0.0, {"model_sparsity": ampc.ModelSparsity.Full}),
     ],
 )
-def test_matches_full(cls, init_tilt, kwargs):
-    mpc = build(cls, init_tilt, **kwargs)
-    full = build(ampc.SparseMPC, init_tilt, model_sparsity=ampc.ModelSparsity.Full)
+def test_matches_full(formulation, init_tilt, kwargs):
+    mpc = build(formulation, init_tilt, **kwargs)
+    full = build(
+        ampc.Formulation.Sparse, init_tilt, model_sparsity=ampc.ModelSparsity.Full
+    )
     for tilt in (0.0, 0.5, -1.0, 1.0):
         for each in (mpc, full):
             each.setModelDiscrete(*model(tilt), np.zeros(N))
@@ -61,10 +65,10 @@ def test_matches_full(cls, init_tilt, kwargs):
         )
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_initial_nonzeros_reports_later_entries(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_initial_nonzeros_reports_later_entries(formulation):
     # the library is usually built without asserts (Release)
-    mpc = build(cls, 0.0)
+    mpc = build(formulation, 0.0)
     assert mpc.getModelSparsity() == ampc.ModelSparsity.InitialNonzeros
     mpc.setModelDiscrete(*model(1.0), np.zeros(N))
     mpc.solve(X0)
@@ -74,8 +78,8 @@ def test_initial_nonzeros_reports_later_entries(cls):
 def test_sparse_initial_nonzeros_tracks_fewer_entries():
     pytest.importorskip("scipy")
     # initialized at tilt = 0, then set to tilt = 1
-    tracked = build(ampc.SparseMPC, 0.0)
-    full = build(ampc.SparseMPC, 0.0, model_sparsity=ampc.ModelSparsity.Full)
+    tracked = build(ampc.Formulation.Sparse, 0.0)
+    full = build(ampc.Formulation.Sparse, 0.0, model_sparsity=ampc.ModelSparsity.Full)
     Ad, Bd = model(1.0)
     for mpc in (tracked, full):
         mpc.setModelDiscrete(Ad, Bd, np.zeros(N))
@@ -89,4 +93,4 @@ def test_sparse_initial_nonzeros_tracks_fewer_entries():
 
 def test_condensed_full_raises():
     with pytest.raises(ValueError):
-        build(ampc.CondensedMPC, 1.0, model_sparsity=ampc.ModelSparsity.Full)
+        build(ampc.Formulation.Condensed, 1.0, model_sparsity=ampc.ModelSparsity.Full)

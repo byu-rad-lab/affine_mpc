@@ -140,7 +140,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/osqp_solver_tests.cpp
     test/affine_mpc/parameterization_tests.cpp
     test/affine_mpc/discretizer_tests.cpp
-    test/affine_mpc/mpc_base_tests.cpp
+    test/affine_mpc/mpc_tests.cpp
     test/affine_mpc/condensed_mpc_tests.cpp
     test/affine_mpc/sparse_mpc_tests.cpp
     test/affine_mpc/consistency_tests.cpp
@@ -208,7 +208,7 @@ if(AFFINE_MPC_BUILD_TESTS)
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
     # tests of internal headers (src/)
-    if(TEST_NAME MATCHES "^(npz_writer|mpc_base|condensed_mpc|general_constraints|qp_pattern|model_sparsity)_tests$")
+    if(TEST_NAME MATCHES "^(npz_writer|mpc|condensed_mpc|general_constraints|qp_pattern|model_sparsity)_tests$")
       target_include_directories(${TEST_NAME}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )

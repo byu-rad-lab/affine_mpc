@@ -1,7 +1,7 @@
 #include <Eigen/Core>
 #include <gtest/gtest.h>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "formulation.hpp" // internal (src/): the condensed state map
 #include "qp_builder.hpp"
@@ -12,11 +12,10 @@ namespace ampc = affine_mpc;
 
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class CondensedMPCProtectedTester : public ampc::CondensedMPC
+class CondensedMPCProtectedTester : public ampc::MPC
 {
 public:
-  using CondensedMPC::CondensedMPC;
-  virtual ~CondensedMPCProtectedTester() = default;
+  using MPC::MPC;
 
   void setModel()
   {

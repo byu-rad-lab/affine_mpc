@@ -4,11 +4,10 @@
 #include <utility>
 #include <vector>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
@@ -16,18 +15,21 @@ using namespace Eigen;
 
 namespace {
 
-// Exposes the assembled QP
-template <class Base> class RateInspector : public Base
+// Keeps the QP assembled with the public assembleQP()
+class RateInspector : public ampc::MPC
 {
 public:
-  using Base::Base;
-  void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
-  MatrixXd P() const { return denseP(this->qp()); }
-  const VectorXd& q() const { return this->qp().q; }
+  using ampc::MPC::MPC;
+  void assemble(const Ref<const VectorXd>& x0) { assembleQP(x0, qp_); }
+  MatrixXd P() const { return MatrixXd{qp_.P}; }
+  const VectorXd& q() const { return qp_.q; }
+
+private:
+  ampc::QuadraticProgram qp_;
 };
 
 // Two-input system with every entry of Ad and Bd nonzero
-void configure(ampc::MPCBase& mpc)
+void configure(ampc::MPC& mpc)
 {
   Matrix2d Ad;
   Ad << 0.997, 0.0998, -0.0599, 0.987;
@@ -69,16 +71,16 @@ std::vector<ampc::Parameterization> bases()
 
 // The QP terms added by the rate cost, compared with the cost summed over
 // the sampled inputs: 1/2 c^T H c + g^T c + const must equal it for any c
-template <class MPC> void checkAgainstDirectSum()
+template <ampc::Formulation F> void checkAgainstDirectSum()
 {
   const Vector2d R_rate{0.7, 1.9}, u_prev{0.3, -0.4};
   const Vector2d x0{0.5, -0.2};
   for (const ampc::Parameterization& param : bases()) {
     SCOPED_TRACE("degree " + std::to_string(param.degree) + ", T "
                  + std::to_string(param.horizon_steps));
-    RateInspector<MPC> with_rate{2, 2, param,
-                                 ampc::Options{.use_input_rate_cost = true}};
-    RateInspector<MPC> without{2, 2, param};
+    RateInspector with_rate{2, 2, param,
+                            ampc::Options{.use_input_rate_cost = true}, F};
+    RateInspector without{2, 2, param, F};
     configure(with_rate);
     configure(without);
     with_rate.setInputRateWeights(R_rate);
@@ -109,10 +111,10 @@ template <class MPC> void checkAgainstDirectSum()
 }
 
 // Total variation of the applied inputs, including the step from u_prev
-template <class MPC> double inputVariation(double rate_weight)
+template <ampc::Formulation F> double inputVariation(double rate_weight)
 {
   const auto param{ampc::Parameterization::bspline(20, 2, 8)};
-  MPC mpc{2, 2, param, ampc::Options{.use_input_rate_cost = true}};
+  ampc::MPC mpc{2, 2, param, ampc::Options{.use_input_rate_cost = true}, F};
   configure(mpc);
   mpc.setInputRateWeights(Vector2d::Constant(rate_weight));
   EXPECT_TRUE(mpc.initializeSolver());
@@ -129,22 +131,24 @@ template <class MPC> double inputVariation(double rate_weight)
 
 TEST(InputRateCostTester, givenCondensedMPC_QPMatchesCostSummedOverInputs)
 {
-  checkAgainstDirectSum<ampc::CondensedMPC>();
+  checkAgainstDirectSum<ampc::Formulation::Condensed>();
 }
 
 TEST(InputRateCostTester, givenSparseMPC_QPMatchesCostSummedOverInputs)
 {
-  checkAgainstDirectSum<ampc::SparseMPC>();
+  checkAgainstDirectSum<ampc::Formulation::Sparse>();
 }
 
 TEST(InputRateCostTester, givenLargerRateWeight_InputsChangeLess)
 {
   for (const bool sparse : {false, true}) {
     SCOPED_TRACE(sparse ? "sparse" : "condensed");
-    const double smooth{sparse ? inputVariation<ampc::SparseMPC>(100.0)
-                               : inputVariation<ampc::CondensedMPC>(100.0)};
-    const double rough{sparse ? inputVariation<ampc::SparseMPC>(0.01)
-                              : inputVariation<ampc::CondensedMPC>(0.01)};
+    const double smooth{
+        sparse ? inputVariation<ampc::Formulation::Sparse>(100.0)
+               : inputVariation<ampc::Formulation::Condensed>(100.0)};
+    const double rough{
+        sparse ? inputVariation<ampc::Formulation::Sparse>(0.01)
+               : inputVariation<ampc::Formulation::Condensed>(0.01)};
     EXPECT_LT(smooth, 0.5 * rough);
   }
 }
@@ -152,8 +156,7 @@ TEST(InputRateCostTester, givenLargerRateWeight_InputsChangeLess)
 TEST(InputRateCostTester, givenRateCostOnly_PreviousInputFollowsSolves)
 {
   const auto param{ampc::Parameterization::linearInterp(10, 4)};
-  ampc::CondensedMPC mpc{2, 2, param,
-                         ampc::Options{.use_input_rate_cost = true}};
+  ampc::MPC mpc{2, 2, param, ampc::Options{.use_input_rate_cost = true}};
   configure(mpc);
   ASSERT_TRUE(mpc.initializeSolver());
   ASSERT_TRUE(mpc.getPreviousInput().isZero());
@@ -167,11 +170,11 @@ TEST(InputRateCostTester, givenRateCost_CondensedAndSparseAgree)
 {
   const auto param{ampc::Parameterization::bspline(15, 2, 6)};
   const ampc::Options opts{.use_input_rate_cost = true};
-  ampc::CondensedMPC condensed{2, 2, param, opts};
-  ampc::SparseMPC sparse{2, 2, param, opts};
+  ampc::MPC condensed{2, 2, param, opts};
+  ampc::MPC sparse{2, 2, param, opts, ampc::Formulation::Sparse};
   Vector2d x{0.5, -0.2};
-  for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&condensed),
-                             static_cast<ampc::MPCBase*>(&sparse)}) {
+  for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&condensed),
+                         static_cast<ampc::MPC*>(&sparse)}) {
     configure(*mpc);
     mpc->setInputRateWeights(Vector2d{0.7, 1.9});
     mpc->setPreviousInput(Vector2d{0.3, -0.4});
@@ -201,17 +204,17 @@ TEST(InputRateCostTester, givenCustomBasisOfBspline_ReproducesBsplineSolution)
   ampc::Options bspline_opts{opts};
   bspline_opts.saturate_input_trajectory = true;
 
-  ampc::CondensedMPC condensed_b{2, 2, bspline, bspline_opts};
-  ampc::CondensedMPC condensed_c{2, 2, custom, opts};
-  ampc::SparseMPC sparse_b{2, 2, bspline, bspline_opts};
-  ampc::SparseMPC sparse_c{2, 2, custom, opts};
+  ampc::MPC condensed_b{2, 2, bspline, bspline_opts};
+  ampc::MPC condensed_c{2, 2, custom, opts};
+  ampc::MPC sparse_b{2, 2, bspline, bspline_opts, ampc::Formulation::Sparse};
+  ampc::MPC sparse_c{2, 2, custom, opts, ampc::Formulation::Sparse};
   auto settings{ampc::OSQPSolver::getRecommendedSettings()};
   settings.polishing = true;
   settings.max_iter = 20000;
-  for (ampc::MPCBase* mpc : {static_cast<ampc::MPCBase*>(&condensed_b),
-                             static_cast<ampc::MPCBase*>(&condensed_c),
-                             static_cast<ampc::MPCBase*>(&sparse_b),
-                             static_cast<ampc::MPCBase*>(&sparse_c)}) {
+  for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&condensed_b),
+                         static_cast<ampc::MPC*>(&condensed_c),
+                         static_cast<ampc::MPC*>(&sparse_b),
+                         static_cast<ampc::MPC*>(&sparse_c)}) {
     configure(*mpc);
     mpc->setInputRateWeights(Vector2d{0.7, 1.9});
     mpc->setPreviousInput(Vector2d{0.3, -0.4});
@@ -222,8 +225,8 @@ TEST(InputRateCostTester, givenCustomBasisOfBspline_ReproducesBsplineSolution)
   const int nc{2 * bspline.num_control_points};
   VectorXd c_b{nc}, c_c{nc};
   for (auto [b, c] :
-       {std::pair<ampc::MPCBase*, ampc::MPCBase*>{&condensed_b, &condensed_c},
-        std::pair<ampc::MPCBase*, ampc::MPCBase*>{&sparse_b, &sparse_c}}) {
+       {std::pair<ampc::MPC*, ampc::MPC*>{&condensed_b, &condensed_c},
+        std::pair<ampc::MPC*, ampc::MPC*>{&sparse_b, &sparse_c}}) {
     ASSERT_EQ(b->solve(x0), ampc::SolveStatus::Success);
     ASSERT_EQ(c->solve(x0), ampc::SolveStatus::Success);
     b->getInputControlPoints(c_b);
@@ -237,7 +240,7 @@ TEST(InputRateCostTester,
 {
   const auto param{ampc::Parameterization::bspline(15, 2, 6)};
   const ampc::Options opts{.use_input_rate_cost = true};
-  RateInspector<ampc::SparseMPC> mpc{2, 2, param, opts};
+  RateInspector mpc{2, 2, param, opts, ampc::Formulation::Sparse};
   configure(mpc);
   mpc.setInputRateWeights(Vector2d::Zero());
   ASSERT_TRUE(mpc.initializeSolver());
@@ -247,7 +250,7 @@ TEST(InputRateCostTester,
   EXPECT_TRUE(mpc.isWithinSparsityPattern());
 
   // the same weights from the start give the same solution
-  ampc::SparseMPC fresh{2, 2, param, opts};
+  ampc::MPC fresh{2, 2, param, opts, ampc::Formulation::Sparse};
   configure(fresh);
   fresh.setInputRateWeights(Vector2d{0.7, 1.9});
   ASSERT_TRUE(fresh.initializeSolver());
@@ -261,13 +264,12 @@ TEST(InputRateCostTester,
 TEST(InputRateCostTester, givenInvalidRateWeights_Throws)
 {
   const auto param{ampc::Parameterization::linearInterp(10, 4)};
-  ampc::CondensedMPC disabled{2, 2, param};
+  ampc::MPC disabled{2, 2, param};
   expectLogicErrorWithMessage(
       [&]() { disabled.setInputRateWeights(Vector2d::Ones()); },
       "Input rate cost is not enabled");
 
-  ampc::CondensedMPC mpc{2, 2, param,
-                         ampc::Options{.use_input_rate_cost = true}};
+  ampc::MPC mpc{2, 2, param, ampc::Options{.use_input_rate_cost = true}};
   EXPECT_TRUE(
       expectEigenNear(mpc.getInputRateWeights(), Vector2d::Ones(), 0.0));
   expectInvalidArgumentWithMessage(

@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
@@ -27,7 +27,7 @@ protected:
     const int n{2}, m{1}, T{5}, p{2};
     const auto param{ampc::Parameterization::linearInterp(T, p)};
     const ampc::Options opts{.use_input_cost = true};
-    mpc_ = std::make_unique<ampc::CondensedMPC>(n, m, param, opts);
+    mpc_ = std::make_unique<ampc::MPC>(n, m, param, opts);
 
     Eigen::Matrix2d A;
     A << 1, 0.1, 0, 1;
@@ -49,7 +49,7 @@ protected:
   }
 
   fs::path test_dir_;
-  std::unique_ptr<ampc::CondensedMPC> mpc_;
+  std::unique_ptr<ampc::MPC> mpc_;
 };
 
 TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
@@ -139,7 +139,7 @@ TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
 
   const int n{2}, m{1}, T{5}, p{2};
   const auto param{ampc::Parameterization::linearInterp(T, p)};
-  ampc::CondensedMPC mpc{n, m, param};
+  ampc::MPC mpc{n, m, param};
 
   Eigen::Matrix2d A;
   A << 1, 0.1, 0, 1;
@@ -174,7 +174,7 @@ TEST(MPCLoggerUninitializedTest, LogStepBeforeInitializeSolver_Throws)
 
   const int n{2}, m{1}, T{5}, p{2};
   const auto param{ampc::Parameterization::linearInterp(T, p)};
-  ampc::CondensedMPC mpc{n, m, param};
+  ampc::MPC mpc{n, m, param};
 
   {
     ampc::MPCLogger logger{&mpc, test_dir, 0.1, 1, false, "uninitialized"};

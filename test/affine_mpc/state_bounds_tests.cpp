@@ -5,11 +5,10 @@
 #include <limits>
 #include <vector>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 #include "utils.hpp"
 
 namespace ampc = affine_mpc;
@@ -20,10 +19,10 @@ namespace {
 const double inf{std::numeric_limits<double>::infinity()};
 
 // Exposes the assembled QP and the slack part of the solution
-template <class Base> class BoundsInspector : public Base
+class BoundsInspector : public ampc::MPC
 {
 public:
-  using Base::Base;
+  using ampc::MPC::MPC;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
   MatrixXd P() const { return denseP(this->qp()); }
   MatrixXd A() const { return denseA(this->qp()); }
@@ -39,7 +38,7 @@ public:
 };
 
 // Mass-spring-damper (position, velocity) asked to go past its position limit
-void configure(ampc::MPCBase& mpc)
+void configure(ampc::MPC& mpc)
 {
   Matrix2d Ac;
   Ac << 0, 1, -0.6, -0.1;
@@ -58,7 +57,7 @@ const ampc::Options soft_position{
     .saturate_states = true, .soft_state_bounds = true, .bounded_states = {0}};
 
 // Polishing makes the solutions of equivalent QPs agree to round-off
-bool initialize(ampc::MPCBase& mpc)
+bool initialize(ampc::MPC& mpc)
 {
   OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   settings.polishing = true;
@@ -66,7 +65,7 @@ bool initialize(ampc::MPCBase& mpc)
   return mpc.initializeSolver(settings);
 }
 
-VectorXd solveControlPoints(ampc::MPCBase& mpc, const Vector2d& x0)
+VectorXd solveControlPoints(ampc::MPC& mpc, const Vector2d& x0)
 {
   EXPECT_TRUE(initialize(mpc));
   EXPECT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
@@ -76,7 +75,7 @@ VectorXd solveControlPoints(ampc::MPCBase& mpc, const Vector2d& x0)
 }
 
 // Largest violation of the position limit by the predicted states
-double positionViolation(const ampc::MPCBase& mpc)
+double positionViolation(const ampc::MPC& mpc)
 {
   VectorXd x_traj{2 * param.horizon_steps};
   mpc.getPredictedStateTrajectory(x_traj);
@@ -88,13 +87,12 @@ double positionViolation(const ampc::MPCBase& mpc)
 
 // Limits on the position only equal limits on both states with the velocity
 // unbounded, with one row per step fewer
-template <class MPC> void checkSubsetMatchesInfiniteLimits()
+template <ampc::Formulation F> void checkSubsetMatchesInfiniteLimits()
 {
-  BoundsInspector<MPC> full{2, 1, param,
-                            ampc::Options{.saturate_states = true}};
+  BoundsInspector full{2, 1, param, ampc::Options{.saturate_states = true}, F};
   configure(full);
   full.setStateLimits(Vector2d{-0.5, -inf}, Vector2d{0.5, inf});
-  BoundsInspector<MPC> partial{2, 1, param, position_only};
+  BoundsInspector partial{2, 1, param, position_only, F};
   configure(partial);
   partial.setStateLimits(x_lo, x_hi);
 
@@ -113,12 +111,12 @@ template <class MPC> void checkSubsetMatchesInfiniteLimits()
 // Soft limits that can be met give the hard solution with zero slack when the
 // L1 penalty is large enough (exact penalty); the L2 penalty does not change
 // that
-template <class MPC> void checkExactWhenFeasible()
+template <ampc::Formulation F> void checkExactWhenFeasible()
 {
-  MPC hard{2, 1, param, position_only};
+  ampc::MPC hard{2, 1, param, position_only, F};
   configure(hard);
   hard.setStateLimits(x_lo, x_hi);
-  BoundsInspector<MPC> soft{2, 1, param, soft_position};
+  BoundsInspector soft{2, 1, param, soft_position, F};
   configure(soft);
   soft.setStateLimits(x_lo, x_hi);
   soft.setStateBoundPenalties(VectorXd::Constant(1, 10.0),
@@ -132,16 +130,16 @@ template <class MPC> void checkExactWhenFeasible()
 
 // Starting past the limit, the hard problem is infeasible; the soft one
 // solves, and the slack is the largest violation over the horizon
-template <class MPC> void checkSoftRecoversInfeasible()
+template <ampc::Formulation F> void checkSoftRecoversInfeasible()
 {
   const Vector2d x_outside{0.9, 0.0};
-  MPC hard{2, 1, param, position_only};
+  ampc::MPC hard{2, 1, param, position_only, F};
   configure(hard);
   hard.setStateLimits(x_lo, x_hi);
   ASSERT_TRUE(initialize(hard));
   EXPECT_EQ(hard.solve(x_outside), ampc::SolveStatus::PrimalInfeasible);
 
-  BoundsInspector<MPC> soft{2, 1, param, soft_position};
+  BoundsInspector soft{2, 1, param, soft_position, F};
   configure(soft);
   soft.setStateLimits(x_lo, x_hi);
   soft.setStateBoundPenalties(VectorXd::Constant(1, 10.0),
@@ -153,9 +151,9 @@ template <class MPC> void checkSoftRecoversInfeasible()
 
 // An L2 penalty alone lets an active limit move a little, less for a larger
 // penalty
-template <class MPC> double l2Violation(double l2)
+template <ampc::Formulation F> double l2Violation(double l2)
 {
-  BoundsInspector<MPC> mpc{2, 1, param, soft_position};
+  BoundsInspector mpc{2, 1, param, soft_position, F};
   configure(mpc);
   mpc.setStateLimits(x_lo, x_hi);
   mpc.setStateBoundPenalties(VectorXd::Zero(1), VectorXd::Constant(1, l2));
@@ -165,10 +163,10 @@ template <class MPC> double l2Violation(double l2)
 }
 
 // The assembled P, A, q, l, u
-template <class MPC>
+template <ampc::Formulation F>
 std::vector<MatrixXd> assembledQP(const ampc::Options& opts)
 {
-  BoundsInspector<MPC> mpc{2, 1, param, opts};
+  BoundsInspector mpc{2, 1, param, opts, F};
   configure(mpc);
   mpc.setStateLimits(Vector2d::Constant(-0.5), Vector2d::Constant(0.5));
   mpc.assemble(Vector2d::Zero());
@@ -176,11 +174,11 @@ std::vector<MatrixXd> assembledQP(const ampc::Options& opts)
 }
 
 // Listing every state is the same as the default (all states)
-template <class MPC> void checkExplicitAllMatchesDefault()
+template <ampc::Formulation F> void checkExplicitAllMatchesDefault()
 {
-  const auto implicit{assembledQP<MPC>({.saturate_states = true})};
+  const auto implicit{assembledQP<F>({.saturate_states = true})};
   const auto explicit_all{
-      assembledQP<MPC>({.saturate_states = true, .bounded_states = {0, 1}})};
+      assembledQP<F>({.saturate_states = true, .bounded_states = {0, 1}})};
   for (size_t i{0}; i < implicit.size(); ++i)
     EXPECT_TRUE(expectEigenNear(explicit_all[i], implicit[i], 0.0)) << i;
 }
@@ -189,48 +187,49 @@ template <class MPC> void checkExplicitAllMatchesDefault()
 
 TEST(StateBoundsTester, givenAllStatesSelected_QPMatchesDefaultBitwise)
 {
-  checkExplicitAllMatchesDefault<ampc::CondensedMPC>();
-  checkExplicitAllMatchesDefault<ampc::SparseMPC>();
+  checkExplicitAllMatchesDefault<ampc::Formulation::Condensed>();
+  checkExplicitAllMatchesDefault<ampc::Formulation::Sparse>();
 }
 
 TEST(StateBoundsTester, givenSubsetOfStates_CondensedMatchesInfiniteLimits)
 {
-  checkSubsetMatchesInfiniteLimits<ampc::CondensedMPC>();
+  checkSubsetMatchesInfiniteLimits<ampc::Formulation::Condensed>();
 }
 
 TEST(StateBoundsTester, givenSubsetOfStates_SparseMatchesInfiniteLimits)
 {
-  checkSubsetMatchesInfiniteLimits<ampc::SparseMPC>();
+  checkSubsetMatchesInfiniteLimits<ampc::Formulation::Sparse>();
 }
 
 TEST(StateBoundsTester, givenFeasibleLimits_CondensedSoftMatchesHard)
 {
-  checkExactWhenFeasible<ampc::CondensedMPC>();
+  checkExactWhenFeasible<ampc::Formulation::Condensed>();
 }
 
 TEST(StateBoundsTester, givenFeasibleLimits_SparseSoftMatchesHard)
 {
-  checkExactWhenFeasible<ampc::SparseMPC>();
+  checkExactWhenFeasible<ampc::Formulation::Sparse>();
 }
 
 TEST(StateBoundsTester, givenInfeasibleLimits_CondensedSoftSolves)
 {
-  checkSoftRecoversInfeasible<ampc::CondensedMPC>();
+  checkSoftRecoversInfeasible<ampc::Formulation::Condensed>();
 }
 
 TEST(StateBoundsTester, givenInfeasibleLimits_SparseSoftSolves)
 {
-  checkSoftRecoversInfeasible<ampc::SparseMPC>();
+  checkSoftRecoversInfeasible<ampc::Formulation::Sparse>();
 }
 
 TEST(StateBoundsTester, givenL2PenaltyOnly_ViolationShrinksWithPenalty)
 {
   for (const bool sparse : {false, true}) {
     SCOPED_TRACE(sparse ? "sparse" : "condensed");
-    const double loose{sparse ? l2Violation<ampc::SparseMPC>(1.0)
-                              : l2Violation<ampc::CondensedMPC>(1.0)};
-    const double tight{sparse ? l2Violation<ampc::SparseMPC>(100.0)
-                              : l2Violation<ampc::CondensedMPC>(100.0)};
+    const double loose{sparse ? l2Violation<ampc::Formulation::Sparse>(1.0)
+                              : l2Violation<ampc::Formulation::Condensed>(1.0)};
+    const double tight{sparse
+                           ? l2Violation<ampc::Formulation::Sparse>(100.0)
+                           : l2Violation<ampc::Formulation::Condensed>(100.0)};
     EXPECT_GT(loose, 1e-3);
     EXPECT_LT(tight, 0.5 * loose);
   }
@@ -239,7 +238,7 @@ TEST(StateBoundsTester, givenL2PenaltyOnly_ViolationShrinksWithPenalty)
 TEST(StateBoundsTester, givenInvalidOptions_Throws)
 {
   auto make = [](const ampc::Options& opts) {
-    ampc::CondensedMPC mpc{2, 1, param, opts};
+    ampc::MPC mpc{2, 1, param, opts};
   };
   expectInvalidArgumentWithMessage([&]() { make({.bounded_states = {0}}); },
                                    "require saturate_states");
@@ -256,7 +255,7 @@ TEST(StateBoundsTester, givenInvalidOptions_Throws)
 
 TEST(StateBoundsTester, givenSoftBoundsWithoutPenalties_InitializeThrows)
 {
-  ampc::CondensedMPC mpc{2, 1, param, soft_position};
+  ampc::MPC mpc{2, 1, param, soft_position};
   configure(mpc);
   mpc.setStateLimits(x_lo, x_hi);
   expectLogicErrorWithMessage([&]() { (void)mpc.initializeSolver(); },
@@ -278,7 +277,7 @@ TEST(StateBoundsTester, givenSoftBoundsWithoutPenalties_InitializeThrows)
   EXPECT_EQ(mpc.getStateBoundL2Penalties()(0), 3.0);
   EXPECT_TRUE(mpc.initializeSolver());
 
-  ampc::CondensedMPC hard{2, 1, param, ampc::Options{.saturate_states = true}};
+  ampc::MPC hard{2, 1, param, ampc::Options{.saturate_states = true}};
   expectLogicErrorWithMessage(
       [&]() {
         hard.setStateBoundPenalties(Vector2d::Ones(), Vector2d::Ones());

@@ -172,8 +172,8 @@ def test_from_basis_interface():
         ampc.Parameterization.fromBasis(5, np.eye(4, 2))
 
 
-def _custom_basis_mpc(mpc_type, param, opts):
-    mpc = mpc_type(2, 1, param, opts)
+def _custom_basis_mpc(formulation, param, opts):
+    mpc = ampc.MPC(2, 1, param, opts, formulation=formulation)
     A = np.array([[0.0, 1.0], [-0.6, -0.1]])
     mpc.setModelContinuous2Discrete(A, np.array([0.0, 0.2]), np.zeros(2), 0.1)
     mpc.setInputLimits(np.array([0.0]), np.array([3.0]))
@@ -191,8 +191,8 @@ def test_from_basis_mpc_bounds_sampled_inputs():
 
     T = 30
     param = ampc.Parameterization.fromBasis(T, _laguerre_basis(T, 4, 0.8))
-    for mpc_type in [ampc.CondensedMPC, ampc.SparseMPC]:
-        mpc = _custom_basis_mpc(mpc_type, param, ampc.Options(use_input_cost=True))
+    for formulation in list(ampc.Formulation):
+        mpc = _custom_basis_mpc(formulation, param, ampc.Options(use_input_cost=True))
         assert mpc.solve(np.array([0.5, -0.2])) == ampc.SolveStatus.Success
         u_traj = mpc.getInputTrajectory()
         assert u_traj.min() >= -1e-6
@@ -203,14 +203,16 @@ def test_from_basis_mpc_bounds_sampled_inputs():
             mpc.setReferenceInput(np.zeros(1))
 
     with pytest.raises(ValueError, match="slew_control_points requires a B-spline"):
-        ampc.CondensedMPC(2, 1, param, ampc.Options(slew_control_points=True))
+        ampc.MPC(2, 1, param, ampc.Options(slew_control_points=True))
 
 
 def test_from_basis_logger_metadata(tmp_path):
     T = 12
     basis = _laguerre_basis(T, 3, 0.6)
     param = ampc.Parameterization.fromBasis(T, basis)
-    mpc = _custom_basis_mpc(ampc.CondensedMPC, param, ampc.Options(use_input_cost=True))
+    mpc = _custom_basis_mpc(
+        ampc.Formulation.Condensed, param, ampc.Options(use_input_cost=True)
+    )
     logger = ampc.MPCLogger(
         mpc, tmp_path, 0.1, log_control_points=True, mode=ampc.MPCLogger.Mode.NpzUncompressed
     )

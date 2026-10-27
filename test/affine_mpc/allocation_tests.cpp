@@ -1,7 +1,6 @@
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
 #include <cstddef>
@@ -92,7 +91,7 @@ template <typename Fn> std::size_t countAllocations(Fn&& fn)
   return num_allocations;
 }
 
-template <typename MPC>
+template <ampc::Formulation F>
 void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
                                        const ampc::Options& opts,
                                        bool use_prepare)
@@ -101,7 +100,7 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
 #endif
   const int n{2}, m{1};
-  MPC mpc{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, F};
   Matrix2d Ac;
   Ac << 0, 1, -0.6, -0.1;
   const Vector2d Bc{0, 0.2};
@@ -233,27 +232,27 @@ class AllocationTester : public ::testing::TestWithParam<AllocationCase>
 
 TEST_P(AllocationTester, givenInitializedCondensedMPC_SolveDoesNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
-                                                        GetParam().opts, false);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, false);
 }
 
 TEST_P(AllocationTester, givenInitializedSparseMPC_SolveDoesNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
-                                                     GetParam().opts, false);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Sparse>(
+      GetParam().param, GetParam().opts, false);
 }
 
 TEST_P(AllocationTester,
        givenInitializedCondensedMPC_PrepareAndSolveDoNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::CondensedMPC>(GetParam().param,
-                                                        GetParam().opts, true);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, true);
 }
 
 TEST_P(AllocationTester, givenInitializedSparseMPC_PrepareAndSolveDoNotAllocate)
 {
-  checkNoAllocationsAfterInitialize<ampc::SparseMPC>(GetParam().param,
-                                                     GetParam().opts, true);
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Sparse>(
+      GetParam().param, GetParam().opts, true);
 }
 
 TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
@@ -266,7 +265,7 @@ TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
   // allocate.
   const int n{4}, m{2}, T{300}, nc{60};
   const ampc::Options opts{.use_input_cost = true};
-  ampc::CondensedMPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
+  ampc::MPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
   MatrixXd Ad{MatrixXd::Identity(n, n)};
   Ad.topRightCorner(n - 1, n - 1).diagonal().setConstant(0.01);
   MatrixXd Bd{MatrixXd::Zero(n, m)};

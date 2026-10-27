@@ -32,7 +32,7 @@ def test_discretizer_matches_mpc_discretization():
     wc = np.array([0.1, 0.0])
     Ad, Bd, wd = ampc.Discretizer(2, 1).discretize(Ac, Bc, wc, 0.1)
 
-    mpc = ampc.CondensedMPC(2, 1, 10)
+    mpc = ampc.MPC(2, 1, 10)
     mpc.setModelContinuous2Discrete(Ac, Bc, wc, 0.1)
     x, u = np.array([0.3, -0.2]), np.array([1.5])
     np.testing.assert_array_equal(mpc.propagateModel(x, u), Ad @ x + Bd @ u + wd)

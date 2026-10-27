@@ -7,12 +7,11 @@
 #include <type_traits>
 #include <vector>
 
-#include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/quadratic_program.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 #include "qp_builder.hpp" // internal (src/): the declared entries
 #include "qp_entries.hpp"
 #include "utils.hpp"
@@ -25,10 +24,15 @@ namespace {
 using Mask = Matrix<bool, Dynamic, Dynamic>;
 
 // Exposes the assembled QP and the entries declared at construction
-class PatternInspector : public ampc::SparseMPC
+class PatternInspector : public ampc::MPC
 {
 public:
-  using SparseMPC::SparseMPC;
+  PatternInspector(int n,
+                   int m,
+                   const ampc::Parameterization& param,
+                   const ampc::Options& opts = {}) :
+      MPC{n, m, param, opts, ampc::Formulation::Sparse}
+  {}
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
   const ampc::detail::QP& qpData() const { return this->qp(); }
   const std::vector<ampc::detail::QPEntries*>& declaredP() const
@@ -146,7 +150,7 @@ Case drawCase(Draw& draw)
 
 // Sets every value the options use, drawn anew (the model zero outside the
 // masks, if given)
-void setAll(ampc::MPCBase& mpc,
+void setAll(ampc::MPC& mpc,
             const Case& c,
             Draw& draw,
             const Mask* Ad_mask = nullptr,
@@ -473,10 +477,10 @@ TEST(QPPatternTester, givenSparseInitialNonzeros_PatternIsMaskedAndSolvesMatch)
 namespace {
 
 // Exposes the internal QP and its assembly path, for either formulation
-template <class Base> class QPInspector : public Base
+class QPInspector : public ampc::MPC
 {
 public:
-  using Base::Base;
+  using ampc::MPC::MPC;
   void assemble(const Ref<const VectorXd>& x0) { (void)this->qpUpdateX0(x0); }
   const ampc::detail::QP& qpData() const { return this->qp(); }
 };
@@ -514,10 +518,10 @@ void expectContiguous(const std::vector<ampc::QPBlock>& blocks, int total)
   EXPECT_EQ(next, total);
 }
 
-template <class MPC> void checkLayoutAndQP(const Case& c, Draw& draw)
+template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
 {
-  constexpr bool sparse{std::is_same_v<MPC, ampc::SparseMPC>};
-  QPInspector<MPC> mpc{c.n, c.m, c.param, c.opts};
+  constexpr bool sparse{F == ampc::Formulation::Sparse};
+  QPInspector mpc{c.n, c.m, c.param, c.opts, F};
   setAll(mpc, c, draw);
   mpc.assemble(draw.sparse(c.n, 1));
   const ampc::QuadraticProgram qp{mpc.getQP()};
@@ -584,11 +588,11 @@ TEST(QPAccessTester, givenAnyOptions_GetQPAndBlocksDescribeTheQP)
     SCOPED_TRACE("seed " + std::to_string(seed) + ": " + describe(c));
     {
       SCOPED_TRACE("condensed");
-      checkLayoutAndQP<ampc::CondensedMPC>(c, draw);
+      checkLayoutAndQP<ampc::Formulation::Condensed>(c, draw);
     }
     {
       SCOPED_TRACE("sparse");
-      checkLayoutAndQP<ampc::SparseMPC>(c, draw);
+      checkLayoutAndQP<ampc::Formulation::Sparse>(c, draw);
     }
   }
 }
@@ -596,21 +600,20 @@ TEST(QPAccessTester, givenAnyOptions_GetQPAndBlocksDescribeTheQP)
 namespace {
 
 // Track every model entry where the formulation supports it (the drawn models
-// change their zeros; CondensedMPC has no model check to trip)
-template <class MPC> constexpr ampc::ModelSparsity allModelEntries()
+// change their zeros; the condensed formulation has no model check to trip)
+template <ampc::Formulation F> constexpr ampc::ModelSparsity allModelEntries()
 {
-  return std::is_same_v<MPC, ampc::SparseMPC>
-             ? ampc::ModelSparsity::Full
-             : ampc::ModelSparsity::InitialNonzeros;
+  return F == ampc::Formulation::Sparse ? ampc::ModelSparsity::Full
+                                        : ampc::ModelSparsity::InitialNonzeros;
 }
 
-template <class MPC> void checkAssemble(unsigned seed)
+template <ampc::Formulation F> void checkAssemble(unsigned seed)
 {
   // two MPCs set up with the same draws
   Draw draw_a{seed}, draw_b{seed};
   const Case c{drawCase(draw_a)};
   (void)drawCase(draw_b);
-  QPInspector<MPC> a{c.n, c.m, c.param, c.opts}, b{c.n, c.m, c.param, c.opts};
+  QPInspector a{c.n, c.m, c.param, c.opts, F}, b{c.n, c.m, c.param, c.opts, F};
   setAll(a, c, draw_a);
   setAll(b, c, draw_b);
   const VectorXd x0{draw_a.sparse(c.n, 1)};
@@ -627,8 +630,8 @@ template <class MPC> void checkAssemble(unsigned seed)
 
   // after it, assembling for another x0 with new values pending leaves the
   // next solve as if assembleQP() had not been called
-  ASSERT_EQ(a.initializeSolver(allModelEntries<MPC>()),
-            b.initializeSolver(allModelEntries<MPC>()));
+  ASSERT_EQ(a.initializeSolver(allModelEntries<F>()),
+            b.initializeSolver(allModelEntries<F>()));
   if (!a.isSolverInitialized())
     return;
   setAll(a, c, draw_a);
@@ -660,11 +663,11 @@ TEST(QPAccessTester, givenAnyOptions_AssembleQPMatchesAndKeepsSolvesUnchanged)
     SCOPED_TRACE("seed " + std::to_string(seed));
     {
       SCOPED_TRACE("condensed");
-      checkAssemble<ampc::CondensedMPC>(seed);
+      checkAssemble<ampc::Formulation::Condensed>(seed);
     }
     {
       SCOPED_TRACE("sparse");
-      checkAssemble<ampc::SparseMPC>(seed);
+      checkAssemble<ampc::Formulation::Sparse>(seed);
     }
   }
 }
@@ -680,7 +683,7 @@ const ampc::Options constrained_msd_opts{.use_input_cost = true,
                                          .num_general_constraints = 1,
                                          .num_terminal_constraints = 1};
 
-void setConstrainedMsd(ampc::MPCBase& mpc)
+void setConstrainedMsd(ampc::MPC& mpc)
 {
   mpc.setModelContinuous2Discrete(Matrix2d{{0, 1}, {-0.6, -0.1}},
                                   Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
@@ -699,10 +702,10 @@ void setConstrainedMsd(ampc::MPCBase& mpc)
                              Matrix<double, 1, 1>{2});
 }
 
-template <class MPC> void checkSolutionAgainstQP()
+template <ampc::Formulation F> void checkSolutionAgainstQP()
 {
-  MPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4),
-          constrained_msd_opts};
+  ampc::MPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4),
+                constrained_msd_opts, F};
   setConstrainedMsd(mpc);
   ASSERT_TRUE(mpc.initializeSolver());
   ASSERT_EQ(mpc.solve(Vector2d{0.2, 0}), ampc::SolveStatus::Success);
@@ -734,17 +737,17 @@ TEST(QPAccessTester, givenSolve_SolutionFitsTheReturnedQP)
 {
   {
     SCOPED_TRACE("condensed");
-    checkSolutionAgainstQP<ampc::CondensedMPC>();
+    checkSolutionAgainstQP<ampc::Formulation::Condensed>();
   }
   {
     SCOPED_TRACE("sparse");
-    checkSolutionAgainstQP<ampc::SparseMPC>();
+    checkSolutionAgainstQP<ampc::Formulation::Sparse>();
   }
 }
 
 TEST(QPAccessTester, givenMissingSetup_AssembleQPThrows)
 {
-  ampc::CondensedMPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4)};
+  ampc::MPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4)};
   ampc::QuadraticProgram qp;
   expectLogicErrorWithMessage(
       [&] { mpc.assembleQP(Vector2d::Zero(), qp); },

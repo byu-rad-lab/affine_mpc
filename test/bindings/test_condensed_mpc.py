@@ -14,12 +14,10 @@ def test_implicit_mpc_interface():
     try:
         n, m, T, nc = 2, 1, 10, 5
 
-        mpc = ampc.CondensedMPC(state_dim=n, input_dim=m, horizon_steps=T)
-        mpc = ampc.CondensedMPC(
-            state_dim=n, input_dim=m, horizon_steps=T, opts=ampc.Options()
-        )
+        mpc = ampc.MPC(state_dim=n, input_dim=m, horizon_steps=T)
+        mpc = ampc.MPC(state_dim=n, input_dim=m, horizon_steps=T, opts=ampc.Options())
 
-        mpc = ampc.CondensedMPC(
+        mpc = ampc.MPC(
             state_dim=n,
             input_dim=m,
             param=ampc.Parameterization.linearInterp(
@@ -102,7 +100,7 @@ if __name__ == "__main__":
 
 def test_qp_cost_matrix_is_copy():
     nc = 5
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(10, nc))
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(10, nc))
     mpc.setModelDiscrete(
         np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
     )
@@ -119,9 +117,9 @@ def test_qp_cost_matrix_is_copy():
     assert mpc.getQPCostMatrix()[0, 0] != 1e6
 
 
-@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_solution_getters_before_initialize_raise(mpc_type):
-    mpc = mpc_type(2, 1, 10)
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_solution_getters_before_initialize_raise(formulation):
+    mpc = ampc.MPC(2, 1, 10, formulation=formulation)
     assert not mpc.isSolverInitialized()
 
     getters = [
@@ -138,10 +136,10 @@ def test_solution_getters_before_initialize_raise(mpc_type):
         mpc.getNextInput(np.zeros(1))
 
 
-@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_wrong_size_arguments_raise(mpc_type):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_wrong_size_arguments_raise(formulation):
     n, m, T = 2, 1, 10
-    mpc = mpc_type(n, m, T)
+    mpc = ampc.MPC(n, m, T, formulation=formulation)
 
     # setters are checked in C++ and raise ValueError (std::invalid_argument)
     with pytest.raises(ValueError, match="x_step must have size 2, got 5"):
@@ -177,9 +175,11 @@ def test_wrong_size_arguments_raise(mpc_type):
         mpc.getPredictedStateTrajectory(np.zeros(1))
 
 
-@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_reset_warm_start_repeats_solve_from_zero(mpc_type):
-    mpc = mpc_type(2, 1, ampc.Parameterization.linearInterp(10, 5))
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_reset_warm_start_repeats_solve_from_zero(formulation):
+    mpc = ampc.MPC(
+        2, 1, ampc.Parameterization.linearInterp(10, 5), formulation=formulation
+    )
     mpc.resetWarmStart()  # no-op before initialization
     mpc.setModelDiscrete(
         np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
@@ -210,9 +210,11 @@ def test_reset_warm_start_repeats_solve_from_zero(mpc_type):
     assert np.array_equal(mpc.getNextInput(), u_first)
 
 
-@pytest.mark.parametrize("mpc_type", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_nonfinite_model_reports_update_failed_and_recovers(mpc_type):
-    mpc = mpc_type(2, 1, ampc.Parameterization.linearInterp(10, 5))
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_nonfinite_model_reports_update_failed_and_recovers(formulation):
+    mpc = ampc.MPC(
+        2, 1, ampc.Parameterization.linearInterp(10, 5), formulation=formulation
+    )
     Ad = np.array([[1.0, 0.1], [-0.06, 0.99]])
     Bd = np.array([0.0, 0.02])
     mpc.setModelDiscrete(Ad, Bd, np.zeros(2))

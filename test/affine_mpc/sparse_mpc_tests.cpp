@@ -1,6 +1,6 @@
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #include <Eigen/Core>
 #include <gtest/gtest.h>
@@ -11,11 +11,15 @@ using namespace Eigen;
 namespace ampc = affine_mpc;
 
 // Tests are done with a Mass-Spring-Damper system (2 states, 1 input)
-class SparseMPCProtectedTester : public affine_mpc::SparseMPC
+class SparseMPCProtectedTester : public affine_mpc::MPC
 {
 public:
-  using SparseMPC::SparseMPC;
-  virtual ~SparseMPCProtectedTester() = default;
+  SparseMPCProtectedTester(int n,
+                           int m,
+                           const affine_mpc::Parameterization& param,
+                           const affine_mpc::Options& opts = {}) :
+      MPC{n, m, param, opts, affine_mpc::Formulation::Sparse}
+  {}
 
   void setModel()
   {
@@ -27,10 +31,7 @@ public:
     setModelContinuous2Discrete(A, B, w, 0.1);
   }
 
-  void updateQPTerms(const Ref<const VectorXd>& x0)
-  {
-    affine_mpc::SparseMPC::qpUpdateX0(x0);
-  }
+  void updateQPTerms(const Ref<const VectorXd>& x0) { (void)qpUpdateX0(x0); }
 
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }

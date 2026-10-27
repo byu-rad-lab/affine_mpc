@@ -5,12 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "affine_mpc/condensed_mpc.hpp"
 #include "affine_mpc/discretizer.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 #include "qp_builder.hpp" // internal (src/): the declared entries
 #include "qp_entries.hpp"
 #include "utils.hpp"
@@ -25,10 +24,10 @@ using ampc::ModelSparsity;
 constexpr int n{4}, m{2}, T{12}, nc{5};
 
 // Exposes the QP and the entries declared for it
-template <class MPC> class Inspector : public MPC
+class Inspector : public ampc::MPC
 {
 public:
-  using MPC::MPC;
+  using ampc::MPC::MPC;
   const ampc::detail::QP& qpData() const { return this->qp(); }
   const std::vector<ampc::detail::QPEntries*>& declaredA() const
   {
@@ -69,7 +68,7 @@ OSQPSettings tightSettings()
 }
 
 // Everything but the model
-void configure(ampc::MPCBase& mpc)
+void configure(ampc::MPC& mpc)
 {
   mpc.setInputLimits(Vector2d::Constant(-1.0), Vector2d::Constant(1.0));
   mpc.setStateLimits(Vector4d::Constant(-3.0), Vector4d::Constant(3.0));
@@ -78,7 +77,7 @@ void configure(ampc::MPCBase& mpc)
   mpc.setReferenceState(Vector4d{1.0, 0.0, -0.5, 0.0});
 }
 
-VectorXd controlPoints(const ampc::MPCBase& mpc)
+VectorXd controlPoints(const ampc::MPC& mpc)
 {
   VectorXd c{m * nc};
   mpc.getInputControlPoints(c);
@@ -89,11 +88,11 @@ const ampc::Parameterization param{ampc::Parameterization::bspline(T, 2, nc)};
 
 // Initialize with the model at `init_tilt`, then solve a sequence of models
 // (tilts) from the same state, each from a cold start; compare against a
-// SparseMPC that tracks every entry
-template <class MPC> void expectMatchesFull(double init_tilt)
+// sparse MPC that tracks every entry
+template <ampc::Formulation F> void expectMatchesFull(double init_tilt)
 {
-  MPC mpc{n, m, param, opts};
-  ampc::SparseMPC full{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, F};
+  ampc::MPC full{n, m, param, opts, ampc::Formulation::Sparse};
   MatrixXd Ad, Bd;
   model(init_tilt, Ad, Bd);
   mpc.setModelDiscrete(Ad, Bd, Vector4d::Zero());
@@ -106,7 +105,7 @@ template <class MPC> void expectMatchesFull(double init_tilt)
   for (const double tilt : {0.0, 0.5, -1.0, 1.0}) {
     SCOPED_TRACE("tilt " + std::to_string(tilt));
     model(tilt, Ad, Bd);
-    for (ampc::MPCBase* each : std::vector<ampc::MPCBase*>{&mpc, &full}) {
+    for (ampc::MPC* each : std::vector<ampc::MPC*>{&mpc, &full}) {
       each->setModelDiscrete(Ad, Bd, Vector4d::Zero());
       each->resetWarmStart();
       ASSERT_EQ(each->solve(x0), ampc::SolveStatus::Success);
@@ -123,19 +122,20 @@ template <class MPC> void expectMatchesFull(double init_tilt)
 // both formulations solve the same problems as tracking every entry
 TEST(ModelSparsityTester, givenRepresentativeInitModel_SparseMatchesFull)
 {
-  expectMatchesFull<ampc::SparseMPC>(1.0);
+  expectMatchesFull<ampc::Formulation::Sparse>(1.0);
 }
 
 TEST(ModelSparsityTester, givenRepresentativeInitModel_CondensedMatchesFull)
 {
-  expectMatchesFull<ampc::CondensedMPC>(1.0);
+  expectMatchesFull<ampc::Formulation::Condensed>(1.0);
 }
 
 // With Full, entries that are zero at initialization are applied when they
 // become nonzero
 TEST(ModelSparsityTester, givenFullAndZerosAtInit_SparseAppliesLaterEntries)
 {
-  ampc::SparseMPC mpc{n, m, param, opts}, fresh{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, ampc::Formulation::Sparse},
+      fresh{n, m, param, opts, ampc::Formulation::Sparse};
   MatrixXd Ad, Bd;
   model(0.0, Ad, Bd);
   mpc.setModelDiscrete(Ad, Bd, Vector4d::Zero());
@@ -162,9 +162,9 @@ TEST(ModelSparsityTester, givenFullAndZerosAtInit_SparseAppliesLaterEntries)
 // initialization are not tracked: both formulations report a later nonzero
 TEST(ModelSparsityTester, givenInitialNonzerosAndZerosAtInit_LaterEntryReported)
 {
-  ampc::SparseMPC sparse{n, m, param, opts};
-  ampc::CondensedMPC condensed{n, m, param, opts};
-  for (ampc::MPCBase* mpc : std::vector<ampc::MPCBase*>{&sparse, &condensed}) {
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
+  ampc::MPC condensed{n, m, param, opts};
+  for (ampc::MPC* mpc : std::vector<ampc::MPC*>{&sparse, &condensed}) {
     SCOPED_TRACE(mpc->getClassName());
     MatrixXd Ad, Bd;
     model(0.0, Ad, Bd);
@@ -183,15 +183,15 @@ TEST(ModelSparsityTester, givenInitialNonzerosAndZerosAtInit_LaterEntryReported)
   }
 }
 
-// SparseMPC with InitialNonzeros stores (and so sends to OSQP) only the
-// nonzero entries of Ad and Bd in the dynamics rows, at every step
+// The sparse formulation with InitialNonzeros stores (and so sends to OSQP)
+// only the nonzero entries of Ad and Bd in the dynamics rows, at every step
 TEST(ModelSparsityTester, givenInitialNonzeros_SparsePatternExcludesZeros)
 {
-  Inspector<ampc::SparseMPC> tracked{n, m, param, opts};
-  Inspector<ampc::SparseMPC> full{n, m, param, opts};
+  Inspector tracked{n, m, param, opts, ampc::Formulation::Sparse};
+  Inspector full{n, m, param, opts, ampc::Formulation::Sparse};
   MatrixXd Ad, Bd;
   model(0.0, Ad, Bd);
-  for (ampc::MPCBase* mpc : std::vector<ampc::MPCBase*>{&tracked, &full}) {
+  for (ampc::MPC* mpc : std::vector<ampc::MPC*>{&tracked, &full}) {
     mpc->setModelDiscrete(Ad, Bd, Vector4d::Zero());
     configure(*mpc);
   }
@@ -235,9 +235,9 @@ TEST(ModelSparsityTester, givenInitialNonzeros_SparsePatternExcludesZeros)
 // A model without zeros keeps the full blocks (their columns copied whole)
 TEST(ModelSparsityTester, givenModelWithoutZeros_InitialNonzerosIsFull)
 {
-  Inspector<ampc::SparseMPC> tracked{n, m, param, opts};
-  Inspector<ampc::SparseMPC> full{n, m, param, opts};
-  for (ampc::MPCBase* mpc : std::vector<ampc::MPCBase*>{&tracked, &full}) {
+  Inspector tracked{n, m, param, opts, ampc::Formulation::Sparse};
+  Inspector full{n, m, param, opts, ampc::Formulation::Sparse};
+  for (ampc::MPC* mpc : std::vector<ampc::MPC*>{&tracked, &full}) {
     mpc->setModelDiscrete(MatrixXd::Constant(n, n, 0.1),
                           MatrixXd::Constant(n, m, 0.1), Vector4d::Zero());
     configure(*mpc);
@@ -253,7 +253,7 @@ TEST(ModelSparsityTester, givenModelWithoutZeros_InitialNonzerosIsFull)
 
 TEST(ModelSparsityTester, givenCondensedFull_InitializeSolverThrows)
 {
-  ampc::CondensedMPC mpc{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts};
   MatrixXd Ad, Bd;
   model(1.0, Ad, Bd);
   mpc.setModelDiscrete(Ad, Bd, Vector4d::Zero());
@@ -264,8 +264,8 @@ TEST(ModelSparsityTester, givenCondensedFull_InitializeSolverThrows)
   EXPECT_TRUE(mpc.initializeSolver(ModelSparsity::InitialNonzeros));
 }
 
-// After initialization, a SparseMPC model entry outside the tracked ones:
-// debug builds assert in the model setters, and in Release
+// After initialization, a sparse-formulation model entry outside the tracked
+// ones: debug builds assert in the model setters, and in Release
 // isWithinSparsityPattern() reports it
 TEST(ModelSparsityDeathTester,
      givenUntrackedModelEntry_DebugAssertsReleaseReports)
@@ -277,7 +277,7 @@ TEST(ModelSparsityDeathTester,
   MatrixXd Bd_out{Bd};
   Bd_out(2, 0) = 0.01; // zero at initialization
 
-  ampc::SparseMPC mpc{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, ampc::Formulation::Sparse};
   mpc.setModelDiscrete(Ad, Bd, Vector4d::Zero());
   configure(mpc);
   ASSERT_TRUE(mpc.initializeSolver());
@@ -330,7 +330,7 @@ TEST(ModelSparsityTester, givenUnionOverOperatingPoints_TracksEveryLaterModel)
       EXPECT_EQ(Ad_union(i, j), 1.0) << i << ", " << j;
   EXPECT_GT((Ad_union.array() != 0.0).count(), (Ac.array() != 0.0).count());
 
-  ampc::SparseMPC mpc{n, m, param, opts};
+  ampc::MPC mpc{n, m, param, opts, ampc::Formulation::Sparse};
   mpc.setModelDiscrete(Ad_union, Bd_union, wd);
   configure(mpc);
   ASSERT_TRUE(mpc.initializeSolver());

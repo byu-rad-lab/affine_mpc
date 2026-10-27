@@ -12,7 +12,7 @@ def function_fails(func, *args, **kwargs):
     return False
 
 
-def test_mpc_base_interface():
+def test_mpc_interface():
     try:
         n, m, T, nc = 2, 1, 10, 5
         param = ampc.Parameterization.linearInterp(
@@ -23,7 +23,7 @@ def test_mpc_base_interface():
         opts.slew_control_points = True
         opts.slew_initial_input = True
         opts.saturate_states = True
-        mpc = ampc.MPCBase(n, m, param, opts)
+        mpc = ampc.MPC(n, m, param, opts)
 
         mpc.setModelDiscrete(Ad=np.eye(n), Bd=np.ones(n), wd=np.zeros(n))
         mpc.setModelContinuous2Discrete(
@@ -72,7 +72,7 @@ def test_mpc_base_interface():
     assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
     assert function_fails(mpc.initializeSolver, solver_settings=None)
-    # MPCBase on its own builds the condensed QP
+    # the default formulation is condensed
     assert mpc.initializeSolver(solver_settings=ampc.OSQPSettings())
 
     assert function_fails(mpc.getNextInput, u0=None)
@@ -82,7 +82,7 @@ def test_mpc_base_interface():
 
 
 if __name__ == "__main__":
-    test_mpc_base_interface()
+    test_mpc_interface()
     print("All tests passed!")
 
 
@@ -94,10 +94,10 @@ def _all_options_mpc(n=2, m=2, T=6, nc=3):
         slew_control_points=True,
         saturate_states=True,
     )
-    return ampc.CondensedMPC(n, m, param, opts), param, opts
+    return ampc.MPC(n, m, param, opts), param, opts
 
 
-def test_mpc_base_getters_return_set_values():
+def test_mpc_getters_return_set_values():
     n, m, T, nc = 2, 2, 6, 3
     mpc, param, opts = _all_options_mpc(n, m, T, nc)
 
@@ -142,8 +142,8 @@ def test_mpc_base_getters_return_set_values():
     np.testing.assert_array_equal(mpc.getInputMin(), -np.ones(m))
 
 
-def test_mpc_base_optional_getters_raise_when_disabled():
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(5, 3))
+def test_mpc_optional_getters_raise_when_disabled():
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 3))
     for getter in (
         mpc.getInputWeights,
         mpc.getReferenceInputControlPoints,
@@ -157,9 +157,11 @@ def test_mpc_base_optional_getters_raise_when_disabled():
             getter()
 
 
-def _msd_mpc(cls):
+def _msd_mpc(formulation):
     n, m, T = 2, 1, 20
-    mpc = cls(n, m, ampc.Parameterization.linearInterp(T, 5))
+    mpc = ampc.MPC(
+        n, m, ampc.Parameterization.linearInterp(T, 5), formulation=formulation
+    )
     Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
     mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
     mpc.setInputLimits(np.zeros(m), 3.0 * np.ones(m))
@@ -168,15 +170,15 @@ def _msd_mpc(cls):
     return mpc
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_solve_in_threads_matches_sequential_solve(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_solve_in_threads_matches_sequential_solve(formulation):
     # solve() releases the GIL, so independent MPC objects can solve in parallel
     from concurrent.futures import ThreadPoolExecutor
 
     x0s = [np.array([0.1 * i, -0.05 * i]) for i in range(8)]
 
     def solve(x0):
-        mpc = _msd_mpc(cls)
+        mpc = _msd_mpc(formulation)
         assert mpc.solve(x0) == ampc.SolveStatus.Success
         return mpc.getInputTrajectory()
 
@@ -188,17 +190,19 @@ def test_solve_in_threads_matches_sequential_solve(cls):
 
     # exceptions still propagate with the GIL released during the call
     with pytest.raises(ValueError, match="x0"):
-        _msd_mpc(cls).solve(np.zeros(3))
+        _msd_mpc(formulation).solve(np.zeros(3))
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_model_offset_setters(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_model_offset_setters(formulation):
     n, m = 2, 1
     Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
     Bc = np.array([0.0, 0.2])
     x, u = np.array([0.5, -0.2]), np.array([1.5])
 
-    mpc = cls(n, m, ampc.Parameterization.linearInterp(20, 5))
+    mpc = ampc.MPC(
+        n, m, ampc.Parameterization.linearInterp(20, 5), formulation=formulation
+    )
     with pytest.raises(RuntimeError, match="Model must be set"):
         mpc.setModelOffsetDiscrete(wd=np.zeros(n))
 
@@ -218,13 +222,19 @@ def test_model_offset_setters(cls):
         mpc.setModelOffsetContinuous2Discrete(wc)
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_input_rate_cost(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_input_rate_cost(formulation):
     n, m, T = 2, 1, 20
     param = ampc.Parameterization.bspline(T, 2, 8)
 
     def solve(rate_weight):
-        mpc = cls(n, m, param, ampc.Options(use_input_rate_cost=True))
+        mpc = ampc.MPC(
+            n,
+            m,
+            param,
+            ampc.Options(use_input_rate_cost=True),
+            formulation=formulation,
+        )
         mpc.setModelContinuous2Discrete(
             np.array([[0.0, 1.0], [-0.6, -0.1]]), np.array([0.0, 0.2]), np.zeros(n), 0.1
         )
@@ -245,18 +255,18 @@ def test_input_rate_cost(cls):
     assert variation(solve(100.0)) < 0.5 * variation(solve(0.01))
 
     with pytest.raises(RuntimeError, match="not enabled"):
-        cls(n, m, param).setInputRateWeights(np.ones(m))
+        ampc.MPC(n, m, param, formulation=formulation).setInputRateWeights(np.ones(m))
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_partial_and_soft_state_bounds(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_partial_and_soft_state_bounds(formulation):
     param = ampc.Parameterization.bspline(20, 2, 8)
     settings = ampc.OSQPSettings()
     settings.polishing = True
     settings.max_iter = 20000
 
     def build(opts, x0):
-        mpc = cls(2, 1, param, opts)
+        mpc = ampc.MPC(2, 1, param, opts, formulation=formulation)
         mpc.setModelContinuous2Discrete(
             np.array([[0.0, 1.0], [-0.6, -0.1]]), np.array([0.0, 0.2]), np.zeros(2), 0.1
         )
@@ -293,11 +303,17 @@ def test_partial_and_soft_state_bounds(cls):
     assert status == ampc.SolveStatus.Success
 
     with pytest.raises(ValueError, match="strictly increasing"):
-        cls(2, 1, param, ampc.Options(saturate_states=True, bounded_states=[1, 0]))
+        ampc.MPC(
+            2,
+            1,
+            param,
+            ampc.Options(saturate_states=True, bounded_states=[1, 0]),
+            formulation=formulation,
+        )
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_general_and_terminal_constraints(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_general_and_terminal_constraints(formulation):
     param = ampc.Parameterization.bspline(20, 2, 8)
     T = param.horizon_steps
     settings = ampc.OSQPSettings()
@@ -307,7 +323,7 @@ def test_general_and_terminal_constraints(cls):
     opts = ampc.Options(num_general_constraints=1, num_terminal_constraints=1)
     assert opts.num_general_constraints == 1
     assert "num_general_constraints=1, num_terminal_constraints=1" in repr(opts)
-    mpc = cls(2, 1, param, opts)
+    mpc = ampc.MPC(2, 1, param, opts, formulation=formulation)
     mpc.setModelContinuous2Discrete(
         np.array([[0.0, 1.0], [-0.6, -0.1]]), np.array([0.0, 0.2]), np.zeros(2), 0.1
     )
@@ -341,17 +357,25 @@ def test_general_and_terminal_constraints(cls):
     with pytest.raises(ValueError, match="cannot be greater"):
         mpc.setGeneralConstraints(Hx, Hu, np.array([1.0]), np.array([0.0]))
     with pytest.raises(RuntimeError, match="not enabled"):
-        cls(2, 1, param).setGeneralConstraints(Hx, Hu, np.zeros(1), np.ones(1))
+        ampc.MPC(2, 1, param, formulation=formulation).setGeneralConstraints(
+            Hx, Hu, np.zeros(1), np.ones(1)
+        )
     with pytest.raises(RuntimeError, match="not enabled"):
-        cls(2, 1, param).getTerminalConstraintMatrix()
+        ampc.MPC(2, 1, param, formulation=formulation).getTerminalConstraintMatrix()
     with pytest.raises(ValueError, match="non-negative"):
-        cls(2, 1, param, ampc.Options(num_general_constraints=-1))
+        ampc.MPC(
+            2,
+            1,
+            param,
+            ampc.Options(num_general_constraints=-1),
+            formulation=formulation,
+        )
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_qp_blocks(cls):
-    mpc = _msd_mpc(cls)
-    sparse = cls is ampc.SparseMPC
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_qp_blocks(formulation):
+    mpc = _msd_mpc(formulation)
+    sparse = formulation == ampc.Formulation.Sparse
 
     variables = mpc.getQPVariableBlocks()
     assert [b.name for b in variables] == ["control_points"] + (
@@ -366,10 +390,10 @@ def test_qp_blocks(cls):
     assert sum(b.size for b in rows) == mpc.getNumQPConstraints()
 
 
-@pytest.mark.parametrize("cls", [ampc.CondensedMPC, ampc.SparseMPC])
-def test_get_and_assemble_qp(cls):
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_get_and_assemble_qp(formulation):
     scipy_sparse = pytest.importorskip("scipy.sparse")
-    mpc = _msd_mpc(cls)
+    mpc = _msd_mpc(formulation)
     x0 = np.array([0.2, 0.0])
     assert mpc.solve(x0) == ampc.SolveStatus.Success
 
@@ -403,7 +427,7 @@ def test_get_and_assemble_qp(cls):
 
 
 def test_assemble_qp_requires_setup():
-    mpc = ampc.CondensedMPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
     with pytest.raises(
         RuntimeError, match="Model must be set before assembling the QP"
     ):
