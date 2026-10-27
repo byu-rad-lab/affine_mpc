@@ -15,7 +15,7 @@ namespace affine_mpc {
  * @brief Former name of MPC.
  * @deprecated Use MPC. MPCBase will be removed in 0.5.0.
  */
-using MPCBase [[deprecated("use MPC")]] = MPC;
+using MPCBase [[deprecated("use MPC (removed in 0.5.0)")]] = MPC;
 
 } // namespace affine_mpc
 

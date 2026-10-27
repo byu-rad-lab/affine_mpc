@@ -20,8 +20,8 @@ namespace affine_mpc {
  * @deprecated Use MPC with Formulation::Sparse. SparseMPC will be removed in
  *   0.5.0.
  */
-class [[deprecated("use MPC with Formulation::Sparse")]] SparseMPC final
-    : public MPC
+class [[deprecated("use MPC with Formulation::Sparse (removed in 0.5.0)")]]
+SparseMPC final : public MPC
 {
 public:
   /// @brief Same as MPC(state_dim, input_dim, param, opts,

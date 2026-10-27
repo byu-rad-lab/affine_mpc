@@ -20,8 +20,8 @@ namespace affine_mpc {
  * @deprecated Use MPC, whose formulation defaults to Formulation::Condensed.
  *   CondensedMPC will be removed in 0.5.0.
  */
-class [[deprecated("use MPC with Formulation::Condensed")]] CondensedMPC final
-    : public MPC
+class [[deprecated("use MPC with Formulation::Condensed (removed in 0.5.0)")]]
+CondensedMPC final : public MPC
 {
 public:
   /// @brief Same as MPC(state_dim, input_dim, param, opts,

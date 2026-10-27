@@ -237,7 +237,8 @@ if(AFFINE_MPC_BUILD_TESTS)
           --target ${target} --config $<CONFIG>
       )
       set_tests_properties(deprecated_${name}_warns PROPERTIES
-        PASS_REGULAR_EXPRESSION "${name}[^\n]* is deprecated: use MPC"
+        PASS_REGULAR_EXPRESSION
+          "${name}[^\n]* is deprecated: use MPC[^\n]*\\(removed in 0\\.5\\.0\\)"
         RESOURCE_LOCK affine_mpc_build_tree
       )
     endforeach()
