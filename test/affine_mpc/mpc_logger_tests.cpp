@@ -1,8 +1,12 @@
 #include "affine_mpc/mpc_logger.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
+#include <iterator>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 #include "affine_mpc/condensed_mpc.hpp"
 #include "utils.hpp"
@@ -189,4 +193,27 @@ TEST_F(MPCLoggerTest, LogStepWithWrongSizeState_Throws)
   ASSERT_EQ(mpc_->solve(x0), ampc::SolveStatus::Success);
   EXPECT_THROW(logger.logStep(0.0, Eigen::Vector3d{1.0, 0.5, 0.0}),
                std::invalid_argument);
+}
+
+TEST(MPCLoggerFormulationTest, givenEachFormulation_RecordsItInParams)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_formulation")};
+  const auto param{ampc::Parameterization::linearInterp(5, 2)};
+  for (const auto& [formulation, name] :
+       {std::pair{ampc::Formulation::Condensed, "condensed"},
+        std::pair{ampc::Formulation::Sparse, "sparse"}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, formulation};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"formulation: "} + name + "\n"),
+              std::string::npos)
+        << params;
+  }
+  fs::remove_all(test_dir);
 }

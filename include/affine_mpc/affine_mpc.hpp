@@ -13,8 +13,9 @@
  *  - Input parameterization (B-splines, move-blocking, etc.)
  *  - Model discretization (Discretizer)
  *  - Solve status codes
- *  - Core MPC classes (CondensedMPC, SparseMPC)
+ *  - The MPC class and its Formulation
  *  - Logging utilities
+ *  - The former class names (MPCBase, CondensedMPC, SparseMPC)
  */
 
 #include "affine_mpc/discretizer.hpp"
@@ -23,10 +24,11 @@
 #include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
-#include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
 
 #include "affine_mpc/condensed_mpc.hpp"
+#include "affine_mpc/mpc_base.hpp"
 #include "affine_mpc/sparse_mpc.hpp"
 
 #endif // AFFINE_MPC_HPP

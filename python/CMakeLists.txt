@@ -33,9 +33,7 @@ pybind11_add_module(_bindings MODULE
   bindings/py_osqp_settings.cpp
   bindings/py_solve_status.cpp
   bindings/py_quadratic_program.cpp
-  bindings/py_mpc_base.cpp
-  bindings/py_condensed_mpc.cpp
-  bindings/py_sparse_mpc.cpp
+  bindings/py_mpc.cpp
   bindings/py_mpc_logger.cpp
 )
 

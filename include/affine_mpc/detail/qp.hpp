@@ -5,7 +5,7 @@
  * @file qp.hpp
  * @brief Internal: the QP data passed to the solver.
  *
- * Internal: installed only because public headers include it (MPCBase gives
+ * Internal: installed only because public headers include it (MPC gives
  * subclasses read access to the QP). Not part of the public API.
  */
 

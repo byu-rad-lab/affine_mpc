@@ -96,7 +96,7 @@ struct Options
 /**
  * @enum ModelSparsity
  * @brief Which entries of the discrete model Ad and Bd the solver tracks,
- *   chosen with MPCBase::initializeSolver().
+ *   chosen with MPC::initializeSolver().
  *
  * OSQP fixes the sparsity pattern of the QP at initialization, and later
  * updates only change the values of the tracked entries: a model entry outside
@@ -112,7 +112,7 @@ enum class ModelSparsity
   InitialNonzeros,
   /// Track every entry of Ad and Bd (full blocks), so any entry may change
   /// between zero and nonzero later. Costs more per solve when the model has
-  /// structural zeros. Supported by SparseMPC only for now.
+  /// structural zeros. Supported by the sparse formulation only for now.
   Full,
 };
 

@@ -6,7 +6,7 @@
  * @brief Defines VectorParameterization, the internal map from the control
  *   point vector of the QP to the inputs of every input channel.
  *
- * Internal: installed only because public headers include it (MPCBase and
+ * Internal: installed only because public headers include it (MPC and
  * MPCLogger hold it by value); not part of the public API.
  */
 

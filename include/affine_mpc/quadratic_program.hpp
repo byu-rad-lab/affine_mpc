@@ -25,7 +25,7 @@ namespace affine_mpc {
  * its value at the solution is not the full MPC cost. Equality rows have
  * l = u, and unbounded sides are +-infinity (the solver receives them as its
  * own infinity). The order of the variables z and of the rows of A is given
- * by MPCBase::getQPVariableBlocks() and MPCBase::getQPConstraintBlocks().
+ * by MPC::getQPVariableBlocks() and MPC::getQPConstraintBlocks().
  */
 struct QuadraticProgram
 {

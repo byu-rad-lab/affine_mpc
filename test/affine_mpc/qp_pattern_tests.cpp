@@ -748,10 +748,10 @@ TEST(QPAccessTester, givenMissingSetup_AssembleQPThrows)
   ampc::QuadraticProgram qp;
   expectLogicErrorWithMessage(
       [&] { mpc.assembleQP(Vector2d::Zero(), qp); },
-      "[MPCBase::assembleQP] Model must be set before assembling the QP.");
+      "[MPC::assembleQP] Model must be set before assembling the QP.");
   mpc.setModelDiscrete(Matrix2d::Identity(), Vector2d{0, 1}, Vector2d::Zero());
   expectLogicErrorWithMessage(
       [&] { mpc.assembleQP(Vector2d::Zero(), qp); },
-      "[MPCBase::assembleQP] Input limits must be set before assembling the "
+      "[MPC::assembleQP] Input limits must be set before assembling the "
       "QP.");
 }

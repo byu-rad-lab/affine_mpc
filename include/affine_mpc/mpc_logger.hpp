@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "affine_mpc/detail/vector_parameterization.hpp"
-#include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc.hpp"
 
 namespace affine_mpc {
 
@@ -99,7 +99,7 @@ public:
    *   finalization exceeds those limits, the logger falls back to NPY output
    *   and preserves raw recoverable payloads on failure.
    */
-  MPCLogger(const MPCBase* const mpc,
+  MPCLogger(const MPC* const mpc,
             const std::filesystem::path& save_dir,
             double ts,
             int prediction_stride = 1,
@@ -119,7 +119,7 @@ public:
    *
    * @param t Current simulation time (time of solve).
    * @param x0 Current state at time t (same as provided to solve() since
-   *   MPCBase does not store this).
+   *   MPC does not store this).
    * @param loop_time Optional user-measured time (seconds), e.g. of the whole
    *   control loop iteration on hardware. Logged as `loop_time` (-1 when not
    *   provided). The `mpc_solve_time`, `qp_solve_time`, and `prepare_time`
@@ -208,7 +208,7 @@ private:
   std::filesystem::path npyDirPath() const;
   std::filesystem::path npzPath() const;
 
-  const MPCBase* const mpc_;
+  const MPC* const mpc_;
   const int state_dim_, input_dim_, horizon_steps_, num_ctrls_, spline_degree_;
   const detail::VectorParameterization
       input_param_; // evaluates reference inputs

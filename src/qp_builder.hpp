@@ -10,7 +10,7 @@
 
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
-#include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "formulation.hpp"
 #include "qp_terms.hpp"
@@ -40,7 +40,7 @@ public:
   /// Builds the term list and allocates the QP (zero); call
   /// writeConstantParts() before the first update. The sparse formulation
   /// declares the given entries of Ad and Bd (every entry by default).
-  QPBuilder(FormulationKind kind,
+  QPBuilder(Formulation kind,
             int state_dim,
             const VectorParameterization& input_param,
             const Options& opts,

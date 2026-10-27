@@ -3,55 +3,41 @@
 
 /**
  * @file condensed_mpc.hpp
- * @brief Defines the CondensedMPC class (condensed MPC formulation).
+ * @brief Defines CondensedMPC, the former name of MPC with
+ *   Formulation::Condensed.
  */
 
-#include <Eigen/Core>
-
+#include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/options.hpp"
+#include "affine_mpc/parameterization.hpp"
 
 namespace affine_mpc {
 
 /**
  * @class CondensedMPC
- * @brief MPC formulation where only parameterization control points are
- * optimization design variables (condensed QP).
- *
- * Eliminates state variables analytically by implicitly wrapping the model into
- * the cost function rather than as a constraint, resulting in a smaller dense
- * QP. Preferred for shorter horizons and lower-dimensional problems.
- * Converts the MPC problem to QP form for OSQP, using input parameterization.
+ * @brief MPC with Formulation::Condensed; use MPC instead.
  */
-class CondensedMPC : public MPCBase
+class CondensedMPC : public MPC
 {
 public:
-  /**
-   * @brief Construct CondensedMPC with specified input parameterization and
-   *   MPC configuration options.
-   * @param state_dim State vector dimension.
-   * @param input_dim Input vector dimension.
-   * @param param Input trajectory parameterization.
-   * @param opts Optional MPC configuration features to enable.
-   */
+  /// @brief Same as MPC(state_dim, input_dim, param, opts,
+  ///   Formulation::Condensed).
   CondensedMPC(int state_dim,
                int input_dim,
                const Parameterization& param,
-               const Options& opts = Options{});
+               const Options& opts = Options{}) :
+      MPC(state_dim, input_dim, param, opts, Formulation::Condensed)
+  {}
 
-  /**
-   * @brief Construct CondensedMPC with no parameterization (full input
-   *   trajectory will be optimized) and MPC configuration options.
-   * @param state_dim State vector dimension.
-   * @param input_dim Input vector dimension.
-   * @param horizon_steps Number of discrete time steps in the horizon.
-   * @param opts Optional MPC configuration features to enable.
-   */
+  /// @brief Same as MPC(state_dim, input_dim, horizon_steps, opts,
+  ///   Formulation::Condensed).
   CondensedMPC(int state_dim,
                int input_dim,
                int horizon_steps,
-               const Options& opts = Options{});
-
-  ~CondensedMPC() override = default;
+               const Options& opts = Options{}) :
+      MPC(state_dim, input_dim, horizon_steps, opts, Formulation::Condensed)
+  {}
 
   const char* getClassName() const noexcept override { return "CondensedMPC"; }
 };

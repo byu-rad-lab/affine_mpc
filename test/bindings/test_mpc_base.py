@@ -67,9 +67,9 @@ def test_mpc_base_interface():
 
     assert (
         repr(mpc)
-        == "MPCBase(state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False, soft_state_bounds=False, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, slew_initial_input=True, slew_control_points=True, saturate_states=True, saturate_input_trajectory=False, use_input_rate_cost=False, soft_state_bounds=False, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
-    assert str(mpc).startswith("MPCBase:\n  state_dim = 2\n  input_dim = 1\n")
+    assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
     assert function_fails(mpc.initializeSolver, solver_settings=None)
     # MPCBase on its own builds the condensed QP
@@ -408,3 +408,39 @@ def test_assemble_qp_requires_setup():
         RuntimeError, match="Model must be set before assembling the QP"
     ):
         mpc.assembleQP(np.zeros(2), ampc.QuadraticProgram())
+
+
+def test_mpc_formulation_argument():
+    Sparse, Condensed = ampc.Formulation.Sparse, ampc.Formulation.Condensed
+    param = ampc.Parameterization.linearInterp(10, 4)
+    opts = ampc.Options(use_input_cost=True)
+    cases = [
+        (ampc.MPC(2, 1, param), Condensed, False, 4),
+        (ampc.MPC(2, 1, param, opts), Condensed, True, 4),
+        (ampc.MPC(2, 1, param, opts, formulation=Sparse), Sparse, True, 4),
+        (ampc.MPC(2, 1, param, formulation=Sparse), Sparse, False, 4),
+        (ampc.MPC(state_dim=2, input_dim=1, horizon_steps=10), Condensed, False, 10),
+        (ampc.MPC(2, 1, 10, opts=opts, formulation=Sparse), Sparse, True, 10),
+    ]
+    for mpc, formulation, input_cost, nc in cases:
+        assert mpc.getFormulation() == formulation
+        assert mpc.getOptions().use_input_cost == input_cost
+        assert mpc.num_control_points == nc
+        names = [b.name for b in mpc.getQPVariableBlocks()]
+        assert ("states" in names) == (formulation == Sparse)
+        assert str(mpc).startswith(f"MPC:\n  formulation = {formulation.name}\n")
+        assert repr(mpc).startswith(f"MPC(formulation={formulation.name}, ")
+
+    # the formulation is keyword-only, so it can not be taken for the options
+    with pytest.raises(TypeError):
+        ampc.MPC(2, 1, param, opts, Sparse)
+
+
+def test_mpc_logger_records_formulation(tmp_path):
+    param = ampc.Parameterization.linearInterp(5, 2)
+    for formulation in (ampc.Formulation.Condensed, ampc.Formulation.Sparse):
+        mpc = ampc.MPC(2, 1, param, formulation=formulation)
+        logger = ampc.MPCLogger(mpc, tmp_path / formulation.name, 0.1)
+        logger.finalize()
+        params = (tmp_path / formulation.name / "params.yaml").read_text()
+        assert f"formulation: {formulation.name.lower()}\n" in params

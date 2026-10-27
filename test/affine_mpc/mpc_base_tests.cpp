@@ -30,7 +30,7 @@ public:
                 const int m,
                 const ampc::Parameterization& param,
                 const ampc::Options& opts = {}) :
-      MPCBase{n, m, param, opts, ampc::detail::FormulationKind::Condensed}
+      MPC{n, m, param, opts}
   {}
   auto getAd() const { return readModel(*this).Ad; }
   auto getBd() const { return readModel(*this).Bd; }
@@ -455,6 +455,40 @@ TEST(MPCBaseTester, givenQandR_FormsQbigAndRbigCorrectly)
                               base.getRbig().diagonal(), 1e-6));
 }
 
+TEST(MPCConstructorTester, givenEachConstructor_StoresFormulationAndOptions)
+{
+  using ampc::Formulation;
+  const auto param{ampc::Parameterization::linearInterp(10, 4)};
+  const ampc::Options opts{.use_input_cost = true};
+  struct Case
+  {
+    ampc::MPC mpc;
+    Formulation formulation;
+    bool input_cost;
+    int num_control_points;
+  };
+  const Case cases[]{
+      {{2, 1, param}, Formulation::Condensed, false, 4},
+      {{2, 1, param, opts}, Formulation::Condensed, true, 4},
+      {{2, 1, param, opts, Formulation::Sparse}, Formulation::Sparse, true, 4},
+      {{2, 1, param, Formulation::Sparse}, Formulation::Sparse, false, 4},
+      {{2, 1, 10}, Formulation::Condensed, false, 10},
+      {{2, 1, 10, opts}, Formulation::Condensed, true, 10},
+      {{2, 1, 10, opts, Formulation::Sparse}, Formulation::Sparse, true, 10},
+      {{2, 1, 10, Formulation::Sparse}, Formulation::Sparse, false, 10},
+  };
+  for (const Case& c : cases) {
+    EXPECT_EQ(c.mpc.getFormulation(), c.formulation);
+    EXPECT_EQ(c.mpc.getOptions().use_input_cost, c.input_cost);
+    EXPECT_EQ(c.mpc.getNumControlPoints(), c.num_control_points);
+    EXPECT_EQ(c.mpc.getHorizonSteps(), 10);
+    EXPECT_STREQ(c.mpc.getClassName(), "MPC");
+    // only the sparse formulation has the states as QP variables
+    const int num_states{c.formulation == Formulation::Sparse ? 2 * 10 : 0};
+    EXPECT_EQ(c.mpc.getNumQPVariables(), c.num_control_points + num_states);
+  }
+}
+
 TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
 {
   const ampc::Parameterization param{5, 1, 3};
@@ -483,6 +517,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   condensed_ss << condensed;
   EXPECT_EQ(condensed_ss.str(),
             "CondensedMPC:\n"
+            "  formulation = Condensed\n"
             "  state_dim = 2\n"
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
@@ -506,7 +541,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream condensed_summary_ss;
   ampc::printInline(condensed_summary_ss, condensed);
   EXPECT_EQ(condensed_summary_ss.str(),
-            "CondensedMPC(state_dim=2, input_dim=1, "
+            "CondensedMPC(formulation=Condensed, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
             "options=Options(use_input_cost=true, slew_initial_input=true, "
@@ -523,6 +558,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   sparse_ss << sparse;
   EXPECT_EQ(sparse_ss.str(),
             "SparseMPC:\n"
+            "  formulation = Sparse\n"
             "  state_dim = 2\n"
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
@@ -546,7 +582,7 @@ TEST(MPCBaseStreamOperator, givenCondensedAndSparse_FormatsSummary)
   std::ostringstream sparse_summary_ss;
   ampc::printInline(sparse_summary_ss, sparse);
   EXPECT_EQ(sparse_summary_ss.str(),
-            "SparseMPC(state_dim=2, input_dim=1, "
+            "SparseMPC(formulation=Sparse, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
             "options=Options(use_input_cost=true, slew_initial_input=true, "
@@ -811,12 +847,12 @@ TEST(MPCBaseTester, givenWrongSizeArguments_Throws)
   // the message should name the function, the argument, and both sizes
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A3, B, x2); },
-      "[MPCBase::setModelDiscrete] Ad must be 2x2, got 3x3.");
+      "[MPC::setModelDiscrete] Ad must be 2x2, got 3x3.");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A2, B_wide, x2); }, "Bd must be 2x1");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelDiscrete(A2, B, x3); },
-      "[MPCBase::setModelDiscrete] wd must have size 2, got 3.");
+      "[MPC::setModelDiscrete] wd must have size 2, got 3.");
   expectInvalidArgumentWithMessage(
       [&]() { base.setModelContinuous2Discrete(A3, B, x2, 0.1); },
       "Ac must be 2x2");

@@ -84,7 +84,7 @@ SolveInfo OSQPSolver::getSolveInfo() const noexcept
   if (!initialized_)
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
-  // mpc_solve_time and prepare_time are only known to MPCBase
+  // mpc_solve_time and prepare_time are only known to MPC
   return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
                    static_cast<int>(info.iter),
                    info.obj_val,

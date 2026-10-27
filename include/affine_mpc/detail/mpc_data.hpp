@@ -4,10 +4,10 @@
 /**
  * @file detail/mpc_data.hpp
  * @brief Defines MPCData and the change categories: the internal MPC data
- *   (as opposed to the QP data built from it) shared by MPCBase and the
+ *   (as opposed to the QP data built from it) shared by MPC and the
  *   formulations.
  *
- * Internal: installed only because public headers include it (MPCBase holds
+ * Internal: installed only because public headers include it (MPC holds
  * these types by value); not part of the public API.
  */
 
@@ -26,7 +26,7 @@ namespace affine_mpc::detail {
  * @enum DataChange
  * @brief Internal: categories of MPC data changes. Each category updates
  *   a different part of the QP, so a setter only marks its category and the
- *   QP is updated once per category in MPCBase::prepare() or MPCBase::solve().
+ *   QP is updated once per category in MPC::prepare() or MPC::solve().
  *
  * The initial state x0 is never pending: solve() applies it every call. It is
  * still a category (X0, the highest bit and not part of DataChangeSet::all())
@@ -135,8 +135,8 @@ inline std::vector<int> boundedStates(const Options& opts, int state_dim)
 
 /**
  * @struct MPCData
- * @brief Internal: the MPC problem as set through the MPCBase setters (model,
- *   weights, references, limits, and the previous input). Owned by MPCBase,
+ * @brief Internal: the MPC problem as set through the MPC setters (model,
+ *   weights, references, limits, and the previous input). Owned by MPC,
  *   which validates every value; formulations only read it. Not part of the
  *   stable API and not exposed in Python.
  *
@@ -241,7 +241,7 @@ struct MPCData
   Eigen::MatrixXd Hf;
   Eigen::VectorXd hf_min, hf_max;
 
-  /// the initial state of the last solve() (X0, set by MPCBase before the QP
+  /// the initial state of the last solve() (X0, set by MPC before the QP
   /// parts that depend on it are updated)
   Eigen::VectorXd x0;
 };

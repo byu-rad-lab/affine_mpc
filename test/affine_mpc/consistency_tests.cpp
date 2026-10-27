@@ -323,7 +323,7 @@ TEST(ConsistencyTester, givenWrongSizeSolveAndGetterArgs_Throws)
   auto check = [&](ampc::MPCBase& mpc) {
     expectInvalidArgumentWithMessage(
         [&]() { (void)mpc.solve(VectorXd::Zero(3)); },
-        "[MPCBase::solve] x0 must have size 2, got 3.");
+        "[MPC::solve] x0 must have size 2, got 3.");
     ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
 
     VectorXd wrong{VectorXd::Zero(4)};

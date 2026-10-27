@@ -67,7 +67,7 @@ inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
  *
  * `mpc_solve_time - qp_solve_time` is the time the library spends outside the
  * QP solver (QP assembly, data updates, and refactorization). Work done in
- * MPCBase::prepare() is reported separately in `prepare_time`.
+ * MPC::prepare() is reported separately in `prepare_time`.
  */
 struct SolveInfo
 {
@@ -87,13 +87,13 @@ struct SolveInfo
   /// when OSQP is built without profiling.
   double qp_solve_time{0.0};
 
-  /// Duration of the whole last MPCBase::solve() call after initialization,
+  /// Duration of the whole last MPC::solve() call after initialization,
   /// including QP assembly, data updates, refactorization, and the solver
   /// (seconds). Measured with `std::chrono::steady_clock`, so it does not
   /// depend on OSQP profiling.
   double mpc_solve_time{0.0};
 
-  /// Total duration of the MPCBase::prepare() calls between the previous
+  /// Total duration of the MPC::prepare() calls between the previous
   /// solve() and this one (seconds), zero if there were none. This is work
   /// done before the measurement, so `prepare_time + mpc_solve_time` is the
   /// MPC's work for the step while `mpc_solve_time` alone is its latency.

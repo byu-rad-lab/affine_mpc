@@ -21,11 +21,13 @@ from ._bindings import (
     OSQPSettings,
     SolveStatus,
     SolveInfo,
-    MPCBase,
-    CondensedMPC,
-    SparseMPC,
+    Formulation,
+    MPC,
     MPCLogger,
 )
+from ._compat import CondensedMPC, SparseMPC
+
+MPCBase = MPC
 
 __all__ = [
     "Options",
@@ -37,8 +39,10 @@ __all__ = [
     "OSQPSettings",
     "SolveStatus",
     "SolveInfo",
+    "Formulation",
+    "MPC",
+    "MPCLogger",
     "MPCBase",
     "CondensedMPC",
     "SparseMPC",
-    "MPCLogger",
 ]

@@ -17,8 +17,8 @@ void moduleAddQuadraticProgram(py::module& m)
                                      R"doc(
 The QP an MPC solves,
 minimize 1/2 z^T P z + q^T z subject to l <= A z <= u,
-for analysis or for handing to another solver. Obtain with MPCBase.getQP() or
-MPCBase.assembleQP().
+for analysis or for handing to another solver. Obtain with MPC.getQP() or
+MPC.assembleQP().
 
 P and A are scipy.sparse.csc_matrix objects holding the nonzero entries of the
 QP, in the same form for every formulation; P is full symmetric (both
@@ -26,9 +26,9 @@ triangles). Reading P or A needs SciPy (pip install "affine-mpc[sparse]").
 The cost omits the constant terms of the MPC cost, so its value at the solution
 is not the full MPC cost. Equality rows have l = u, and unbounded sides are
 +-inf. The order of the variables z and of the rows of A is given by
-MPCBase.getQPVariableBlocks() and MPCBase.getQPConstraintBlocks().
+MPC.getQPVariableBlocks() and MPC.getQPConstraintBlocks().
 )doc")
-      .def(py::init<>(), "Empty QP, to pass to MPCBase.assembleQP().")
+      .def(py::init<>(), "Empty QP, to pass to MPC.assembleQP().")
       .def_readwrite("P", &ampc::QuadraticProgram::P,
                      "Cost matrix (full symmetric, scipy.sparse.csc_matrix).")
       .def_readwrite("A", &ampc::QuadraticProgram::A,
@@ -42,8 +42,8 @@ MPCBase.getQPVariableBlocks() and MPCBase.getQPConstraintBlocks().
   py::class_<ampc::QPBlock>(m, "QPBlock",
                             R"doc(
 A named block of QP variables or constraint rows: indices offset, ...,
-offset + size - 1. Returned by MPCBase.getQPVariableBlocks() and
-MPCBase.getQPConstraintBlocks().
+offset + size - 1. Returned by MPC.getQPVariableBlocks() and
+MPC.getQPConstraintBlocks().
 )doc")
       .def_readonly("name", &ampc::QPBlock::name,
                     "Block name, e.g. 'control_points' or 'input_bounds'.")

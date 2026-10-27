@@ -176,7 +176,7 @@ Args:
   py::native_enum<ampc::ModelSparsity>(
       m, "ModelSparsity", "enum.Enum",
       "Which entries of the discrete model Ad and Bd the solver tracks, chosen "
-      "with MPCBase.initializeSolver(). OSQP fixes the sparsity pattern at "
+      "with MPC.initializeSolver(). OSQP fixes the sparsity pattern at "
       "initialization, and later updates only change the values of the "
       "tracked entries: a model entry outside them must stay zero (a nonzero "
       "one is silently dropped). Tracking fewer entries makes each solve "
@@ -186,10 +186,11 @@ Args:
              "initializeSolver() is called (the default). Entries that may "
              "become nonzero later must be nonzero then, e.g. by setting a "
              "representative model before it and the actual model after it.")
-      .value("Full", ampc::ModelSparsity::Full,
-             "Track every entry of Ad and Bd, so any entry may change between "
-             "zero and nonzero later. Costs more per solve when the model has "
-             "structural zeros. Supported by SparseMPC only for now.")
+      .value(
+          "Full", ampc::ModelSparsity::Full,
+          "Track every entry of Ad and Bd, so any entry may change between "
+          "zero and nonzero later. Costs more per solve when the model has "
+          "structural zeros. Supported by the sparse formulation only for now.")
       .finalize();
 }
 

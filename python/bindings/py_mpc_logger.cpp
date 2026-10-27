@@ -47,10 +47,9 @@ from an MPC object.
           "Write all data arrays into a single compressed NPZ (`.npz`) file.")
       .finalize();
 
-  log.def(
-      py::init<const ampc::MPCBase* const, const std::filesystem::path&, double,
-               int, bool, const std::string&, ampc::MPCLogger::Mode>(),
-      R"doc(
+  log.def(py::init<const ampc::MPC* const, const std::filesystem::path&, double,
+                   int, bool, const std::string&, ampc::MPCLogger::Mode>(),
+          R"doc(
 Construct an MPCLogger for a given MPC instance; the logger is linked to this
 single MPC instance.
 
@@ -87,11 +86,11 @@ Args:
         finalization exceeds those limits, the logger falls back to NPY output
         and preserves raw recoverable payloads on failure.
           )doc",
-      py::arg("mpc"), py::arg("save_dir"), py::arg("ts"),
-      py::arg("prediction_stride") = 1, py::arg("log_control_points") = false,
-      py::arg("save_name") = "log",
-      py::arg("mode") = ampc::MPCLogger::Mode::NpzCompressed,
-      py::keep_alive<1, 2>());
+          py::arg("mpc"), py::arg("save_dir"), py::arg("ts"),
+          py::arg("prediction_stride") = 1,
+          py::arg("log_control_points") = false, py::arg("save_name") = "log",
+          py::arg("mode") = ampc::MPCLogger::Mode::NpzCompressed,
+          py::keep_alive<1, 2>());
 
   log.def("logStep", &ampc::MPCLogger::logStep,
           R"doc(
@@ -100,7 +99,7 @@ from the provided MPC object with applied striding logic.
 
 Args:
     t: Current simulation time (time of solve).
-    x0: Current state at time t (same as provided to solve() since MPCBase does
+    x0: Current state at time t (same as provided to solve() since MPC does
         not store this).
     loop_time: Optional user-measured time (seconds), e.g. of the whole control
         loop iteration on hardware. Logged as `loop_time` (-1 when not

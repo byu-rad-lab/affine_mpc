@@ -69,7 +69,7 @@ std::string makeShapeString(const std::vector<size_t>& shape)
 
 } // namespace
 
-MPCLogger::MPCLogger(const MPCBase* const mpc,
+MPCLogger::MPCLogger(const MPC* const mpc,
                      const std::filesystem::path& save_dir,
                      double ts,
                      int prediction_stride,
@@ -148,6 +148,10 @@ void MPCLogger::captureMPCSnapshot()
   addMetadata("state_dim", mpc_->getStateDim());
   addMetadata("input_dim", mpc_->getInputDim());
   addMetadata("horizon_steps", mpc_->getHorizonSteps());
+  addMetadata("formulation",
+              std::string{mpc_->getFormulation() == Formulation::Sparse
+                              ? "sparse"
+                              : "condensed"});
   const Parameterization& param{mpc_->getParameterization()};
   const bool bspline{param.type == Parameterization::Type::BSpline};
   addMetadata("parameterization_type",

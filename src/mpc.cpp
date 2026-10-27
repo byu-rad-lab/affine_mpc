@@ -1,4 +1,4 @@
-#include "affine_mpc/mpc_base.hpp"
+#include "affine_mpc/mpc.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
@@ -32,7 +32,7 @@ constexpr int validateStateDim(int state_dim)
 {
   if (state_dim <= 0)
     throw std::invalid_argument(
-        "[MPCBase::validateStateDim] state_dim must be positive.");
+        "[MPC::validateStateDim] state_dim must be positive.");
   return state_dim;
 }
 
@@ -40,7 +40,7 @@ constexpr int validateInputDim(int input_dim)
 {
   if (input_dim <= 0)
     throw std::invalid_argument(
-        "[MPCBase::validateInputDim] input_dim must be positive.");
+        "[MPC::validateInputDim] input_dim must be positive.");
   return input_dim;
 }
 
@@ -53,23 +53,23 @@ const Options& validateOptions(const Options& opts,
   if (!opts.saturate_states
       && (opts.soft_state_bounds || !opts.bounded_states.empty()))
     throw std::invalid_argument(
-        "[MPCBase::validateOptions] soft_state_bounds and bounded_states "
+        "[MPC::validateOptions] soft_state_bounds and bounded_states "
         "require saturate_states.");
   int previous{-1};
   for (const int i : opts.bounded_states) {
     if (i <= previous || i >= state_dim)
       throw std::invalid_argument(
-          "[MPCBase::validateOptions] bounded_states must be strictly "
+          "[MPC::validateOptions] bounded_states must be strictly "
           "increasing state indices in [0, state_dim).");
     previous = i;
   }
   if (opts.num_general_constraints < 0 || opts.num_terminal_constraints < 0)
     throw std::invalid_argument(
-        "[MPCBase::validateOptions] num_general_constraints and "
+        "[MPC::validateOptions] num_general_constraints and "
         "num_terminal_constraints must be non-negative.");
   if (opts.slew_control_points && param.type != Parameterization::Type::BSpline)
     throw std::invalid_argument(
-        "[MPCBase::validateOptions] slew_control_points requires a B-spline "
+        "[MPC::validateOptions] slew_control_points requires a B-spline "
         "parameterization: differences of custom basis coefficients do not "
         "bound input changes.");
   return opts;
@@ -83,7 +83,7 @@ void validateSize(Index size,
                   const char* name)
 {
   if (size != expected)
-    throw std::invalid_argument(std::string{"[MPCBase::"} + func + "] " + name
+    throw std::invalid_argument(std::string{"[MPC::"} + func + "] " + name
                                 + " must have size " + std::to_string(expected)
                                 + ", got " + std::to_string(size) + ".");
 }
@@ -96,18 +96,18 @@ void validateShape(const Ref<const MatrixXd>& mat,
 {
   if (mat.rows() != rows || mat.cols() != cols)
     throw std::invalid_argument(
-        std::string{"[MPCBase::"} + func + "] " + name + " must be "
+        std::string{"[MPC::"} + func + "] " + name + " must be "
         + std::to_string(rows) + "x" + std::to_string(cols) + ", got "
         + std::to_string(mat.rows()) + "x" + std::to_string(mat.cols()) + ".");
 }
 
 } // namespace
 
-MPCBase::MPCBase(int state_dim,
-                 int input_dim,
-                 const Parameterization& param,
-                 const Options& opts,
-                 detail::FormulationKind formulation) :
+MPC::MPC(int state_dim,
+         int input_dim,
+         const Parameterization& param,
+         const Options& opts,
+         Formulation formulation) :
     state_dim_{validateStateDim(state_dim)},
     input_dim_{validateInputDim(input_dim)},
     horizon_steps_{param.horizon_steps},
@@ -138,6 +138,7 @@ MPCBase::MPCBase(int state_dim,
     prepare_time_{0.0},
     unsolved_prepare_time_{0.0},
     discretizer_{state_dim_, input_dim_},
+    formulation_{formulation},
     qp_builder_{std::make_unique<detail::QPBuilder>(
         formulation, state_dim_, input_param_, opts_)}
 {
@@ -147,16 +148,42 @@ MPCBase::MPCBase(int state_dim,
   qp_builder_->writeConstantParts(data_);
 }
 
-MPCBase::~MPCBase() = default;
+MPC::MPC(int state_dim,
+         int input_dim,
+         const Parameterization& param,
+         Formulation formulation) :
+    MPC(state_dim, input_dim, param, Options{}, formulation)
+{}
 
-const detail::QP& MPCBase::qp() const noexcept { return qp_builder_->qp(); }
+MPC::MPC(int state_dim,
+         int input_dim,
+         int horizon_steps,
+         const Options& opts,
+         Formulation formulation) :
+    MPC(state_dim,
+        input_dim,
+        Parameterization::moveBlocking(horizon_steps, horizon_steps),
+        opts,
+        formulation)
+{}
 
-const Eigen::MatrixXd& MPCBase::getQPCostMatrix() const
+MPC::MPC(int state_dim,
+         int input_dim,
+         int horizon_steps,
+         Formulation formulation) :
+    MPC(state_dim, input_dim, horizon_steps, Options{}, formulation)
+{}
+
+MPC::~MPC() = default;
+
+const detail::QP& MPC::qp() const noexcept { return qp_builder_->qp(); }
+
+const Eigen::MatrixXd& MPC::getQPCostMatrix() const
 {
   return qp_builder_->denseCostMatrix();
 }
 
-const detail::QPBuilder& MPCBase::qpBuilder() const noexcept
+const detail::QPBuilder& MPC::qpBuilder() const noexcept
 {
   return *qp_builder_;
 }
@@ -203,14 +230,14 @@ void toQuadraticProgram(const detail::QP& qp, QuadraticProgram& out)
 
 } // namespace
 
-QuadraticProgram MPCBase::getQP() const
+QuadraticProgram MPC::getQP() const
 {
   QuadraticProgram out;
   toQuadraticProgram(qp(), out);
   return out;
 }
 
-void MPCBase::assembleQP(const Ref<const VectorXd>& x0, QuadraticProgram& out)
+void MPC::assembleQP(const Ref<const VectorXd>& x0, QuadraticProgram& out)
 {
   validateSize(x0.size(), state_dim_, "assembleQP", "x0");
   checkSetup("assembleQP", "assembling the QP");
@@ -224,7 +251,7 @@ void MPCBase::assembleQP(const Ref<const VectorXd>& x0, QuadraticProgram& out)
   toQuadraticProgram(qp(), out);
 }
 
-std::vector<QPBlock> MPCBase::getQPVariableBlocks() const
+std::vector<QPBlock> MPC::getQPVariableBlocks() const
 {
   const int num_ctrl{input_param_.numCoefficients()};
   const int own{qp_builder_->formulation().numVariables()};
@@ -236,7 +263,7 @@ std::vector<QPBlock> MPCBase::getQPVariableBlocks() const
   return blocks;
 }
 
-std::vector<QPBlock> MPCBase::getQPConstraintBlocks() const
+std::vector<QPBlock> MPC::getQPConstraintBlocks() const
 {
   const detail::QPRows& rows{qp_builder_->rows()};
   std::vector<QPBlock> blocks;
@@ -253,20 +280,20 @@ std::vector<QPBlock> MPCBase::getQPConstraintBlocks() const
   return blocks;
 }
 
-int MPCBase::getNumQPVariables() const noexcept
+int MPC::getNumQPVariables() const noexcept
 {
   return qp_builder_->numVariables();
 }
 
-int MPCBase::getNumQPConstraints() const noexcept
+int MPC::getNumQPConstraints() const noexcept
 {
   return qp_builder_->numConstraints();
 }
 
-void MPCBase::checkSetup(const char* caller, const char* action) const
+void MPC::checkSetup(const char* caller, const char* action) const
 {
   const auto missing{[&](const char* what, const char* reason) {
-    throw std::logic_error(std::string{"[MPCBase::"} + caller + "] " + what
+    throw std::logic_error(std::string{"[MPC::"} + caller + "] " + what
                            + " must be set before " + action + reason + ".");
   }};
   if (!model_set_)
@@ -287,13 +314,13 @@ void MPCBase::checkSetup(const char* caller, const char* action) const
     missing("Terminal constraints", " (num_terminal_constraints is positive)");
 }
 
-bool MPCBase::initializeSolver(const ModelSparsity model_sparsity)
+bool MPC::initializeSolver(const ModelSparsity model_sparsity)
 {
   return initializeSolver(OSQPSolver::getRecommendedSettings(), model_sparsity);
 }
 
-bool MPCBase::initializeSolver(const OSQPSettings& solver_settings,
-                               const ModelSparsity model_sparsity)
+bool MPC::initializeSolver(const OSQPSettings& solver_settings,
+                           const ModelSparsity model_sparsity)
 {
   checkSetup("initializeSolver", "initializing solver");
 
@@ -303,8 +330,8 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings,
   const bool sparse{qp().storage == detail::QPStorage::Sparse};
   if (model_sparsity == ModelSparsity::Full && !sparse)
     throw std::invalid_argument(
-        "[MPCBase::initializeSolver] ModelSparsity::Full is not supported yet "
-        "by CondensedMPC; use ModelSparsity::InitialNonzeros.");
+        "[MPC::initializeSolver] ModelSparsity::Full is not supported yet "
+        "by the condensed formulation; use ModelSparsity::InitialNonzeros.");
   model_sparsity_ = model_sparsity;
   // The sparse QP declares every entry of Ad and Bd at construction; with
   // InitialNonzeros, rebuild it with only the nonzero entries of the model
@@ -313,8 +340,7 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings,
     const detail::ModelEntries entries{detail::ModelEntries::nonzerosOf(data_)};
     if (!entries.Ad_full || !entries.Bd_full) {
       qp_builder_ = std::make_unique<detail::QPBuilder>(
-          detail::FormulationKind::Sparse, state_dim_, input_param_, opts_,
-          entries);
+          Formulation::Sparse, state_dim_, input_param_, opts_, entries);
       qp_builder_->writeConstantParts(data_);
       pending_ = DataChangeSet::all();
     }
@@ -346,7 +372,7 @@ bool MPCBase::initializeSolver(const OSQPSettings& solver_settings,
   return solver_initialized_;
 }
 
-SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
+SolveStatus MPC::solve(const Ref<const VectorXd>& x0)
 {
   validateSize(x0.size(), state_dim_, "solve", "x0");
   if (!solver_initialized_)
@@ -380,7 +406,7 @@ SolveStatus MPCBase::solve(const Ref<const VectorXd>& x0)
   return status;
 }
 
-SolveStatus MPCBase::prepare()
+SolveStatus MPC::prepare()
 {
   if (!solver_initialized_)
     return SolveStatus::NotInitialized;
@@ -393,13 +419,13 @@ SolveStatus MPCBase::prepare()
   return applied ? SolveStatus::Success : SolveStatus::UpdateFailed;
 }
 
-bool MPCBase::qpUpdateX0(const Ref<const VectorXd>& x0)
+bool MPC::qpUpdateX0(const Ref<const VectorXd>& x0)
 {
   const bool applied{applyPendingChanges()};
   return applyX0(x0) && applied;
 }
 
-bool MPCBase::applyPendingChanges()
+bool MPC::applyPendingChanges()
 {
   // Nothing changed is the common case, which costs only this check
   if (pending_.empty())
@@ -427,7 +453,7 @@ bool MPCBase::applyPendingChanges()
   return pending_.empty();
 }
 
-bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
+bool MPC::applyX0(const Ref<const VectorXd>& x0)
 {
   data_.x0 = x0;
   qp_builder_->applyX0(data_);
@@ -441,7 +467,7 @@ bool MPCBase::applyX0(const Ref<const VectorXd>& x0)
   return success;
 }
 
-bool MPCBase::sendMatrices(const bool P, const bool A)
+bool MPC::sendMatrices(const bool P, const bool A)
 {
   const detail::QP& qp_data{qp()};
   if (qp_data.storage == detail::QPStorage::Sparse) {
@@ -458,13 +484,13 @@ bool MPCBase::sendMatrices(const bool P, const bool A)
   return solver_->updateConstraintMatrix(qp_data.A);
 }
 
-bool MPCBase::modelWithinTrackedEntries() const
+bool MPC::modelWithinTrackedEntries() const
 {
   return !solver_initialized_
          || qp_builder_->formulation().modelWithinTrackedEntries(data_);
 }
 
-bool MPCBase::isWithinSparsityPattern() const
+bool MPC::isWithinSparsityPattern() const
 {
   if (!solver_initialized_)
     return true;
@@ -476,7 +502,7 @@ bool MPCBase::isWithinSparsityPattern() const
   return solver_->isWithinSparsityPattern(qp_data.P, qp_data.A);
 }
 
-void MPCBase::getNextInput(Ref<VectorXd> u0) const
+void MPC::getNextInput(Ref<VectorXd> u0) const
 {
   assert(solver_initialized_);
   validateSize(u0.size(), input_dim_, "getNextInput", "u0");
@@ -484,7 +510,7 @@ void MPCBase::getNextInput(Ref<VectorXd> u0) const
   input_param_.evaluate(0, solution_map_, u0);
 }
 
-void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const
+void MPC::getInputControlPoints(Ref<VectorXd> control_points) const
 {
   assert(solver_initialized_);
   validateSize(control_points.size(), ctrls_dim_, "getInputControlPoints",
@@ -493,7 +519,7 @@ void MPCBase::getInputControlPoints(Ref<VectorXd> control_points) const
   control_points = solution_map_.head(ctrls_dim_);
 }
 
-void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
+void MPC::getInputTrajectory(Ref<VectorXd> u_traj) const
 {
   assert(solver_initialized_);
   validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
@@ -501,7 +527,7 @@ void MPCBase::getInputTrajectory(Ref<VectorXd> u_traj) const
   input_param_.evaluateTrajectory(solution_map_, u_traj);
 }
 
-void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void MPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
 {
   assert(solver_initialized_);
   validateSize(x_traj.size(), x_traj_dim_, "getPredictedStateTrajectory",
@@ -509,13 +535,13 @@ void MPCBase::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
   qp_builder_->predictStates(solution_map_, x_traj);
 }
 
-void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
-                             const Ref<const VectorXd>& u,
-                             Ref<VectorXd> x_next) const
+void MPC::propagateModel(const Ref<const VectorXd>& x0,
+                         const Ref<const VectorXd>& u,
+                         Ref<VectorXd> x_next) const
 {
   if (!model_set_)
     throw std::logic_error(
-        "[MPCBase::propagateModel] Model must be set before propagation");
+        "[MPC::propagateModel] Model must be set before propagation");
   validateSize(x0.size(), state_dim_, "propagateModel", "x");
   validateSize(u.size(), input_dim_, "propagateModel", "u");
   validateSize(x_next.size(), state_dim_, "propagateModel", "x_next");
@@ -523,9 +549,9 @@ void MPCBase::propagateModel(const Ref<const VectorXd>& x0,
   x_next = data_.Ad * x0 + data_.Bd * u + data_.wd;
 }
 
-void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
-                               const Ref<const MatrixXd>& Bd,
-                               const Ref<const VectorXd>& wd)
+void MPC::setModelDiscrete(const Ref<const MatrixXd>& Ad,
+                           const Ref<const MatrixXd>& Bd,
+                           const Ref<const VectorXd>& wd)
 {
   validateShape(Ad, state_dim_, state_dim_, "setModelDiscrete", "Ad");
   validateShape(Bd, state_dim_, input_dim_, "setModelDiscrete", "Bd");
@@ -536,18 +562,18 @@ void MPCBase::setModelDiscrete(const Ref<const MatrixXd>& Ad,
   data_.wd = wd;
   // not checked in Release, where it would cost every model update
   assert(modelWithinTrackedEntries()
-         && "[MPCBase::setModelDiscrete] Ad or Bd has a nonzero entry the "
+         && "[MPC::setModelDiscrete] Ad or Bd has a nonzero entry the "
             "solver does not track (see ModelSparsity).");
   model_set_ = true;
   model_from_continuous_ = false;
   pending_ |= DataChange::Model | DataChange::ModelOffset;
 }
 
-void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
-                                          const Ref<const MatrixXd>& Bc,
-                                          const Ref<const VectorXd>& wc,
-                                          double dt,
-                                          double tol)
+void MPC::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
+                                      const Ref<const MatrixXd>& Bc,
+                                      const Ref<const VectorXd>& wc,
+                                      double dt,
+                                      double tol)
 {
   validateShape(Ac, state_dim_, state_dim_, "setModelContinuous2Discrete",
                 "Ac");
@@ -559,110 +585,109 @@ void MPCBase::setModelContinuous2Discrete(const Ref<const MatrixXd>& Ac,
   discretizer_.discretize(Ac, Bc, wc, dt, data_.Ad, data_.Bd, data_.wd, tol);
   // not checked in Release, where it would cost every model update
   assert(modelWithinTrackedEntries()
-         && "[MPCBase::setModelContinuous2Discrete] The discrete Ad or Bd has "
+         && "[MPC::setModelContinuous2Discrete] The discrete Ad or Bd has "
             "a nonzero entry the solver does not track (see ModelSparsity).");
   model_set_ = true;
   model_from_continuous_ = true;
   pending_ |= DataChange::Model | DataChange::ModelOffset;
 }
 
-void MPCBase::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
+void MPC::setModelOffsetDiscrete(const Ref<const VectorXd>& wd)
 {
   validateSize(wd.size(), state_dim_, "setModelOffsetDiscrete", "wd");
   if (!model_set_)
-    throw std::logic_error("[MPCBase::setModelOffsetDiscrete] Model must be "
+    throw std::logic_error("[MPC::setModelOffsetDiscrete] Model must be "
                            "set before its offset.");
   data_.wd = wd;
   pending_ |= DataChange::ModelOffset;
 }
 
-void MPCBase::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
+void MPC::setModelOffsetContinuous2Discrete(const Ref<const VectorXd>& wc)
 {
   validateSize(wc.size(), state_dim_, "setModelOffsetContinuous2Discrete",
                "wc");
   if (!model_from_continuous_)
     throw std::logic_error(
-        "[MPCBase::setModelOffsetContinuous2Discrete] The model must be last "
+        "[MPC::setModelOffsetContinuous2Discrete] The model must be last "
         "set with setModelContinuous2Discrete(), whose discretization is "
         "reused.");
   discretizer_.discretizeOffset(wc, data_.wd);
   pending_ |= DataChange::ModelOffset;
 }
 
-void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
-                         const Ref<const VectorXd>& R_diag)
+void MPC::setWeights(const Ref<const VectorXd>& Q_diag,
+                     const Ref<const VectorXd>& R_diag)
 {
   setStateWeights(Q_diag);
   setInputWeights(R_diag);
 }
 
-void MPCBase::setWeights(const Ref<const VectorXd>& Q_diag,
-                         const Ref<const VectorXd>& Qf_diag,
-                         const Ref<const VectorXd>& R_diag)
+void MPC::setWeights(const Ref<const VectorXd>& Q_diag,
+                     const Ref<const VectorXd>& Qf_diag,
+                     const Ref<const VectorXd>& R_diag)
 {
   setStateWeights(Q_diag, Qf_diag);
   setInputWeights(R_diag);
 }
 
-void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag)
+void MPC::setStateWeights(const Ref<const VectorXd>& Q_diag)
 {
   validateSize(Q_diag.size(), state_dim_, "setStateWeights", "Q_diag");
   if (Q_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setStateWeights] State weights must be non-negative.");
+        "[MPC::setStateWeights] State weights must be non-negative.");
   data_.Q_big.diagonal() = Q_diag.replicate(horizon_steps_, 1);
   pending_ |= DataChange::Weights;
 }
 
-void MPCBase::setStateWeights(const Ref<const VectorXd>& Q_diag,
-                              const Ref<const VectorXd>& Qf_diag)
+void MPC::setStateWeights(const Ref<const VectorXd>& Q_diag,
+                          const Ref<const VectorXd>& Qf_diag)
 {
   validateSize(Q_diag.size(), state_dim_, "setStateWeights", "Q_diag");
   validateSize(Qf_diag.size(), state_dim_, "setStateWeights", "Qf_diag");
   if (Q_diag.minCoeff() < 0.0 || Qf_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setStateWeights] State weights must be non-negative.");
+        "[MPC::setStateWeights] State weights must be non-negative.");
   data_.Q_big.diagonal().head(state_dim_ * (horizon_steps_ - 1)) =
       Q_diag.replicate(horizon_steps_ - 1, 1);
   data_.Q_big.diagonal().tail(state_dim_) = Qf_diag;
   pending_ |= DataChange::Weights;
 }
 
-void MPCBase::setInputWeights(const Ref<const VectorXd>& R_diag)
+void MPC::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
   if (!opts_.use_input_cost)
-    throw std::logic_error(
-        "[MPCBase::setInputWeights] Input cost is not enabled.");
+    throw std::logic_error("[MPC::setInputWeights] Input cost is not enabled.");
   validateSize(R_diag.size(), input_dim_, "setInputWeights", "R_diag");
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setInputWeights] Input weights must be non-negative.");
+        "[MPC::setInputWeights] Input weights must be non-negative.");
   data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
   pending_ |= DataChange::Weights;
 }
 
-void MPCBase::setInputRateWeights(const Ref<const VectorXd>& R_rate_diag)
+void MPC::setInputRateWeights(const Ref<const VectorXd>& R_rate_diag)
 {
   if (!opts_.use_input_rate_cost)
     throw std::logic_error(
-        "[MPCBase::setInputRateWeights] Input rate cost is not enabled.");
+        "[MPC::setInputRateWeights] Input rate cost is not enabled.");
   validateSize(R_rate_diag.size(), input_dim_, "setInputRateWeights",
                "R_rate_diag");
   if (R_rate_diag.minCoeff() < 0.0)
-    throw std::invalid_argument("[MPCBase::setInputRateWeights] Input rate "
+    throw std::invalid_argument("[MPC::setInputRateWeights] Input rate "
                                 "weights must be non-negative.");
   data_.R_rate = R_rate_diag;
   pending_ |= DataChange::Weights;
 }
 
-void MPCBase::setReferenceState(const Ref<const VectorXd>& x_step)
+void MPC::setReferenceState(const Ref<const VectorXd>& x_step)
 {
   validateSize(x_step.size(), state_dim_, "setReferenceState", "x_step");
   data_.x_ref = x_step.replicate(horizon_steps_, 1);
   pending_ |= DataChange::References;
 }
 
-void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
+void MPC::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 {
   validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
                "x_traj");
@@ -670,14 +695,14 @@ void MPCBase::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
   pending_ |= DataChange::References;
 }
 
-void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
+void MPC::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
   if (!opts_.use_input_cost)
     throw std::logic_error(
-        "[MPCBase::setReferenceInput] Input cost is not enabled.");
+        "[MPC::setReferenceInput] Input cost is not enabled.");
   if (input_param_.parameterization().type != Parameterization::Type::BSpline)
     throw std::logic_error(
-        "[MPCBase::setReferenceInput] A custom basis has no control points "
+        "[MPC::setReferenceInput] A custom basis has no control points "
         "that represent a constant input; the input cost weights the basis "
         "coefficients, whose reference defaults to zero. Use "
         "setReferenceInputControlPoints() to set coefficient references.");
@@ -686,11 +711,11 @@ void MPCBase::setReferenceInput(const Ref<const VectorXd>& u_step)
   pending_ |= DataChange::References;
 }
 
-void MPCBase::setReferenceInputControlPoints(
+void MPC::setReferenceInputControlPoints(
     const Ref<const VectorXd>& control_points)
 {
   if (!opts_.use_input_cost)
-    throw std::logic_error("[MPCBase::setReferenceInputControlPoints] "
+    throw std::logic_error("[MPC::setReferenceInputControlPoints] "
                            "Input cost is not enabled.");
   validateSize(control_points.size(), ctrls_dim_,
                "setReferenceInputControlPoints", "control_points");
@@ -698,50 +723,50 @@ void MPCBase::setReferenceInputControlPoints(
   pending_ |= DataChange::References;
 }
 
-void MPCBase::setInputLimits(const Ref<const VectorXd>& u_min,
-                             const Ref<const VectorXd>& u_max)
+void MPC::setInputLimits(const Ref<const VectorXd>& u_min,
+                         const Ref<const VectorXd>& u_max)
 {
   validateSize(u_min.size(), input_dim_, "setInputLimits", "u_min");
   validateSize(u_max.size(), input_dim_, "setInputLimits", "u_max");
   if ((u_max - u_min).minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setInputLimits] u_min cannot be greater than u_max.");
+        "[MPC::setInputLimits] u_min cannot be greater than u_max.");
   data_.u_min = u_min;
   data_.u_max = u_max;
   u_lims_set_ = true;
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setStateLimits(const Ref<const VectorXd>& x_min,
-                             const Ref<const VectorXd>& x_max)
+void MPC::setStateLimits(const Ref<const VectorXd>& x_min,
+                         const Ref<const VectorXd>& x_max)
 {
   if (!opts_.saturate_states)
     throw std::logic_error(
-        "[MPCBase::setStateLimits] State saturation is not enabled.");
+        "[MPC::setStateLimits] State saturation is not enabled.");
   // one entry per bounded state
   const Index num_bounded{static_cast<Index>(bounded_states_.size())};
   validateSize(x_min.size(), num_bounded, "setStateLimits", "x_min");
   validateSize(x_max.size(), num_bounded, "setStateLimits", "x_max");
   if ((x_max - x_min).minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setStateLimits] x_min cannot be greater than x_max.");
+        "[MPC::setStateLimits] x_min cannot be greater than x_max.");
   data_.x_min = x_min;
   data_.x_max = x_max;
   x_lims_set_ = true;
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setStateBoundPenalties(const Ref<const VectorXd>& l1,
-                                     const Ref<const VectorXd>& l2)
+void MPC::setStateBoundPenalties(const Ref<const VectorXd>& l1,
+                                 const Ref<const VectorXd>& l2)
 {
   if (!opts_.soft_state_bounds)
-    throw std::logic_error("[MPCBase::setStateBoundPenalties] Soft state "
+    throw std::logic_error("[MPC::setStateBoundPenalties] Soft state "
                            "bounds are not enabled.");
   const Index num_bounded{static_cast<Index>(bounded_states_.size())};
   validateSize(l1.size(), num_bounded, "setStateBoundPenalties", "l1");
   validateSize(l2.size(), num_bounded, "setStateBoundPenalties", "l2");
   if (l1.minCoeff() < 0.0 || l2.minCoeff() < 0.0)
-    throw std::invalid_argument("[MPCBase::setStateBoundPenalties] Penalties "
+    throw std::invalid_argument("[MPC::setStateBoundPenalties] Penalties "
                                 "must be non-negative.");
   data_.x_soft_l1 = l1;
   data_.x_soft_l2 = l2;
@@ -749,13 +774,13 @@ void MPCBase::setStateBoundPenalties(const Ref<const VectorXd>& l1,
   pending_ |= DataChange::Weights;
 }
 
-void MPCBase::setGeneralConstraints(const Ref<const MatrixXd>& Hx,
-                                    const Ref<const MatrixXd>& Hu,
-                                    const Ref<const VectorXd>& h_min,
-                                    const Ref<const VectorXd>& h_max)
+void MPC::setGeneralConstraints(const Ref<const MatrixXd>& Hx,
+                                const Ref<const MatrixXd>& Hu,
+                                const Ref<const VectorXd>& h_min,
+                                const Ref<const VectorXd>& h_max)
 {
   if (opts_.num_general_constraints == 0)
-    throw std::logic_error("[MPCBase::setGeneralConstraints] General "
+    throw std::logic_error("[MPC::setGeneralConstraints] General "
                            "constraints are not enabled.");
   const Index p{opts_.num_general_constraints};
   validateShape(Hx, p, state_dim_, "setGeneralConstraints", "Hx");
@@ -763,7 +788,7 @@ void MPCBase::setGeneralConstraints(const Ref<const MatrixXd>& Hx,
   validateSize(h_min.size(), p, "setGeneralConstraints", "h_min");
   validateSize(h_max.size(), p, "setGeneralConstraints", "h_max");
   if ((h_min.array() > h_max.array()).any())
-    throw std::invalid_argument("[MPCBase::setGeneralConstraints] h_min "
+    throw std::invalid_argument("[MPC::setGeneralConstraints] h_min "
                                 "cannot be greater than h_max.");
   // new matrices refactor, so only mark them when they changed
   if (data_.Hx != Hx || data_.Hu != Hu) {
@@ -777,19 +802,19 @@ void MPCBase::setGeneralConstraints(const Ref<const MatrixXd>& Hx,
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setTerminalConstraints(const Ref<const MatrixXd>& Hf,
-                                     const Ref<const VectorXd>& hf_min,
-                                     const Ref<const VectorXd>& hf_max)
+void MPC::setTerminalConstraints(const Ref<const MatrixXd>& Hf,
+                                 const Ref<const VectorXd>& hf_min,
+                                 const Ref<const VectorXd>& hf_max)
 {
   if (opts_.num_terminal_constraints == 0)
-    throw std::logic_error("[MPCBase::setTerminalConstraints] Terminal "
+    throw std::logic_error("[MPC::setTerminalConstraints] Terminal "
                            "constraints are not enabled.");
   const Index p{opts_.num_terminal_constraints};
   validateShape(Hf, p, state_dim_, "setTerminalConstraints", "Hf");
   validateSize(hf_min.size(), p, "setTerminalConstraints", "hf_min");
   validateSize(hf_max.size(), p, "setTerminalConstraints", "hf_max");
   if ((hf_min.array() > hf_max.array()).any())
-    throw std::invalid_argument("[MPCBase::setTerminalConstraints] hf_min "
+    throw std::invalid_argument("[MPC::setTerminalConstraints] hf_min "
                                 "cannot be greater than hf_max.");
   if (data_.Hf != Hf) {
     data_.Hf = Hf;
@@ -801,194 +826,200 @@ void MPCBase::setTerminalConstraints(const Ref<const MatrixXd>& Hf,
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setSlewRate(const Ref<const VectorXd>& control_point_slew)
+void MPC::setSlewRate(const Ref<const VectorXd>& control_point_slew)
 {
   if (!opts_.slew_control_points)
-    throw std::logic_error("[MPCBase::setSlewRate] Slew rate is not enabled.");
+    throw std::logic_error("[MPC::setSlewRate] Slew rate is not enabled.");
   validateSize(control_point_slew.size(), input_dim_, "setSlewRate",
                "control_point_slew");
   if (control_point_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setSlewRate] Slew rate must be non-negative.");
+        "[MPC::setSlewRate] Slew rate must be non-negative.");
   data_.ctrls_slew = control_point_slew;
   ctrls_slew_rate_set_ = true;
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
+void MPC::setSlewRateInitial(const Ref<const VectorXd>& u0_slew)
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
-        "[MPCBase::setSlewRateInitial] Initial slew rate is not enabled.");
+        "[MPC::setSlewRateInitial] Initial slew rate is not enabled.");
   validateSize(u0_slew.size(), input_dim_, "setSlewRateInitial", "u0_slew");
   if (u0_slew.minCoeff() < 0.0)
     throw std::invalid_argument(
-        "[MPCBase::setSlewRateInitial] Slew rate must be non-negative.");
+        "[MPC::setSlewRateInitial] Slew rate must be non-negative.");
   data_.u0_slew = u0_slew;
   slew0_rate_set_ = true;
   pending_ |= DataChange::Limits;
 }
 
-void MPCBase::setPreviousInput(const Ref<const VectorXd>& u_prev)
+void MPC::setPreviousInput(const Ref<const VectorXd>& u_prev)
 {
   if (!usesPreviousInput())
-    throw std::logic_error("[MPCBase::setPreviousInput] The initial slew rate "
+    throw std::logic_error("[MPC::setPreviousInput] The initial slew rate "
                            "and the input rate cost are not enabled.");
   validateSize(u_prev.size(), input_dim_, "setPreviousInput", "u_prev");
   data_.u_prev = u_prev;
   pending_ |= DataChange::PreviousInput;
 }
 
-VectorXd MPCBase::getStateWeights() const
+VectorXd MPC::getStateWeights() const
 {
   return data_.Q_big.diagonal().head(state_dim_);
 }
 
-VectorXd MPCBase::getTerminalStateWeights() const
+VectorXd MPC::getTerminalStateWeights() const
 {
   return data_.Q_big.diagonal().tail(state_dim_);
 }
 
-VectorXd MPCBase::getInputWeights() const
+VectorXd MPC::getInputWeights() const
 {
   if (!opts_.use_input_cost)
-    throw std::logic_error(
-        "[MPCBase::getInputWeights] Input cost is not enabled.");
+    throw std::logic_error("[MPC::getInputWeights] Input cost is not enabled.");
   return data_.R_big.diagonal().head(input_dim_);
 }
 
-const VectorXd& MPCBase::getInputRateWeights() const
+const VectorXd& MPC::getInputRateWeights() const
 {
   if (!opts_.use_input_rate_cost)
     throw std::logic_error(
-        "[MPCBase::getInputRateWeights] Input rate cost is not enabled.");
+        "[MPC::getInputRateWeights] Input rate cost is not enabled.");
   return data_.R_rate;
 }
 
-const VectorXd& MPCBase::getStateMin() const
+const VectorXd& MPC::getStateMin() const
 {
   if (!opts_.saturate_states)
     throw std::logic_error(
-        "[MPCBase::getStateMin] State saturation is not enabled.");
+        "[MPC::getStateMin] State saturation is not enabled.");
   return data_.x_min;
 }
 
-const VectorXd& MPCBase::getStateMax() const
+const VectorXd& MPC::getStateMax() const
 {
   if (!opts_.saturate_states)
     throw std::logic_error(
-        "[MPCBase::getStateMax] State saturation is not enabled.");
+        "[MPC::getStateMax] State saturation is not enabled.");
   return data_.x_max;
 }
 
-const VectorXd& MPCBase::getStateBoundL1Penalties() const
+const VectorXd& MPC::getStateBoundL1Penalties() const
 {
   if (!opts_.soft_state_bounds)
-    throw std::logic_error("[MPCBase::getStateBoundL1Penalties] Soft state "
+    throw std::logic_error("[MPC::getStateBoundL1Penalties] Soft state "
                            "bounds are not enabled.");
   return data_.x_soft_l1;
 }
 
-const VectorXd& MPCBase::getStateBoundL2Penalties() const
+const VectorXd& MPC::getStateBoundL2Penalties() const
 {
   if (!opts_.soft_state_bounds)
-    throw std::logic_error("[MPCBase::getStateBoundL2Penalties] Soft state "
+    throw std::logic_error("[MPC::getStateBoundL2Penalties] Soft state "
                            "bounds are not enabled.");
   return data_.x_soft_l2;
 }
 
-const MatrixXd& MPCBase::getGeneralConstraintStateMatrix() const
+const MatrixXd& MPC::getGeneralConstraintStateMatrix() const
 {
   if (opts_.num_general_constraints == 0)
-    throw std::logic_error("[MPCBase::getGeneralConstraintStateMatrix] "
+    throw std::logic_error("[MPC::getGeneralConstraintStateMatrix] "
                            "General constraints are not enabled.");
   return data_.Hx;
 }
 
-const MatrixXd& MPCBase::getGeneralConstraintInputMatrix() const
+const MatrixXd& MPC::getGeneralConstraintInputMatrix() const
 {
   if (opts_.num_general_constraints == 0)
-    throw std::logic_error("[MPCBase::getGeneralConstraintInputMatrix] "
+    throw std::logic_error("[MPC::getGeneralConstraintInputMatrix] "
                            "General constraints are not enabled.");
   return data_.Hu;
 }
 
-const VectorXd& MPCBase::getGeneralConstraintMin() const
+const VectorXd& MPC::getGeneralConstraintMin() const
 {
   if (opts_.num_general_constraints == 0)
-    throw std::logic_error("[MPCBase::getGeneralConstraintMin] General "
+    throw std::logic_error("[MPC::getGeneralConstraintMin] General "
                            "constraints are not enabled.");
   return data_.h_min;
 }
 
-const VectorXd& MPCBase::getGeneralConstraintMax() const
+const VectorXd& MPC::getGeneralConstraintMax() const
 {
   if (opts_.num_general_constraints == 0)
-    throw std::logic_error("[MPCBase::getGeneralConstraintMax] General "
+    throw std::logic_error("[MPC::getGeneralConstraintMax] General "
                            "constraints are not enabled.");
   return data_.h_max;
 }
 
-const MatrixXd& MPCBase::getTerminalConstraintMatrix() const
+const MatrixXd& MPC::getTerminalConstraintMatrix() const
 {
   if (opts_.num_terminal_constraints == 0)
-    throw std::logic_error("[MPCBase::getTerminalConstraintMatrix] Terminal "
+    throw std::logic_error("[MPC::getTerminalConstraintMatrix] Terminal "
                            "constraints are not enabled.");
   return data_.Hf;
 }
 
-const VectorXd& MPCBase::getTerminalConstraintMin() const
+const VectorXd& MPC::getTerminalConstraintMin() const
 {
   if (opts_.num_terminal_constraints == 0)
-    throw std::logic_error("[MPCBase::getTerminalConstraintMin] Terminal "
+    throw std::logic_error("[MPC::getTerminalConstraintMin] Terminal "
                            "constraints are not enabled.");
   return data_.hf_min;
 }
 
-const VectorXd& MPCBase::getTerminalConstraintMax() const
+const VectorXd& MPC::getTerminalConstraintMax() const
 {
   if (opts_.num_terminal_constraints == 0)
-    throw std::logic_error("[MPCBase::getTerminalConstraintMax] Terminal "
+    throw std::logic_error("[MPC::getTerminalConstraintMax] Terminal "
                            "constraints are not enabled.");
   return data_.hf_max;
 }
 
-const VectorXd& MPCBase::getSlewRate() const
+const VectorXd& MPC::getSlewRate() const
 {
   if (!opts_.slew_control_points)
-    throw std::logic_error("[MPCBase::getSlewRate] Slew rate is not enabled.");
+    throw std::logic_error("[MPC::getSlewRate] Slew rate is not enabled.");
   return data_.ctrls_slew;
 }
 
-const VectorXd& MPCBase::getSlewRateInitial() const
+const VectorXd& MPC::getSlewRateInitial() const
 {
   if (!opts_.slew_initial_input)
     throw std::logic_error(
-        "[MPCBase::getSlewRateInitial] Initial slew rate is not enabled.");
+        "[MPC::getSlewRateInitial] Initial slew rate is not enabled.");
   return data_.u0_slew;
 }
 
-const VectorXd& MPCBase::getPreviousInput() const
+const VectorXd& MPC::getPreviousInput() const
 {
   if (!usesPreviousInput())
-    throw std::logic_error("[MPCBase::getPreviousInput] The initial slew rate "
+    throw std::logic_error("[MPC::getPreviousInput] The initial slew rate "
                            "and the input rate cost are not enabled.");
   return data_.u_prev;
 }
 
-const VectorXd& MPCBase::getReferenceInputControlPoints() const
+const VectorXd& MPC::getReferenceInputControlPoints() const
 {
   if (!opts_.use_input_cost)
-    throw std::logic_error("[MPCBase::getReferenceInputControlPoints] "
+    throw std::logic_error("[MPC::getReferenceInputControlPoints] "
                            "Input cost is not enabled.");
   return data_.ctrls_ref;
 }
 
-std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
+std::ostream& operator<<(std::ostream& os, const Formulation formulation)
+{
+  os << (formulation == Formulation::Sparse ? "Sparse" : "Condensed");
+  return os;
+}
+
+std::ostream& print(std::ostream& os, const MPC& mpc, bool capitalize_bools)
 {
   const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << ":\n  state_dim = " << mpc.getStateDim()
+  os << mpc.getClassName() << ":\n  formulation = " << mpc.getFormulation()
+     << "\n  state_dim = " << mpc.getStateDim()
      << "\n  input_dim = " << mpc.getInputDim()
      << "\n  parameterization = " << param << "\n  options = ";
   print(os, mpc.getOptions(), capitalize_bools);
@@ -1033,11 +1064,12 @@ std::ostream& print(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
 }
 
 std::ostream&
-printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
+printInline(std::ostream& os, const MPC& mpc, bool capitalize_bools)
 {
   const Parameterization& param{mpc.getParameterization()};
 
-  os << mpc.getClassName() << "(state_dim=" << mpc.getStateDim()
+  os << mpc.getClassName() << "(formulation=" << mpc.getFormulation()
+     << ", state_dim=" << mpc.getStateDim()
      << ", input_dim=" << mpc.getInputDim() << ", parameterization=" << param
      << ", options=";
   print(os, mpc.getOptions(), capitalize_bools);
@@ -1082,7 +1114,7 @@ printInline(std::ostream& os, const MPCBase& mpc, bool capitalize_bools)
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os, const MPCBase& mpc)
+std::ostream& operator<<(std::ostream& os, const MPC& mpc)
 {
   return print(os, mpc);
 }

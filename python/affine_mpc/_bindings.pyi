@@ -11,9 +11,9 @@ import scipy.sparse
 import typing
 
 __all__: list[str] = [
-    "CondensedMPC",
     "Discretizer",
-    "MPCBase",
+    "Formulation",
+    "MPC",
     "MPCLogger",
     "ModelSparsity",
     "OSQPSettings",
@@ -23,7 +23,6 @@ __all__: list[str] = [
     "QuadraticProgram",
     "SolveInfo",
     "SolveStatus",
-    "SparseMPC",
 ]
 
 class Options:
@@ -137,7 +136,7 @@ class Options:
 
 class ModelSparsity(enum.Enum):
     """
-    Which entries of the discrete model Ad and Bd the solver tracks, chosen with MPCBase.initializeSolver(). OSQP fixes the sparsity pattern at initialization, and later updates only change the values of the tracked entries: a model entry outside them must stay zero (a nonzero one is silently dropped). Tracking fewer entries makes each solve cheaper when the model has structural zeros.
+    Which entries of the discrete model Ad and Bd the solver tracks, chosen with MPC.initializeSolver(). OSQP fixes the sparsity pattern at initialization, and later updates only change the values of the tracked entries: a model entry outside them must stay zero (a nonzero one is silently dropped). Tracking fewer entries makes each solve cheaper when the model has structural zeros.
     """
 
     Full: typing.ClassVar[ModelSparsity]
@@ -838,9 +837,9 @@ class SolveStatus(enum.Enum):
 class SolveInfo:
     """
     Solver diagnostics from the most recent solve. Obtain with
-    MPCBase.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
+    MPC.getSolveInfo(). mpc_solve_time - qp_solve_time is the time spent
     outside the QP solver (QP assembly, data updates, and refactorization). Work
-    done in MPCBase.prepare() is reported separately in prepare_time.
+    done in MPC.prepare() is reported separately in prepare_time.
     """
 
     def __repr__(self) -> str: ...
@@ -884,8 +883,8 @@ class QuadraticProgram:
     """
     The QP an MPC solves,
     minimize 1/2 z^T P z + q^T z subject to l <= A z <= u,
-    for analysis or for handing to another solver. Obtain with MPCBase.getQP() or
-    MPCBase.assembleQP().
+    for analysis or for handing to another solver. Obtain with MPC.getQP() or
+    MPC.assembleQP().
 
     P and A are scipy.sparse.csc_matrix objects holding the nonzero entries of the
     QP, in the same form for every formulation; P is full symmetric (both
@@ -893,12 +892,12 @@ class QuadraticProgram:
     The cost omits the constant terms of the MPC cost, so its value at the solution
     is not the full MPC cost. Equality rows have l = u, and unbounded sides are
     +-inf. The order of the variables z and of the rows of A is given by
-    MPCBase.getQPVariableBlocks() and MPCBase.getQPConstraintBlocks().
+    MPC.getQPVariableBlocks() and MPC.getQPConstraintBlocks().
     """
 
     def __init__(self) -> None:
         """
-        Empty QP, to pass to MPCBase.assembleQP().
+        Empty QP, to pass to MPC.assembleQP().
         """
 
     @property
@@ -951,8 +950,8 @@ class QuadraticProgram:
 class QPBlock:
     """
     A named block of QP variables or constraint rows: indices offset, ...,
-    offset + size - 1. Returned by MPCBase.getQPVariableBlocks() and
-    MPCBase.getQPConstraintBlocks().
+    offset + size - 1. Returned by MPC.getQPVariableBlocks() and
+    MPC.getQPConstraintBlocks().
     """
 
     def __repr__(self) -> str: ...
@@ -974,27 +973,77 @@ class QPBlock:
         Number of variables or rows.
         """
 
-class MPCBase:
+class Formulation(enum.Enum):
     """
-    Base class. Use CondensedMPC or SparseMPC.
+    How the QP represents the predicted states.
+
+    Both formulations solve the same MPC problem and give the same solution (up to
+    the solver tolerance); they differ in the size and sparsity of the QP, and so
+    in solve time.
     """
 
+    Condensed: typing.ClassVar[Formulation]
+    Sparse: typing.ClassVar[Formulation]
+
+class MPC:
+    """
+    Model predictive control of an affine model, solved as a QP with OSQP.
+
+    Optimizes the control points of an input trajectory parameterization
+    (B-splines, move-blocking, or a custom basis) subject to the costs and
+    constraints enabled in Options. The formulation (condensed or sparse) chooses
+    how the QP represents the predicted states; it is fixed at construction and
+    does not change the interface.
+
+    Setters only validate and store their values; all QP work happens in solve(),
+    or earlier in the optional prepare().
+    """
+
+    @typing.overload
     def __init__(
-        self, state_dim: int, input_dim: int, param: Parameterization, opts: Options
+        self,
+        state_dim: int,
+        input_dim: int,
+        param: Parameterization,
+        opts: Options = Options(),
+        *,
+        formulation: Formulation = Formulation.Condensed
     ) -> None:
         """
-        Constructor for MPCBase.
-
-        This is a base class and not meant to be used directly (use CondensedMPC or
-        SparseMPC). It is constructible for testing and so derived classes share its
-        methods. Subclassing it in Python to define a custom formulation is not
-        supported.
+        Construct an MPC with an input parameterization, options, and formulation.
 
         Args:
-            state_dim: Dimension of state vector.
-            input_dim: Dimension of input vector.
-            parameterization: Input trajectory parameterization.
+            state_dim: State vector dimension.
+            input_dim: Input vector dimension.
+            param: Input trajectory parameterization.
             opts: Optional MPC configuration features to enable.
+            formulation: How the QP represents the predicted states (keyword only).
+
+        Raises:
+            ValueError: If a dimension is not positive or the options are invalid for
+                the dimensions or the parameterization.
+        """
+
+    @typing.overload
+    def __init__(
+        self,
+        state_dim: int,
+        input_dim: int,
+        horizon_steps: int,
+        opts: Options = Options(),
+        *,
+        formulation: Formulation = Formulation.Condensed
+    ) -> None:
+        """
+        Construct an MPC that optimizes every input of the horizon (no
+        parameterization: move-blocking with one control point per step).
+
+        Args:
+            state_dim: State vector dimension.
+            input_dim: Input vector dimension.
+            horizon_steps: Number of discrete time steps in the horizon.
+            opts: Optional MPC configuration features to enable.
+            formulation: How the QP represents the predicted states (keyword only).
         """
 
     def __repr__(self) -> str: ...
@@ -1025,6 +1074,11 @@ class MPCBase:
         """
         Get the indices of the bounded states (Options.bounded_states, or every state
         when it is empty; none without `saturate_states`).
+        """
+
+    def getFormulation(self) -> Formulation:
+        """
+        Get the formulation chosen at construction.
         """
 
     def getGeneralConstraintInputMatrix(
@@ -1312,11 +1366,12 @@ class MPCBase:
     def getQPConstraintBlocks(self) -> list[QPBlock]:
         """
         Get the blocks of constraint rows of A, in order, listing only the blocks the
-        options enable: "dynamics" (SparseMPC's model rows), "input_bounds",
-        "initial_slew", "control_point_slew", "state_bounds" (soft: the upper rows, the
-        lower rows, then the slack rows s >= 0), "general_constraints" (rows per step,
-        steps in order), and "terminal_constraints". Together they cover every row.
-        For analysis; allocates the list, so not intended for the control loop.
+        options enable: "dynamics" (the sparse formulation's model rows),
+        "input_bounds", "initial_slew", "control_point_slew", "state_bounds" (soft: the
+        upper rows, the lower rows, then the slack rows s >= 0), "general_constraints"
+        (rows per step, steps in order), and "terminal_constraints". Together they
+        cover every row. For analysis; allocates the list, so not intended for the
+        control loop.
 
         Returns:
             blocks (list[QPBlock]): The constraint row blocks in order.
@@ -1332,12 +1387,13 @@ class MPCBase:
         Reflects the matrix used by the last solve() or prepare(): setters do not change
         it, and model or weight changes are applied by the next prepare() or solve().
 
-        SparseMPC stores P in sparse form, so each call also builds the dense matrix;
-        not intended for the control loop.
+        The sparse formulation stores P in sparse form, so each call also builds the
+        dense matrix; not intended for the control loop.
 
-        The solver reads only the upper triangle. For CondensedMPC this is the stored P,
-        built by matrix products and so symmetric only up to round-off; for SparseMPC
-        the lower triangle is mirrored from the upper one, so it is exactly symmetric.
+        The solver reads only the upper triangle. For the condensed formulation this is
+        the stored P, built by matrix products and so symmetric only up to round-off;
+        for the sparse formulation the lower triangle is mirrored from the upper one,
+        so it is exactly symmetric.
         getQP() returns an exactly symmetric P for both.
 
         Returns:
@@ -1347,10 +1403,10 @@ class MPCBase:
     def getQPVariableBlocks(self) -> list[QPBlock]:
         """
         Get the blocks of QP variables z, in order: "control_points" (input
-        coefficients), then for SparseMPC "states" (x_1, ..., x_T, state_dim each), then
-        with soft state bounds "state_slacks" (one per bounded state). Together they
-        cover every variable. For analysis; allocates the list, so not intended for the
-        control loop.
+        coefficients), then for the sparse formulation "states" (x_1, ..., x_T,
+        state_dim each), then with soft state bounds "state_slacks" (one per bounded
+        state). Together they cover every variable. For analysis; allocates the list,
+        so not intended for the control loop.
 
         Returns:
             blocks (list[QPBlock]): The variable blocks in order.
@@ -1520,8 +1576,8 @@ class MPCBase:
         and the actual model after it), and every later model must be zero outside them
         (a nonzero outside them is silently dropped; see isWithinSparsityPattern()).
         With ModelSparsity.Full, every entry, which costs more per solve when the model
-        has structural zeros. CondensedMPC supports only ModelSparsity.InitialNonzeros
-        for now.
+        has structural zeros. The condensed formulation supports only
+        ModelSparsity.InitialNonzeros for now.
 
         Args:
             solver_settings: OSQP solver settings. Defaults to recommended settings.
@@ -1533,7 +1589,7 @@ class MPCBase:
         Raises:
             RuntimeError: If a setter the solver or the options require has not been
                 called.
-            ValueError: For ModelSparsity.Full with CondensedMPC.
+            ValueError: For ModelSparsity.Full with the condensed formulation.
         """
 
     def isSolverInitialized(self) -> bool:
@@ -1549,10 +1605,10 @@ class MPCBase:
         Model, weight, or constraint matrix updates that add nonzeros outside that
         pattern are silently dropped by the solver, so the MPC solves a different
         problem than the one you set. Call this after prepare() or solve() (setters do
-        not update the QP) to detect that. SparseMPC's QP holds only the entries it
-        tracks, so it always fits OSQP's pattern; instead, the model must be zero
-        outside the tracked entries of Ad and Bd (see ModelSparsity), which this also
-        checks. It scans the QP matrices, so avoid calling it in time-critical loops.
+        not update the QP) to detect that. The sparse formulation's QP holds only the
+        entries it tracks, so it always fits OSQP's pattern; instead, the model must be
+        zero outside the tracked entries of Ad and Bd (see ModelSparsity), which this
+        also checks. It scans the QP matrices, so avoid calling it in time-critical loops.
 
         Returns:
             within_pattern (bool): True if the model and the QP matrices fit the
@@ -1665,10 +1721,11 @@ class MPCBase:
 
         Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a model
         change), while changing only the bounds updates QP vectors: Hx and Hu count as
-        changed only when a value differs from the stored one. With CondensedMPC, as
-        with the model, an entry of Hx or Hu that may become nonzero later must be
-        nonzero when initializeSolver() is called, since that fixes the solver's
-        sparsity pattern; SparseMPC keeps every entry of Hx and Hu in its pattern.
+        changed only when a value differs from the stored one. With the condensed
+        formulation, as with the model, an entry of Hx or Hu that may become nonzero
+        later must be nonzero when initializeSolver() is called, since that fixes the
+        solver's sparsity pattern; the sparse formulation keeps every entry of Hx and Hu
+        in its pattern.
 
         Args:
             Hx: State matrix (p x state_dim).
@@ -2082,9 +2139,9 @@ class MPCBase:
         after if the constraints change between solves. Pass `-inf` or `inf` for a side
         without a bound. As with setGeneralConstraints(), changing Hf rebuilds QP
         matrices and makes OSQP refactor, changing only the bounds updates QP vectors,
-        and with CondensedMPC an entry of Hf that may become nonzero later must be
-        nonzero when initializeSolver() is called (SparseMPC keeps every entry of Hf
-        in its pattern).
+        and with the condensed formulation an entry of Hf that may become nonzero later
+        must be nonzero when initializeSolver() is called (the sparse formulation keeps
+        every entry of Hf in its pattern).
 
         Args:
             Hf: State matrix (p_T x state_dim).
@@ -2179,106 +2236,6 @@ class MPCBase:
     @property
     def state_dim(self) -> int: ...
 
-class CondensedMPC(MPCBase):
-    """
-    MPC formulation where only parameterization control points are optimization
-    design variables (condensed QP).
-
-    Eliminates state variables analytically by implicitly wrapping the model into
-    the cost function rather than as a constraint, resulting in a smaller dense
-    QP. Preferred for shorter horizons and lower-dimensional problems.
-    Converts the MPC problem to QP form for OSQP, using input parameterization.
-
-    """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct CondensedMPC with specified input parameterization and MPC
-        configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct CondensedMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
-        """
-
-class SparseMPC(MPCBase):
-    """
-    MPC formulation where the predicted state trajectory and parameterization
-    control points are both optimization design variables (sparse QP).
-
-    Retains state and input variables with model as an optimization constraint,
-    exploiting sparsity for scalability. Preferred for longer horizons or larger
-    state dimensions. Converts the MPC problem to QP form for OSQP, using input
-    parameterization.
-
-    """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        param: Parameterization,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with specified input parameterization and MPC
-        configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           param: Input trajectory parameterization.
-           opts: Optional MPC configuration features to enable.
-        """
-
-    @typing.overload
-    def __init__(
-        self,
-        state_dim: int,
-        input_dim: int,
-        horizon_steps: int,
-        opts: Options = Options(),
-    ) -> None:
-        """
-        Construct SparseMPC with no parameterization (full input trajectory will be
-        optimized) and MPC configuration options.
-
-        Args:
-           state_dim: State vector dimension.
-           input_dim: Input vector dimension.
-           horizon_steps: Number of discrete steps in the MPC horizon.
-           opts: Optional MPC configuration features to enable.
-        """
-
 class MPCLogger:
     """
     High-performance binary logger for MPC data and metadata.
@@ -2307,7 +2264,7 @@ class MPCLogger:
 
     def __init__(
         self,
-        mpc: MPCBase,
+        mpc: MPC,
         save_dir: os.PathLike[str] | str | bytes,
         ts: float,
         prediction_stride: int = 1,
@@ -2396,7 +2353,7 @@ class MPCLogger:
 
         Args:
             t: Current simulation time (time of solve).
-            x0: Current state at time t (same as provided to solve() since MPCBase does
+            x0: Current state at time t (same as provided to solve() since MPC does
                 not store this).
             loop_time: Optional user-measured time (seconds), e.g. of the whole control
                 loop iteration on hardware. Logged as `loop_time` (-1 when not

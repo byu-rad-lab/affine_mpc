@@ -127,6 +127,9 @@ content = re.sub(
 content = re.sub(r"import affine_mpc\n", "", content)
 content = re.sub(r"Options = \.\.\.", "Options = Options()", content)
 content = re.sub(r"OSQPSettings = \.\.\.", "OSQPSettings = OSQPSettings()", content)
+content = re.sub(
+    r"Formulation = \.\.\.", "Formulation = Formulation.Condensed", content
+)
 
 try:
     import black

@@ -55,12 +55,10 @@ add_library(${PROJECT_NAME}
   src/osqp_solver.cpp
   src/vector_parameterization.cpp
   src/discretizer.cpp
-  src/mpc_base.cpp
+  src/mpc.cpp
   src/formulation.cpp
   src/qp_terms.cpp
   src/qp_builder.cpp
-  src/condensed_mpc.cpp
-  src/sparse_mpc.cpp
   src/mpc_logger.cpp
   src/npy_writer.cpp
   src/npz_writer.cpp

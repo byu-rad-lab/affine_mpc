@@ -19,13 +19,13 @@ namespace affine_mpc::detail {
 namespace {
 
 std::unique_ptr<FormulationImpl>
-makeFormulation(const FormulationKind kind,
+makeFormulation(const Formulation kind,
                 const int state_dim,
                 const VectorParameterization& input_param,
                 const ModelEntries& model_entries,
                 QP& qp)
 {
-  if (kind == FormulationKind::Sparse)
+  if (kind == Formulation::Sparse)
     return std::make_unique<SparseFormulation>(state_dim, input_param,
                                                model_entries, qp);
   return std::make_unique<CondensedFormulation>(state_dim, input_param, qp);
@@ -83,7 +83,7 @@ const Term& QPBuilder::add(QPLayout& layout, Args&&... args)
   return ref;
 }
 
-QPBuilder::QPBuilder(const FormulationKind kind,
+QPBuilder::QPBuilder(const Formulation kind,
                      const int state_dim,
                      const VectorParameterization& input_param,
                      const Options& opts,
@@ -142,7 +142,7 @@ QPBuilder::QPBuilder(const FormulationKind kind,
   qp_.q.setZero(num_variables_);
   qp_.l.setZero(num_constraints_);
   qp_.u.setZero(num_constraints_);
-  if (kind == FormulationKind::Sparse) {
+  if (kind == Formulation::Sparse) {
     // CSC with the declared entries as the pattern (every write is to a
     // declared entry)
     qp_.storage = QPStorage::Sparse;
