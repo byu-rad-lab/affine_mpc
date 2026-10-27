@@ -15,7 +15,6 @@
  *  - Solve status codes
  *  - The MPC class and its Formulation
  *  - Logging utilities
- *  - The former class names (MPCBase, CondensedMPC, SparseMPC)
  */
 
 #include "affine_mpc/discretizer.hpp"
@@ -26,9 +25,5 @@
 
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
-
-#include "affine_mpc/condensed_mpc.hpp"
-#include "affine_mpc/mpc_base.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
 
 #endif // AFFINE_MPC_HPP
