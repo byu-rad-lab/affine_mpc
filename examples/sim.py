@@ -31,13 +31,14 @@ def simulate():
     tmp = Path(tempfile.gettempdir())
     save_dir = tmp / "ampc_example"
 
-    msd_mpc = ampc.CondensedMPC(
+    msd_mpc = ampc.MPC(
         state_dim=2,
         input_dim=1,
         param=ampc.Parameterization.linearInterp(
             horizon_steps=10, num_control_points=3
         ),
         opts=ampc.Options(use_input_cost=True, slew_control_points=True),
+        formulation=ampc.Formulation.Condensed,
     )
 
     A = np.array([[0, 1], [-0.6, -0.1]])

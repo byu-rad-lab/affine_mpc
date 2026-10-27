@@ -19,7 +19,7 @@ int main()
       .use_input_cost = true,
       .slew_control_points = true,
   };
-  ampc::CondensedMPC msd_mpc{n, m, param, opts};
+  ampc::MPC msd_mpc{n, m, param, opts, ampc::Formulation::Condensed};
 
   Eigen::Matrix2d A{{0, 1}, {-0.6, -0.1}};
   Eigen::Vector2d B{0, 0.2}, w{0, 0};

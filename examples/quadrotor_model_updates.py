@@ -257,9 +257,7 @@ def build_mpc(dt, rng):
     param = ampc.Parameterization.bspline(
         horizon_steps, degree=2, num_control_points=8, knot_ratio=1.5
     )
-    mpc = ampc.CondensedMPC(
-        N_STATES, N_INPUTS, param, ampc.Options(use_input_cost=True)
-    )
+    mpc = ampc.MPC(N_STATES, N_INPUTS, param, ampc.Options(use_input_cost=True))
     # Initialize with a model at a random point so that the QP sparsity pattern
     # covers every entry that becomes nonzero away from hover.
     x_rand = rng.uniform(-0.5, 0.5, N_STATES)
