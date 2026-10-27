@@ -144,14 +144,24 @@ Case drawCase(Draw& draw)
   return c;
 }
 
-// Sets every value the options use, drawn anew
-void setAll(ampc::MPCBase& mpc, const Case& c, Draw& draw)
+// Sets every value the options use, drawn anew (the model zero outside the
+// masks, if given)
+void setAll(ampc::MPCBase& mpc,
+            const Case& c,
+            Draw& draw,
+            const Mask* Ad_mask = nullptr,
+            const Mask* Bd_mask = nullptr)
 {
   const int n{c.n}, m{c.m}, T{c.param.horizon_steps};
   const int nc{m * c.param.num_control_points};
   const ampc::Options& o{c.opts};
-  mpc.setModelDiscrete(MatrixXd::Identity(n, n) + 0.1 * draw.sparse(n, n),
-                       draw.sparse(n, m), draw.sparse(n, 1));
+  MatrixXd Ad{MatrixXd::Identity(n, n) + 0.1 * draw.sparse(n, n)};
+  MatrixXd Bd{draw.sparse(n, m)};
+  if (Ad_mask != nullptr)
+    Ad = Ad.cwiseProduct(Ad_mask->cast<double>());
+  if (Bd_mask != nullptr)
+    Bd = Bd.cwiseProduct(Bd_mask->cast<double>());
+  mpc.setModelDiscrete(Ad, Bd, draw.sparse(n, 1));
   mpc.setStateWeights(draw.weights(n), draw.weights(n));
   if (o.use_input_cost) {
     mpc.setInputWeights(draw.weights(m));
@@ -395,6 +405,68 @@ TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
     }
   }
   EXPECT_GT(initialized, 150);
+  EXPECT_GT(compared, 300);
+}
+
+// With ModelSparsity::InitialNonzeros and a representative model at
+// initialization (ones at a random structural mask), the sparse QP declares
+// (and so stores and sends to OSQP) only the masked entries of Ad and Bd, its
+// nonzeros stay within them while masked entries change between zero and
+// nonzero, and it solves the same problems as tracking every entry
+TEST(QPPatternTester, givenSparseInitialNonzeros_PatternIsMaskedAndSolvesMatch)
+{
+  int compared{0};
+  for (unsigned seed{0}; seed < 200; ++seed) {
+    // the same draws for both
+    Draw draw{seed}, draw_full{seed};
+    const Case c{drawCase(draw)};
+    (void)drawCase(draw_full);
+    SCOPED_TRACE("seed " + std::to_string(seed) + ": " + describe(c));
+    Draw mask_draw{seed + 1000};
+    Mask Ad_mask{c.n, c.n}, Bd_mask{c.n, c.m};
+    for (Index i{0}; i < Ad_mask.size(); ++i)
+      Ad_mask.data()[i] = mask_draw.coin(0.6);
+    for (Index i{0}; i < Bd_mask.size(); ++i)
+      Bd_mask.data()[i] = mask_draw.coin(0.6);
+
+    PatternInspector masked{c.n, c.m, c.param, c.opts};
+    PatternInspector full{c.n, c.m, c.param, c.opts};
+    setAll(masked, c, draw, &Ad_mask, &Bd_mask);
+    setAll(full, c, draw_full, &Ad_mask, &Bd_mask);
+    // the representative model: every masked entry nonzero
+    masked.setModelDiscrete(Ad_mask.cast<double>(), Bd_mask.cast<double>(),
+                            VectorXd::Zero(c.n));
+    if (!masked.initializeSolver()
+        || !full.initializeSolver(ampc::ModelSparsity::Full))
+      continue;
+    const Index out_A{Ad_mask.size() - Ad_mask.count()};
+    const Index out_B{Bd_mask.size() - Bd_mask.count()};
+    const Index T{c.param.horizon_steps}, band{c.param.band_width};
+    EXPECT_EQ(full.qpData().A_csc.nonZeros() - masked.qpData().A_csc.nonZeros(),
+              T * band * out_B + (T - 1) * out_A);
+    EXPECT_EQ(full.qpData().P_csc.nonZeros(), masked.qpData().P_csc.nonZeros());
+    const OSQPInt nnz_A{static_cast<OSQPInt>(masked.qpData().A_csc.nonZeros())};
+    for (int change{0}; change < 4; ++change) {
+      SCOPED_TRACE("change " + std::to_string(change));
+      setAll(masked, c, draw, &Ad_mask, &Bd_mask);
+      setAll(full, c, draw_full, &Ad_mask, &Bd_mask);
+      const VectorXd x0{draw.sparse(c.n, 1)};
+      (void)draw_full.sparse(c.n, 1);
+      masked.resetWarmStart();
+      full.resetWarmStart();
+      const ampc::SolveStatus status{masked.solve(x0)};
+      EXPECT_EQ(masked.undeclaredNonzeros(), std::vector<std::string>{});
+      EXPECT_TRUE(masked.isWithinSparsityPattern());
+      EXPECT_EQ(masked.qpData().A_csc.nonZeros(), nnz_A);
+      if (status != ampc::SolveStatus::Success
+          || full.solve(x0) != ampc::SolveStatus::Success)
+        continue;
+      ++compared;
+      const double obj{masked.getSolveInfo().objective};
+      EXPECT_NEAR(obj, full.getSolveInfo().objective,
+                  1e-3 * (1.0 + std::abs(obj)));
+    }
+  }
   EXPECT_GT(compared, 300);
 }
 

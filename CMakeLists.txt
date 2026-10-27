@@ -154,6 +154,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/state_bounds_tests.cpp
     test/affine_mpc/general_constraints_tests.cpp
     test/affine_mpc/qp_pattern_tests.cpp
+    test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
   )
 
@@ -209,7 +210,7 @@ if(AFFINE_MPC_BUILD_TESTS)
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
     # tests of internal headers (src/)
-    if(TEST_NAME MATCHES "^(npz_writer|mpc_base|condensed_mpc|general_constraints|qp_pattern)_tests$")
+    if(TEST_NAME MATCHES "^(npz_writer|mpc_base|condensed_mpc|general_constraints|qp_pattern|model_sparsity)_tests$")
       target_include_directories(${TEST_NAME}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )
