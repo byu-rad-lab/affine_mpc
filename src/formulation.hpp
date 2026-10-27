@@ -91,7 +91,7 @@ private:
 /// Constraint rows H x_k for the predicted states x_k,
 /// k = first_step, ..., first_step + num_steps - 1 (1 <= k <= T), H.rows()
 /// rows per step in step order from block.offset. Returned by
-/// Formulation::declareStateRows() and passed back to write the rows.
+/// FormulationImpl::declareStateRows() and passed back to write the rows.
 struct StateRows
 {
   RowBlock block;
@@ -157,14 +157,14 @@ private:
  * wrote. With one cost term per part this is a plain assignment, so it costs
  * nothing over writing P and q directly.
  */
-class Formulation
+class FormulationImpl
 {
 public:
   /// @param qp The QP the formulation writes (owned by the QP builder).
-  explicit Formulation(QP& qp) : qp_{qp} {}
-  virtual ~Formulation() = default;
-  Formulation(const Formulation&) = delete;
-  Formulation& operator=(const Formulation&) = delete;
+  explicit FormulationImpl(QP& qp) : qp_{qp} {}
+  virtual ~FormulationImpl() = default;
+  FormulationImpl(const FormulationImpl&) = delete;
+  FormulationImpl& operator=(const FormulationImpl&) = delete;
 
   /// Number of the formulation's own QP variables (before any extra ones).
   virtual int numVariables() const noexcept = 0;
@@ -343,7 +343,7 @@ private:
  * x = S c + v (stacked over the horizon), where S depends on the model
  * matrices and v on the model, its offset, and x0.
  */
-class CondensedFormulation final : public Formulation
+class CondensedFormulation final : public FormulationImpl
 {
 public:
   CondensedFormulation(int state_dim,
@@ -434,7 +434,7 @@ private:
  * The dynamics rows declare the tracked entries of Ad and Bd (ModelEntries)
  * at every step: full blocks, or only the listed entries.
  */
-class SparseFormulation final : public Formulation
+class SparseFormulation final : public FormulationImpl
 {
 public:
   SparseFormulation(int state_dim,

@@ -112,9 +112,10 @@ bool StateRowMap::matches(const Ref<const MatrixXd>& H) const
   return next == entries_.size();
 }
 
-// ---- Formulation ------------------------------------------------------------
+// ---- FormulationImpl -------------------------------------------------------
 
-void Formulation::declareExtraVariables(const VarBlock& extra, QPLayout& layout)
+void FormulationImpl::declareExtraVariables(const VarBlock& extra,
+                                            QPLayout& layout)
 {
   extra_ = extra;
   P_extra_entries_.reserve(static_cast<std::size_t>(extra.size));
@@ -127,7 +128,7 @@ void Formulation::declareExtraVariables(const VarBlock& extra, QPLayout& layout)
 
 CondensedFormulation::CondensedFormulation(
     const int state_dim, const VectorParameterization& input_param, QP& qp) :
-    Formulation{qp},
+    FormulationImpl{qp},
     n_{state_dim},
     m_{input_param.inputDim()},
     T_{input_param.parameterization().horizon_steps},
@@ -143,8 +144,8 @@ CondensedFormulation::CondensedFormulation(
     weighted_state_err_{nx_}
 {}
 
-Formulation::Update CondensedFormulation::update(const DataChangeSet changes,
-                                                 const MPCData& d)
+FormulationImpl::Update
+CondensedFormulation::update(const DataChangeSet changes, const MPCData& d)
 {
   // S only feeds the terms, which write the QP
   if (changes.has(DataChange::Model))
@@ -395,7 +396,7 @@ SparseFormulation::SparseFormulation(const int state_dim,
                                      const VectorParameterization& input_param,
                                      const ModelEntries& model_entries,
                                      QP& qp) :
-    Formulation{qp},
+    FormulationImpl{qp},
     n_{state_dim},
     m_{input_param.inputDim()},
     T_{input_param.parameterization().horizon_steps},
@@ -477,8 +478,8 @@ void SparseFormulation::writeConstantRows()
   minus_I_entries_.setConstant(-1.0);
 }
 
-Formulation::Update SparseFormulation::update(const DataChangeSet changes,
-                                              const MPCData& d)
+FormulationImpl::Update SparseFormulation::update(const DataChangeSet changes,
+                                                  const MPCData& d)
 {
   Update written{};
   if (changes.has(DataChange::Model)) {

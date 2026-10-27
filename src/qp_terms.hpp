@@ -34,11 +34,11 @@ public:
   /// position (QPEntries), never through the matrices; entries the term writes
   /// through the formulation (state rows, control point costs) are declared
   /// with the formulation's declare functions.
-  virtual void declare(QPLayout& /*layout*/, Formulation& /*f*/) {}
+  virtual void declare(QPLayout& /*layout*/, FormulationImpl& /*f*/) {}
   /// Whether the term is a cost (adds into P and q).
   virtual bool isCost() const noexcept { return false; }
   /// Categories that change the term's part of P or of A.
-  virtual DataChangeSet matrixDependsOn(const Formulation& f) const = 0;
+  virtual DataChangeSet matrixDependsOn(const FormulationImpl& f) const = 0;
   /// Categories that change the term's part of q or of the bounds.
   ///
   /// When both parts run for a change, the matrix part runs first (see
@@ -46,9 +46,9 @@ public:
   /// vector part may read state its matrix part caches (e.g. the nonzero
   /// entries of a constraint matrix) if every category that refreshes that
   /// state is also in vectorDependsOn().
-  virtual DataChangeSet vectorDependsOn(const Formulation& f) const = 0;
-  virtual void updateMatrix(const MPCData& d, Formulation& f, QP& qp) = 0;
-  virtual void updateVector(const MPCData& d, Formulation& f, QP& qp) = 0;
+  virtual DataChangeSet vectorDependsOn(const FormulationImpl& f) const = 0;
+  virtual void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) = 0;
+  virtual void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) = 0;
 
   /// The rows declared by declare() (empty for costs).
   const RowBlock& rows() const noexcept { return rows_; }
@@ -80,17 +80,17 @@ class StateCost final : public QPTerm
 {
 public:
   bool isCost() const noexcept override { return true; }
-  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  DataChangeSet matrixDependsOn(const FormulationImpl& f) const override
   {
     return DataChangeSet{DataChange::Weights} | f.stateMatrixDependsOn();
   }
-  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl& f) const override
   {
     return DataChange::Weights | DataChange::References
            | f.stateMatrixDependsOn() | f.stateOffsetDependsOn();
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 };
 
 /// 1/2 sum_i (c_i - c_ref,i)^T R (c_i - c_ref,i) on the control points
@@ -99,16 +99,16 @@ class InputCost final : public QPTerm
 {
 public:
   bool isCost() const noexcept override { return true; }
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights;
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights | DataChange::References;
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 };
 
 /// 1/2 sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
@@ -125,17 +125,17 @@ class InputRateCost final : public QPTerm
 public:
   explicit InputRateCost(const VectorParameterization& input_param);
   bool isCost() const noexcept override { return true; }
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights;
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights | DataChange::PreviousInput;
   }
-  void declare(QPLayout& layout, Formulation& f) override;
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   struct GEntry // a nonzero G(i, j) between control points i and j
@@ -167,17 +167,17 @@ class InputBounds final : public QPTerm
 public:
   InputBounds(const VectorParameterization& input_param,
               bool saturate_input_trajectory);
-  void declare(QPLayout& layout, Formulation& f) override;
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return {};
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Limits;
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const VectorParameterization& input_param_;
@@ -194,17 +194,17 @@ public:
   explicit InitialSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout, Formulation& f) override;
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return {};
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Limits | DataChange::PreviousInput;
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const VectorParameterization& input_param_;
@@ -218,17 +218,17 @@ public:
   explicit ControlPointSlew(const VectorParameterization& input_param) :
       input_param_{input_param}
   {}
-  void declare(QPLayout& layout, Formulation& f) override;
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return {};
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Limits;
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const VectorParameterization& input_param_;
@@ -251,17 +251,17 @@ public:
               int state_dim,
               int horizon_steps,
               bool soft);
-  void declare(QPLayout& layout, Formulation& f) override;
-  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  DataChangeSet matrixDependsOn(const FormulationImpl& f) const override
   {
     return f.stateMatrixDependsOn();
   }
-  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl& f) const override
   {
     return DataChangeSet{DataChange::Limits} | f.stateOffsetDependsOn();
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
   /// The slack variables (empty unless soft).
   const VarBlock& slack() const noexcept { return slack_; }
@@ -290,19 +290,19 @@ public:
   GeneralConstraints(const VectorParameterization& input_param,
                      int num_constraints,
                      int state_dim);
-  void declare(QPLayout& layout, Formulation& f) override;
-  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  DataChangeSet matrixDependsOn(const FormulationImpl& f) const override
   {
     return DataChangeSet{DataChange::ConstraintMatrices}
            | f.stateMatrixDependsOn();
   }
-  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl& f) const override
   {
     return DataChange::Limits | DataChange::ConstraintMatrices | DataChange::X0
            | f.stateOffsetDependsOn();
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const VectorParameterization& input_param_;
@@ -322,23 +322,23 @@ public:
   TerminalConstraints(int num_constraints, int state_dim, int horizon_steps) :
       T_{horizon_steps}, Hf_{StateRowMap::general(num_constraints, state_dim)}
   {}
-  void declare(QPLayout& layout, Formulation& f) override
+  void declare(QPLayout& layout, FormulationImpl& f) override
   {
     rows_ = layout.addRows(Hf_.rows());
     state_rows_ = f.declareStateRows(layout, rows_, Hf_, T_, 1);
   }
-  DataChangeSet matrixDependsOn(const Formulation& f) const override
+  DataChangeSet matrixDependsOn(const FormulationImpl& f) const override
   {
     return DataChangeSet{DataChange::ConstraintMatrices}
            | f.stateMatrixDependsOn();
   }
-  DataChangeSet vectorDependsOn(const Formulation& f) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl& f) const override
   {
     return DataChange::Limits | DataChange::ConstraintMatrices
            | f.stateOffsetDependsOn();
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const int T_;
@@ -355,16 +355,16 @@ public:
       slack_{slack}, half_l1_{slack.size}
   {}
   bool isCost() const noexcept override { return true; }
-  DataChangeSet matrixDependsOn(const Formulation&) const override
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights;
   }
-  DataChangeSet vectorDependsOn(const Formulation&) const override
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
   {
     return DataChange::Weights;
   }
-  void updateMatrix(const MPCData& d, Formulation& f, QP& qp) override;
-  void updateVector(const MPCData& d, Formulation& f, QP& qp) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
   const VarBlock slack_;

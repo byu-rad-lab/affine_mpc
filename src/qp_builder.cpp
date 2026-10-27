@@ -18,7 +18,7 @@ namespace affine_mpc::detail {
 
 namespace {
 
-std::unique_ptr<Formulation>
+std::unique_ptr<FormulationImpl>
 makeFormulation(const FormulationKind kind,
                 const int state_dim,
                 const VectorParameterization& input_param,
@@ -206,14 +206,14 @@ void QPBuilder::writeConstantParts(const MPCData& d)
     term->updateMatrix(d, *formulation_, qp_);
 }
 
-Formulation::Update QPBuilder::apply(const DataChangeSet changes,
-                                     const MPCData& d)
+FormulationImpl::Update QPBuilder::apply(const DataChangeSet changes,
+                                         const MPCData& d)
 {
-  Formulation& f{*formulation_};
+  FormulationImpl& f{*formulation_};
   // first the formulation (the terms read its state map), then every matrix
   // part before any vector part (a vector part may read what its matrix part
   // cached, see QPTerm::vectorDependsOn())
-  Formulation::Update written{f.update(changes, d)};
+  FormulationImpl::Update written{f.update(changes, d)};
 
   if (changes.has(cost_matrix_deps_)) {
     f.beginCostMatrix();
@@ -247,7 +247,7 @@ Formulation::Update QPBuilder::apply(const DataChangeSet changes,
 
 void QPBuilder::applyX0(const MPCData& d)
 {
-  Formulation& f{*formulation_};
+  FormulationImpl& f{*formulation_};
   f.updateX0(d);
   if (cost_vector_x0_) {
     f.beginCostVector();

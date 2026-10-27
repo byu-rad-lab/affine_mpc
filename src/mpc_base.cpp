@@ -404,7 +404,7 @@ bool MPCBase::applyPendingChanges()
   // Nothing changed is the common case, which costs only this check
   if (pending_.empty())
     return true;
-  const detail::Formulation::Update written{
+  const detail::FormulationImpl::Update written{
       qp_builder_->apply(pending_, data_)};
   pending_ = {};
   // Before initializeSolver() the QP is only assembled

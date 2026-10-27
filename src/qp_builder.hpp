@@ -59,7 +59,7 @@ public:
   int numVariables() const noexcept { return num_variables_; }
   int numConstraints() const noexcept { return num_constraints_; }
   const QPRows& rows() const noexcept { return rows_; }
-  const Formulation& formulation() const noexcept { return *formulation_; }
+  const FormulationImpl& formulation() const noexcept { return *formulation_; }
 
   /// Every entry set of P (A) declared at construction, in declaration
   /// order. Writes by position only reach these entries (an entry may be in
@@ -80,7 +80,7 @@ public:
 
   /// Update every part of the QP that depends on the changed categories but
   /// not on x0. Returns the parts written and the categories behind each.
-  Formulation::Update apply(DataChangeSet changes, const MPCData& d);
+  FormulationImpl::Update apply(DataChangeSet changes, const MPCData& d);
   /// Update every part that depends on x0 (d.x0): q if
   /// applyX0WritesCostVector(), the bounds if applyX0WritesBounds().
   void applyX0(const MPCData& d);
@@ -107,7 +107,7 @@ private:
 
   QP qp_; // declared before formulation_, which keeps a reference
   mutable Eigen::MatrixXd dense_P_; // denseCostMatrix() for sparse storage
-  std::unique_ptr<Formulation> formulation_;
+  std::unique_ptr<FormulationImpl> formulation_;
   std::vector<std::unique_ptr<QPTerm>> terms_;
   QPRows rows_;
   int num_variables_, num_constraints_;
