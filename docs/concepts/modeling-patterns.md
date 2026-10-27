@@ -22,6 +22,7 @@ For a continuous-time model $\dot{\mathbf{x}} = f_{\mathrm{c}}(\mathbf{x}, \math
 
 To update the approximation about a new operating point (e.g. the current state and the last applied input), set the new model before each solve.
 This changes $A$ and $B$, so the QP matrices are rebuilt and refactored at the next solve (see [Runtime Updates](runtime-updates.md)).
+[Model Update Strategies](model-updates.md) compares updating the model about the measured state after the measurement with updating it about a predicted state before the measurement, which lets `prepare()` do the rebuild ahead of time.
 
 B-splines are a partition of unity, so a constant trim input $\mathbf{u}_{\mathrm{p}}$ is represented exactly by setting every control point to $\mathbf{u}_{\mathrm{p}}$, e.g. with `setReferenceInput(u_p)`.
 

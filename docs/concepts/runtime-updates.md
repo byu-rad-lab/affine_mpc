@@ -180,6 +180,7 @@ Calling `prepare()` is never required, since `solve()` applies anything still pe
 It returns `UpdateFailed` like `solve()` if OSQP rejects an update.
 The next `solve()` reports the total time of the `prepare()` calls since the previous solve as `SolveInfo.prepare_time`, so `mpc_solve_time` stays the latency after the measurement.
 For an LTI problem with fixed weights it has nothing to do.
+[Model Update Strategies](model-updates.md) applies this split to a nonlinear model and measures what it saves.
 
 ## MPC to QP Relationship
 
@@ -233,5 +234,6 @@ but the actual cost depends on the formulation and problem structure.
 ## Related Topics
 
 - [QP Formulation](qp-formulation.md): how MPC data maps into the OSQP problem
+- [Model Update Strategies](model-updates.md): updating the affine approximation of a nonlinear model with `prepare()` and the offset-only setters
 - [Usage](../usage.md): configuring an MPC object and running repeated solves
-- [Examples](../examples.md): complete repeated-solve workflows in context
+- [Examples](../examples/index.md): complete repeated-solve workflows in context

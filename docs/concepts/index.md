@@ -56,6 +56,7 @@ $$
 - [QP Formulation](qp-formulation.md): conversion from MPC to QP.
 - [Runtime Updates](runtime-updates.md): OSQP sparsity rules and what may change between solves.
 - [Modeling Patterns](modeling-patterns.md): operating points, offset-free tracking, input delay, and deviation form.
+- [Model Update Strategies](model-updates.md): when to update the model of a nonlinear plant relative to the state measurement, and where the library work goes in each case.
 
 <!-- ## Practical Takeaway -->
 <!---->

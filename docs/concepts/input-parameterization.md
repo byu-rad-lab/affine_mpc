@@ -300,7 +300,7 @@ Discrete Laguerre functions decay like $a^k$ for a pole $0 \le a < 1$, so a few 
 Used directly, $\mathbf{u} = \Psi \mathbf{c}$, the predicted input decays to zero and can not hold the steady input that keeps a plant at a nonzero reference, so the direct form is not suited to setpoint tracking on its own.
 
 The deviation form $\mathbf{u} = \mathbf{u}_{\mathrm{ss}} + \Psi \mathbf{c}$ plans the deviation from the steady-state input $\mathbf{u}_{\mathrm{ss}}$ that holds the reference, which enters through the model offset $\mathbf{w}$ (see [Deviation Form for Other Bases](modeling-patterns.md#deviation-form-for-other-bases) for the full recipe).
-For the mass-spring-damper of the [examples](../examples.md), with the limits $0 \le u \le 4$:
+For the [mass-spring-damper example](../examples/mass-spring-damper.md), with the limits $0 \le u \le 4$:
 
 ```python
 import numpy as np
@@ -352,7 +352,7 @@ for _ in range(100):
 ```
 
 Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
-`examples/laguerre.py` runs both forms and compares their closed-loop cost.
+`examples/laguerre.py` runs both forms and compares their closed-loop cost (see [Laguerre Basis](../examples/laguerre.md)).
 It also zeroes the rows of $\Psi$ that have decayed to round-off before the QR decomposition: those samples are frozen at $\mathbf{u}_{\mathrm{ss}}$ anyway (they can be many orders of magnitude below round-off for long horizons), and their tiny coefficients in the input bound rows would otherwise hurt OSQP's scaling.
 
 ## Next Step

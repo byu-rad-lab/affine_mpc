@@ -64,6 +64,8 @@ affine-mpc-example-sim
 affine-mpc-example-plot
 ```
 
+The [quadrotor example](../examples/quadrotor-model-updates.md) is installed as `affine-mpc-example-quadrotor`.
+
 ### Run Sim File Directly
 
 This is useful if you wish to modify the example sim or just want to run it directly.
@@ -78,7 +80,7 @@ Expected outcome:
 - `log.npz` and `params.yaml` are written under the `ampc_example` temp directory.
 - The plotting helper opens figures if the visualization dependencies are installed.
 
-For more detail on what the example demonstrates and how to interpret the outputs, see [Examples](../examples.md).
+For more detail on what the example demonstrates and how to interpret the outputs, see [Mass-Spring-Damper](../examples/mass-spring-damper.md).
 
 ### Plot the Results
 
