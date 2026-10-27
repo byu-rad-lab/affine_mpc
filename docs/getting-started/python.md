@@ -80,7 +80,7 @@ python examples/sim.py --plot
 Expected outcome:
 
 - The example runs successfully, printing the log path to the console.
-- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory.
+- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory, replacing the log of any earlier run.
 - With `--plot`, the plotting helper opens figures if the visualization dependencies are installed.
 
 For more detail on what the example demonstrates and how to interpret the outputs, see [Mass-Spring-Damper](../examples/mass-spring-damper.md).

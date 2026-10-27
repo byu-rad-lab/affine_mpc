@@ -2,7 +2,6 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
-#include <string>
 
 #include "affine_mpc/affine_mpc.hpp"
 
@@ -13,17 +12,6 @@ namespace fs = std::filesystem;
 int main()
 {
   const auto savedir{fs::temp_directory_path() / "ampc_example"};
-  if (fs::exists(savedir / "log.npz")) {
-    std::string answer;
-    std::cout << "Log file already exists. Overwrite? [Y/n]: ";
-    std::getline(std::cin, answer);
-    if (answer.empty())
-      answer = "y";
-    if (std::tolower(answer.front()) != 'y') {
-      std::cout << "Exiting." << std::endl;
-      return 0;
-    }
-  }
 
   const int n{2}, m{1}, T{10}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};

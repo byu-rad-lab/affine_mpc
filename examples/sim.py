@@ -30,13 +30,6 @@ def plot():
 def simulate():
     tmp = Path(tempfile.gettempdir())
     save_dir = tmp / "ampc_example"
-    if (save_dir / "log.npz").exists():
-        answer = input("Log file already exists. Overwrite? [Y/n]: ")
-        if len(answer) == 0:
-            answer = "y"
-        if not answer.lower().startswith("y"):
-            print("Not overwriting.")
-            return
 
     msd_mpc = ampc.CondensedMPC(
         state_dim=2,

@@ -48,7 +48,7 @@ The two implementations follow the same steps:
 
 ## What the Example Produces
 
-The example writes output into the system temp directory under `ampc_example`.
+The example writes output into the system temp directory under `ampc_example`, replacing the log of any earlier run (from either interface).
 
 The two outputs are:
 
