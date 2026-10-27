@@ -14,7 +14,8 @@ The log file is saved to the same location, so running `plot_sim.py` works after
 
 The C++ version of `affine_mpc` does not come with plotting capabilities.
 It is designed to log `.npz` files that can be loaded in Python with `numpy.load()`.
-Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` will also plot the results when run directly.
+Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` can also plot the results (`python examples/sim.py --plot`, or `affine-mpc-example-msd --plot` when installed with `pip`).
+
 ## What the Example Demonstrates
 
 - Building a linear interpolation parameterization

@@ -1,5 +1,13 @@
+"""Mass-spring-damper example: simulate and log, optionally plot.
+
+Run with --plot to also plot the log, or with --load --plot to plot an
+existing log (e.g. one written by the C++ example_sim) without simulating.
+"""
+
 # std lib
+import argparse
 from pathlib import Path
+import sys
 import tempfile
 from time import perf_counter
 
@@ -10,7 +18,7 @@ import numpy as np
 import affine_mpc as ampc
 
 
-def plot_example():
+def plot():
     if __name__ == "__main__":
         import plot_sim
     else:
@@ -19,7 +27,7 @@ def plot_example():
     plot_sim.main()
 
 
-def run_example():
+def simulate():
     tmp = Path(tempfile.gettempdir())
     save_dir = tmp / "ampc_example"
     if (save_dir / "log.npz").exists():
@@ -91,10 +99,56 @@ def run_example():
     print("Log file written to", save_dir / "log.npz")
 
 
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument(
+        "--load",
+        action="store_true",
+        help="plot the existing log instead of simulating (use with --plot)",
+    )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="plot the log (needs matplotlib, abracatabra, and a Qt binding)",
+    )
+    args = parser.parse_args()
+    if args.load and not args.plot:
+        parser.error("--load only skips the simulation before plotting; add --plot")
+    if not args.load:
+        simulate()
+    if args.plot:
+        plot()
+
+
+# Deprecated command names; each still works as before after a notice.
+
+
+def _renamed(command):
+    print(
+        f"Note: {Path(sys.argv[0]).name} is deprecated and will be removed in a "
+        f"future release; use '{command}' instead.",
+        file=sys.stderr,
+    )
+
+
 def run_all():
-    run_example()
-    plot_example()
+    """affine-mpc-example: simulate and plot."""
+    _renamed("affine-mpc-example-msd --plot")
+    simulate()
+    plot()
+
+
+def run_example():
+    """affine-mpc-example-sim: simulate only."""
+    _renamed("affine-mpc-example-msd")
+    simulate()
+
+
+def plot_existing():
+    """affine-mpc-example-plot: plot the existing log only."""
+    _renamed("affine-mpc-example-msd --load --plot")
+    plot()
 
 
 if __name__ == "__main__":
-    run_all()
+    main()

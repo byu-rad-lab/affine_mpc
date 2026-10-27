@@ -45,50 +45,55 @@ python -m pip install . --config-settings=cmake.define.BUILD_SHARED_LIBS=ON
 
 ### Use Installed Scripts (fastest start)
 
-Installing with `pip`, as shown above, installs the Python examples into your Python environment along with these three scripts:
+Installing with `pip`, as shown above, installs the Python examples into your Python environment along with one command per example:
 
-- `affine-mpc-example-sim` (runs sim and logs only)
-- `affine-mpc-example-plot` (plots only)
-- `affine-mpc-example` (runs sim, logs, and plots)
+- `affine-mpc-example-msd`: the [mass-spring-damper](../examples/mass-spring-damper.md), which runs the sim and writes the log
+- `affine-mpc-example-quadrotor`: the [quadrotor](../examples/quadrotor-model-updates.md)
 
+Both take `--plot` to plot the results, and `--load --plot` to plot existing logs without simulating again.
 So, to run the sim and visualize the results:
 
 ```sh
-affine-mpc-example
+affine-mpc-example-msd --plot
 ```
 
-OR the same result with 2 commands:
+OR the same result in 2 steps:
 
 ```sh
-affine-mpc-example-sim
-affine-mpc-example-plot
+affine-mpc-example-msd
+affine-mpc-example-msd --load --plot
 ```
 
-The [quadrotor example](../examples/quadrotor-model-updates.md) is installed as `affine-mpc-example-quadrotor`.
+!!! note
+
+    Earlier versions installed `affine-mpc-example`, `affine-mpc-example-sim`, and `affine-mpc-example-plot`.
+    They still work, with a deprecation notice, and are the same as `affine-mpc-example-msd` with `--plot`, no options, and `--load --plot`.
 
 ### Run Sim File Directly
 
 This is useful if you wish to modify the example sim or just want to run it directly.
 
 ```sh
-python examples/sim.py
+python examples/sim.py --plot
 ```
 
 Expected outcome:
 
 - The example runs successfully, printing the log path to the console.
 - `log.npz` and `params.yaml` are written under the `ampc_example` temp directory.
-- The plotting helper opens figures if the visualization dependencies are installed.
+- With `--plot`, the plotting helper opens figures if the visualization dependencies are installed.
 
 For more detail on what the example demonstrates and how to interpret the outputs, see [Mass-Spring-Damper](../examples/mass-spring-damper.md).
 
 ### Plot the Results
 
-After running the example, plot the log with:
+After running the example (Python or C++), plot the log with:
 
 ```sh
 python examples/plot_sim.py
 ```
+
+or, equivalently, `python examples/sim.py --load --plot` or `affine-mpc-example-msd --load --plot`.
 
 #### Visualization Dependencies
 
