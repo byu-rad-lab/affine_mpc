@@ -74,6 +74,8 @@ std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
     return "control_points";
   case InputBoundMode::Exact:
     return "exact";
+  case InputBoundMode::Refined:
+    return "refined";
   }
   return "unknown";
 }
@@ -210,6 +212,8 @@ void MPCLogger::captureMPCSnapshot()
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
   addMetadata("opt_input_bounds",
               inputBoundModeToString(mpc_->getOptions().input_bounds));
+  addMetadata("opt_refined_bound_interval",
+              mpc_->getOptions().refined_bound_interval);
   addMetadata("opt_state_bounds",
               stateBoundModeToString(mpc_->getOptions().state_bounds));
   addMetadata("opt_num_general_constraints",

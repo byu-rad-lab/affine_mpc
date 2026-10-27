@@ -22,6 +22,7 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
   os << "Options(use_input_cost=" << boolStr(opts.use_input_cost)
      << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
      << ", input_bounds=" << opts.input_bounds
+     << ", refined_bound_interval=" << opts.refined_bound_interval
      << ", slew_initial_input=" << boolStr(opts.slew_initial_input)
      << ", slew_control_points=" << boolStr(opts.slew_control_points)
      << ", state_bounds=" << opts.state_bounds << ", bounded_states=[";
@@ -58,6 +59,8 @@ std::ostream& operator<<(std::ostream& os, const InputBoundMode mode)
     return os << "ControlPoints";
   case InputBoundMode::Exact:
     return os << "Exact";
+  case InputBoundMode::Refined:
+    return os << "Refined";
   }
   return os << "InputBoundMode(" << static_cast<int>(mode) << ')';
 }

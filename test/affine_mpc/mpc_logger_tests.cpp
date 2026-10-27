@@ -254,10 +254,13 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
   const auto param{ampc::Parameterization::bspline(5, 2, 3)};
   for (const auto& [mode, name, saturate] :
        {std::tuple{ampc::InputBoundMode::ControlPoints, "control_points", 0},
-        std::tuple{ampc::InputBoundMode::Exact, "exact", 1}}) {
+        std::tuple{ampc::InputBoundMode::Exact, "exact", 1},
+        std::tuple{ampc::InputBoundMode::Refined, "refined", 0}}) {
     SCOPED_TRACE(name);
     fs::remove_all(test_dir);
-    ampc::MPC mpc{2, 1, param, ampc::Options{.input_bounds = mode}};
+    ampc::MPC mpc{
+        2, 1, param,
+        ampc::Options{.input_bounds = mode, .refined_bound_interval = 3}};
     {
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
@@ -270,6 +273,8 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
     EXPECT_NE(params.find("opt_saturate_input_trajectory: "
                           + std::to_string(saturate) + "\n"),
               std::string::npos)
+        << params;
+    EXPECT_NE(params.find("opt_refined_bound_interval: 3\n"), std::string::npos)
         << params;
   }
   fs::remove_all(test_dir);

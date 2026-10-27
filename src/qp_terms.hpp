@@ -159,13 +159,19 @@ private:
   Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 
-/// u_min <= input <= u_max, on the control points or, with
-/// InputBoundMode::Exact or a custom basis, on the sampled inputs that
-/// make it exact.
+/// u_min <= M c <= u_max on each input channel's control points c, where the
+/// rows of M are chosen by the InputBoundMode so that bounding M c bounds
+/// every sampled input: the identity (ControlPoints), the sampled basis rows
+/// that make it exact (Exact, or any mode with a custom basis), or the map
+/// from the control points to the refined control points after knot
+/// insertion (Refined). M is banded and depends only on the basis, so it is
+/// computed once.
 class InputBounds final : public QPTerm
 {
 public:
-  InputBounds(const VectorParameterization& input_param, InputBoundMode mode);
+  InputBounds(const VectorParameterization& input_param,
+              InputBoundMode mode,
+              int refined_bound_interval);
   void declare(QPLayout& layout, FormulationImpl& f) override;
   DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
@@ -179,10 +185,24 @@ public:
   void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
+  // The rows of M in banded form: row r is the sum over i of weights(i, r)
+  // times control point start[r] + i. Empty: M is the identity.
+  struct BoundRows
+  {
+    std::vector<int> start;
+    Eigen::MatrixXd weights;
+    // leave zero weights out of the pattern (refined rows, whose band often
+    // has exact zeros where no knot was inserted); the sampled rows keep the
+    // whole band
+    bool skip_zeros{false};
+  };
+  static BoundRows boundRows(const VectorParameterization& input_param,
+                             InputBoundMode mode,
+                             int refined_bound_interval);
+
   const VectorParameterization& input_param_;
-  // bounded sample indices (empty: the control points are bounded instead)
-  const std::vector<int> samples_;
-  const int num_bounded_; // number of bounded inputs (samples or points)
+  const BoundRows M_;
+  const int num_bounded_; // number of bounded rows per channel
   ConstantEntries A_;
 };
 

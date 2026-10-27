@@ -209,6 +209,9 @@ std::vector<AllocationCase> allocationCases()
                           .state_bounds = ampc::StateBoundMode::Hard};
   const ampc::Options sampled{.use_input_cost = true,
                               .input_bounds = ampc::InputBoundMode::Exact};
+  const ampc::Options refined{.use_input_cost = true,
+                              .input_bounds = ampc::InputBoundMode::Refined,
+                              .refined_bound_interval = 2};
   const ampc::Options soft{.use_input_cost = true,
                            .state_bounds = ampc::StateBoundMode::Soft,
                            .bounded_states = {0}};
@@ -220,6 +223,7 @@ std::vector<AllocationCase> allocationCases()
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
+      {"refinedBounds", ampc::Parameterization::bspline(10, 3, 5), refined},
       {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
       {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),
        constraints},

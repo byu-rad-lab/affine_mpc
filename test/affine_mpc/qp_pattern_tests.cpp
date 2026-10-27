@@ -130,8 +130,11 @@ Case drawCase(Draw& draw)
   ampc::Options& o{c.opts};
   o.use_input_cost = draw.coin();
   o.use_input_rate_cost = draw.coin();
-  o.input_bounds = draw.coin() ? ampc::InputBoundMode::Exact
-                               : ampc::InputBoundMode::ControlPoints;
+  const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
+                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Refined};
+  o.input_bounds = input_modes[draw.integer(0, 2)];
+  o.refined_bound_interval = draw.integer(1, 4);
   o.slew_initial_input = draw.coin();
   o.slew_control_points = draw.coin() && c.param.num_control_points > 1
                           && c.param.type == P::Type::BSpline;
@@ -209,9 +212,10 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.num_control_points) + " deg"
                 + std::to_string(c.param.degree) + " opts "};
   for (const bool b : {o.use_input_cost, o.use_input_rate_cost,
-                       o.input_bounds == ampc::InputBoundMode::Exact,
                        o.slew_initial_input, o.slew_control_points})
     s += b ? '1' : '0';
+  s += " input_bounds " + std::to_string(static_cast<int>(o.input_bounds))
+       + " interval " + std::to_string(o.refined_bound_interval);
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
   s += " bounded " + std::to_string(o.bounded_states.size()) + " p"
        + std::to_string(o.num_general_constraints) + " pf"
