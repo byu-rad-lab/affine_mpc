@@ -144,14 +144,15 @@ TEST(GeneralConstraintsTester, givenIdentityRows_SparseMatchesStateLimits)
 }
 
 // Hx = 0 and Hu = I bound every sampled input u_0, ..., u_{T-1}, which is what
-// saturate_input_trajectory does for degree 2
+// InputBoundMode::Exact does for degree 2
 template <ampc::Formulation F> void checkInputRowsMatchSampledInputLimits()
 {
   // (a tighter limit is active at more samples than there are control points,
   // which OSQP's polishing does not resolve to round-off)
   const double limit{2.0};
   ampc::MPC sampled{2, 1, param,
-                    ampc::Options{.saturate_input_trajectory = true}, F};
+                    ampc::Options{.input_bounds = ampc::InputBoundMode::Exact},
+                    F};
   configure(sampled, limit);
   ampc::MPC general{2, 1, param, general_only, F};
   configure(general, 100.0); // inactive limits on the control points
@@ -215,11 +216,11 @@ TEST(GeneralConstraintsTester, givenCoupledConstraint_HoldsAtEveryStep)
 // condensed columns from the first step on) equal to the B-spline's sampled
 // basis gives the B-spline's solution, and a Laguerre basis holds the
 // constraint at every step in both formulations. The custom basis bounds
-// every sampled input, so the B-spline does too (saturate_input_trajectory).
+// every sampled input, so the B-spline does too (InputBoundMode::Exact).
 TEST(GeneralConstraintsTester, givenCustomBasis_HoldsAtEveryStep)
 {
   const auto custom{ampc::Parameterization::fromBasis(T, denseBasis(param))};
-  const ampc::Options sampled{.saturate_input_trajectory = true,
+  const ampc::Options sampled{.input_bounds = ampc::InputBoundMode::Exact,
                               .num_general_constraints = 1};
   ampc::MPC condensed_b{2, 1, param, sampled};
   ampc::MPC condensed_c{2, 1, custom, general_only};

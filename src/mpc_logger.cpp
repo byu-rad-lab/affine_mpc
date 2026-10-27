@@ -67,6 +67,17 @@ std::string stateBoundModeToString(affine_mpc::StateBoundMode mode)
   return "unknown";
 }
 
+std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
+{
+  switch (mode) {
+  case InputBoundMode::ControlPoints:
+    return "control_points";
+  case InputBoundMode::Exact:
+    return "exact";
+  }
+  return "unknown";
+}
+
 std::string makeShapeString(const std::vector<size_t>& shape)
 {
   std::ostringstream oss;
@@ -192,10 +203,13 @@ void MPCLogger::captureMPCSnapshot()
   // released key, derived from the mode (also logged as opt_state_bounds)
   addMetadata("opt_saturate_states",
               int{mpc_->getOptions().state_bounds != StateBoundMode::Off});
+  // released key, derived from the mode (also logged as opt_input_bounds)
   addMetadata("opt_saturate_input_trajectory",
-              static_cast<int>(mpc_->getOptions().saturate_input_trajectory));
+              int{mpc_->getOptions().input_bounds == InputBoundMode::Exact});
   addMetadata("opt_use_input_rate_cost",
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
+  addMetadata("opt_input_bounds",
+              inputBoundModeToString(mpc_->getOptions().input_bounds));
   addMetadata("opt_state_bounds",
               stateBoundModeToString(mpc_->getOptions().state_bounds));
   addMetadata("opt_num_general_constraints",

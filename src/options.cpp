@@ -21,8 +21,7 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
   };
   os << "Options(use_input_cost=" << boolStr(opts.use_input_cost)
      << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
-     << ", saturate_input_trajectory="
-     << boolStr(opts.saturate_input_trajectory)
+     << ", input_bounds=" << opts.input_bounds
      << ", slew_initial_input=" << boolStr(opts.slew_initial_input)
      << ", slew_control_points=" << boolStr(opts.slew_control_points)
      << ", state_bounds=" << opts.state_bounds << ", bounded_states=[";
@@ -50,6 +49,17 @@ std::ostream& operator<<(std::ostream& os, const StateBoundMode mode)
     return os << "Soft";
   }
   return os << "StateBoundMode(" << static_cast<int>(mode) << ')';
+}
+
+std::ostream& operator<<(std::ostream& os, const InputBoundMode mode)
+{
+  switch (mode) {
+  case InputBoundMode::ControlPoints:
+    return os << "ControlPoints";
+  case InputBoundMode::Exact:
+    return os << "Exact";
+  }
+  return os << "InputBoundMode(" << static_cast<int>(mode) << ')';
 }
 
 } // namespace affine_mpc

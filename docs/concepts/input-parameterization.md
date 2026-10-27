@@ -238,7 +238,7 @@ Construction checks this condition exactly on the sampled basis and throws `std:
 - Repeated knots are allowed.
   Each repeat lowers the continuity of the input at that knot by one, so a double knot in a quadratic spline gives a kink and multiplicity $p+1$ gives a jump, which can be what you want (e.g., a planned step in the input).
   For example, `linearInterp(5, [0, 2, 2, 4])` is piecewise linear with a jump at $k = 2$.
-  With `saturate_input_trajectory` and $p = 1$, the samples on both sides of a repeated knot are bounded.
+  With `InputBoundMode::Exact` and $p = 1$, the samples on both sides of a repeated knot are bounded.
 - A basis function that is zero at every sample is rejected.
   For example, in `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` control point 2 is only nonzero on $(3.2, 3.22)$, a knot multiplicity above $p+1$ leaves a basis function supported on a single point, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
 - Basis functions that are each nonzero somewhere but share too few samples are rejected too.
@@ -280,8 +280,8 @@ A custom basis has `type` `Custom`, `degree` $-1$, and empty `knots`, and it is 
 B-spline properties that the MPC relies on do not hold, which changes three features:
 
 - **Input limits.**
-  B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `saturate_input_trajectory` is optional.
-  A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whether or not `saturate_input_trajectory` is set.
+  B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Exact` is optional.
+  A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whatever `input_bounds` is.
 - **Input cost.**
   `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
   With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.

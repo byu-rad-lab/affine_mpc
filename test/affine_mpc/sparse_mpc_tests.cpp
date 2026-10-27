@@ -140,7 +140,7 @@ TEST(SparseMPCProtectedTester,
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   SparseMPCProtectedTester mpc{n, m, param, opts};
   SparseMPCProtectedTester mpc_no_sat{n, m, param};
   mpc.setModel();

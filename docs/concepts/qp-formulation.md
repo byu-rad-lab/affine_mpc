@@ -261,7 +261,7 @@ $$
 
 ### Input Saturation
 
-**Saturate control points:**
+**Bound the control points** (`InputBoundMode::ControlPoints`, the default):
 
 $$
 \begin{bmatrix}
@@ -289,7 +289,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Saturate input trajectory:**
+**Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
@@ -318,7 +318,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
-A custom basis always uses these constraints with every row, in place of saturating the control points, whether or not `saturate_input_trajectory` is set.
+A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -622,7 +622,7 @@ $$
 
 ### Input Saturation
 
-**Saturate control points:**
+**Bound the control points** (`InputBoundMode::ControlPoints`, the default):
 
 $$
 \begin{bmatrix}
@@ -648,7 +648,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Saturate input trajectory:**
+**Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
@@ -675,7 +675,7 @@ $$
 $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
-A custom basis always uses these constraints with every row, in place of saturating the control points, whether or not `saturate_input_trajectory` is set.
+A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input

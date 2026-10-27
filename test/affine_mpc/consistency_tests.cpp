@@ -498,7 +498,7 @@ TEST(ConsistencyTester,
 {
   const int n{2}, m{1}, T{10}, nc{5}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -529,7 +529,7 @@ TEST(ConsistencyTester,
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 9, 9;
   const ampc::Parameterization param{T, 1, knots};
-  const ampc::Options opts{.saturate_input_trajectory = true};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -566,11 +566,11 @@ TEST(ConsistencyTester,
   const Vector2d x0{0, 0}, x_ref{0.3, 0};
   const double u_max{3.0};
 
-  ConsistencyTester tester{
-      n,
-      m,
-      param,
-      {.saturate_input_trajectory = true, .slew_initial_input = true}};
+  ConsistencyTester tester{n,
+                           m,
+                           param,
+                           {.input_bounds = ampc::InputBoundMode::Exact,
+                            .slew_initial_input = true}};
   tester.setup(); // input limits are [0, 3]
   for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&tester.condensed),
                          static_cast<ampc::MPC*>(&tester.sparse)}) {
@@ -1114,7 +1114,8 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
     opts.slew_control_points = mask & 4;
     opts.state_bounds =
         mask & 8 ? ampc::StateBoundMode::Hard : ampc::StateBoundMode::Off;
-    opts.saturate_input_trajectory = mask & 16;
+    opts.input_bounds = mask & 16 ? ampc::InputBoundMode::Exact
+                                  : ampc::InputBoundMode::ControlPoints;
 
     for (int degree{0}; degree <= 3; ++degree) {
       const auto param{ampc::Parameterization::bspline(T, degree, nc)};
@@ -1125,8 +1126,7 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
                      << " slew_initial_input=" << opts.slew_initial_input
                      << " slew_control_points=" << opts.slew_control_points
                      << " state_bounds=" << opts.state_bounds
-                     << " saturate_input_trajectory="
-                     << opts.saturate_input_trajectory);
+                     << " input_bounds=" << opts.input_bounds);
         const int n{static_cast<int>(sys->Ad.rows())};
         const int m{static_cast<int>(sys->Bd.cols())};
 
@@ -1439,7 +1439,7 @@ TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
     VectorXd active{3 + mult};
     active << 0, 2.5, VectorXd::Constant(mult, 5.0), T - 1.0;
     const auto param{ampc::Parameterization::bspline(T, 2, active)};
-    const ampc::Options opts{.saturate_input_trajectory = true};
+    const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
     ConsistencyTester tester{n, m, param, opts};
     tester.setup(); // input limits are [0, 3]
 
@@ -1490,14 +1490,14 @@ void setupCustomBasisMsd(ampc::MPC& mpc, const ampc::Options& opts)
 TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
 {
   // The custom basis bounds every sample, as the B-spline does with
-  // saturate_input_trajectory for degree > 1, and the input cost weights the
+  // InputBoundMode::Exact for degree > 1, and the input cost weights the
   // coefficients in both (reference zero).
   const int n{2}, m{1}, T{15}, nc{6};
   const auto bspline{ampc::Parameterization::bspline(T, 2, nc, 1.3)};
   const auto custom{ampc::Parameterization::fromBasis(T, denseBasis(bspline))};
   const ampc::Options opts{.use_input_cost = true, .slew_initial_input = true};
   ampc::Options bspline_opts{opts};
-  bspline_opts.saturate_input_trajectory = true;
+  bspline_opts.input_bounds = ampc::InputBoundMode::Exact;
 
   ampc::MPC condensed_b{n, m, bspline, bspline_opts};
   ampc::MPC condensed_c{n, m, custom, opts};
@@ -1529,7 +1529,7 @@ TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
 
 TEST(CustomBasisTester, givenLaguerreBasis_BoundsEverySampledInput)
 {
-  // Without saturate_input_trajectory, a custom basis still bounds every
+  // With InputBoundMode::ControlPoints, a custom basis still bounds every
   // sample (bounding Laguerre coefficients would bound nothing useful).
   const int n{2}, m{1}, T{30};
   const auto param{

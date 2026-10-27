@@ -13,6 +13,7 @@ import typing
 __all__: list[str] = [
     "Discretizer",
     "Formulation",
+    "InputBoundMode",
     "MPC",
     "MPCLogger",
     "ModelSparsity",
@@ -35,6 +36,22 @@ class StateBoundMode(enum.Enum):
     Off: typing.ClassVar[StateBoundMode]
     Soft: typing.ClassVar[StateBoundMode]
 
+class InputBoundMode(enum.Enum):
+    """
+    How the MPC enforces the input limits u_min <= u_k <= u_max, chosen with
+    Options.input_bounds.
+
+    Bounding the control points of a B-spline bounds every sampled input (the convex
+    hull property), but for degree > 1, or degree 1 with non-integer knots, it can
+    keep the samples away from the limits, so the inputs do not use the full range.
+    A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
+    inputs are always bounded, whatever the mode. Refined bounds, between the two in
+    rows and accuracy, are planned.
+    """
+
+    ControlPoints: typing.ClassVar[InputBoundMode]
+    Exact: typing.ClassVar[InputBoundMode]
+
 class Options:
     """
     The optional costs and constraints of the MPC problem, chosen at construction.
@@ -50,14 +67,8 @@ class Options:
             ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
 
     Input constraints (the input limits are always enforced):
-        saturate_input_trajectory: Enables saturation of the sampled input
-            trajectory rather than just the control points. Ignored for degree 0,
-            where the control points are the sampled inputs. For degree 1 only the
-            samples adjacent to each knot are constrained (at most
-            2*num_control_points-2 rows), which is exact for non-integer knots. For
-            degree > 1 every sample is constrained. Allows control points to be
-            outside of input limits while keeping inputs within limits. A custom
-            basis (Parameterization.fromBasis()) always constrains every sample.
+        input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
+            default) or the sampled inputs (InputBoundMode.Exact).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Slew-rate constraints on the parameterization control
@@ -78,7 +89,7 @@ class Options:
 
     """
 
-    saturate_input_trajectory: bool
+    input_bounds: InputBoundMode
     slew_control_points: bool
     slew_initial_input: bool
     state_bounds: StateBoundMode
@@ -89,7 +100,7 @@ class Options:
         *,
         use_input_cost: bool = False,
         use_input_rate_cost: bool = False,
-        saturate_input_trajectory: bool = False,
+        input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         slew_initial_input: bool = False,
         slew_control_points: bool = False,
         state_bounds: StateBoundMode = StateBoundMode.Off,
@@ -106,8 +117,8 @@ class Options:
                 ((uref_k - u_k)^T R (uref_k - u_k)).
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
-            saturate_input_trajectory: Enables saturation of the sampled input
-                trajectory rather than just the control points (see Options).
+            input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
+                default) or the sampled inputs (InputBoundMode.Exact).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Slew-rate constraints on the parameterization control
@@ -251,9 +262,9 @@ class Parameterization:
         band_width = num_control_points, band_start = 0, band_weights = basis
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
-        always bounds every sampled input (whether or not saturate_input_trajectory is
-        set), rejects slew_control_points, and rejects setReferenceInput(); the input
-        cost weights the coefficients.
+        always bounds every sampled input (whatever Options.input_bounds is), rejects
+        slew_control_points, and rejects setReferenceInput(); the input cost weights the
+        coefficients.
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.

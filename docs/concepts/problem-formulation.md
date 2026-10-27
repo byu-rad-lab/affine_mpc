@@ -84,10 +84,11 @@ $$
 \mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max} \quad k=0,\dots,T-1
 $$
 
-The default is to saturate the control points only, which saturates the entire input trajectory due to the convex hull property of B-splines.
+The input limits are always enforced, and `input_bounds` chooses how.
+The default, `InputBoundMode::ControlPoints` (`InputBoundMode.ControlPoints` in Python), saturates the control points only, which saturates the entire input trajectory due to the convex hull property of B-splines.
 However, when the spline does not pass through its control points at the sample times, it becomes harder for the parameterization to utilize the full input range (it essentially becomes flattened).
 This happens for any degree higher than 1, and for degree 1 when an active knot is not an integer.
-Saturating the evaluated inputs adds more optimization constraints, but it lets the control points leave the input saturation range while the evaluated inputs remain saturated.
+`InputBoundMode::Exact` saturates the evaluated inputs instead, which adds more optimization constraints, but it lets the control points leave the input saturation range while the evaluated inputs remain saturated.
 
 ![Cubic spline with the same shape scaled to fit input limits [0, 1] two ways. When the control points are saturated the sampled inputs stay well inside the limits, and when every sample is saturated the control points leave the limits while the samples reach them.](../assets/input-parameterization/degree3-saturation.svg)
 Saturating the control points (left) versus every sample (right) of a cubic spline.
@@ -95,12 +96,15 @@ Only the samples are constrained, so the continuous spline may cross a limit bet
 
 How many constraints are added depends on the degree $p$:
 
-- $p = 0$: the option is ignored, since the control points are the evaluated inputs.
+- $p = 0$: `Exact` is the same as `ControlPoints`, since the control points are the evaluated inputs.
 - $p = 1$: the spline is linear between knots, so only the samples $\lfloor t \rfloor$ and $\lceil t \rceil$ adjacent to each active knot $t$ are constrained (duplicates removed).
   This is exactly equivalent to constraining every sample and adds at most $\min(T, 2\eta - 2)$ constraints per input.
   With integer knots it is the same as saturating the control points.
 - $p > 1$: every sample $k = 0, \dots, T-1$ is constrained.
-- A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whether or not the option is set.
+- A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whatever `input_bounds` is.
+
+With $p > 1$, `Exact` adds a row for every sample, so it can make OSQP slower on long horizons.
+Refined bounds, which bound the samples closely with fewer rows, are planned.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
 Saturating the control points (left) versus the knot-adjacent samples (right) of a degree 1 spline with non-integer knots.

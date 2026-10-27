@@ -208,7 +208,7 @@ std::vector<AllocationCase> allocationCases()
                           .slew_control_points = true,
                           .state_bounds = ampc::StateBoundMode::Hard};
   const ampc::Options sampled{.use_input_cost = true,
-                              .saturate_input_trajectory = true};
+                              .input_bounds = ampc::InputBoundMode::Exact};
   const ampc::Options soft{.use_input_cost = true,
                            .state_bounds = ampc::StateBoundMode::Soft,
                            .bounded_states = {0}};

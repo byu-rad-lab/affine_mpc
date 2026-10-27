@@ -130,7 +130,8 @@ Case drawCase(Draw& draw)
   ampc::Options& o{c.opts};
   o.use_input_cost = draw.coin();
   o.use_input_rate_cost = draw.coin();
-  o.saturate_input_trajectory = draw.coin();
+  o.input_bounds = draw.coin() ? ampc::InputBoundMode::Exact
+                               : ampc::InputBoundMode::ControlPoints;
   o.slew_initial_input = draw.coin();
   o.slew_control_points = draw.coin() && c.param.num_control_points > 1
                           && c.param.type == P::Type::BSpline;
@@ -207,9 +208,9 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.horizon_steps) + " nc"
                 + std::to_string(c.param.num_control_points) + " deg"
                 + std::to_string(c.param.degree) + " opts "};
-  for (const bool b :
-       {o.use_input_cost, o.use_input_rate_cost, o.saturate_input_trajectory,
-        o.slew_initial_input, o.slew_control_points})
+  for (const bool b : {o.use_input_cost, o.use_input_rate_cost,
+                       o.input_bounds == ampc::InputBoundMode::Exact,
+                       o.slew_initial_input, o.slew_control_points})
     s += b ? '1' : '0';
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
   s += " bounded " + std::to_string(o.bounded_states.size()) + " p"

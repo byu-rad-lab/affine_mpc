@@ -16,12 +16,12 @@ namespace {
 // Sample indices whose inputs are bounded. An empty result means the control
 // points are bounded instead. Bounding B-spline control points bounds the
 // sampled inputs (convex hull property), so the samples are only bounded
-// when `saturate_input_trajectory` is enabled. A custom basis has no such
-// property, so its sampled inputs are always bounded.
+// with InputBoundMode::Exact. A custom basis has no such property, so its
+// sampled inputs are always bounded.
 std::vector<int> boundedSamples(const VectorParameterization& input_param,
-                                const bool saturate_input_trajectory)
+                                const InputBoundMode mode)
 {
-  if (!saturate_input_trajectory
+  if (mode == InputBoundMode::ControlPoints
       && input_param.parameterization().type == Parameterization::Type::BSpline)
     return {};
   return input_param.inputSaturationSamples();
@@ -116,9 +116,9 @@ void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
 // ---- InputBounds ------------------------------------------------------------
 
 InputBounds::InputBounds(const VectorParameterization& input_param,
-                         const bool saturate_input_trajectory) :
+                         const InputBoundMode mode) :
     input_param_{input_param},
-    samples_{boundedSamples(input_param, saturate_input_trajectory)},
+    samples_{boundedSamples(input_param, mode)},
     num_bounded_{samples_.empty()
                      ? input_param.parameterization().num_control_points
                      : static_cast<int>(samples_.size())}

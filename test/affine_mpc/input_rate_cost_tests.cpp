@@ -197,12 +197,12 @@ TEST(InputRateCostTester, givenCustomBasisOfBspline_ReproducesBsplineSolution)
 {
   // A custom basis equal to the B-spline's sampled basis gives the same rate
   // cost (dense band: G and the u_0 entries over every coefficient) and bounds
-  // every sample, as the B-spline does with saturate_input_trajectory
+  // every sample, as the B-spline does with InputBoundMode::Exact
   const auto bspline{ampc::Parameterization::bspline(15, 2, 6, 1.3)};
   const auto custom{ampc::Parameterization::fromBasis(15, denseBasis(bspline))};
   const ampc::Options opts{.use_input_rate_cost = true};
   ampc::Options bspline_opts{opts};
-  bspline_opts.saturate_input_trajectory = true;
+  bspline_opts.input_bounds = ampc::InputBoundMode::Exact;
 
   ampc::MPC condensed_b{2, 2, bspline, bspline_opts};
   ampc::MPC condensed_c{2, 2, custom, opts};

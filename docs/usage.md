@@ -77,7 +77,7 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```python
     opts = affine_mpc.Options(
         use_input_cost=True,
-        saturate_input_trajectory=False,
+        input_bounds=affine_mpc.InputBoundMode.ControlPoints,
         slew_initial_input=False,
         slew_control_points=True,
         state_bounds=affine_mpc.StateBoundMode.Off,
@@ -89,12 +89,14 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     ```cpp
     affine_mpc::Options opts;
     opts.use_input_cost = true;
-    opts.saturate_input_trajectory = false;
+    opts.input_bounds = affine_mpc::InputBoundMode::ControlPoints;
     opts.slew_initial_input = false;
     opts.slew_control_points = true;
     opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
+The options are grouped into costs (`use_input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+In Python they are keyword arguments; in C++20, designated initializers must follow this order.
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
@@ -151,8 +153,12 @@ In Python, `formulation` is a keyword-only argument.
 
     The logger records the formulation in the `formulation` metadata entry, and `print()` shows it.
 
-    The `Options` field `saturate_states` was removed in 0.4.0: replace `saturate_states = true` with `state_bounds = StateBoundMode::Hard` (`state_bounds=StateBoundMode.Hard` in Python).
-    The logger still writes `opt_saturate_states`, now derived from the mode, next to the new `opt_state_bounds`.
+    The `Options` fields `saturate_states` and `saturate_input_trajectory` were removed in 0.4.0 in favor of the bound modes:
+
+    - `saturate_states = true` is `state_bounds = StateBoundMode::Hard` (`state_bounds=StateBoundMode.Hard` in Python)
+    - `saturate_input_trajectory = true` is `input_bounds = InputBoundMode::Exact` (`input_bounds=InputBoundMode.Exact` in Python)
+
+    The logger still writes `opt_saturate_states` and `opt_saturate_input_trajectory`, now derived from the modes, next to the new `opt_state_bounds` and `opt_input_bounds`.
     The Python `Options` arguments are now keyword-only.
 
 ### 4. Configure the MPC object

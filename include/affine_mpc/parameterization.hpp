@@ -159,8 +159,8 @@ public:
    *   sample: band_width = num_control_points, band_start = 0, band_weights =
    *   basis transposed), and type is Type::Custom, with degree = -1 and empty
    *   knots. Since the B-spline convex hull property does not hold, an MPC
-   *   with a custom basis always bounds every sampled input (whether or not
-   *   `saturate_input_trajectory` is set), rejects `slew_control_points`, and
+   *   with a custom basis always bounds every sampled input (whatever
+   *   Options::input_bounds is), rejects `slew_control_points`, and
    *   rejects setReferenceInput(); the input cost weights the coefficients.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param basis Basis sampled at k = 0, ..., horizon_steps-1, of size

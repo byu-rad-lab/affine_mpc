@@ -70,6 +70,8 @@ pybind11_stubgen.main(
         "ModelSparsity$:affine_mpc._bindings",
         "--enum-class-locations",
         "StateBoundMode$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "InputBoundMode$:affine_mpc._bindings",
     ]
 )
 

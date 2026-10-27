@@ -247,3 +247,30 @@ TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsModeAndReleasedKey)
   }
   fs::remove_all(test_dir);
 }
+
+TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_input_bounds")};
+  const auto param{ampc::Parameterization::bspline(5, 2, 3)};
+  for (const auto& [mode, name, saturate] :
+       {std::tuple{ampc::InputBoundMode::ControlPoints, "control_points", 0},
+        std::tuple{ampc::InputBoundMode::Exact, "exact", 1}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, ampc::Options{.input_bounds = mode}};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_input_bounds: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_NE(params.find("opt_saturate_input_trajectory: "
+                          + std::to_string(saturate) + "\n"),
+              std::string::npos)
+        << params;
+  }
+  fs::remove_all(test_dir);
+}

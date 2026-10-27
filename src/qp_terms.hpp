@@ -160,13 +160,12 @@ private:
 };
 
 /// u_min <= input <= u_max, on the control points or, with
-/// `saturate_input_trajectory` or a custom basis, on the sampled inputs that
+/// InputBoundMode::Exact or a custom basis, on the sampled inputs that
 /// make it exact.
 class InputBounds final : public QPTerm
 {
 public:
-  InputBounds(const VectorParameterization& input_param,
-              bool saturate_input_trajectory);
+  InputBounds(const VectorParameterization& input_param, InputBoundMode mode);
   void declare(QPLayout& layout, FormulationImpl& f) override;
   DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {

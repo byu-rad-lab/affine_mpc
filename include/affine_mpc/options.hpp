@@ -32,6 +32,32 @@ enum class StateBoundMode
 };
 
 /**
+ * @enum InputBoundMode
+ * @brief How the MPC enforces the input limits u_min <= u_k <= u_max, chosen
+ *   with Options::input_bounds.
+ *
+ * Bounding the control points of a B-spline bounds every sampled input (the
+ * convex hull property), but for degree > 1, or degree 1 with non-integer
+ * knots, it can keep the samples away from the limits, so the inputs do not
+ * use the full range. A custom basis (Parameterization::fromBasis()) has no
+ * such property, so its sampled inputs are always bounded, whatever the mode.
+ * Refined bounds, between the two in rows and accuracy, are planned.
+ */
+enum class InputBoundMode
+{
+  /// Bound the control points (the default): one row per control point, and
+  /// the sampled inputs stay inside the limits.
+  ControlPoints,
+  /// Bound the sampled inputs exactly, which lets the control points leave the
+  /// limits. Degree 0: the same as ControlPoints (the control points are the
+  /// sampled inputs). Degree 1: only the samples adjacent to each knot (at
+  /// most 2*num_control_points-2 rows), which is exact. Degree > 1: every
+  /// sample (T rows per input), which can make OSQP slower on long
+  /// horizons.
+  Exact,
+};
+
+/**
  * @struct Options
  * @brief The optional costs and constraints of the MPC problem, chosen at
  *   construction.
@@ -47,14 +73,8 @@ enum class StateBoundMode
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  *
  * Input constraints (the input limits are always enforced):
- * - saturate_input_trajectory: Enables saturation of the sampled input
- *     trajectory rather than just the control points. Ignored for degree 0,
- *     where the control points are the sampled inputs. For degree 1 only the
- *     samples adjacent to each knot are constrained (at most
- *     2*num_control_points-2 rows), which is exact for non-integer knots. For
- *     degree > 1 every sample is constrained. Allows control points to be
- *     outside of input limits while keeping inputs within limits. A custom
- *     basis (Parameterization::fromBasis()) always constrains every sample.
+ * - input_bounds: Bound the control points (ControlPoints, the default) or the
+ *     sampled inputs (Exact) (see InputBoundMode).
  * - slew_initial_input: Slew-rate constraint on the initial input
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_control_points: Slew-rate constraints on the parameterization
@@ -90,9 +110,9 @@ struct Options
   /// @name Input constraints
   /// @{
 
-  /// Enables saturation of the sampled input trajectory rather than just the
-  /// control points (ignored for degree 0; knot-adjacent samples for degree 1)
-  bool saturate_input_trajectory = false;
+  /// Whether the input limits bound the control points or the sampled inputs
+  /// (see InputBoundMode)
+  InputBoundMode input_bounds{InputBoundMode::ControlPoints};
 
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;
@@ -174,6 +194,9 @@ std::ostream& operator<<(std::ostream& os, const Options& opts);
 
 /// @brief Stream the name of a state bound mode (e.g. `Hard`).
 std::ostream& operator<<(std::ostream& os, StateBoundMode mode);
+
+/// @brief Stream the name of an input bound mode (e.g. `Exact`).
+std::ostream& operator<<(std::ostream& os, InputBoundMode mode);
 
 } // namespace affine_mpc
 
