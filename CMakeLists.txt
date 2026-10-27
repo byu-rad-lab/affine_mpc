@@ -154,6 +154,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/qp_pattern_tests.cpp
     test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
+    test/affine_mpc/deprecated_tests.cpp
   )
 
   add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
@@ -215,6 +216,32 @@ if(AFFINE_MPC_BUILD_TESTS)
     endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
+
+  # The deprecated names (removed in 0.5.0) must warn: building a use of each
+  # with deprecation warnings as errors must fail with the deprecation message.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    foreach(name IN ITEMS CondensedMPC SparseMPC MPCBase)
+      set(target deprecated_${name}_use)
+      add_executable(${target} EXCLUDE_FROM_ALL
+        test/affine_mpc/deprecated_use.cpp
+      )
+      target_link_libraries(${target} PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
+      target_compile_definitions(${target}
+        PRIVATE AMPC_DEPRECATED_NAME=${name}
+      )
+      target_compile_options(${target}
+        PRIVATE -Werror=deprecated-declarations
+      )
+      add_test(NAME deprecated_${name}_warns
+        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+          --target ${target} --config $<CONFIG>
+      )
+      set_tests_properties(deprecated_${name}_warns PROPERTIES
+        PASS_REGULAR_EXPRESSION "${name}[^\n]* is deprecated: use MPC"
+        RESOURCE_LOCK affine_mpc_build_tree
+      )
+    endforeach()
+  endif()
 endif()
 
 # --------------------------------------------------

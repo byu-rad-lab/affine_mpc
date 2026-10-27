@@ -3,7 +3,8 @@
 
 /**
  * @file sparse_mpc.hpp
- * @brief Defines SparseMPC, the former name of MPC with Formulation::Sparse.
+ * @brief Defines the deprecated SparseMPC, the former name of MPC with
+ *   Formulation::Sparse.
  */
 
 #include "affine_mpc/mpc.hpp"
@@ -15,9 +16,12 @@ namespace affine_mpc {
 
 /**
  * @class SparseMPC
- * @brief MPC with Formulation::Sparse; use MPC instead.
+ * @brief MPC with Formulation::Sparse.
+ * @deprecated Use MPC with Formulation::Sparse. SparseMPC will be removed in
+ *   0.5.0.
  */
-class SparseMPC : public MPC
+class [[deprecated("use MPC with Formulation::Sparse")]] SparseMPC final
+    : public MPC
 {
 public:
   /// @brief Same as MPC(state_dim, input_dim, param, opts,

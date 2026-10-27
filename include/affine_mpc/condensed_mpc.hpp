@@ -3,7 +3,7 @@
 
 /**
  * @file condensed_mpc.hpp
- * @brief Defines CondensedMPC, the former name of MPC with
+ * @brief Defines the deprecated CondensedMPC, the former name of MPC with
  *   Formulation::Condensed.
  */
 
@@ -16,9 +16,12 @@ namespace affine_mpc {
 
 /**
  * @class CondensedMPC
- * @brief MPC with Formulation::Condensed; use MPC instead.
+ * @brief MPC with Formulation::Condensed.
+ * @deprecated Use MPC, whose formulation defaults to Formulation::Condensed.
+ *   CondensedMPC will be removed in 0.5.0.
  */
-class CondensedMPC : public MPC
+class [[deprecated("use MPC with Formulation::Condensed")]] CondensedMPC final
+    : public MPC
 {
 public:
   /// @brief Same as MPC(state_dim, input_dim, param, opts,
