@@ -43,8 +43,10 @@ inline Eigen::MatrixXd denseA(const affine_mpc::detail::QP& qp)
 }
 
 // Records a GoogleTest failure (and returns false) unless mat1 and mat2 have
-// the same size and every element differs by at most delta. The return value
-// also allows ASSERT_TRUE(expectEigenNear(...)) to stop the test.
+// the same size and every element differs by at most delta. Equal elements,
+// including infinite bounds of the same sign, differ by zero; a NaN in either
+// matrix always fails. The return value also allows
+// ASSERT_TRUE(expectEigenNear(...)) to stop the test.
 template <typename Derived1, typename Derived2>
 bool expectEigenNear(const Eigen::MatrixBase<Derived1>& mat1,
                      const Eigen::MatrixBase<Derived2>& mat2,
@@ -57,10 +59,28 @@ bool expectEigenNear(const Eigen::MatrixBase<Derived1>& mat1,
   }
   if (mat1.size() == 0)
     return true;
-  const double max_diff{
-      static_cast<double>((mat1 - mat2).cwiseAbs().maxCoeff())};
-  if (!(max_diff <= delta)) { // also fails on NaN
-    ADD_FAILURE() << "max |difference| " << max_diff << " exceeds " << delta;
+  // Element by element: maxCoeff() may drop NaNs (it does with SSE on x86,
+  // not with NEON on ARM), and inf - inf is NaN
+  const Eigen::ArrayXXd a1{mat1.template cast<double>().array()};
+  const Eigen::ArrayXXd a2{mat2.template cast<double>().array()};
+  double max_diff{0.0};
+  Eigen::Index row{0}, col{0};
+  for (Eigen::Index j{0}; j < a1.cols(); ++j)
+    for (Eigen::Index i{0}; i < a1.rows(); ++i) {
+      const double diff{a1(i, j) == a2(i, j) ? 0.0
+                                             : std::abs(a1(i, j) - a2(i, j))};
+      if (std::isnan(diff) || diff > max_diff) {
+        max_diff = diff;
+        row = i;
+        col = j;
+        if (std::isnan(diff))
+          break;
+      }
+    }
+  if (!(max_diff <= delta)) {
+    ADD_FAILURE() << "max |difference| " << max_diff << " exceeds " << delta
+                  << " at (" << row << ", " << col << "): " << a1(row, col)
+                  << " vs " << a2(row, col);
     return false;
   }
   return true;
