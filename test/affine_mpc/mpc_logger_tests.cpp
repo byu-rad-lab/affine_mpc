@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "affine_mpc/condensed_mpc.hpp"
+#include "utils.hpp"
 
 namespace ampc = affine_mpc;
 namespace fs = std::filesystem;
@@ -14,7 +15,7 @@ class MPCLoggerTest : public ::testing::Test
 protected:
   void SetUp() override
   {
-    test_dir_ = fs::temp_directory_path() / "mpc_logger_test";
+    test_dir_ = uniqueTempDir("mpc_logger_test");
     if (fs::exists(test_dir_)) {
       fs::remove_all(test_dir_);
     }
@@ -127,8 +128,7 @@ TEST_F(MPCLoggerTest, NpzUncompressedModeWritesArchive)
 
 TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
 {
-  const fs::path test_dir =
-      fs::temp_directory_path() / "mpc_logger_no_input_cost";
+  const fs::path test_dir{uniqueTempDir("mpc_logger_no_input_cost")};
   if (fs::exists(test_dir)) {
     fs::remove_all(test_dir);
   }
@@ -163,8 +163,7 @@ TEST(MPCLoggerNoInputCostTest, ConvenienceLogStepWorksWithoutInputCost)
 
 TEST(MPCLoggerUninitializedTest, LogStepBeforeInitializeSolver_Throws)
 {
-  const fs::path test_dir =
-      fs::temp_directory_path() / "mpc_logger_uninitialized";
+  const fs::path test_dir{uniqueTempDir("mpc_logger_uninitialized")};
   if (fs::exists(test_dir)) {
     fs::remove_all(test_dir);
   }

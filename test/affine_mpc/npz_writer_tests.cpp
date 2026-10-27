@@ -4,13 +4,14 @@
 #include <vector>
 
 #include "npz_writer.hpp"
+#include "utils.hpp"
 
 namespace ampc = affine_mpc;
 namespace fs = std::filesystem;
 
 TEST(NpzWriterTest, WritesArchiveWithoutThrowing)
 {
-  const fs::path test_dir = fs::temp_directory_path() / "npz_writer_test";
+  const fs::path test_dir{uniqueTempDir("npz_writer_test")};
   fs::create_directories(test_dir);
   const fs::path npz_path = test_dir / "writer_test.npz";
 
@@ -28,7 +29,7 @@ TEST(NpzWriterTest, WritesArchiveWithoutThrowing)
 
 TEST(NpzWriterTest, WritesFileBackedArchiveWithoutThrowing)
 {
-  const fs::path test_dir = fs::temp_directory_path() / "npz_writer_file_test";
+  const fs::path test_dir{uniqueTempDir("npz_writer_file_test")};
   fs::create_directories(test_dir);
   const fs::path raw_path = test_dir / "payload.raw";
   const fs::path npz_path = test_dir / "writer_file_test.npz";

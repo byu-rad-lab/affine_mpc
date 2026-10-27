@@ -3,14 +3,29 @@
 
 #include <Eigen/Core>
 #include <cmath>
+#include <filesystem>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <random>
 #include <stdexcept>
+#include <string>
 
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/parameterization.hpp"
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
+
+// A temp directory named after the running test plus an id drawn once per
+// process, so tests run in parallel (ctest -j, or two builds at once) never
+// share a directory
+inline std::filesystem::path uniqueTempDir(const std::string& stem)
+{
+  static const std::string run_id{std::to_string(std::random_device{}())};
+  const auto* info{::testing::UnitTest::GetInstance()->current_test_info()};
+  return std::filesystem::temp_directory_path()
+         / (stem + "_" + info->test_suite_name() + "_" + info->name() + "_"
+            + run_id);
+}
 
 // The QP's cost matrix (full symmetric) and constraint matrix as dense
 // matrices, whichever storage the formulation uses
