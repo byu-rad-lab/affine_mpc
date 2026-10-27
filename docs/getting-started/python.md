@@ -64,11 +64,6 @@ affine-mpc-example-msd
 affine-mpc-example-msd --load --plot
 ```
 
-!!! note
-
-    Earlier versions installed `affine-mpc-example`, `affine-mpc-example-sim`, and `affine-mpc-example-plot`.
-    They still work, with a deprecation notice, and are the same as `affine-mpc-example-msd` with `--plot`, no options, and `--load --plot`.
-
 ### Run Sim File Directly
 
 This is useful if you wish to modify the example sim or just want to run it directly.

@@ -142,25 +142,6 @@ In Python, `formulation` is a keyword-only argument.
     // affine_mpc::MPC mpc(state_dim, input_dim, horizon_steps, opts, affine_mpc::Formulation::Sparse);
     ```
 
-!!! note "Migrating from 0.3"
-
-    Before 0.4.0, each formulation was its own class.
-    These names still work in 0.4.0 but are deprecated (C++ `[[deprecated]]` warnings, Python `DeprecationWarning`) and will be removed in 0.5.0:
-
-    - `CondensedMPC(...)` is `MPC(...)` (the condensed formulation is the default)
-    - `SparseMPC(...)` is `MPC(..., Formulation::Sparse)` in C++ and `MPC(..., formulation=Formulation.Sparse)` in Python
-    - `MPCBase` is `MPC`, declared in `affine_mpc/mpc.hpp`
-
-    The logger records the formulation in the `formulation` metadata entry, and `print()` shows it.
-
-    The `Options` fields `saturate_states` and `saturate_input_trajectory` were removed in 0.4.0 in favor of the bound modes:
-
-    - `saturate_states = true` is `state_bounds = StateBoundMode::Hard` (`state_bounds=StateBoundMode.Hard` in Python)
-    - `saturate_input_trajectory = true` is `input_bounds = InputBoundMode::Exact` (`input_bounds=InputBoundMode.Exact` in Python)
-
-    The logger still writes `opt_saturate_states` and `opt_saturate_input_trajectory`, now derived from the modes, next to the new `opt_state_bounds` and `opt_input_bounds`.
-    The Python `Options` arguments are now keyword-only.
-
 ### 4. Configure the MPC object
 
 The order of these steps does not matter, but they all must happen before initializing the solver.
