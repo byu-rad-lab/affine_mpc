@@ -38,12 +38,14 @@ dev = [
 examples = [
     "matplotlib",
     "abracatabra[qt-pyside6]",
+    "tqdm",
 ]
 
 [project.scripts]
 affine-mpc-example = "affine_mpc._examples.sim:run_all"
 affine-mpc-example-sim = "affine_mpc._examples.sim:run_example"
 affine-mpc-example-plot = "affine_mpc._examples.plot_sim:main"
+affine-mpc-example-quadrotor = "affine_mpc._examples.quadrotor_model_updates:main"
 
 # see https://scikit-build-core.readthedocs.io/en/latest/#configuration for 
 # configuration options
