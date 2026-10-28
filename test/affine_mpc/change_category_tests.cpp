@@ -97,7 +97,7 @@ void setWeights(ampc::MPC& mpc, const Scales& s)
 {
   mpc.setStateWeights(s.weights * Vector2d{1.0, 0.2},
                       s.weights * Vector2d{3.0, 0.4});
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost != ampc::InputCostMode::Off)
     mpc.setInputWeights(VectorXd::Constant(1, s.weights * 0.1));
   if (mpc.getOptions().use_input_rate_cost)
     mpc.setInputRateWeights(VectorXd::Constant(1, s.weights * 0.5));
@@ -113,9 +113,11 @@ void setRefs(ampc::MPC& mpc, const Scales& s)
   const int T{mpc.getHorizonSteps()}, nc{mpc.getNumControlPoints()};
   mpc.setReferenceStateTrajectory(s.refs
                                   * VectorXd::LinSpaced(2 * T, 0.5, 1.5));
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost == ampc::InputCostMode::ControlPoints)
     mpc.setReferenceInputControlPoints(s.refs
                                        * VectorXd::LinSpaced(nc, -0.3, 0.3));
+  if (mpc.getOptions().input_cost == ampc::InputCostMode::Trajectory)
+    mpc.setReferenceInputTrajectory(s.refs * VectorXd::LinSpaced(T, -0.3, 0.3));
 }
 
 void setInputLimits(ampc::MPC& mpc, const Scales& s)
@@ -251,7 +253,8 @@ void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
   }
 }
 
-const ampc::Options all_options{.use_input_cost = true,
+const ampc::Options all_options{.input_cost =
+                                    ampc::InputCostMode::ControlPoints,
                                 .use_input_rate_cost = true,
                                 .slew_initial_input = true,
                                 .slew_control_points = true,
@@ -261,19 +264,28 @@ const ampc::Options all_options{.use_input_cost = true,
 const ampc::Options rate_cost{.use_input_rate_cost = true};
 
 // soft limits on the velocity only (slack variables, selected states)
-const ampc::Options soft_velocity{.use_input_cost = true,
+const ampc::Options soft_velocity{.input_cost =
+                                      ampc::InputCostMode::ControlPoints,
                                   .state_bounds = ampc::StateBoundMode::Soft,
                                   .bounded_states = {1}};
 
-const ampc::Options sampled_bounds{.use_input_cost = true,
+const ampc::Options sampled_bounds{.input_cost =
+                                       ampc::InputCostMode::ControlPoints,
                                    .input_bounds = ampc::InputBoundMode::Exact};
 
 // general and terminal constraints (with state bounds on the position)
-const ampc::Options constraints{.use_input_cost = true,
+const ampc::Options constraints{.input_cost =
+                                    ampc::InputCostMode::ControlPoints,
                                 .state_bounds = ampc::StateBoundMode::Hard,
                                 .bounded_states = {0},
                                 .num_general_constraints = 2,
                                 .num_terminal_constraints = 1};
+
+// the input cost on the sampled inputs, with the rate cost and initial slew
+const ampc::Options trajectory_cost{.input_cost =
+                                        ampc::InputCostMode::Trajectory,
+                                    .use_input_rate_cost = true,
+                                    .slew_initial_input = true};
 
 } // namespace
 
@@ -282,7 +294,7 @@ TEST(ChangeCategoryTester,
 {
   for (const ampc::Options& opts :
        {ampc::Options{}, all_options, sampled_bounds, rate_cost, soft_velocity,
-        constraints}) {
+        constraints, trajectory_cost}) {
     checkCategoriesAgainstFreshQP<ampc::Formulation::Condensed>(opts);
   }
 }
@@ -292,7 +304,7 @@ TEST(ChangeCategoryTester,
 {
   for (const ampc::Options& opts :
        {ampc::Options{}, all_options, sampled_bounds, rate_cost, soft_velocity,
-        constraints}) {
+        constraints, trajectory_cost}) {
     checkCategoriesAgainstFreshQP<ampc::Formulation::Sparse>(opts);
   }
 }
@@ -442,13 +454,15 @@ void checkPrepareMatchesSolveAlone(const ampc::Options& opts)
 
 TEST(PrepareTester, givenPrepareBeforeSolve_CondensedMatchesSolveAlone)
 {
-  for (const ampc::Options& opts : {ampc::Options{}, all_options})
+  for (const ampc::Options& opts :
+       {ampc::Options{}, all_options, trajectory_cost})
     checkPrepareMatchesSolveAlone<ampc::Formulation::Condensed>(opts);
 }
 
 TEST(PrepareTester, givenPrepareBeforeSolve_SparseMatchesSolveAlone)
 {
-  for (const ampc::Options& opts : {ampc::Options{}, all_options})
+  for (const ampc::Options& opts :
+       {ampc::Options{}, all_options, trajectory_cost})
     checkPrepareMatchesSolveAlone<ampc::Formulation::Sparse>(opts);
 }
 
@@ -503,6 +517,52 @@ TEST(PrepareTester, givenPrepare_CondensedSolveDoesNoMatrixWork)
 TEST(PrepareTester, givenPrepare_SparseSolveDoesNoMatrixWork)
 {
   checkSolveAfterPrepareDoesNoMatrixWork<ampc::Formulation::Sparse>();
+}
+
+// A change of the sampled input reference is vector-only: solve() must not
+// rebuild or send P or A (their local copies stay NaN), and the solution must
+// match an MPC given the new reference from the start.
+template <ampc::Formulation F> void checkTrajectoryReferenceIsVectorOnly()
+{
+  const int n{2}, m{1}, T{10};
+  const auto param{ampc::Parameterization::bspline(T, 2, 5)};
+  // without the previous input, which every solve() changes
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::Trajectory};
+  QPInspector mpc{n, m, param, opts, F};
+  QPInspector reference{n, m, param, opts, F};
+  configure(mpc, Scales{});
+  configure(reference, Scales{.refs = 1.3});
+  ASSERT_TRUE(mpc.initializeSolver());
+  ASSERT_TRUE(reference.initializeSolver());
+  const Vector2d x0{0.3, -0.1};
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+
+  setRefs(mpc, Scales{.refs = 1.3});
+  EXPECT_EQ(mpc.pending(), ampc::detail::DataChange::References);
+  mpc.poisonMatrices();
+  ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+  EXPECT_TRUE(mpc.storedPIsNaN()) << "P was rebuilt";
+  EXPECT_TRUE(mpc.storedAIsNaN()) << "A was rebuilt";
+
+  // two more solves, so both warm starts converge to the same point
+  for (int i{0}; i < 2; ++i) {
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(reference.solve(x0), ampc::SolveStatus::Success);
+  }
+  VectorXd c{m * param.num_control_points}, c_reference{c.size()};
+  mpc.getInputControlPoints(c);
+  reference.getInputControlPoints(c_reference);
+  EXPECT_TRUE(expectEigenNear(c, c_reference, 1e-4));
+}
+
+TEST(ChangeCategoryTester, givenTrajectoryReference_CondensedUpdateIsVectorOnly)
+{
+  checkTrajectoryReferenceIsVectorOnly<ampc::Formulation::Condensed>();
+}
+
+TEST(ChangeCategoryTester, givenTrajectoryReference_SparseUpdateIsVectorOnly)
+{
+  checkTrajectoryReferenceIsVectorOnly<ampc::Formulation::Sparse>();
 }
 
 TEST(PrepareTester, givenNonFiniteUpdate_PrepareReportsUpdateFailed)

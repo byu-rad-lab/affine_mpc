@@ -13,6 +13,31 @@
 namespace affine_mpc {
 
 /**
+ * @enum InputCostMode
+ * @brief Whether and where the MPC evaluates the input cost with weight R,
+ *   chosen with Options::input_cost.
+ *
+ * The two costs differ whenever control points influence different numbers
+ * of samples (e.g. move-blocking with unequal blocks, geometric knots, or a
+ * custom basis, whose coefficients may have no physical meaning).
+ */
+enum class InputCostMode
+{
+  /// No input cost (the default).
+  Off,
+  /// The cost sum_i (c_ref,i - c_i)^T R (c_ref,i - c_i) on the control points
+  /// c_i, which weights every control point equally (references set with
+  /// MPC::setReferenceInput() or MPC::setReferenceInputControlPoints()).
+  ControlPoints,
+  /// The cost sum_k (u_ref,k - u_k)^T R (u_ref,k - u_k) on the sampled inputs
+  /// u_k, k = 0, ..., T-1, which weights the input trajectory itself
+  /// (references set with MPC::setReferenceInput() or
+  /// MPC::setReferenceInputTrajectory()). Adds a banded block to the cost
+  /// matrix (bandwidth 2 degree + 1 for B-splines, dense for custom bases).
+  Trajectory,
+};
+
+/**
  * @enum StateBoundMode
  * @brief Whether and how the MPC bounds the predicted states, chosen with
  *   Options::state_bounds.
@@ -79,8 +104,9 @@ enum class InputBoundMode
  * instance. The fields are grouped as follows.
  *
  * Costs:
- * - use_input_cost: Enables the input cost on the control points
- *     ((uref_k - u_k)^T R (uref_k - u_k)).
+ * - input_cost: Off (the default), the input cost on the control points
+ *     (ControlPoints), or on the sampled inputs (Trajectory) (see
+ *     InputCostMode).
  * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  *
@@ -115,8 +141,8 @@ struct Options
   /// @name Costs
   /// @{
 
-  /// Enables the input cost term in the MPC objective
-  bool use_input_cost = false;
+  /// Whether and where the input cost is evaluated (see InputCostMode)
+  InputCostMode input_cost{InputCostMode::Off};
 
   /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
   /// starting from the previous input (i.e. u_0 - u_prev)
@@ -213,6 +239,9 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools);
  * @return Reference to the output stream.
  */
 std::ostream& operator<<(std::ostream& os, const Options& opts);
+
+/// @brief Stream the name of an input cost mode (e.g. `Trajectory`).
+std::ostream& operator<<(std::ostream& os, InputCostMode mode);
 
 /// @brief Stream the name of a state bound mode (e.g. `Hard`).
 std::ostream& operator<<(std::ostream& os, StateBoundMode mode);

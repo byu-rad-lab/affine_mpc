@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 from ._bindings import (
     Options,
+    InputCostMode,
     StateBoundMode,
     InputBoundMode,
     ModelSparsity,
@@ -30,6 +31,7 @@ from ._bindings import (
 
 __all__ = [
     "Options",
+    "InputCostMode",
     "StateBoundMode",
     "InputBoundMode",
     "ModelSparsity",

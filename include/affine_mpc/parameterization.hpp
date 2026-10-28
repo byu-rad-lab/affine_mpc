@@ -160,8 +160,10 @@ public:
    *   basis transposed), and type is Type::Custom, with degree = -1 and empty
    *   knots. Since the B-spline convex hull property does not hold, an MPC
    *   with a custom basis always bounds every sampled input (whatever
-   *   Options::input_bounds is), rejects `slew_control_points`, and
-   *   rejects setReferenceInput(); the input cost weights the coefficients.
+   *   Options::input_bounds is) and rejects `slew_control_points`.
+   *   InputCostMode::ControlPoints weights the coefficients (and rejects
+   *   setReferenceInput()); InputCostMode::Trajectory weights the sampled
+   *   inputs.
    * @param horizon_steps Number of discrete time steps in the horizon.
    * @param basis Basis sampled at k = 0, ..., horizon_steps-1, of size
    *   horizon_steps x num_control_points (one column per coefficient), with

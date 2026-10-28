@@ -356,7 +356,7 @@ public:
   /**
    * @brief Set state and input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off.
    * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
@@ -366,7 +366,7 @@ public:
   /**
    * @brief Set state, terminal state, and input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off.
    * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    * @param Qf_diag Vector for diagonal of terminal state weight matrix
    *   (non-negative).
@@ -396,7 +396,9 @@ public:
   /**
    * @brief Set only the input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off. The same
+   *   R weights every control point (InputCostMode::ControlPoints) or every
+   *   sampled input (InputCostMode::Trajectory). Defaults to ones.
    * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
@@ -408,9 +410,8 @@ public:
    *   Defaults to ones.
    *
    *   This method can only be called if `use_input_rate_cost` is enabled.
-   *   Unlike `R` (which weights the control points), the rate cost acts on
-   *   the sampled inputs, so it penalizes the same input change equally for
-   *   every basis.
+   *   The rate cost acts on the sampled inputs, so it penalizes the same
+   *   input change equally for every basis.
    * @param R_rate_diag Diagonal of the input rate weight matrix (size
    *   input_dim, non-negative).
    */
@@ -438,14 +439,18 @@ public:
   setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
 
   /**
-   * @brief Set reference input trajectory as a step command (reference for all
-   *   control points set to this value).
+   * @brief Set reference input trajectory as a step command: every reference
+   *   control point (InputCostMode::ControlPoints) or every reference sampled
+   *   input (InputCostMode::Trajectory) is set to this value.
    *
-   *   This method can only be called if `use_input_cost` is enabled, and not
-   *   with a custom basis (Parameterization::fromBasis()), whose coefficients
-   *   do not represent a constant input; use setReferenceInputControlPoints()
-   *   there.
+   *   This method can only be called if `input_cost` is not Off. With
+   *   InputCostMode::ControlPoints it can not be used with a custom basis
+   *   (Parameterization::fromBasis()), whose coefficients do not represent a
+   *   constant input; use setReferenceInputControlPoints() or
+   *   InputCostMode::Trajectory there.
    * @param u_step Reference input vector to use for entire trajectory.
+   * @throws std::logic_error if `input_cost` is Off, or is ControlPoints with
+   *   a custom basis.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
@@ -455,16 +460,37 @@ public:
    * @brief Set reference control points that parameterize the reference input
    *   trajectory.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is
+   *   InputCostMode::ControlPoints.
    * @param control_points Reference input control points as a stacked vector.
    *   Should have length of input_dim * num_control_points. If you have a
    *   matrix where each column is a control point, then you can pass in
    *   `control_points.reshaped()` to convert it to a vector.
+   * @throws std::logic_error if `input_cost` is not ControlPoints.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void setReferenceInputControlPoints(
       const Eigen::Ref<const Eigen::VectorXd>& control_points);
+
+  /**
+   * @brief Set the reference sampled input trajectory for the input cost on
+   *   the sampled inputs.
+   *
+   *   This method can only be called if `input_cost` is
+   *   InputCostMode::Trajectory. The reference need not lie in the span of
+   *   the basis (e.g. a feedforward input from a model).
+   * @param u_traj Reference input trajectory as a vector of stacked inputs
+   *   u_ref,0, ..., u_ref,T-1. Should have length of input_dim *
+   *   horizon_steps. If you have a matrix where each column is an input at
+   *   index k in the horizon, then you can pass in `u_traj.reshaped()` to
+   *   convert it to a vector.
+   * @throws std::logic_error if `input_cost` is not Trajectory.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
+   */
+  void
+  setReferenceInputTrajectory(const Eigen::Ref<const Eigen::VectorXd>& u_traj);
 
   /**
    * @brief Set input saturation limits.
@@ -664,7 +690,7 @@ public:
 
   /**
    * @brief Get the diagonal of the input weight matrix R.
-   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @throws std::logic_error if `input_cost` is Off.
    * @return Vector of size input_dim.
    */
   Eigen::VectorXd getInputWeights() const;
@@ -799,10 +825,17 @@ public:
 
   /**
    * @brief Get the reference input control points.
-   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @throws std::logic_error if `input_cost` is not ControlPoints.
    * @return Stacked control points of size input_dim * num_control_points.
    */
   const Eigen::VectorXd& getReferenceInputControlPoints() const;
+
+  /**
+   * @brief Get the reference sampled input trajectory.
+   * @throws std::logic_error if `input_cost` is not Trajectory.
+   * @return Stacked inputs of size input_dim * horizon_steps.
+   */
+  const Eigen::VectorXd& getReferenceInputTrajectory() const;
 
   /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,

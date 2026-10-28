@@ -27,7 +27,7 @@ protected:
 
     const int n{2}, m{1}, T{5}, p{2};
     const auto param{ampc::Parameterization::linearInterp(T, p)};
-    const ampc::Options opts{.use_input_cost = true};
+    const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints};
     mpc_ = std::make_unique<ampc::MPC>(n, m, param, opts);
 
     Eigen::Matrix2d A;
@@ -276,6 +276,76 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
         << params;
     EXPECT_NE(params.find("opt_refined_bound_interval: 3\n"), std::string::npos)
         << params;
+  }
+  fs::remove_all(test_dir);
+}
+
+TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsModeAndReleasedKey)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_input_cost")};
+  const auto param{ampc::Parameterization::bspline(5, 2, 3)};
+  for (const auto& [mode, name, use_input_cost] :
+       {std::tuple{ampc::InputCostMode::Off, "off", 0},
+        std::tuple{ampc::InputCostMode::ControlPoints, "control_points", 1},
+        std::tuple{ampc::InputCostMode::Trajectory, "trajectory", 1}}) {
+    SCOPED_TRACE(name);
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param, ampc::Options{.input_cost = mode}};
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_input_cost: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_NE(params.find("opt_use_input_cost: "
+                          + std::to_string(use_input_cost) + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_EQ(params.find("R_diag") != std::string::npos, use_input_cost == 1)
+        << params;
+  }
+  fs::remove_all(test_dir);
+}
+
+TEST(MPCLoggerOptionsTest, givenTrajectoryInputCost_LogsSampledReferenceOnly)
+{
+  // the sampled reference is logged with the sampled inputs, and not with
+  // control points (there is no control point reference)
+  const fs::path test_dir{uniqueTempDir("mpc_logger_trajectory_ref")};
+  const int n{2}, m{1}, T{5};
+  const auto param{ampc::Parameterization::linearInterp(T, 3)};
+  for (const bool log_control_points : {false, true}) {
+    SCOPED_TRACE(log_control_points ? "control points" : "inputs");
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{n, m, param,
+                  ampc::Options{.input_cost = ampc::InputCostMode::Trajectory}};
+    Eigen::Matrix2d A;
+    A << 1, 0.1, 0, 1;
+    mpc.setModelContinuous2Discrete(A, Eigen::Vector2d{0, 0.1},
+                                    Eigen::Vector2d::Zero(), 0.1);
+    mpc.setInputLimits(Eigen::VectorXd::Constant(m, -1),
+                       Eigen::VectorXd::Constant(m, 1));
+    mpc.setReferenceInputTrajectory(Eigen::VectorXd::LinSpaced(T, 0.0, 0.4));
+    ASSERT_TRUE(mpc.initializeSolver());
+    {
+      ampc::MPCLogger logger{&mpc,
+                             test_dir,
+                             0.1,
+                             1,
+                             log_control_points,
+                             "log",
+                             ampc::MPCLogger::Mode::Npy};
+      const Eigen::Vector2d x0{1.0, 0.5};
+      ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+      logger.logStep(0.0, x0, 0.001);
+      logger.finalize();
+    }
+    EXPECT_TRUE(fs::exists(test_dir / "log_npy" / "inputs.npy"));
+    EXPECT_EQ(fs::exists(test_dir / "log_npy" / "ref_inputs.npy"),
+              !log_control_points);
   }
   fs::remove_all(test_dir);
 }

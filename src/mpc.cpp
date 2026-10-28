@@ -658,13 +658,17 @@ void MPC::setStateWeights(const Ref<const VectorXd>& Q_diag,
 
 void MPC::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::setInputWeights] Input cost is not enabled.");
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::setInputWeights] Input cost is not enabled "
+                           "(input_cost is Off).");
   validateSize(R_diag.size(), input_dim_, "setInputWeights", "R_diag");
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPC::setInputWeights] Input weights must be non-negative.");
-  data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
+  if (opts_.input_cost == InputCostMode::ControlPoints)
+    data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
+  else
+    data_.R = R_diag;
   pending_ |= DataChange::Weights;
 }
 
@@ -699,29 +703,46 @@ void MPC::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
 
 void MPC::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error(
-        "[MPC::setReferenceInput] Input cost is not enabled.");
-  if (input_param_.parameterization().type != Parameterization::Type::BSpline)
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::setReferenceInput] Input cost is not "
+                           "enabled (input_cost is Off).");
+  if (opts_.input_cost == InputCostMode::ControlPoints
+      && input_param_.parameterization().type
+             != Parameterization::Type::BSpline)
     throw std::logic_error(
         "[MPC::setReferenceInput] A custom basis has no control points "
-        "that represent a constant input; the input cost weights the basis "
-        "coefficients, whose reference defaults to zero. Use "
-        "setReferenceInputControlPoints() to set coefficient references.");
+        "that represent a constant input; with InputCostMode::ControlPoints "
+        "the input cost weights the basis coefficients, whose reference "
+        "defaults to zero. Use setReferenceInputControlPoints() to set "
+        "coefficient references, or InputCostMode::Trajectory.");
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
-  data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
+  if (opts_.input_cost == InputCostMode::ControlPoints)
+    data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
+  else
+    data_.u_ref = u_step.replicate(horizon_steps_, 1);
   pending_ |= DataChange::References;
 }
 
 void MPC::setReferenceInputControlPoints(
     const Ref<const VectorXd>& control_points)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::setReferenceInputControlPoints] "
-                           "Input cost is not enabled.");
+  if (opts_.input_cost != InputCostMode::ControlPoints)
+    throw std::logic_error("[MPC::setReferenceInputControlPoints] Requires "
+                           "input_cost to be InputCostMode::ControlPoints.");
   validateSize(control_points.size(), ctrls_dim_,
                "setReferenceInputControlPoints", "control_points");
   data_.ctrls_ref = control_points;
+  pending_ |= DataChange::References;
+}
+
+void MPC::setReferenceInputTrajectory(const Ref<const VectorXd>& u_traj)
+{
+  if (opts_.input_cost != InputCostMode::Trajectory)
+    throw std::logic_error("[MPC::setReferenceInputTrajectory] Requires "
+                           "input_cost to be InputCostMode::Trajectory.");
+  validateSize(u_traj.size(), u_traj_dim_, "setReferenceInputTrajectory",
+               "u_traj");
+  data_.u_ref = u_traj;
   pending_ |= DataChange::References;
 }
 
@@ -879,8 +900,11 @@ VectorXd MPC::getTerminalStateWeights() const
 
 VectorXd MPC::getInputWeights() const
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::getInputWeights] Input cost is not enabled.");
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::getInputWeights] Input cost is not enabled "
+                           "(input_cost is Off).");
+  if (opts_.input_cost == InputCostMode::Trajectory)
+    return data_.R;
   return data_.R_big.diagonal().head(input_dim_);
 }
 
@@ -1007,10 +1031,18 @@ const VectorXd& MPC::getPreviousInput() const
 
 const VectorXd& MPC::getReferenceInputControlPoints() const
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::getReferenceInputControlPoints] "
-                           "Input cost is not enabled.");
+  if (opts_.input_cost != InputCostMode::ControlPoints)
+    throw std::logic_error("[MPC::getReferenceInputControlPoints] Requires "
+                           "input_cost to be InputCostMode::ControlPoints.");
   return data_.ctrls_ref;
+}
+
+const VectorXd& MPC::getReferenceInputTrajectory() const
+{
+  if (opts_.input_cost != InputCostMode::Trajectory)
+    throw std::logic_error("[MPC::getReferenceInputTrajectory] Requires "
+                           "input_cost to be InputCostMode::Trajectory.");
+  return data_.u_ref;
 }
 
 std::ostream& operator<<(std::ostream& os, const Formulation formulation)
@@ -1038,7 +1070,7 @@ std::ostream& print(std::ostream& os, const MPC& mpc, bool capitalize_bools)
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
   os << "\n  Q = " << mpc.getStateWeights().format(fmt)
      << "\n  Qf = " << mpc.getTerminalStateWeights().format(fmt);
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost != InputCostMode::Off)
     os << "\n  R = " << mpc.getInputWeights().format(fmt);
   if (mpc.getOptions().use_input_rate_cost)
     os << "\n  R_rate = " << mpc.getInputRateWeights().format(fmt);
@@ -1088,7 +1120,7 @@ printInline(std::ostream& os, const MPC& mpc, bool capitalize_bools)
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
   os << ", Q=" << mpc.getStateWeights().format(fmt)
      << ", Qf=" << mpc.getTerminalStateWeights().format(fmt);
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost != InputCostMode::Off)
     os << ", R=" << mpc.getInputWeights().format(fmt);
   if (mpc.getOptions().use_input_rate_cost)
     os << ", R_rate=" << mpc.getInputRateWeights().format(fmt);

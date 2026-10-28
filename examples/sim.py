@@ -36,7 +36,7 @@ def simulate():
         param=ampc.Parameterization.linearInterp(
             horizon_steps=10, num_control_points=3
         ),
-        opts=ampc.Options(use_input_cost=True, slew_control_points=True),
+        opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints, slew_control_points=True),
         formulation=ampc.Formulation.Condensed,
     )
 

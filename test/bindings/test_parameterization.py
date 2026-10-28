@@ -192,7 +192,7 @@ def test_from_basis_mpc_bounds_sampled_inputs():
     T = 30
     param = ampc.Parameterization.fromBasis(T, _laguerre_basis(T, 4, 0.8))
     for formulation in list(ampc.Formulation):
-        mpc = _custom_basis_mpc(formulation, param, ampc.Options(use_input_cost=True))
+        mpc = _custom_basis_mpc(formulation, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
         assert mpc.solve(np.array([0.5, -0.2])) == ampc.SolveStatus.Success
         u_traj = mpc.getInputTrajectory()
         assert u_traj.min() >= -1e-6
@@ -211,7 +211,7 @@ def test_from_basis_logger_metadata(tmp_path):
     basis = _laguerre_basis(T, 3, 0.6)
     param = ampc.Parameterization.fromBasis(T, basis)
     mpc = _custom_basis_mpc(
-        ampc.Formulation.Condensed, param, ampc.Options(use_input_cost=True)
+        ampc.Formulation.Condensed, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints)
     )
     logger = ampc.MPCLogger(
         mpc, tmp_path, 0.1, log_control_points=True, mode=ampc.MPCLogger.Mode.NpzUncompressed

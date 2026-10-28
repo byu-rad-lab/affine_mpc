@@ -504,7 +504,7 @@ Raises:
            R"doc(
 Set state and input weights for the cost function.
 
-This method can only be called if `use_input_cost` is enabled.
+This method can only be called if `input_cost` is not Off.
 
 Args:
     Q_diag: Vector for diagonal of state weight matrix (non-negative).
@@ -519,7 +519,7 @@ Args:
            R"doc(
 Set state, terminal state, and input weights for the cost function.
 
-This method can only be called if `use_input_cost` is enabled.
+This method can only be called if `input_cost` is not Off.
 
 Args:
     Q_diag: Vector for diagonal of state weight matrix (non-negative).
@@ -557,7 +557,9 @@ Args:
            R"doc(
 Set only the input weights for the cost function.
 
-This method can only be called if `use_input_cost` is enabled.
+This method can only be called if `input_cost` is not Off. The same R weights
+every control point (InputCostMode.ControlPoints) or every sampled input
+(InputCostMode.Trajectory). Defaults to ones.
 
 Args:
     R_diag: Vector for diagonal of input weight matrix (non-negative).
@@ -570,9 +572,9 @@ Set the weights of the input rate cost
 sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
 where u_{-1} is the previous input (see setPreviousInput()). Defaults to ones.
 
-This method can only be called if `use_input_rate_cost` is enabled. Unlike `R`
-(which weights the control points), the rate cost acts on the sampled inputs,
-so it penalizes the same input change equally for every basis.
+This method can only be called if `use_input_rate_cost` is enabled. The rate
+cost acts on the sampled inputs, so it penalizes the same input change equally
+for every basis.
 
 Args:
     R_rate_diag: Diagonal of the input rate weight matrix (size input_dim,
@@ -612,15 +614,21 @@ Note:
 
   base.def("setReferenceInput", &ampc::MPC::setReferenceInput,
            R"doc(
-Set reference input trajectory as a step command (reference for all control
-points set to this value).
+Set reference input trajectory as a step command: every reference control point
+(InputCostMode.ControlPoints) or every reference sampled input
+(InputCostMode.Trajectory) is set to this value.
 
-This method can only be called if `use_input_cost` is enabled, and not with a
-custom basis (Parameterization.fromBasis()), whose coefficients do not
-represent a constant input; use setReferenceInputControlPoints() there.
+This method can only be called if `input_cost` is not Off. With
+InputCostMode.ControlPoints it can not be used with a custom basis
+(Parameterization.fromBasis()), whose coefficients do not represent a constant
+input; use setReferenceInputControlPoints() or InputCostMode.Trajectory there.
 
 Args:
     u_step: Reference input vector to use for entire trajectory.
+
+Raises:
+    RuntimeError: If `input_cost` is Off, or is ControlPoints with a custom
+        basis.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
@@ -633,7 +641,7 @@ Note:
            R"doc(
 Set reference control points that parameterize the reference input trajectory.
 
-This method can only be called if `use_input_cost` is enabled.
+This method can only be called if `input_cost` is InputCostMode.ControlPoints.
 
 Args:
     control_points (vector): Reference input control points as a stacked vector.
@@ -641,11 +649,40 @@ Args:
         matrix where each row is a control point, then you can pass in
         `control_points.ravel()` to convert it to a vector.
 
+Raises:
+    RuntimeError: If `input_cost` is not ControlPoints.
+
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
             )doc",
            py::arg("control_points"));
+
+  base.def("setReferenceInputTrajectory",
+           &ampc::MPC::setReferenceInputTrajectory,
+           R"doc(
+Set the reference sampled input trajectory for the input cost on the sampled
+inputs.
+
+This method can only be called if `input_cost` is InputCostMode.Trajectory. The
+reference need not lie in the span of the basis (e.g. a feedforward input from a
+model).
+
+Args:
+    u_traj (vector): Reference input trajectory as a vector of stacked inputs
+        u_ref,0, ..., u_ref,T-1. Should have length of input_dim *
+        horizon_steps. If you have a matrix where each row is the input at index
+        k in the horizon, then you can pass in `u_traj.ravel()` to convert it to
+        a vector.
+
+Raises:
+    RuntimeError: If `input_cost` is not Trajectory.
+
+Note:
+    The QP is updated in the next prepare() or solve(), which report update
+    failures.
+           )doc",
+           py::arg("u_traj"));
 
   base.def("setInputLimits", &ampc::MPC::setInputLimits,
            R"doc(
@@ -945,7 +982,7 @@ Returns:
 Get the diagonal of the input weight matrix R (size input_dim).
 
 Raises:
-    RuntimeError: If `use_input_cost` is not enabled.
+    RuntimeError: If `input_cost` is InputCostMode.Off.
            )doc");
   base.def("getInputRateWeights", &ampc::MPC::getInputRateWeights, copy,
            R"doc(
@@ -1091,7 +1128,16 @@ Get the reference input control points as a stacked vector (size
 input_dim * num_control_points).
 
 Raises:
-    RuntimeError: If `use_input_cost` is not enabled.
+    RuntimeError: If `input_cost` is not InputCostMode.ControlPoints.
+           )doc");
+  base.def("getReferenceInputTrajectory",
+           &ampc::MPC::getReferenceInputTrajectory, copy,
+           R"doc(
+Get the reference sampled input trajectory as stacked inputs (size
+input_dim * horizon_steps).
+
+Raises:
+    RuntimeError: If `input_cost` is not InputCostMode.Trajectory.
            )doc");
 
   base.def("getSolveInfo", &ampc::MPC::getSolveInfo,

@@ -55,7 +55,7 @@ void model(double tilt, MatrixXd& Ad, MatrixXd& Bd)
   // clang-format on
 }
 
-const ampc::Options opts{.use_input_cost = true,
+const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                          .slew_initial_input = true,
                          .state_bounds = ampc::StateBoundMode::Hard};
 

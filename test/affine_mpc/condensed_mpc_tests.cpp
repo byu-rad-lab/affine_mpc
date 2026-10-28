@@ -97,7 +97,7 @@ TEST(CondensedMPCProtectedTester, givenModel_FormsPandQcorrectly)
   const int n{2}, m{1}, T{5}, nc{3};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true}};
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 1};
@@ -151,7 +151,8 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   const int n{2}, m{1}, T{10}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .slew_control_points = true}};
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
+                    .slew_control_points = true}};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 0.11};
@@ -201,7 +202,7 @@ TEST(CondensedMPCProtectedTester,
   const int n{2}, m{1}, T{100}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true,
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
                     .state_bounds = ampc::StateBoundMode::Hard}};
   msd_mpc.setModel();
 
@@ -240,7 +241,7 @@ TEST(CondensedMPCProtectedTester,
   const int n{2}, m{1}, T{10}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true}};
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   msd_mpc.setModel();
 
   msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
@@ -273,7 +274,7 @@ TEST(CondensedMPCProtectedTester,
   const int n{2}, m{1}, T{10}, nc{10};
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true}};
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   msd_mpc.setModel();
 
   msd_mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
@@ -307,9 +308,9 @@ TEST(CondensedMPCProtectedTester,
      givenNonUniformReferenceTrajectory_SolvesCorrectly)
 {
   const int n{2}, m{1}, T{10}, nc{10};
-  CondensedMPCProtectedTester mpc{n, m,
-                                  ampc::Parameterization::linearInterp(T, nc),
-                                  ampc::Options{.use_input_cost = true}};
+  CondensedMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
 
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
@@ -329,9 +330,9 @@ TEST(CondensedMPCProtectedTester,
   ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
 
   // Solve with uniform reference at the final value for comparison
-  CondensedMPCProtectedTester mpc2{n, m,
-                                   ampc::Parameterization::linearInterp(T, nc),
-                                   ampc::Options{.use_input_cost = true}};
+  CondensedMPCProtectedTester mpc2{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc2.setModel();
   mpc2.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));
   mpc2.setInputLimits(VectorXd::Constant(m, -3.0), VectorXd::Constant(m, 3.0));

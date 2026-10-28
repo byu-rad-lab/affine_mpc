@@ -348,9 +348,9 @@ TEST(SparseMPCProtectedTester,
      givenZeroWeightsBeforeInit_WeightsCanBecomeNonzeroLater)
 {
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
   mpc.setWeights(Vector2d{1.0, 0.0}, VectorXd::Zero(m));
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
@@ -373,9 +373,9 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester, givenInputCost_FormsCorrectCostTerms)
 {
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
   // assemble as during solves
   mpc.setInputLimits(VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 1.0));
@@ -414,9 +414,9 @@ TEST(SparseMPCProtectedTester,
   // Verifies the References change is not lost when the Weights change is
   // applied with it. Both must be reflected in q_ after a single update.
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
 
   const Vector2d Q_diag{1.0, 1.0};
@@ -462,9 +462,9 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrectly)
 {
   const int n{2}, m{1}, T{10}, nc{10};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
 
   Vector2d Q_diag{1.0, 0.1};
@@ -507,7 +507,8 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
   const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true, .slew_control_points = true}};
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
+                    .slew_control_points = true}};
   mpc.setModel();
 
   Vector2d Q_diag{1.0, 0.11};
@@ -547,7 +548,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsStateBounds)
   const int n{2}, m{1}, T{10}, nc{10};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.use_input_cost = true,
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
                     .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
@@ -578,9 +579,9 @@ TEST(SparseMPCProtectedTester,
      givenWeightUpdateBetweenSolves_ProducesCorrectSolution)
 {
   const int n{2}, m{1}, T{10}, nc{10};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.use_input_cost = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints}};
   mpc.setModel();
 
   mpc.setWeights(Vector2d{1.0, 0.1}, VectorXd::Constant(m, 1e-4));

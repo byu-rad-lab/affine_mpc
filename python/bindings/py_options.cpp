@@ -13,6 +13,30 @@ namespace py = pybind11;
 
 void moduleAddOptions(py::module& m)
 {
+  py::native_enum<ampc::InputCostMode>(m, "InputCostMode", "enum.Enum",
+                                       R"doc(
+Whether and where the MPC evaluates the input cost with weight R, chosen with
+Options.input_cost.
+
+The two costs differ whenever control points influence different numbers of
+samples (e.g. move-blocking with unequal blocks, geometric knots, or a custom
+basis, whose coefficients may have no physical meaning).
+)doc")
+      .value("Off", ampc::InputCostMode::Off, "No input cost (the default).")
+      .value("ControlPoints", ampc::InputCostMode::ControlPoints,
+             "The cost sum_i (c_ref,i - c_i)^T R (c_ref,i - c_i) on the "
+             "control points c_i, which weights every control point equally "
+             "(references set with MPC.setReferenceInput() or "
+             "MPC.setReferenceInputControlPoints()).")
+      .value("Trajectory", ampc::InputCostMode::Trajectory,
+             "The cost sum_k (u_ref,k - u_k)^T R (u_ref,k - u_k) on the "
+             "sampled inputs u_k, k = 0, ..., T-1, which weights the input "
+             "trajectory itself (references set with MPC.setReferenceInput() "
+             "or MPC.setReferenceInputTrajectory()). Adds a banded block to "
+             "the cost matrix (bandwidth 2 degree + 1 for B-splines, dense "
+             "for custom bases).")
+      .finalize();
+
   py::native_enum<ampc::StateBoundMode>(m, "StateBoundMode", "enum.Enum",
                                         "Whether and how the MPC bounds the "
                                         "predicted states, chosen with "
@@ -75,8 +99,8 @@ of the QP, so they can not be changed after constructing an MPC instance. The
 fields are grouped as follows.
 
 Costs:
-    use_input_cost: Enables the input cost on the control points
-        ((uref_k - u_k)^T R (uref_k - u_k)).
+    input_cost: InputCostMode.Off (the default), the input cost on the
+        control points (ControlPoints), or on the sampled inputs (Trajectory).
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
 
@@ -107,7 +131,8 @@ General constraints:
                           )doc");
 
   opt.def(
-      py::init([](const bool use_input_cost, const bool use_input_rate_cost,
+      py::init([](const ampc::InputCostMode input_cost,
+                  const bool use_input_rate_cost,
                   const ampc::InputBoundMode input_bounds,
                   const int refined_bound_interval,
                   const bool slew_initial_input, const bool slew_control_points,
@@ -116,7 +141,7 @@ General constraints:
                   const int num_general_constraints,
                   const int num_terminal_constraints) {
         ampc::Options opts;
-        opts.use_input_cost = use_input_cost;
+        opts.input_cost = input_cost;
         opts.use_input_rate_cost = use_input_rate_cost;
         opts.input_bounds = input_bounds;
         opts.refined_bound_interval = refined_bound_interval;
@@ -133,8 +158,8 @@ Construct an Options struct defining optional MPC configuration features. All
 arguments are keyword-only.
 
 Args:
-    use_input_cost: Enables the input cost on the control points
-        ((uref_k - u_k)^T R (uref_k - u_k)).
+    input_cost: InputCostMode.Off (the default), the input cost on the
+        control points (ControlPoints), or on the sampled inputs (Trajectory).
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
@@ -157,7 +182,7 @@ Args:
     num_terminal_constraints: Number of terminal constraints
         hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
       )doc",
-      py::kw_only(), py::arg("use_input_cost") = false,
+      py::kw_only(), py::arg("input_cost") = ampc::InputCostMode::Off,
       py::arg("use_input_rate_cost") = false,
       py::arg("input_bounds") = ampc::InputBoundMode::ControlPoints,
       py::arg("refined_bound_interval") =
@@ -169,7 +194,7 @@ Args:
       py::arg("num_general_constraints") = 0,
       py::arg("num_terminal_constraints") = 0);
 
-  opt.def_readwrite("use_input_cost", &ampc::Options::use_input_cost);
+  opt.def_readwrite("input_cost", &ampc::Options::input_cost);
   opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
   opt.def_readwrite("input_bounds", &ampc::Options::input_bounds);
   opt.def_readwrite("refined_bound_interval",
@@ -202,7 +227,10 @@ Args:
         prev = true;
       }
     };
-    addField(opts.use_input_cost, "use_input_cost");
+    if (opts.input_cost != ampc::InputCostMode::Off) {
+      oss << "input_cost=InputCostMode." << opts.input_cost;
+      prev = true;
+    }
     addField(opts.use_input_rate_cost, "use_input_rate_cost");
     if (opts.input_bounds != ampc::InputBoundMode::ControlPoints) {
       oss << (prev ? ", " : "") << "input_bounds=InputBoundMode."

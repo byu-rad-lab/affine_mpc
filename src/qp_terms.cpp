@@ -36,54 +36,128 @@ void InputCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
   f.addControlQuadraticVector(d.R_big.diagonal(), d.ctrls_ref);
 }
 
-// ---- InputRateCost ----------------------------------------------------------
+// ---- ChannelMatrix ----------------------------------------------------------
 
-InputRateCost::InputRateCost(const VectorParameterization& input_param) :
-    input_param_{input_param},
-    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+ChannelMatrix::ChannelMatrix(const MatrixXd& G)
 {
-  // Construction only: the dense basis Phi (one row per sample), the
-  // differences D Phi, and G = (D Phi)^T (D Phi)
-  const Parameterization& param{input_param.parameterization()};
-  const int T{param.horizon_steps}, ncp{param.num_control_points};
-  MatrixXd Phi{MatrixXd::Zero(T, ncp)};
-  for (int k{0}; k < T; ++k)
-    for (int i{0}; i < param.band_width; ++i)
-      Phi(k, param.band_start(k) + i) = param.band_weights(i, k);
-  MatrixXd DPhi{Phi};
-  DPhi.bottomRows(T - 1) -= Phi.topRows(T - 1);
-  const MatrixXd G{DPhi.transpose() * DPhi};
-
-  for (int j{0}; j < ncp; ++j)
-    for (int i{0}; i < ncp; ++i)
+  for (Index j{0}; j < G.cols(); ++j)
+    for (Index i{0}; i < G.rows(); ++i)
       if (G(i, j) != 0.0)
-        G_.push_back({i, j, G(i, j)});
-  for (int i{0}; i < ncp; ++i)
-    if (Phi(0, i) != 0.0)
-      phi0_.push_back({i, Phi(0, i)});
+        G_.push_back({static_cast<int>(i), static_cast<int>(j), G(i, j)});
 }
 
-void InputRateCost::declare(QPLayout& layout, FormulationImpl& f)
+void ChannelMatrix::declare(const VectorParameterization& input_param,
+                            QPLayout& layout,
+                            FormulationImpl& f)
 {
-  const int m{input_param_.inputDim()};
+  const int m{input_param.inputDim()};
   const Index size{m * static_cast<Index>(G_.size())};
   P_c_.reserve(static_cast<std::size_t>(size));
   P_c_values_.resize(size);
   for (int ch{0}; ch < m; ++ch)
-    for (const GEntry& e : G_)
-      P_c_.declare(input_param_.coefficientIndex(ch, e.i),
-                   input_param_.coefficientIndex(ch, e.j));
+    for (const Entry& e : G_)
+      P_c_.declare(input_param.coefficientIndex(ch, e.i),
+                   input_param.coefficientIndex(ch, e.j));
   f.declareControlMatrix(layout, P_c_);
+}
+
+void ChannelMatrix::add(const VectorParameterization& input_param,
+                        const VectorXd& weights,
+                        FormulationImpl& f)
+{
+  // G times each channel's weight
+  Index idx{0};
+  for (int ch{0}; ch < input_param.inputDim(); ++ch)
+    for (const Entry& e : G_)
+      P_c_values_(idx++) = e.value * weights(ch);
+  f.addControlMatrix(P_c_, P_c_values_);
+}
+
+MatrixXd sampledBasis(const Parameterization& param)
+{
+  MatrixXd Phi{MatrixXd::Zero(param.horizon_steps, param.num_control_points)};
+  for (int k{0}; k < param.horizon_steps; ++k)
+    for (int i{0}; i < param.band_width; ++i)
+      Phi(k, param.band_start(k) + i) = param.band_weights(i, k);
+  return Phi;
+}
+
+// ---- InputTrajectoryCost ----------------------------------------------------
+
+InputTrajectoryCost::InputTrajectoryCost(
+    const VectorParameterization& input_param) :
+    input_param_{input_param},
+    G_{[&input_param] {
+      // Construction only: G = Phi^T Phi
+      const MatrixXd Phi{sampledBasis(input_param.parameterization())};
+      return MatrixXd{Phi.transpose() * Phi};
+    }()},
+    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+{}
+
+void InputTrajectoryCost::declare(QPLayout& layout, FormulationImpl& f)
+{
+  G_.declare(input_param_, layout, f);
+}
+
+void InputTrajectoryCost::updateMatrix(const MPCData& d,
+                                       FormulationImpl& f,
+                                       QP&)
+{
+  G_.add(input_param_, d.R, f);
+}
+
+void InputTrajectoryCost::updateVector(const MPCData& d,
+                                       FormulationImpl& f,
+                                       QP&)
+{
+  // -Phi^T R u_ref, channel by channel, from the basis band of each sample
+  const Parameterization& param{input_param_.parameterization()};
+  const int m{input_param_.inputDim()};
+  q_c_.setZero();
+  for (int k{0}; k < param.horizon_steps; ++k) {
+    for (int i{0}; i < param.band_width; ++i) {
+      const double w{param.band_weights(i, k)};
+      const int cp{param.band_start(k) + i};
+      for (int ch{0}; ch < m; ++ch)
+        q_c_(input_param_.coefficientIndex(ch, cp)) -=
+            w * d.R(ch) * d.u_ref(k * m + ch);
+    }
+  }
+  f.addControlLinear(q_c_);
+}
+
+// ---- InputRateCost ----------------------------------------------------------
+
+InputRateCost::InputRateCost(const VectorParameterization& input_param) :
+    InputRateCost{input_param, sampledBasis(input_param.parameterization())}
+{}
+
+InputRateCost::InputRateCost(const VectorParameterization& input_param,
+                             const MatrixXd& Phi) :
+    input_param_{input_param},
+    G_{[&Phi] {
+      // Construction only: the differences D Phi, and G = (D Phi)^T (D Phi)
+      const Index T{Phi.rows()};
+      MatrixXd DPhi{Phi};
+      DPhi.bottomRows(T - 1) -= Phi.topRows(T - 1);
+      return MatrixXd{DPhi.transpose() * DPhi};
+    }()},
+    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+{
+  for (Index i{0}; i < Phi.cols(); ++i)
+    if (Phi(0, i) != 0.0)
+      phi0_.push_back({static_cast<int>(i), Phi(0, i)});
+}
+
+void InputRateCost::declare(QPLayout& layout, FormulationImpl& f)
+{
+  G_.declare(input_param_, layout, f);
 }
 
 void InputRateCost::updateMatrix(const MPCData& d, FormulationImpl& f, QP&)
 {
-  // G times each channel's weight
-  Index idx{0};
-  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
-    for (const GEntry& e : G_)
-      P_c_values_(idx++) = e.value * d.R_rate(ch);
-  f.addControlMatrix(P_c_, P_c_values_);
+  G_.add(input_param_, d.R_rate, f);
 }
 
 void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)

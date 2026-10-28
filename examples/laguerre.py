@@ -53,7 +53,7 @@ def run(deviation: bool) -> tuple[float, float]:
     """Closed-loop run; returns the final position and the tracking cost."""
     T, N, pole, ts = 40, 4, 0.8, 0.1
     param = ampc.Parameterization.fromBasis(T, prepare_basis(laguerre_basis(T, N, pole)))
-    mpc = ampc.MPC(state_dim=2, input_dim=1, param=param, opts=ampc.Options(use_input_cost=True))
+    mpc = ampc.MPC(state_dim=2, input_dim=1, param=param, opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
 
     A = np.array([[0.0, 1.0], [-0.6, -0.1]])
     B = np.array([0.0, 0.2])
