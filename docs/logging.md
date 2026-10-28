@@ -117,7 +117,7 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `states`: `(N, K, n)` or `(N, n)` depending on stride
 - `ref_states`: same shape as `states`
 - `inputs`: `(N, K, m)`, `(N, nc, m)`, or `(N, m)` depending on mode
-- `ref_inputs`: same shape as `inputs`, with an input cost: the reference control points (`InputCostMode::ControlPoints` with `log_control_points`), the reference control points evaluated at the logged steps (`ControlPoints`), or the sampled reference at the logged steps (`Trajectory`); not logged for `Trajectory` with `log_control_points`, since that reference has no control point form
+- `ref_inputs`: logged with an input cost; the reference control points, `(N, nc, m)`, for `InputCostMode::ControlPoints` with `log_control_points`, and otherwise the reference at the logged steps like `ref_states`, `(N, K, m)` or `(N, m)`: the reference control points evaluated there (`ControlPoints`) or the sampled reference (`Trajectory`, also with `log_control_points`, since a sampled reference has no control point form)
 - `mpc_solve_time`: `(N,)` duration of each whole `solve()` call (`SolveInfo.mpc_solve_time`)
 - `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
 - `prepare_time`: `(N,)` total time of the `prepare()` calls before each solve (`SolveInfo.prepare_time`, zero when `prepare()` is not used)

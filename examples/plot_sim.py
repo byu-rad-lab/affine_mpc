@@ -30,8 +30,9 @@ def main():
 
     data = np.load(npz_path)
 
-    # logged with an input cost, in the form of the inputs (not logged with
-    # control points and InputCostMode.Trajectory)
+    # logged with an input cost: (N, nc, m) control points for
+    # InputCostMode.ControlPoints with log_control_points, otherwise at the logged
+    # steps like ref_states; index 0 is the first input either way
     has_input_ref = "ref_inputs" in data.files
 
     time: ArrayF = data["time"]
@@ -91,7 +92,7 @@ def main():
 
     ax_t_F.step(time, force, where="post")
     if has_input_ref:
-        ref_inputs = data["ref_inputs"]  # same shape as inputs
+        ref_inputs = data["ref_inputs"]
         ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
         force_ref = ur_hist.squeeze()
         ax_t_F.plot(time, force_ref, ref_style)
@@ -143,7 +144,7 @@ def main():
 
         ax_p_F.step(time, force, where="post")
         if has_input_ref:
-            ref_inputs = data["ref_inputs"]  # same shape as inputs
+            ref_inputs = data["ref_inputs"]
             ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
             force_ref = ur_hist.squeeze()
             ax_p_F.plot(time, force_ref, ref_style)

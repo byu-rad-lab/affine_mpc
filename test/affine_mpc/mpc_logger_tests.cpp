@@ -344,8 +344,9 @@ TEST(MPCLoggerOptionsTest, givenTrajectoryInputCost_LogsSampledReferenceOnly)
       logger.finalize();
     }
     EXPECT_TRUE(fs::exists(test_dir / "log_npy" / "inputs.npy"));
-    EXPECT_EQ(fs::exists(test_dir / "log_npy" / "ref_inputs.npy"),
-              !log_control_points);
+    // the sampled reference is logged at the strided steps, like ref_states,
+    // also with log_control_points
+    EXPECT_TRUE(fs::exists(test_dir / "log_npy" / "ref_inputs.npy"));
   }
   fs::remove_all(test_dir);
 }

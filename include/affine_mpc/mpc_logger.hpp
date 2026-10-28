@@ -218,13 +218,15 @@ private:
   const double ts_;
   const int prediction_stride_;
   const bool log_control_points_;
-  // whether ref_inputs is logged: with an input cost, in the form of the
-  // logged inputs (not with InputCostMode::Trajectory and control points)
+  // whether ref_inputs is logged (with an input cost), and whether as control
+  // points (InputCostMode::ControlPoints with log_control_points) rather than
+  // at the strided steps, like ref_states
   const bool log_ref_inputs_;
+  const bool ref_inputs_control_points_;
   const Mode logging_mode_;
 
   std::vector<int> strided_k_;
-  Eigen::Index logged_x_dim_, logged_u_dim_;
+  Eigen::Index logged_x_dim_, logged_u_dim_, logged_ref_u_dim_;
 
   std::filesystem::path save_dir_;
   std::string save_name_;

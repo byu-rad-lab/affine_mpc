@@ -295,10 +295,8 @@ def test_mpc_logger_trajectory_input_cost(log_control_points):
         assert "opt_use_input_cost: 1\n" in params
         with np.load(Path(tmpdir) / "log.npz", allow_pickle=False) as data:
             assert data["meta_opt_use_input_cost"].item() == 1
-            if log_control_points:
-                # the reference is sampled, so it has no control point form
-                assert "ref_inputs" not in data.files
-            else:
-                # samples k = 0, ..., T, the last input repeated at k = T
-                expected = np.append(u_ref, u_ref[-1]).reshape(1, T + 1, 1)
-                np.testing.assert_allclose(data["ref_inputs"], expected)
+            # the sampled reference is logged at the strided steps like
+            # ref_states, also with log_control_points: k = 0, ..., T, the last
+            # input repeated at k = T
+            expected = np.append(u_ref, u_ref[-1]).reshape(1, T + 1, 1)
+            np.testing.assert_allclose(data["ref_inputs"], expected)
