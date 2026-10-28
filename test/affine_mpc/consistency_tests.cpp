@@ -335,12 +335,54 @@ TEST(ConsistencyTester, givenWrongSizeSolveAndGetterArgs_Throws)
                                      "u0 must have size 1, got 4");
     expectInvalidArgumentWithMessage(
         [&]() { mpc.getInputControlPoints(wrong); },
-        "control_points must have size 3, got 4");
+        "control_points must be 3x1 or 1x3, got 4x1");
     expectInvalidArgumentWithMessage([&]() { mpc.getInputTrajectory(wrong); },
-                                     "u_traj must have size 5, got 4");
+                                     "u_traj must be 5x1 or 1x5, got 4x1");
     expectInvalidArgumentWithMessage(
         [&]() { mpc.getPredictedStateTrajectory(wrong); },
-        "x_traj must have size 10, got 4");
+        "x_traj must be 10x1 or 2x5, got 4x1");
+  };
+  check(tester.condensed);
+  check(tester.sparse);
+}
+
+TEST(ConsistencyTester, givenMatrixOutputs_GettersWriteOneColumnPerStep)
+{
+  const int n{2}, m{1}, T{5}, nc{3};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  ConsistencyTester tester{n, m, param};
+  tester.setup();
+  auto check = [&](ampc::MPC& mpc) {
+    ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+    VectorXd x{n * T}, u{m * T}, c{m * nc};
+    mpc.getPredictedStateTrajectory(x);
+    mpc.getInputTrajectory(u);
+    mpc.getInputControlPoints(c);
+
+    // a matrix has the stacked vector's memory, column k is step k
+    MatrixXd X{n, T}, U{m, T}, C{m, nc};
+    mpc.getPredictedStateTrajectory(X);
+    mpc.getInputTrajectory(U);
+    mpc.getInputControlPoints(C);
+    EXPECT_TRUE(expectEigenNear(Map<const MatrixXd>{x.data(), n, T}, X, 0));
+    EXPECT_TRUE(expectEigenNear(Map<const MatrixXd>{u.data(), m, T}, U, 0));
+    EXPECT_TRUE(expectEigenNear(Map<const MatrixXd>{c.data(), m, nc}, C, 0));
+
+    // whole columns of a larger matrix are contiguous
+    MatrixXd log{MatrixXd::Zero(n, 3 * T)};
+    mpc.getPredictedStateTrajectory(log.middleCols(T, T));
+    EXPECT_TRUE(expectEigenNear(X, log.middleCols(T, T), 0));
+
+    // a block with fewer rows than its matrix is not written through a buffer
+    MatrixXd tall{MatrixXd::Zero(n + 1, T)};
+    expectInvalidArgumentWithMessage(
+        [&]() { mpc.getPredictedStateTrajectory(tall.topRows(n)); },
+        "[MPC::getPredictedStateTrajectory] x_traj must have contiguous "
+        "columns");
+    MatrixXd transposed{T, n};
+    expectInvalidArgumentWithMessage(
+        [&]() { mpc.getPredictedStateTrajectory(transposed); },
+        "x_traj must be 10x1 or 2x5, got 5x2.");
   };
   check(tester.condensed);
   check(tester.sparse);

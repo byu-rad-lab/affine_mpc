@@ -261,21 +261,26 @@ public:
    *   the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
-   * @param control_points Output vector for stacked control points.
-   * @throws std::invalid_argument if control_points does not have size
-   *   input_dim * num_control_points.
+   * @param control_points Output for the control points: a stacked vector
+   *   (input_dim * num_control_points) or an input_dim x num_control_points
+   *   matrix whose column j is control point j. Its columns must be
+   *   contiguous (a whole matrix, a vector, or a Map).
+   * @throws std::invalid_argument if control_points has neither shape, or is
+   *   a block of a larger matrix with more rows.
    */
-  void getInputControlPoints(Eigen::Ref<Eigen::VectorXd> control_points) const;
+  void getInputControlPoints(Eigen::Ref<Eigen::MatrixXd> control_points) const;
 
   /**
    * @brief Get the full input trajectory from the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
-   * @param u_traj Output vector for input trajectory.
-   * @throws std::invalid_argument if u_traj does not have size
-   *   input_dim * horizon_steps.
+   * @param u_traj Output for the inputs u_0, ..., u_{T-1}: a stacked vector
+   *   (input_dim * horizon_steps) or an input_dim x horizon_steps matrix
+   *   whose column k is u_k. Its columns must be contiguous.
+   * @throws std::invalid_argument if u_traj has neither shape, or is a block
+   *   of a larger matrix with more rows.
    */
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const;
+  void getInputTrajectory(Eigen::Ref<Eigen::MatrixXd> u_traj) const;
 
   /**
    * @brief Get the predicted state trajectory from the previous solve.
@@ -284,11 +289,13 @@ public:
    *   The condensed formulation computes it from the model, so after a
    *   prepare() that applied a model change, call it before prepare() to get
    *   the prediction of the previous solve.
-   * @param x_traj Output vector for state trajectory.
-   * @throws std::invalid_argument if x_traj does not have size
-   *   state_dim * horizon_steps.
+   * @param x_traj Output for the predicted states x_1, ..., x_T: a stacked
+   *   vector (state_dim * horizon_steps) or a state_dim x horizon_steps
+   *   matrix whose column k is x_{k+1}. Its columns must be contiguous.
+   * @throws std::invalid_argument if x_traj has neither shape, or is a block
+   *   of a larger matrix with more rows.
    */
-  void getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
+  void getPredictedStateTrajectory(Eigen::Ref<Eigen::MatrixXd> x_traj) const;
 
   /**
    * @brief Propagate the internal discrete-time model for one step.
@@ -453,15 +460,15 @@ public:
 
   /**
    * @brief Set reference state trajectory for tracking.
-   * @param x_traj Reference state trajectory as a vector of stacked states.
-   *   Should have length of state_dim * horizon_steps. If you have a matrix
-   *   where each column is a state at index k in the horizon, then you can pass
-   *   in `x_traj.reshaped()` to convert it to a vector.
+   * @param x_traj Reference states x_ref,1, ..., x_ref,T: a stacked vector
+   *   (state_dim * horizon_steps) or a state_dim x horizon_steps matrix whose
+   *   column k is x_ref,k+1 (the same memory).
+   * @throws std::invalid_argument if x_traj has neither shape.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void
-  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
+  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::MatrixXd>& x_traj);
 
   /**
    * @brief Set reference input trajectory as a step command: every reference
@@ -487,16 +494,16 @@ public:
    *
    *   This method can only be called if `input_cost` is
    *   InputCostMode::ControlPoints.
-   * @param control_points Reference input control points as a stacked vector.
-   *   Should have length of input_dim * num_control_points. If you have a
-   *   matrix where each column is a control point, then you can pass in
-   *   `control_points.reshaped()` to convert it to a vector.
+   * @param control_points Reference input control points: a stacked vector
+   *   (input_dim * num_control_points) or an input_dim x num_control_points
+   *   matrix whose column j is control point j (the same memory).
+   * @throws std::invalid_argument if control_points has neither shape.
    * @throws std::logic_error if `input_cost` is not ControlPoints.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void setReferenceInputControlPoints(
-      const Eigen::Ref<const Eigen::VectorXd>& control_points);
+      const Eigen::Ref<const Eigen::MatrixXd>& control_points);
 
   /**
    * @brief Set the reference sampled input trajectory for the input cost on
@@ -505,17 +512,16 @@ public:
    *   This method can only be called if `input_cost` is
    *   InputCostMode::Trajectory. The reference need not lie in the span of
    *   the basis (e.g. a feedforward input from a model).
-   * @param u_traj Reference input trajectory as a vector of stacked inputs
-   *   u_ref,0, ..., u_ref,T-1. Should have length of input_dim *
-   *   horizon_steps. If you have a matrix where each column is an input at
-   *   index k in the horizon, then you can pass in `u_traj.reshaped()` to
-   *   convert it to a vector.
+   * @param u_traj Reference inputs u_ref,0, ..., u_ref,T-1: a stacked vector
+   *   (input_dim * horizon_steps) or an input_dim x horizon_steps matrix
+   *   whose column k is u_ref,k (the same memory).
+   * @throws std::invalid_argument if u_traj has neither shape.
    * @throws std::logic_error if `input_cost` is not Trajectory.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void
-  setReferenceInputTrajectory(const Eigen::Ref<const Eigen::VectorXd>& u_traj);
+  setReferenceInputTrajectory(const Eigen::Ref<const Eigen::MatrixXd>& u_traj);
 
   /**
    * @brief Set input saturation limits.

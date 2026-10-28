@@ -343,7 +343,8 @@ State step reference:
 
 State trajectory reference:
 In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\mathbf{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
-The setters also accept the flat C++ layout (`horizon_steps * state_dim` values, the rows one after another), which has the same memory as a C-order 2-D array, so neither is copied.
+In C++, they are matrices with one column per step, e.g. `x_traj.col(k)` in a `state_dim x horizon_steps` matrix.
+Both also accept the stacked layout (`horizon_steps * state_dim` values, step after step), which has the same memory as either one, so a whole matrix or array is copied in one pass.
 
 === "Python"
 
@@ -354,7 +355,7 @@ The setters also accept the flat C++ layout (`horizon_steps * state_dim` values,
 === "C++"
 
     ```cpp
-    mpc.setReferenceStateTrajectory(x_traj);
+    mpc.setReferenceStateTrajectory(x_traj); // state_dim x horizon_steps, or stacked
     ```
 
 If input cost is enabled, input references can also be configured.
@@ -522,15 +523,17 @@ You can also access the full input and predicted state trajectories:
 === "C++"
 
     ```cpp
-    Eigen::VectorXd u_traj(input_dim * horizon_steps);
+    Eigen::MatrixXd u_traj(input_dim, horizon_steps); // column k is u_k
     mpc.getInputTrajectory(u_traj);
 
-    Eigen::VectorXd u_control_points(input_dim * num_control_points);
+    Eigen::MatrixXd u_control_points(input_dim, num_control_points);
     mpc.getInputControlPoints(u_control_points);
 
-    Eigen::VectorXd x_pred(state_dim * horizon_steps);
+    Eigen::MatrixXd x_pred(state_dim, horizon_steps); // column k is x_{k+1}
     mpc.getPredictedStateTrajectory(x_pred);
     ```
+
+    A stacked `Eigen::VectorXd` (e.g. `state_dim * horizon_steps`) works as well, and so do whole columns of a larger matrix (`X.middleCols(j, horizon_steps)`); a block with fewer rows than its matrix is rejected, since the getters write in place.
 
 Solver diagnostics from the last solve (status, iterations, objective, and timing) are available as a `SolveInfo`:
 

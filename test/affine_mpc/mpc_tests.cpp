@@ -641,6 +641,42 @@ TEST(MPCTester, askedToUpdateTrajectories_updatesCorrectly)
                               base.getReferenceInputControlPoints(), 1e-6));
 }
 
+TEST(MPCTester, givenStackedOrMatrixReferences_StoresTheSameTrajectory)
+{
+  const int n{2}, m{2}, T{4}, nc{3}, deg{1};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
+
+  // column k of the matrix is step k, the same memory as the stacked vector
+  const MatrixXd X{MatrixXd::Random(n, T)};
+  const VectorXd x{X.reshaped()};
+  base.setReferenceStateTrajectory(x);
+  ASSERT_TRUE(expectEigenNear(x, base.getReferenceStateTrajectory(), 0));
+  base.setReferenceStateTrajectory(2 * X);
+  ASSERT_TRUE(expectEigenNear(2 * x, base.getReferenceStateTrajectory(), 0));
+  // a block of a larger matrix (its columns are not contiguous)
+  MatrixXd big{MatrixXd::Zero(n + 3, T + 2)};
+  big.block(1, 2, n, T) = 3 * X;
+  base.setReferenceStateTrajectory(big.block(1, 2, n, T));
+  ASSERT_TRUE(expectEigenNear(3 * x, base.getReferenceStateTrajectory(), 0));
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setReferenceStateTrajectory(X.transpose()); },
+      "[MPC::setReferenceStateTrajectory] x_traj must be 8x1 or 2x4, got "
+      "4x2.");
+
+  const MatrixXd C{MatrixXd::Random(m, nc)};
+  base.setReferenceInputControlPoints(C);
+  ASSERT_TRUE(
+      expectEigenNear(C.reshaped(), base.getReferenceInputControlPoints(), 0));
+
+  MPCTester trajectory{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::Trajectory}};
+  const MatrixXd U{MatrixXd::Random(m, T)};
+  trajectory.setReferenceInputTrajectory(U);
+  ASSERT_TRUE(expectEigenNear(U.reshaped(),
+                              trajectory.getReferenceInputTrajectory(), 0));
+}
+
 TEST(MPCTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
@@ -780,7 +816,7 @@ TEST(MPCTester, givenInputCostMode_ReferenceSettersOfTheOtherModeThrow)
       "Requires input_cost to be InputCostMode::ControlPoints");
   expectInvalidArgumentWithMessage(
       [&]() { trajectory.setReferenceInputTrajectory(VectorXd::Ones(nc)); },
-      "must have size");
+      "u_traj must be 4x1 or 1x4, got 2x1.");
   expectInvalidArgumentWithMessage(
       [&]() { trajectory.setInputWeights(VectorXd::Constant(1, -1.0)); },
       "must be non-negative");
@@ -979,12 +1015,12 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
                                    "x_step must have size 2");
   expectInvalidArgumentWithMessage(
       [&]() { base.setReferenceStateTrajectory(x2); },
-      "x_traj must have size 8");
+      "x_traj must be 8x1 or 2x4, got 2x1.");
   expectInvalidArgumentWithMessage([&]() { base.setReferenceInput(u2); },
                                    "u_step must have size 1");
   expectInvalidArgumentWithMessage(
       [&]() { base.setReferenceInputControlPoints(u2); },
-      "control_points must have size 3");
+      "control_points must be 3x1 or 1x3, got 2x1.");
 
   expectInvalidArgumentWithMessage([&]() { base.setInputLimits(u2, u1); },
                                    "u_min must have size 1");

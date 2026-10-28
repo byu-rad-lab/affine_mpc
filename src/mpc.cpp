@@ -103,6 +103,71 @@ void validateShape(const Ref<const MatrixXd>& mat,
         + std::to_string(mat.rows()) + "x" + std::to_string(mat.cols()) + ".");
 }
 
+// A per-step trajectory is a stacked vector (dim * steps) or a dim x steps
+// matrix with one column per step, which have the same memory when the
+// matrix's columns are contiguous. Returns whether it is the stacked vector.
+bool validateSteps(Index rows,
+                   Index cols,
+                   Index dim,
+                   Index steps,
+                   const char* func,
+                   const char* name)
+{
+  const bool stacked{rows == dim * steps && cols == 1};
+  if (!stacked && (rows != dim || cols != steps))
+    throw std::invalid_argument(
+        std::string{"[MPC::"} + func + "] " + name + " must be "
+        + std::to_string(dim * steps) + "x1 or " + std::to_string(dim) + "x"
+        + std::to_string(steps) + ", got " + std::to_string(rows) + "x"
+        + std::to_string(cols) + ".");
+  return stacked;
+}
+
+// A per-step trajectory viewed as the dim x steps matrix, column k is step k
+using StepView = Map<const MatrixXd, 0, OuterStride<>>;
+
+StepView stepView(const Ref<const MatrixXd>& src,
+                  Index dim,
+                  Index steps,
+                  const char* func,
+                  const char* name)
+{
+  const bool stacked{
+      validateSteps(src.rows(), src.cols(), dim, steps, func, name)};
+  return {src.data(), dim, steps,
+          OuterStride<>{stacked ? dim : src.outerStride()}};
+}
+
+// Copy a per-step trajectory into stacked storage: one linear copy when its
+// columns are contiguous (any vector, whole matrix, or Map); only a block of
+// a larger matrix is copied column by column.
+void copySteps(const StepView& src, Ref<VectorXd> dst)
+{
+  if (src.outerStride() == src.rows())
+    dst = Map<const VectorXd>{src.data(), src.size()};
+  else
+    Map<MatrixXd>{dst.data(), src.rows(), src.cols()} = src;
+}
+
+// The stacked vector inside a caller's per-step output (a stacked vector or a
+// dim x steps matrix). Its columns must be contiguous: a block of a larger
+// matrix with fewer rows is rejected instead of written through a buffer.
+Map<VectorXd> stackedOutput(Ref<MatrixXd> dst,
+                            Index dim,
+                            Index steps,
+                            const char* func,
+                            const char* name)
+{
+  const bool stacked{
+      validateSteps(dst.rows(), dst.cols(), dim, steps, func, name)};
+  if (!stacked && dst.outerStride() != dim)
+    throw std::invalid_argument(
+        std::string{"[MPC::"} + func + "] " + name
+        + " must have contiguous columns, not be a block of a larger "
+          "matrix with more rows.");
+  return {dst.data(), dim * steps};
+}
+
 } // namespace
 
 MPC::MPC(int state_dim,
@@ -507,29 +572,30 @@ void MPC::getNextInput(Ref<VectorXd> u0) const
   input_param_.evaluate(0, solution_map_, u0);
 }
 
-void MPC::getInputControlPoints(Ref<VectorXd> control_points) const
+void MPC::getInputControlPoints(Ref<MatrixXd> control_points) const
 {
   assert(solver_initialized_);
-  validateSize(control_points.size(), ctrls_dim_, "getInputControlPoints",
-               "control_points");
   // Assumes that the control points are first elements of solution
-  control_points = solution_map_.head(ctrls_dim_);
+  stackedOutput(control_points, input_dim_, num_ctrl_pts_,
+                "getInputControlPoints", "control_points") =
+      solution_map_.head(ctrls_dim_);
 }
 
-void MPC::getInputTrajectory(Ref<VectorXd> u_traj) const
+void MPC::getInputTrajectory(Ref<MatrixXd> u_traj) const
 {
   assert(solver_initialized_);
-  validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
   // Assumes that the control points are first elements of solution
-  input_param_.evaluateTrajectory(solution_map_, u_traj);
+  input_param_.evaluateTrajectory(
+      solution_map_, stackedOutput(u_traj, input_dim_, horizon_steps_,
+                                   "getInputTrajectory", "u_traj"));
 }
 
-void MPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void MPC::getPredictedStateTrajectory(Ref<MatrixXd> x_traj) const
 {
   assert(solver_initialized_);
-  validateSize(x_traj.size(), x_traj_dim_, "getPredictedStateTrajectory",
-               "x_traj");
-  qp_builder_->predictStates(solution_map_, x_traj);
+  qp_builder_->predictStates(
+      solution_map_, stackedOutput(x_traj, state_dim_, horizon_steps_,
+                                   "getPredictedStateTrajectory", "x_traj"));
 }
 
 void MPC::propagateModel(const Ref<const VectorXd>& x0,
@@ -688,11 +754,11 @@ void MPC::setReferenceState(const Ref<const VectorXd>& x_step)
   pending_ |= DataChange::References;
 }
 
-void MPC::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
+void MPC::setReferenceStateTrajectory(const Ref<const MatrixXd>& x_traj)
 {
-  validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
-               "x_traj");
-  data_.x_ref = x_traj;
+  copySteps(stepView(x_traj, state_dim_, horizon_steps_,
+                     "setReferenceStateTrajectory", "x_traj"),
+            data_.x_ref);
   pending_ |= DataChange::References;
 }
 
@@ -719,25 +785,25 @@ void MPC::setReferenceInput(const Ref<const VectorXd>& u_step)
 }
 
 void MPC::setReferenceInputControlPoints(
-    const Ref<const VectorXd>& control_points)
+    const Ref<const MatrixXd>& control_points)
 {
   if (opts_.input_cost != InputCostMode::ControlPoints)
     throw std::logic_error("[MPC::setReferenceInputControlPoints] Requires "
                            "input_cost to be InputCostMode::ControlPoints.");
-  validateSize(control_points.size(), ctrls_dim_,
-               "setReferenceInputControlPoints", "control_points");
-  data_.ctrls_ref = control_points;
+  copySteps(stepView(control_points, input_dim_, num_ctrl_pts_,
+                     "setReferenceInputControlPoints", "control_points"),
+            data_.ctrls_ref);
   pending_ |= DataChange::References;
 }
 
-void MPC::setReferenceInputTrajectory(const Ref<const VectorXd>& u_traj)
+void MPC::setReferenceInputTrajectory(const Ref<const MatrixXd>& u_traj)
 {
   if (opts_.input_cost != InputCostMode::Trajectory)
     throw std::logic_error("[MPC::setReferenceInputTrajectory] Requires "
                            "input_cost to be InputCostMode::Trajectory.");
-  validateSize(u_traj.size(), u_traj_dim_, "setReferenceInputTrajectory",
-               "u_traj");
-  data_.u_ref = u_traj;
+  copySteps(stepView(u_traj, input_dim_, horizon_steps_,
+                     "setReferenceInputTrajectory", "u_traj"),
+            data_.u_ref);
   pending_ |= DataChange::References;
 }
 
