@@ -251,6 +251,9 @@ std::vector<AllocationCase> allocationCases()
       {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
       {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),
        constraints},
+      // large enough that the condensed state cost uses one matrix-vector
+      // product per column (the cases above use dot products)
+      {"longHorizon", ampc::Parameterization::bspline(100, 2, 30), {}},
   };
 }
 

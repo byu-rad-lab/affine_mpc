@@ -398,6 +398,15 @@ public:
   const Eigen::MatrixXd& S() const noexcept { return S_; }
   const Eigen::VectorXd& v() const noexcept { return v_; }
 
+  /// How addStateQuadraticMatrix() computes S^T diag(Q) S (see there).
+  enum class StateCostProduct
+  {
+    Dense,    ///< one matrix product
+    BandDots, ///< the upper triangle on the band, by dot products
+    BandGemv, ///< the upper triangle on the band, one product per column
+  };
+  StateCostProduct stateCostProduct() const noexcept { return product_; }
+
 private:
   // the formulation's own block of P (q): all of it without extra variables
   auto ownP() { return qp_.P.topLeftCorner(nc_, nc_); }
@@ -419,6 +428,10 @@ private:
   Eigen::VectorXd v_;
   Eigen::MatrixXd weighted_S_;         // diag(Q) S, avoids a temp for P
   Eigen::VectorXd weighted_state_err_; // diag(Q) (v - r), avoids a temp
+  // The first row of S that can be nonzero in each column (the first row of
+  // the first step whose state the column's control point affects)
+  const std::vector<int> band_rows_;
+  const StateCostProduct product_;
   // The own blocks of P and q are dense, so each is one part (the state cost
   // writes all of it, the control point cost adds to the control points)
   CostPart P_, q_;

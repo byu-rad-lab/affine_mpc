@@ -60,6 +60,43 @@ std::vector<int> bandColumns(const VectorParameterization& input_param)
   return cols;
 }
 
+// For each column of S, its first row that can be nonzero: the first row of
+// the first step whose band columns include it
+std::vector<int> bandRows(const std::vector<int>& band_cols,
+                          const int state_dim,
+                          const int num_cols)
+{
+  std::vector<int> rows(static_cast<std::size_t>(num_cols), 0);
+  int col{0};
+  for (std::size_t k{0}; k < band_cols.size(); ++k)
+    for (; col < band_cols[k]; ++col)
+      rows[static_cast<std::size_t>(col)] = static_cast<int>(k) * state_dim;
+  return rows;
+}
+
+// How to compute the state cost S^T diag(Q) S (see
+// CondensedFormulation::addStateQuadraticMatrix()). Measured with the
+// library's default flags (x86-64 without -march, Eigen 5, GCC 16 and
+// Clang 23) on every banded basis tried, from n = 1, T = 5 to n = 16, T = 100
+// with up to 400 control point coefficients: the dot products take 0.3-0.9x
+// the dense product's time (about equal at worst, for n = 1 and T < 10), so no
+// size threshold is needed against the dense product; one matrix-vector product
+// per column is faster than the dot products once the dense product has about
+// 64k multiply-adds (10-25% on the largest problems) but up to 2.7x slower on
+// small ones. The dense product of column chunks on the band was not used:
+// chunk shapes that fit Eigen's matrix product kernels badly made it up to 2x
+// slower than the dense product on small and medium problems.
+CondensedFormulation::StateCostProduct chooseStateCostProduct(
+    const std::vector<int>& band_rows, const int nx, const int nc)
+{
+  using Product = CondensedFormulation::StateCostProduct;
+  if (band_rows.empty() || band_rows.back() == 0)
+    return Product::Dense; // no band: every column can be nonzero in every row
+  constexpr double gemv_min_madds{64e3};
+  return static_cast<double>(nx) * nc * nc < gemv_min_madds ? Product::BandDots
+                                                            : Product::BandGemv;
+}
+
 } // namespace
 
 // ---- StateRowMap ------------------------------------------------------------
@@ -141,7 +178,9 @@ CondensedFormulation::CondensedFormulation(
     S_{MatrixXd::Zero(nx_, nc_)},
     v_{VectorXd::Zero(nx_)},
     weighted_S_{nx_, nc_},
-    weighted_state_err_{nx_}
+    weighted_state_err_{nx_},
+    band_rows_{bandRows(band_cols_, n_, nc_)},
+    product_{chooseStateCostProduct(band_rows_, nx_, nc_)}
 {}
 
 FormulationImpl::Update
@@ -164,16 +203,47 @@ void CondensedFormulation::predictStates(const Ref<const VectorXd>& z,
 
 void CondensedFormulation::addStateQuadraticMatrix(const Ref<const VectorXd>& Q)
 {
-  // P = S^T diag(Q) S as one product. Eigen's matrix product still
-  // heap-allocates its blocking buffers when they exceed
-  // EIGEN_STACK_ALLOCATION_LIMIT (128 KB), i.e. for large problems.
-  // Products with a DiagonalMatrix copy it (a heap allocation) in Eigen 3.4,
-  // so the weights are applied through asDiagonal() of a vector instead.
-  weighted_S_.noalias() = Q.asDiagonal() * S_;
-  if (P_.stale)
-    ownP().noalias() = S_.transpose() * weighted_S_;
-  else
-    ownP().noalias() += S_.transpose() * weighted_S_;
+  auto P{ownP()};
+  if (product_ == StateCostProduct::Dense) {
+    // P = S^T diag(Q) S as one product. Eigen's matrix product still
+    // heap-allocates its blocking buffers when they exceed
+    // EIGEN_STACK_ALLOCATION_LIMIT (128 KB), i.e. for large problems.
+    // Products with a DiagonalMatrix copy it (a heap allocation) in Eigen
+    // 3.4, so the weights are applied through asDiagonal() of a vector.
+    weighted_S_.noalias() = Q.asDiagonal() * S_;
+    if (P_.stale)
+      P.noalias() = S_.transpose() * weighted_S_;
+    else
+      P.noalias() += S_.transpose() * weighted_S_;
+  } else {
+    // The upper triangle on the band: entry (i, j), i <= j, sums over the
+    // rows from column j's first nonzero row (S is zero above it in column j),
+    // so only that part of column j of diag(Q) S is needed. The lower
+    // triangle is mirrored from the upper one.
+    for (Index j{0}; j < nc_; ++j) {
+      const Index row{band_rows_[static_cast<std::size_t>(j)]};
+      const Index rows{nx_ - row};
+      auto weighted{weighted_S_.col(j).tail(rows)};
+      weighted = Q.tail(rows).cwiseProduct(S_.col(j).tail(rows));
+      if (product_ == StateCostProduct::BandGemv) {
+        auto dst{P.col(j).head(j + 1)};
+        const auto S_rows{S_.block(row, 0, rows, j + 1)};
+        if (P_.stale)
+          dst.noalias() = S_rows.transpose() * weighted;
+        else
+          dst.noalias() += S_rows.transpose() * weighted;
+      } else if (P_.stale) {
+        for (Index i{0}; i <= j; ++i)
+          P(i, j) = S_.col(i).tail(rows).dot(weighted);
+      } else {
+        for (Index i{0}; i <= j; ++i)
+          P(i, j) += S_.col(i).tail(rows).dot(weighted);
+      }
+    }
+    for (Index j{0}; j < nc_; ++j)
+      for (Index i{j + 1}; i < nc_; ++i)
+        P(i, j) = P(j, i);
+  }
   P_.stale = false;
   P_.written = true;
 }
