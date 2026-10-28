@@ -250,6 +250,13 @@ write_basic_package_version_file(
   COMPATIBILITY SameMajorVersion
 )
 
+get_target_property(affine_mpc_library_type ${PROJECT_NAME} TYPE)
+if(TARGET ZLIB::ZLIB AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  set(AFFINE_MPC_CONFIG_NEEDS_ZLIB TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_ZLIB FALSE)
+endif()
+
 configure_package_config_file(
   cmake/${PROJECT_NAME}Config.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
