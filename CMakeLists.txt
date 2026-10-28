@@ -172,6 +172,9 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
   )
+  if(AFFINE_MPC_WITH_DAQP)
+    list(APPEND TEST_SOURCES test/affine_mpc/daqp_solver_tests.cpp)
+  endif()
 
   add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
   set_target_properties(np_writer_fixture PROPERTIES FOLDER tests)

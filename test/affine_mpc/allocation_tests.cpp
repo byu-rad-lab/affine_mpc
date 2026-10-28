@@ -1,10 +1,14 @@
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
+#ifdef AFFINE_MPC_WITH_DAQP
+#include "affine_mpc/daqp_solver.hpp"
+#endif
 
 #include <Eigen/Core>
 #include <cstddef>
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
 
 #include "utils.hpp"
@@ -96,7 +100,8 @@ template <typename Fn> std::size_t countAllocations(Fn&& fn)
 template <ampc::Formulation F>
 void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
                                        const ampc::Options& opts,
-                                       bool use_prepare)
+                                       bool use_prepare,
+                                       bool use_daqp = false)
 {
 #ifndef AMPC_COUNT_ALLOCATIONS
   GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
@@ -136,7 +141,13 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
   if (opts.num_terminal_constraints > 0)
     mpc.setTerminalConstraints(Hf, h_min, h_max);
-  ASSERT_TRUE(mpc.initializeSolver());
+  if (use_daqp) {
+#ifdef AFFINE_MPC_WITH_DAQP
+    ASSERT_TRUE(mpc.initializeSolver(std::make_unique<ampc::DAQPSolver>()));
+#endif
+  } else {
+    ASSERT_TRUE(mpc.initializeSolver());
+  }
 
   const Vector2d x0{0.5, -0.2};
   VectorXd u0{m}, u_traj{m * param.horizon_steps};
@@ -284,6 +295,20 @@ TEST_P(AllocationTester, givenInitializedSparseMPC_PrepareAndSolveDoNotAllocate)
   checkNoAllocationsAfterInitialize<ampc::Formulation::Sparse>(
       GetParam().param, GetParam().opts, true);
 }
+
+#ifdef AFFINE_MPC_WITH_DAQP
+TEST_P(AllocationTester, givenCondensedMPCWithDAQP_SolveDoesNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, false, true);
+}
+
+TEST_P(AllocationTester, givenCondensedMPCWithDAQP_PrepareAndSolveDoNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, true, true);
+}
+#endif
 
 TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
 {
