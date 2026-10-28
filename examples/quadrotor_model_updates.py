@@ -335,7 +335,7 @@ def simulate(strategy, rate, duration, delay_scale, seed, save_dir, progress=Non
             x[9:12] += KICK
         # Work before the measurement: references (and for the predicted
         # strategies the model, see the end of the loop) are applied by prepare().
-        mpc.setReferenceStateTrajectory(x_ref[k + 1 : k + 1 + horizon_steps].ravel())
+        mpc.setReferenceStateTrajectory(x_ref[k + 1 : k + 1 + horizon_steps])
         mpc.setReferenceInput(u_ref[k])
         if strategy in ("predicted", "hybrid"):
             mpc.prepare()

@@ -228,7 +228,7 @@ def test_from_basis_logger_metadata(tmp_path):
         np.testing.assert_array_equal(logged_basis, basis)
         # the logged control points are coefficients of the logged basis
         u_traj = logged_basis @ data["inputs"][0].reshape(-1)
-        np.testing.assert_allclose(u_traj, mpc.getInputTrajectory(), rtol=0, atol=1e-12)
+        np.testing.assert_allclose(u_traj, mpc.getInputTrajectory()[:, 0], rtol=0, atol=1e-12)
     params = (tmp_path / "params.yaml").read_text()
     assert "parameterization_type: custom" in params
 

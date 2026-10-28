@@ -2,6 +2,7 @@
 
 #include <pybind11/eigen.h>
 #include <pybind11/native_enum.h>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <sstream>
@@ -25,6 +26,141 @@ static void requireSolverInitialized(const ampc::MPC& self,
   if (!self.isSolverInitialized())
     throw std::logic_error(std::string{"[MPC::"} + func_name
                            + "] Solver must be initialized first.");
+}
+
+static std::string shapeString(const py::array& arr)
+{
+  std::ostringstream s;
+  s << "(";
+  for (py::ssize_t a{0}; a < arr.ndim(); ++a)
+    s << (a ? ", " : "") << arr.shape(a);
+  s << (arr.ndim() == 1 ? ",)" : ")");
+  return s.str();
+}
+
+// The steps of a (T, rows, cols) array of blocks, or of a (T, rows) array of
+// vectors, side by side (rows x T*cols) as the C++ trajectory setters take
+// them; vectors may also be flat (T*rows,), the C++ stacked layout. NumPy's
+// default C order keeps each block row-major, so block arrays are usually
+// copied once (as pybind11 would copy a C-order matrix); an array already in
+// the side-by-side layout (C-order vectors, or blocks that are contiguous and
+// column-major) is used in place.
+class StepStack
+{
+public:
+  StepStack(const py::array_t<double>& arr,
+            const Eigen::Index steps,
+            const Eigen::Index rows,
+            const Eigen::Index cols,
+            const bool vectors,
+            const char* func,
+            const char* name) :
+      rows_{rows}, cols_{steps * cols}
+  {
+    const bool flat{vectors && arr.ndim() == 1 && arr.shape(0) == steps * rows};
+    const py::ssize_t ndim{vectors ? 2 : 3};
+    if (!flat
+        && (arr.ndim() != ndim || arr.shape(0) != steps || arr.shape(1) != rows
+            || (!vectors && arr.shape(2) != cols))) {
+      std::ostringstream msg;
+      msg << "[MPC::" << func << "] " << name << " must have shape (" << steps
+          << ", " << rows;
+      if (vectors)
+        msg << ") or (" << steps * rows << ",";
+      else
+        msg << ", " << cols;
+      msg << "), got " << shapeString(arr) << ".";
+      throw std::invalid_argument(msg.str());
+    }
+    constexpr auto size{static_cast<py::ssize_t>(sizeof(double))};
+    if (flat) {
+      if (arr.shape(0) <= 1 || arr.strides(0) == size) {
+        data_ = arr.data();
+        return;
+      }
+      const auto r{arr.unchecked<1>()};
+      copy_.resize(rows_, cols_);
+      for (py::ssize_t i{0}; i < arr.shape(0); ++i)
+        copy_.data()[i] = r(i);
+      data_ = copy_.data();
+      return;
+    }
+    // the side-by-side layout's strides (only axes longer than one count)
+    const py::ssize_t layout_strides[]{rows * cols, 1, rows};
+    bool in_place{true};
+    for (py::ssize_t a{0}; a < ndim; ++a)
+      in_place =
+          in_place
+          && (arr.shape(a) <= 1 || arr.strides(a) == layout_strides[a] * size);
+    if (in_place) {
+      data_ = arr.data();
+      return;
+    }
+    copy_.resize(rows_, cols_);
+    if (vectors) {
+      const auto r{arr.unchecked<2>()};
+      for (py::ssize_t k{0}; k < steps; ++k)
+        for (py::ssize_t i{0}; i < rows; ++i)
+          copy_(i, k) = r(k, i);
+    } else {
+      const auto r{arr.unchecked<3>()};
+      for (py::ssize_t k{0}; k < steps; ++k)
+        for (py::ssize_t j{0}; j < cols; ++j)
+          for (py::ssize_t i{0}; i < rows; ++i)
+            copy_(i, k * cols + j) = r(k, i, j);
+    }
+    data_ = copy_.data();
+  }
+
+  Eigen::Map<const Eigen::MatrixXd> matrix() const
+  {
+    return {data_, rows_, cols_};
+  }
+  Eigen::Map<const Eigen::VectorXd> vector() const
+  {
+    return {data_, rows_ * cols_};
+  }
+
+private:
+  Eigen::MatrixXd copy_;
+  const double* data_;
+  Eigen::Index rows_, cols_;
+};
+
+using StepArray = const py::array_t<double>&;
+
+// A new (steps, dim) array and the C++ stacked vector it holds (its C-order
+// memory), for the getters to write into
+static py::array_t<double> stepRows(const Eigen::Index steps,
+                                    const Eigen::Index dim)
+{
+  return py::array_t<double>{std::vector<py::ssize_t>{steps, dim}};
+}
+static Eigen::Map<Eigen::VectorXd> stackedView(py::array_t<double>& arr)
+{
+  return {arr.mutable_data(), static_cast<Eigen::Index>(arr.size())};
+}
+
+// The C++ stacked vector inside a caller's array that a getter writes into: a
+// writable, C-contiguous float64 array of shape (steps, dim) or (steps*dim,)
+static Eigen::Map<Eigen::VectorXd> stackedOutput(py::array& arr,
+                                                 const Eigen::Index steps,
+                                                 const Eigen::Index dim,
+                                                 const char* func,
+                                                 const char* name)
+{
+  const bool shape_ok{
+      (arr.ndim() == 2 && arr.shape(0) == steps && arr.shape(1) == dim)
+      || (arr.ndim() == 1 && arr.shape(0) == steps * dim)};
+  if (!shape_ok || !arr.dtype().is(py::dtype::of<double>())
+      || !(arr.flags() & py::array::c_style) || !arr.writeable())
+    throw std::invalid_argument(
+        std::string{"[MPC::"} + func + "] " + name
+        + " must be a writable C-contiguous float64 array of shape ("
+        + std::to_string(steps) + ", " + std::to_string(dim) + ") or ("
+        + std::to_string(steps * dim) + ",), got shape " + shapeString(arr)
+        + " and dtype " + py::str(arr.dtype()).cast<std::string>() + ".");
+  return {static_cast<double*>(arr.mutable_data()), steps * dim};
 }
 
 void moduleAddMPC(py::module& m)
@@ -240,34 +376,37 @@ Raises:
 
   base.def(
       "getInputControlPoints",
-      [](ampc::MPC& self, Eigen::Ref<Eigen::VectorXd> control_points) {
+      [](ampc::MPC& self, py::array control_points) {
         requireSolverInitialized(self, "getInputControlPoints");
-        self.getInputControlPoints(control_points);
+        self.getInputControlPoints(stackedOutput(
+            control_points, self.getNumControlPoints(), self.getInputDim(),
+            "getInputControlPoints", "control_points"));
         return control_points;
       },
       R"doc(
 Get the control points that parameterize the input trajectory from the previous
-solve.
+solve, writing them into control_points.
 
 Args:
-    control_points (vector): Result will be stored here (equivalent to return
-        value).
+    control_points: Writable C-contiguous float64 array of shape
+        (num_control_points, input_dim) or (num_control_points * input_dim,),
+        e.g. preallocated once outside the control loop.
 
 Returns:
-    control_points (vector): The stacked control points.
+    control_points: The same array, row j holding control point j.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
-    ValueError: If control_points has the wrong size.
+    ValueError: If control_points has the wrong shape, dtype, or layout.
       )doc",
       py::arg("control_points"));
   base.def(
       "getInputControlPoints",
       [](ampc::MPC& self) {
         requireSolverInitialized(self, "getInputControlPoints");
-        Eigen::VectorXd control_points{self.getInputDim()
-                                       * self.getNumControlPoints()};
-        self.getInputControlPoints(control_points);
+        auto control_points{
+            stepRows(self.getNumControlPoints(), self.getInputDim())};
+        self.getInputControlPoints(stackedView(control_points));
         return control_points;
       },
       R"doc(
@@ -275,7 +414,8 @@ Get the control points that parameterize the input trajectory from the previous
 solve.
 
 Returns:
-    control_points (vector): The stacked control points.
+    control_points: (num_control_points, input_dim) array, row j holding
+        control point j.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
@@ -283,38 +423,41 @@ Raises:
 
   base.def(
       "getInputTrajectory",
-      [](ampc::MPC& self, Eigen::Ref<Eigen::VectorXd> u_traj) {
+      [](ampc::MPC& self, py::array u_traj) {
         requireSolverInitialized(self, "getInputTrajectory");
-        self.getInputTrajectory(u_traj);
+        self.getInputTrajectory(stackedOutput(u_traj, self.getHorizonSteps(),
+                                              self.getInputDim(),
+                                              "getInputTrajectory", "u_traj"));
         return u_traj;
       },
       R"doc(
-Get the full input trajectory from the previous solve.
+Get the full input trajectory from the previous solve, writing it into u_traj.
 
 Args:
-    u_traj (vector): Result will be stored here (equivalent to return value).
+    u_traj: Writable C-contiguous float64 array of shape
+        (horizon_steps, input_dim) or (horizon_steps * input_dim,).
 
-returns:
-    u_traj (vector): The input trajectory.
+Returns:
+    u_traj: The same array, row k holding u_k.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
-    ValueError: If u_traj has the wrong size.
+    ValueError: If u_traj has the wrong shape, dtype, or layout.
       )doc",
       py::arg("u_traj"));
   base.def(
       "getInputTrajectory",
       [](ampc::MPC& self) {
         requireSolverInitialized(self, "getInputTrajectory");
-        Eigen::VectorXd u_traj{self.getInputDim() * self.getHorizonSteps()};
-        self.getInputTrajectory(u_traj);
+        auto u_traj{stepRows(self.getHorizonSteps(), self.getInputDim())};
+        self.getInputTrajectory(stackedView(u_traj));
         return u_traj;
       },
       R"doc(
 Get the full input trajectory from the previous solve.
 
-returns:
-    u_traj (vector): The input trajectory.
+Returns:
+    u_traj: (horizon_steps, input_dim) array, row k holding u_k.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
@@ -322,38 +465,42 @@ Raises:
 
   base.def(
       "getPredictedStateTrajectory",
-      [](ampc::MPC& self, Eigen::Ref<Eigen::VectorXd> x_traj) {
+      [](ampc::MPC& self, py::array x_traj) {
         requireSolverInitialized(self, "getPredictedStateTrajectory");
-        self.getPredictedStateTrajectory(x_traj);
+        self.getPredictedStateTrajectory(
+            stackedOutput(x_traj, self.getHorizonSteps(), self.getStateDim(),
+                          "getPredictedStateTrajectory", "x_traj"));
         return x_traj;
       },
       R"doc(
-Get the predicted state trajectory from the previous solve.
+Get the predicted state trajectory x_1, ..., x_T from the previous solve,
+writing it into x_traj.
 
 Args:
-    x_traj (vector): Result will be stored here (equivalent to return value).
+    x_traj: Writable C-contiguous float64 array of shape
+        (horizon_steps, state_dim) or (horizon_steps * state_dim,).
 
-returns:
-    x_traj (vector): The predicted state trajectory.
+Returns:
+    x_traj: The same array, row k holding x_{k+1}.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
-    ValueError: If x_traj has the wrong size.
+    ValueError: If x_traj has the wrong shape, dtype, or layout.
       )doc",
       py::arg("x_traj"));
   base.def(
       "getPredictedStateTrajectory",
       [](ampc::MPC& self) {
         requireSolverInitialized(self, "getPredictedStateTrajectory");
-        Eigen::VectorXd x_traj{self.getStateDim() * self.getHorizonSteps()};
-        self.getPredictedStateTrajectory(x_traj);
+        auto x_traj{stepRows(self.getHorizonSteps(), self.getStateDim())};
+        self.getPredictedStateTrajectory(stackedView(x_traj));
         return x_traj;
       },
       R"doc(
-Get the predicted state trajectory from the previous solve.
+Get the predicted state trajectory x_1, ..., x_T from the previous solve.
 
-returns:
-    x_traj (vector): The predicted state trajectory.
+Returns:
+    x_traj: (horizon_steps, state_dim) array, row k holding x_{k+1}.
 
 Raises:
     RuntimeError: If the solver has not been initialized.
@@ -595,22 +742,34 @@ Note:
            )doc",
            py::arg("x_step"));
 
-  base.def("setReferenceStateTrajectory",
-           &ampc::MPC::setReferenceStateTrajectory,
-           R"doc(
+  base.def(
+      "setReferenceStateTrajectory",
+      [](ampc::MPC& self, StepArray x_traj) {
+        const StepStack x{x_traj,
+                          self.getHorizonSteps(),
+                          self.getStateDim(),
+                          1,
+                          true,
+                          "setReferenceStateTrajectory",
+                          "x_traj"};
+        self.setReferenceStateTrajectory(x.vector());
+      },
+      R"doc(
 Set reference state trajectory.
 
 Args:
-    x_traj (vector): Reference state trajectory as a vector of stacked states.
-        Should have length of state_dim * horizon_steps. If you have a matrix
-        where each row is the state at index k in the horizon, then you can pass
-        in `x_traj.ravel()` to convert it to a vector.
+    x_traj: Reference states x_ref,1, ..., x_ref,T, as a
+        (horizon_steps, state_dim) array with row k holding x_ref,k+1, or
+        flat (horizon_steps * state_dim,) as in C++.
+
+Raises:
+    ValueError: If the shape is wrong.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
-           )doc",
-           py::arg("x_traj"));
+      )doc",
+      py::arg("x_traj"));
 
   base.def("setReferenceInput", &ampc::MPC::setReferenceInput,
            R"doc(
@@ -636,31 +795,51 @@ Note:
            )doc",
            py::arg("u_step"));
 
-  base.def("setReferenceInputControlPoints",
-           &ampc::MPC::setReferenceInputControlPoints,
-           R"doc(
+  base.def(
+      "setReferenceInputControlPoints",
+      [](ampc::MPC& self, StepArray control_points) {
+        const StepStack c{control_points,
+                          self.getNumControlPoints(),
+                          self.getInputDim(),
+                          1,
+                          true,
+                          "setReferenceInputControlPoints",
+                          "control_points"};
+        self.setReferenceInputControlPoints(c.vector());
+      },
+      R"doc(
 Set reference control points that parameterize the reference input trajectory.
 
 This method can only be called if `input_cost` is InputCostMode.ControlPoints.
 
 Args:
-    control_points (vector): Reference input control points as a stacked vector.
-        Should have length of input_dim * num_control_points. If you have a
-        matrix where each row is a control point, then you can pass in
-        `control_points.ravel()` to convert it to a vector.
+    control_points: Reference input control points, as a
+        (num_control_points, input_dim) array with row j holding control
+        point j, or flat (num_control_points * input_dim,) as in C++.
 
 Raises:
+    ValueError: If the shape is wrong.
     RuntimeError: If `input_cost` is not ControlPoints.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
-            )doc",
-           py::arg("control_points"));
+      )doc",
+      py::arg("control_points"));
 
-  base.def("setReferenceInputTrajectory",
-           &ampc::MPC::setReferenceInputTrajectory,
-           R"doc(
+  base.def(
+      "setReferenceInputTrajectory",
+      [](ampc::MPC& self, StepArray u_traj) {
+        const StepStack u{u_traj,
+                          self.getHorizonSteps(),
+                          self.getInputDim(),
+                          1,
+                          true,
+                          "setReferenceInputTrajectory",
+                          "u_traj"};
+        self.setReferenceInputTrajectory(u.vector());
+      },
+      R"doc(
 Set the reference sampled input trajectory for the input cost on the sampled
 inputs.
 
@@ -669,20 +848,19 @@ reference need not lie in the span of the basis (e.g. a feedforward input from a
 model).
 
 Args:
-    u_traj (vector): Reference input trajectory as a vector of stacked inputs
-        u_ref,0, ..., u_ref,T-1. Should have length of input_dim *
-        horizon_steps. If you have a matrix where each row is the input at index
-        k in the horizon, then you can pass in `u_traj.ravel()` to convert it to
-        a vector.
+    u_traj: Reference inputs u_ref,0, ..., u_ref,T-1, as a
+        (horizon_steps, input_dim) array with row k holding u_ref,k, or flat
+        (horizon_steps * input_dim,) as in C++.
 
 Raises:
+    ValueError: If the shape is wrong.
     RuntimeError: If `input_cost` is not Trajectory.
 
 Note:
     The QP is updated in the next prepare() or solve(), which report update
     failures.
-           )doc",
-           py::arg("u_traj"));
+      )doc",
+      py::arg("u_traj"));
 
   base.def("setInputLimits", &ampc::MPC::setInputLimits,
            R"doc(
@@ -1117,28 +1295,46 @@ Raises:
     RuntimeError: If neither `slew_initial_input` nor `use_input_rate_cost` is
         enabled.
            )doc");
-  base.def("getReferenceStateTrajectory",
-           &ampc::MPC::getReferenceStateTrajectory, copy,
-           "Get the reference state trajectory as stacked states (size "
-           "state_dim * horizon_steps).");
-  base.def("getReferenceInputControlPoints",
-           &ampc::MPC::getReferenceInputControlPoints, copy,
-           R"doc(
-Get the reference input control points as a stacked vector (size
-input_dim * num_control_points).
+  base.def(
+      "getReferenceStateTrajectory",
+      [](const ampc::MPC& self) {
+        auto x_traj{stepRows(self.getHorizonSteps(), self.getStateDim())};
+        stackedView(x_traj) = self.getReferenceStateTrajectory();
+        return x_traj;
+      },
+      "Get the reference state trajectory as a (horizon_steps, state_dim) "
+      "array, row k holding x_ref,k+1.");
+  base.def(
+      "getReferenceInputControlPoints",
+      [](const ampc::MPC& self) {
+        const Eigen::VectorXd& ref{self.getReferenceInputControlPoints()};
+        auto control_points{
+            stepRows(self.getNumControlPoints(), self.getInputDim())};
+        stackedView(control_points) = ref;
+        return control_points;
+      },
+      R"doc(
+Get the reference input control points as a
+(num_control_points, input_dim) array, row j holding control point j.
 
 Raises:
     RuntimeError: If `input_cost` is not InputCostMode.ControlPoints.
-           )doc");
-  base.def("getReferenceInputTrajectory",
-           &ampc::MPC::getReferenceInputTrajectory, copy,
-           R"doc(
-Get the reference sampled input trajectory as stacked inputs (size
-input_dim * horizon_steps).
+      )doc");
+  base.def(
+      "getReferenceInputTrajectory",
+      [](const ampc::MPC& self) {
+        const Eigen::VectorXd& ref{self.getReferenceInputTrajectory()};
+        auto u_traj{stepRows(self.getHorizonSteps(), self.getInputDim())};
+        stackedView(u_traj) = ref;
+        return u_traj;
+      },
+      R"doc(
+Get the reference sampled input trajectory as a (horizon_steps, input_dim)
+array, row k holding u_ref,k.
 
 Raises:
     RuntimeError: If `input_cost` is not InputCostMode.Trajectory.
-           )doc");
+      )doc");
 
   base.def("getSolveInfo", &ampc::MPC::getSolveInfo,
            R"doc(

@@ -342,11 +342,13 @@ State step reference:
     ```
 
 State trajectory reference:
+In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\mathbf{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
+The setters also accept the flat C++ layout (`horizon_steps * state_dim` values, the rows one after another), which has the same memory as a C-order 2-D array, so neither is copied.
 
 === "Python"
 
     ```python
-    mpc.setReferenceStateTrajectory(x_traj)
+    mpc.setReferenceStateTrajectory(x_traj)  # (horizon_steps, state_dim) or flat
     ```
 
 === "C++"
@@ -363,9 +365,9 @@ If input cost is enabled, input references can also be configured.
 
     ```python
     mpc.setReferenceInput(u_step)
-    # OR, with InputCostMode.ControlPoints
+    # OR, with InputCostMode.ControlPoints, (num_control_points, input_dim)
     mpc.setReferenceInputControlPoints(control_points)
-    # OR, with InputCostMode.Trajectory (input_dim * horizon_steps values)
+    # OR, with InputCostMode.Trajectory, (horizon_steps, input_dim)
     mpc.setReferenceInputTrajectory(u_traj)
     ```
 
@@ -512,9 +514,9 @@ You can also access the full input and predicted state trajectories:
 === "Python"
 
     ```python
-    u_traj = mpc.getInputTrajectory()
-    u_control_points = mpc.getInputControlPoints()
-    x_pred = mpc.getPredictedStateTrajectory()
+    u_traj = mpc.getInputTrajectory()  # (horizon_steps, input_dim)
+    u_control_points = mpc.getInputControlPoints()  # (num_control_points, input_dim)
+    x_pred = mpc.getPredictedStateTrajectory()  # (horizon_steps, state_dim), x_1 first
     ```
 
 === "C++"
@@ -612,7 +614,7 @@ See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
     ```python
     uk = mpc.getNextInput()  # most common
     u_traj = mpc.getInputTrajectory()
-    u_traj_ctrl_pts = mpc.getParameterizedInputTrajectory()
+    u_control_points = mpc.getInputControlPoints()
     x_pred = mpc.getPredictedStateTrajectory()
     ```
 
@@ -621,7 +623,11 @@ See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
     ```python
     uk = np.empty(m)
     mpc.getNextInput(uk)  # uk is also returned
+    x_pred = np.empty((T, n))  # or flat np.empty(T * n)
+    mpc.getPredictedStateTrajectory(x_pred)
     ```
+
+    The trajectory getters write in place, so their array must be a writable, C-contiguous `float64` array of the right shape (they raise `ValueError` otherwise, instead of converting it).
 
     The in-place form can be useful if you want to reuse arrays in tight loops for extra performance.
 

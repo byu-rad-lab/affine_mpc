@@ -131,10 +131,21 @@ def test_mpc_getters_return_set_values():
 
     x_ref = np.linspace(0, 1, n * T)
     ctrls_ref = np.linspace(-1, 1, m * nc)
+    # flat (the C++ stacked layout) or one row per step; the getters return rows
     mpc.setReferenceStateTrajectory(x_traj=x_ref)
     mpc.setReferenceInputControlPoints(control_points=ctrls_ref)
-    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref)
-    np.testing.assert_array_equal(mpc.getReferenceInputControlPoints(), ctrls_ref)
+    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceInputControlPoints(), ctrls_ref.reshape(nc, m)
+    )
+    mpc.setReferenceStateTrajectory(x_traj=2 * x_ref.reshape(T, n))
+    mpc.setReferenceInputControlPoints(control_points=2 * ctrls_ref.reshape(nc, m))
+    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), 2 * x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceInputControlPoints(), 2 * ctrls_ref.reshape(nc, m)
+    )
+    with pytest.raises(ValueError, match=rf"x_traj must have shape \({T}, {n}\) or \({T * n},\), got \({n}, {T}\)"):
+        mpc.setReferenceStateTrajectory(x_ref.reshape(n, T))
 
     # getters return copies, so editing one does not change the MPC
     u_min = mpc.getInputMin()
@@ -178,11 +189,11 @@ def test_trajectory_input_cost(formulation):
     param = ampc.Parameterization.moveBlocking(T, 4, 1.3)
     mpc = _trajectory_cost_mpc(formulation, param)
     np.testing.assert_array_equal(mpc.getInputWeights(), [1.0])
-    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), np.zeros(T))
+    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), np.zeros((T, 1)))
     u_ref = 0.5 + 0.1 * np.sin(np.arange(T))
     mpc.setInputWeights(np.array([0.5]))
     mpc.setReferenceInputTrajectory(u_traj=u_ref)
-    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), u_ref)
+    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), u_ref[:, None])
     assert "input_cost=InputCostMode.Trajectory" in repr(mpc.getOptions())
     assert "R=[0.5]" in repr(mpc)
 
@@ -211,7 +222,7 @@ def test_trajectory_input_cost(formulation):
 
     assert mpc.initializeSolver()
     assert mpc.solve(x0) == ampc.SolveStatus.Success
-    assert mpc.getInputTrajectory().shape == (T,)
+    assert mpc.getInputTrajectory().shape == (T, 1)
 
     with pytest.raises(RuntimeError, match="InputCostMode::ControlPoints"):
         mpc.setReferenceInputControlPoints(np.zeros(nc))
@@ -317,7 +328,7 @@ def test_input_rate_cost(formulation):
         return mpc.getInputTrajectory()
 
     def variation(u):
-        return np.abs(np.diff(np.concatenate(([0.0], u)))).sum()
+        return np.abs(np.diff(np.concatenate(([0.0], u[:, 0])))).sum()
 
     assert variation(solve(100.0)) < 0.5 * variation(solve(0.01))
 
@@ -352,7 +363,7 @@ def test_partial_and_soft_state_bounds(formulation):
     hard, status = build(opts, np.zeros(2))
     assert status == ampc.SolveStatus.Success
     assert hard.getBoundedStates() == [0]
-    x_traj = hard.getPredictedStateTrajectory().reshape(-1, 2)
+    x_traj = hard.getPredictedStateTrajectory()
     assert x_traj[:, 0].max() == pytest.approx(0.5, abs=1e-7)
 
     soft_opts = ampc.Options(state_bounds=ampc.StateBoundMode.Soft, bounded_states=[0])
@@ -409,8 +420,9 @@ def test_general_and_terminal_constraints(formulation):
     x0 = np.zeros(2)
     assert mpc.solve(x0) == ampc.SolveStatus.Success
 
-    x = mpc.getPredictedStateTrajectory().reshape(T, 2)
-    u = mpc.getInputTrajectory()
+    x = mpc.getPredictedStateTrajectory()
+    assert x.shape == (T, 2)
+    u = mpc.getInputTrajectory()[:, 0]
     g = np.concatenate([[x0[0] + u[0]], x[:-1, 0] + u[1:]])
     assert g.max() <= 3.0 + 1e-7
     assert x[-1, 0] <= 0.8 + 1e-7
@@ -477,9 +489,9 @@ def test_get_and_assemble_qp(formulation):
     z = np.empty(nv)
     for b in mpc.getQPVariableBlocks():
         if b.name == "control_points":
-            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints()
+            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints().ravel()
         else:
-            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory()
+            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory().ravel()
     objective = 0.5 * z @ (qp.P @ z) + qp.q @ z
     assert objective == pytest.approx(mpc.getSolveInfo().objective, rel=1e-9, abs=1e-12)
     Az = qp.A @ z

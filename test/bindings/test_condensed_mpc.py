@@ -167,12 +167,21 @@ def test_wrong_size_arguments_raise(formulation):
 
     with pytest.raises(ValueError, match="u0 must have size 1, got 4"):
         mpc.getNextInput(np.zeros(4))
-    with pytest.raises(ValueError, match="control_points must have size"):
+    with pytest.raises(ValueError, match=r"control_points must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)"):
         mpc.getInputControlPoints(np.zeros(1))
-    with pytest.raises(ValueError, match="u_traj must have size"):
+    with pytest.raises(ValueError, match=r"u_traj must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)"):
         mpc.getInputTrajectory(np.zeros(1))
-    with pytest.raises(ValueError, match="x_traj must have size"):
-        mpc.getPredictedStateTrajectory(np.zeros(1))
+    with pytest.raises(ValueError, match=r"x_traj must be .* shape \(10, 2\) or \(20,\), got shape \(2, 10\)"):
+        mpc.getPredictedStateTrajectory(np.zeros((n, T)))
+    # the getters write in place, so they can not convert the caller's array
+    with pytest.raises(ValueError, match="dtype float32"):
+        mpc.getPredictedStateTrajectory(np.zeros((T, n), dtype=np.float32))
+    with pytest.raises(ValueError, match="writable C-contiguous"):
+        mpc.getPredictedStateTrajectory(np.zeros((n, T)).T)
+    read_only = np.zeros((T, n))
+    read_only.flags.writeable = False
+    with pytest.raises(ValueError, match="writable C-contiguous"):
+        mpc.getPredictedStateTrajectory(read_only)
 
 
 @pytest.mark.parametrize("formulation", list(ampc.Formulation))

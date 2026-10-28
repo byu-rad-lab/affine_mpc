@@ -1172,39 +1172,34 @@ class MPC:
 
     @typing.overload
     def getInputControlPoints(
-        self,
-        control_points: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, control_points: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
         Get the control points that parameterize the input trajectory from the previous
-        solve.
+        solve, writing them into control_points.
 
         Args:
-            control_points (vector): Result will be stored here (equivalent to return
-                value).
+            control_points: Writable C-contiguous float64 array of shape
+                (num_control_points, input_dim) or (num_control_points * input_dim,),
+                e.g. preallocated once outside the control loop.
 
         Returns:
-            control_points (vector): The stacked control points.
+            control_points: The same array, row j holding control point j.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If control_points has the wrong size.
+            ValueError: If control_points has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getInputControlPoints(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getInputControlPoints(self) -> numpy.typing.NDArray[numpy.float64]:
         """
         Get the control points that parameterize the input trajectory from the previous
         solve.
 
         Returns:
-            control_points (vector): The stacked control points.
+            control_points: (num_control_points, input_dim) array, row j holding
+                control point j.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1236,36 +1231,30 @@ class MPC:
 
     @typing.overload
     def getInputTrajectory(
-        self,
-        u_traj: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, u_traj: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
-        Get the full input trajectory from the previous solve.
+        Get the full input trajectory from the previous solve, writing it into u_traj.
 
         Args:
-            u_traj (vector): Result will be stored here (equivalent to return value).
+            u_traj: Writable C-contiguous float64 array of shape
+                (horizon_steps, input_dim) or (horizon_steps * input_dim,).
 
-        returns:
-            u_traj (vector): The input trajectory.
+        Returns:
+            u_traj: The same array, row k holding u_k.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If u_traj has the wrong size.
+            ValueError: If u_traj has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getInputTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getInputTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
         Get the full input trajectory from the previous solve.
 
-        returns:
-            u_traj (vector): The input trajectory.
+        Returns:
+            u_traj: (horizon_steps, input_dim) array, row k holding u_k.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1347,36 +1336,31 @@ class MPC:
 
     @typing.overload
     def getPredictedStateTrajectory(
-        self,
-        x_traj: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, x_traj: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
-        Get the predicted state trajectory from the previous solve.
+        Get the predicted state trajectory x_1, ..., x_T from the previous solve,
+        writing it into x_traj.
 
         Args:
-            x_traj (vector): Result will be stored here (equivalent to return value).
+            x_traj: Writable C-contiguous float64 array of shape
+                (horizon_steps, state_dim) or (horizon_steps * state_dim,).
 
-        returns:
-            x_traj (vector): The predicted state trajectory.
+        Returns:
+            x_traj: The same array, row k holding x_{k+1}.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If x_traj has the wrong size.
+            ValueError: If x_traj has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getPredictedStateTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getPredictedStateTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the predicted state trajectory from the previous solve.
+        Get the predicted state trajectory x_1, ..., x_T from the previous solve.
 
-        returns:
-            x_traj (vector): The predicted state trajectory.
+        Returns:
+            x_traj: (horizon_steps, state_dim) array, row k holding x_{k+1}.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1457,33 +1441,27 @@ class MPC:
             blocks (list[QPBlock]): The variable blocks in order.
         """
 
-    def getReferenceInputControlPoints(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getReferenceInputControlPoints(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the reference input control points as a stacked vector (size
-        input_dim * num_control_points).
+        Get the reference input control points as a
+        (num_control_points, input_dim) array, row j holding control point j.
 
         Raises:
             RuntimeError: If `input_cost` is not InputCostMode.ControlPoints.
         """
 
-    def getReferenceInputTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getReferenceInputTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the reference sampled input trajectory as stacked inputs (size
-        input_dim * horizon_steps).
+        Get the reference sampled input trajectory as a (horizon_steps, input_dim)
+        array, row k holding u_ref,k.
 
         Raises:
             RuntimeError: If `input_cost` is not InputCostMode.Trajectory.
         """
 
-    def getReferenceStateTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getReferenceStateTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the reference state trajectory as stacked states (size state_dim * horizon_steps).
+        Get the reference state trajectory as a (horizon_steps, state_dim) array, row k holding x_ref,k+1.
         """
 
     def getSlewRate(
@@ -2012,8 +1990,7 @@ class MPC:
         """
 
     def setReferenceInputControlPoints(
-        self,
-        control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        self, control_points: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
     ) -> None:
         """
         Set reference control points that parameterize the reference input trajectory.
@@ -2021,12 +1998,12 @@ class MPC:
         This method can only be called if `input_cost` is InputCostMode.ControlPoints.
 
         Args:
-            control_points (vector): Reference input control points as a stacked vector.
-                Should have length of input_dim * num_control_points. If you have a
-                matrix where each row is a control point, then you can pass in
-                `control_points.ravel()` to convert it to a vector.
+            control_points: Reference input control points, as a
+                (num_control_points, input_dim) array with row j holding control
+                point j, or flat (num_control_points * input_dim,) as in C++.
 
         Raises:
+            ValueError: If the shape is wrong.
             RuntimeError: If `input_cost` is not ControlPoints.
 
         Note:
@@ -2035,7 +2012,7 @@ class MPC:
         """
 
     def setReferenceInputTrajectory(
-        self, u_traj: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+        self, u_traj: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
     ) -> None:
         """
         Set the reference sampled input trajectory for the input cost on the sampled
@@ -2046,13 +2023,12 @@ class MPC:
         model).
 
         Args:
-            u_traj (vector): Reference input trajectory as a vector of stacked inputs
-                u_ref,0, ..., u_ref,T-1. Should have length of input_dim *
-                horizon_steps. If you have a matrix where each row is the input at index
-                k in the horizon, then you can pass in `u_traj.ravel()` to convert it to
-                a vector.
+            u_traj: Reference inputs u_ref,0, ..., u_ref,T-1, as a
+                (horizon_steps, input_dim) array with row k holding u_ref,k, or flat
+                (horizon_steps * input_dim,) as in C++.
 
         Raises:
+            ValueError: If the shape is wrong.
             RuntimeError: If `input_cost` is not Trajectory.
 
         Note:
@@ -2075,16 +2051,18 @@ class MPC:
         """
 
     def setReferenceStateTrajectory(
-        self, x_traj: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+        self, x_traj: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
     ) -> None:
         """
         Set reference state trajectory.
 
         Args:
-            x_traj (vector): Reference state trajectory as a vector of stacked states.
-                Should have length of state_dim * horizon_steps. If you have a matrix
-                where each row is the state at index k in the horizon, then you can pass
-                in `x_traj.ravel()` to convert it to a vector.
+            x_traj: Reference states x_ref,1, ..., x_ref,T, as a
+                (horizon_steps, state_dim) array with row k holding x_ref,k+1, or
+                flat (horizon_steps * state_dim,) as in C++.
+
+        Raises:
+            ValueError: If the shape is wrong.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
