@@ -416,6 +416,34 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```
 
+#### Choosing the QP solver
+
+OSQP is the default solver for both formulations.
+For the condensed formulation, the C++ interface can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver.
+DAQP is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
+It is not available from Python yet.
+
+```cpp
+#include "affine_mpc/daqp_solver.hpp"
+
+affine_mpc::DAQPSettings daqp_settings; // DAQP's defaults
+if (!mpc.initializeSolver(std::make_unique<affine_mpc::DAQPSolver>(daqp_settings))) {
+  /* handle the error */
+}
+```
+
+`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface; passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+
+Prefer DAQP for condensed problems of moderate size, where its active-set iterations return the solution to its tolerance (1e-6 on the constraints by default) instead of the approximate solution of OSQP's first-order iterations.
+In our measurements on this library's mass-spring-damper example (`examples/sim.cpp`), a `solve()` call with DAQP was more than ten times faster than with OSQP.
+DAQP's work grows with the cube of the number of QP variables (control points and slacks) and with the number of active constraints, so OSQP, or the sparse formulation, remains the choice for long horizons with many control points.
+
+DAQP needs a positive definite cost matrix `P` for its standard iterations.
+When `P` is only positive semidefinite (for example with `InputCostMode::Off` and some states unweighted, or soft state limits with only an L1 penalty), DAQP detects this while factorizing `P` and switches to proximal-point iterations, which still find a minimizer.
+`DAQPSettings::eps_prox` controls this: negative (the default) uses them only when needed, positive always, and zero never, in which case a singular `P` makes `initializeSolver()` return false (or `solve()` return `UpdateFailed` after a weight or model change).
+
+`resetWarmStart()` empties DAQP's working set (the constraints it starts from), and `SolveInfo::qp_solve_time` is DAQP's own solve time, which excludes factorizing `P` after a weight or model change.
+
 ### 6. Solve in the control loop
 
 Configuration misuse tends to throw exceptions, but `solve()` returns a `SolveStatus` type rather than throwing since it
@@ -423,7 +451,7 @@ is in the main runtime loop. Common cases include:
 
 - `Success`
 - `NotInitialized` (`solve()` was called prior to `initializeSolver()`)
-- `UpdateFailed` (OSQP rejected an update to the QP data, often from non-finite model or weight values; the QP was not solved, and the update is retried at the next solve, which usually recovers once the values are valid again)
+- `UpdateFailed` (the solver rejected an update to the QP data, often from non-finite model or weight values; the QP was not solved, and the update is retried at the next solve, which usually recovers once the values are valid again)
 - OSQP-derived failure conditions (see [OSQP documentation](https://osqp.org/docs/interfaces/status_values.html#status-values))
 
 How to respond to a failed solve depends on the application.
@@ -520,7 +548,7 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
     ```
 
 `objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
-`qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
+`qp_solve_time` is the time the QP solver spent solving (for OSQP zero if it is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
 Setters only store their values and the QP is updated in `solve()`, so `mpc_solve_time` covers essentially all of the MPC's work.
 The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
 If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).

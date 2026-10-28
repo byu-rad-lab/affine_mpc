@@ -93,6 +93,7 @@ All of these can be installed from source (see their docs), but here are install
 
 - [ZLIB](https://zlib.net/) for NPZ compression (must be on system - commonly is for Linux/MacOS)
 - [GTest](https://google.github.io/googletest/) for unit tests (fetched if not on system)
+- [DAQP](https://github.com/darnstrom/daqp) as an alternative QP solver for the condensed formulation, built with `-DAFFINE_MPC_WITH_DAQP=ON` (fetched if not on system; see [Choosing the QP solver](../usage.md#choosing-the-qp-solver))
 
 === "Arch"
 

@@ -178,7 +178,8 @@ public:
    *   The MPC takes ownership of the solver, which must not be initialized
    *   yet. After a successful initialization, a later call returns true and
    *   discards the solver passed to it.
-   * @param solver The QP solver, e.g.
+   * @param solver The QP solver, e.g. `std::make_unique<DAQPSolver>()`
+   *   (condensed formulation, when built with DAQP) or
    *   `std::make_unique<OSQPSolver>(mpc.getNumQPVariables(),
    *   mpc.getNumQPConstraints(), settings)`.
    * @param model_sparsity Which entries of Ad and Bd the solver tracks.
@@ -882,7 +883,8 @@ public:
 
   /**
    * @brief Make the next solve() start from zero instead of warm starting
-   *   from the previous solution (an OSQP cold start).
+   *   from the previous solution (an OSQP cold start; DAQP starts from an
+   *   empty working set).
    *
    *   Useful after a failed solve, whose iterates may have diverged and would
    *   slow down or prevent convergence of the next solve. Does not change the
