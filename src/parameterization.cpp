@@ -611,15 +611,18 @@ void Parameterization::refineKnots(const int max_interval,
   const int p{degree}, n{num_control_points};
   const VectorXd& t{knots};
 
-  // Split every active knot interval [t_i, t_{i+1}] (i = p, ..., n-1) longer
-  // than max_interval into equal parts. Lengths within round-off of
-  // max_interval are not split.
+  // Split every nonempty active knot interval [t_i, t_{i+1}] (i = p, ...,
+  // n-1) into max(2, ceil(length / max_interval)) equal parts, so every
+  // interval is split at least once and none is longer than max_interval.
+  // Lengths within round-off of a multiple of max_interval are not split
+  // further.
   const double max_length{max_interval * (1.0 + 1e-9)};
   std::vector<double> tau(t.data(), t.data() + p + 1);
   for (int i{p}; i < n; ++i) {
     const double length{t(i + 1) - t(i)};
-    if (length > max_length) {
-      const int parts{static_cast<int>(std::ceil(length / max_interval))};
+    if (length > 0.0) {
+      const int parts{
+          std::max(2, static_cast<int>(std::ceil(length / max_length)))};
       for (int q{1}; q < parts; ++q)
         tau.push_back(t(i) + length * q / parts);
     }

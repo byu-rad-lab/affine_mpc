@@ -334,7 +334,7 @@ $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
-For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
@@ -708,7 +708,7 @@ $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
-For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 

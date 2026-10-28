@@ -272,14 +272,15 @@ Inserting a knot changes the knot vector and the control points of a B-spline bu
 Per input channel, the refined control points are $\Gamma \mathbf{c}$, where $\Gamma$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
 The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
 
-`Refined` inserts knots until no active knot interval is longer than `refined_bound_interval` samples (`Options::refined_bound_interval`, default 16): each longer interval is split into $\lceil \ell / L \rceil$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval`.
-It then bounds the refined control points that some sample depends on, about $T / L + \eta$ rows per input.
+`Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
+It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
+If that is not fewer than the $T$ rows of `Exact` (short horizons or a very small $L$), `Refined` uses the `Exact` rows instead, which are exact and fewer; this is decided once at construction.
 For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Exact`.
 $\Gamma$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
 
 A smaller $L$ bounds the sampled inputs more tightly with more rows.
-Very small values approach the row count of `Exact`, and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
-$L$ is measured in samples, so a horizon whose knot intervals are all at most $L$ samples long gets no new knots, and `Refined` then bounds the control points like `ControlPoints`.
+Very small values approach the row count of `Exact` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
+Because every interval is split at least once, `Refined` is tighter than `ControlPoints` even on short horizons whose knot intervals are all at most $L$ samples long.
 The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Exact`.
 
 Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Exact` (the samples next to each knot).

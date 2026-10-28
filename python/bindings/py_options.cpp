@@ -53,16 +53,18 @@ in rows and accuracy.
              "input), which can make OSQP slower on long horizons.")
       .value("Refined", ampc::InputBoundMode::Refined,
              "Bound the control points of the same spline after knot "
-             "insertion: knots are inserted until no knot interval is longer "
-             "than Options.refined_bound_interval samples, and the refined "
-             "control points that some sample depends on are bounded. By the "
-             "convex hull property of the refined control points, every "
-             "sampled input stays inside the limits, with less of the range "
-             "lost than with ControlPoints and far fewer rows than Exact on "
-             "long horizons (about T / refined_bound_interval + "
-             "num_control_points rows per input). Degree 0: the same as "
-             "ControlPoints; degree 1: the same as Exact (both are already "
-             "exact and cheap).")
+             "insertion: every knot interval of length l is split into "
+             "max(2, ceil(l / L)) equal parts, with L = "
+             "Options.refined_bound_interval samples, and the refined control "
+             "points that some sample depends on are bounded. By the convex "
+             "hull property of the refined control points, every sampled "
+             "input stays inside the limits, with less of the range lost than "
+             "with ControlPoints and far fewer rows than Exact on long "
+             "horizons (about max(T / L, 2 (num_control_points - degree)) + "
+             "degree rows per input). If that is not fewer than the rows of "
+             "Exact (T per input), the rows of Exact are used instead. Degree "
+             "0: the same as ControlPoints; degree 1: the same as Exact (both "
+             "are already exact and cheap).")
       .finalize();
 
   py::class_<ampc::Options> opt(m, "Options", R"doc(
@@ -83,7 +85,8 @@ Input constraints (the input limits are always enforced):
         default), the sampled inputs (InputBoundMode.Exact), or the control
         points after knot insertion (InputBoundMode.Refined).
     refined_bound_interval: Longest knot interval, in samples, after the knot
-        insertion of InputBoundMode.Refined (positive, default 16).
+        insertion of InputBoundMode.Refined, which splits every interval at
+        least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Slew-rate constraints on the parameterization control
@@ -138,7 +141,8 @@ Args:
         default), the sampled inputs (InputBoundMode.Exact), or the control
         points after knot insertion (InputBoundMode.Refined).
     refined_bound_interval: Longest knot interval, in samples, after the knot
-        insertion of InputBoundMode.Refined (positive, default 16).
+        insertion of InputBoundMode.Refined, which splits every interval at
+        least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Slew-rate constraints on the parameterization control

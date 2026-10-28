@@ -180,7 +180,7 @@ TEST(KnotRefinementTest, givenSplines_RIsBandedConvexCombination)
   }
 }
 
-TEST(KnotRefinementTest, givenMaxInterval_SplitsLongIntervalsIntoEqualParts)
+TEST(KnotRefinementTest, givenMaxInterval_SplitsEveryIntervalIntoEqualParts)
 {
   for (const auto& [name, param] : splines()) {
     for (const int L : {1, 2, 3, 7, 16, 1000}) {
@@ -198,12 +198,13 @@ TEST(KnotRefinementTest, givenMaxInterval_SplitsLongIntervalsIntoEqualParts)
                             param.knots(i)),
                   r.knots.data() + r.knots.size());
 
-      // each interval longer than L is split into ceil(length / L) equal
-      // parts, so no refined interval is longer than L
+      // each nonempty interval is split into max(2, ceil(length / L)) equal
+      // parts, so every interval is split and none is longer than L
       int expected_inserted{0};
       for (const double length : activeIntervals(param.knots, p))
-        if (length > L)
-          expected_inserted += static_cast<int>(std::ceil(length / L)) - 1;
+        if (length > 0.0)
+          expected_inserted +=
+              std::max(2, static_cast<int>(std::ceil(length / L))) - 1;
       EXPECT_EQ(r.knots.size() - param.knots.size(), expected_inserted);
       for (const double length : activeIntervals(r.knots, p))
         EXPECT_LE(length, L * (1.0 + 1e-12));
@@ -211,26 +212,19 @@ TEST(KnotRefinementTest, givenMaxInterval_SplitsLongIntervalsIntoEqualParts)
   }
 }
 
-TEST(KnotRefinementTest, givenIntervalExactlyMaxInterval_DoesNotSplitIt)
+TEST(KnotRefinementTest, givenIntervalsAtMostMaxInterval_SplitsEachInTwo)
 {
-  // uniform knots with intervals of exactly 6 samples
+  // uniform knots with intervals of exactly 6 samples (4 intervals)
   const auto param{ampc::Parameterization::bspline(25, 2, 6)};
   ASSERT_EQ(activeIntervals(param.knots, 2).front(), 6.0);
-  EXPECT_EQ(refine(param, 6).knots.size(), param.knots.size());
-  EXPECT_EQ(refine(param, 5).knots.size(), param.knots.size() + 4);
-}
-
-TEST(KnotRefinementTest, givenNoInsertion_RIsTheIdentity)
-{
-  const auto param{ampc::Parameterization::bspline(20, 3, 6)};
-  const Refinement r{refine(param, 100)};
-  ASSERT_EQ(r.start.size(), param.num_control_points);
-  for (Index j{0}; j < r.start.size(); ++j) {
-    const VectorXd c{VectorXd::Unit(param.num_control_points, j)};
-    EXPECT_TRUE(expectEigenNear(applyR(r, c), c, 1e-15));
-  }
-  EXPECT_EQ(r.sampled.size(),
-            static_cast<std::size_t>(param.num_control_points));
+  EXPECT_EQ(refine(param, 6).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 100).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 3).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 2).knots.size(), param.knots.size() + 8);
+  // the inserted knots are the midpoints
+  const Refinement r{refine(param, 6)};
+  for (Index i{0}; i < 4; ++i)
+    EXPECT_DOUBLE_EQ(r.knots(3 + 2 * i), 3.0 + 6.0 * i);
 }
 
 TEST(KnotRefinementTest, givenRefinement_SampledPointsAreThoseSamplesUse)
@@ -280,6 +274,16 @@ TEST(RefinedInputBoundsTest, givenDegree2OrMore_BoundsSampledRefinedPoints)
                  VectorXd::Constant(m, 2.0), Vector2d{1.0, 0.0});
         const Refinement r{refine(param, L)};
         const int num_rows{static_cast<int>(r.sampled.size())};
+        if (num_rows >= param.horizon_steps) {
+          // no fewer rows than the samples: the sampled rows are used
+          ampc::MPC exact{
+              n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+          setupMSD(exact, m, VectorXd::Constant(m, -1.0),
+                   VectorXd::Constant(m, 2.0), Vector2d{1.0, 0.0});
+          EXPECT_TRUE(expectEigenNear(inputBoundMatrix(mpc, n),
+                                      inputBoundMatrix(exact, n), 0.0));
+          continue;
+        }
         ASSERT_EQ(inputBoundRows(mpc), m * num_rows);
 
         // the rows are R c on the sampled refined points, channel by channel
@@ -345,7 +349,8 @@ TEST(RefinedInputBoundsTest, givenCustomBasis_BoundsEverySample)
 
 TEST(RefinedInputBoundsTest, givenLongHorizon_RowCountsLieBetweenModes)
 {
-  // T = 500, 10 control points: about T / L + num_control_points rows
+  // T = 500, 10 control points: intervals of 62.4 samples, each split into
+  // max(2, ceil(62.4 / L)) parts, plus degree rows
   const int n{2}, m{1}, T{500}, nc{10};
   for (const int deg : {2, 3}) {
     const auto param{ampc::Parameterization::bspline(T, deg, nc)};
@@ -356,17 +361,69 @@ TEST(RefinedInputBoundsTest, givenLongHorizon_RowCountsLieBetweenModes)
     };
     EXPECT_EQ(rows(ampc::InputBoundMode::ControlPoints, 8), nc);
     EXPECT_EQ(rows(ampc::InputBoundMode::Exact, 8), T);
-    for (const int L : {4, 8, 16, 32}) {
+    for (const int L : {4, 8, 16, 32, 64, 1000}) {
       SCOPED_TRACE("degree " + std::to_string(deg) + " L=" + std::to_string(L));
       const int got{rows(ampc::InputBoundMode::Refined, L)};
       const int intervals{nc - deg};
       const double length{(T - 1.0) / intervals};
-      const int refined_intervals{intervals
-                                  * static_cast<int>(std::ceil(length / L))};
+      const int refined_intervals{
+          intervals * std::max(2, static_cast<int>(std::ceil(length / L)))};
       EXPECT_EQ(got, refined_intervals + deg);
       EXPECT_LT(got, T);
     }
   }
+}
+
+TEST(RefinedInputBoundsTest, givenTooManyRefinedRows_UsesExactRows)
+{
+  // T = 10, 5 cubic control points: 2 intervals of 4.5 samples; L = 2 splits
+  // each into 3, giving 6 + 3 = 9 refined rows (fewer than T), and L = 1
+  // splits each into 5, giving 13 (not fewer), so the sampled rows are used
+  const int n{2}, m{2}, T{10};
+  const auto param{ampc::Parameterization::bspline(T, 3, 5)};
+  auto make = [&](ampc::InputBoundMode mode, int L) {
+    ampc::MPC mpc{
+        n, m, param, {.input_bounds = mode, .refined_bound_interval = L}};
+    setupMSD(mpc, m, VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 2.0),
+             Vector2d{1.0, 0.0});
+    return inputBoundMatrix(mpc, n);
+  };
+  ASSERT_EQ(refine(param, 2).sampled.size(), 9u);
+  ASSERT_EQ(refine(param, 1).sampled.size(), 13u);
+  EXPECT_EQ(make(ampc::InputBoundMode::Refined, 2).rows(), m * 9);
+  EXPECT_TRUE(expectEigenNear(make(ampc::InputBoundMode::Refined, 1),
+                              make(ampc::InputBoundMode::Exact, 1), 0.0));
+}
+
+TEST(RefinedInputBoundsTest, givenShortHorizon_IsTighterThanControlPoints)
+{
+  // T = 40, 6 quadratic control points: every interval (9.75 samples) is
+  // shorter than the default L = 16 but is still split in two, so the optimal
+  // cost with the limit active inside the horizon is strictly lower than with
+  // the control point bounds (and no lower than with exact bounds)
+  const int n{2}, m{1}, T{40};
+  const auto param{ampc::Parameterization::bspline(T, 2, 6)};
+  auto cost = [&](ampc::InputBoundMode mode, int expected_rows) {
+    ampc::MPC mpc{
+        n, m, param, {.input_bounds = mode, .slew_initial_input = true}};
+    setupMSD(mpc, m, VectorXd::Zero(1), VectorXd::Constant(1, 3.0),
+             Vector2d{1.0, 0.0});
+    mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
+    EXPECT_EQ(inputBoundRows(mpc), expected_rows);
+    EXPECT_TRUE(mpc.initializeSolver());
+    EXPECT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+    VectorXd u{m * T};
+    mpc.getInputTrajectory(u);
+    EXPECT_GE(u.minCoeff(), -1e-4);
+    EXPECT_LE(u.maxCoeff(), 3.0 + 1e-4);
+    return mpc.getSolveInfo().objective;
+  };
+  const double control_points{cost(ampc::InputBoundMode::ControlPoints, 6)};
+  const double refined{cost(ampc::InputBoundMode::Refined, 8 + 2)};
+  const double exact{cost(ampc::InputBoundMode::Exact, T)};
+  const double tol{1e-6 * std::abs(control_points)};
+  EXPECT_LT(refined, control_points - 100 * tol);
+  EXPECT_LE(exact, refined + tol);
 }
 
 TEST(RefinedInputBoundsTest, givenDefaultOptions_KeepsControlPointBounds)

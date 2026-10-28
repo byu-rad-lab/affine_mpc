@@ -164,8 +164,8 @@ private:
 /// every sampled input: the identity (ControlPoints), the sampled basis rows
 /// that make it exact (Exact, or any mode with a custom basis), or the map
 /// from the control points to the refined control points after knot
-/// insertion (Refined). M is banded and depends only on the basis, so it is
-/// computed once.
+/// insertion (Refined, or the sampled rows when those are fewer). M is banded
+/// and depends only on the basis, so it is computed once.
 class InputBounds final : public QPTerm
 {
 public:

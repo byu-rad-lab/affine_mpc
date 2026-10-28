@@ -97,8 +97,9 @@ public:
   };
 
   /**
-   * @brief Refine a B-spline by knot insertion (Oslo algorithm): insert knots
-   *   until no active knot interval is longer than max_interval samples.
+   * @brief Refine a B-spline by knot insertion (Oslo algorithm): split every
+   *   active knot interval of length l into max(2, ceil(l / max_interval))
+   *   equal parts.
    * @param max_interval Longest refined knot interval in samples (positive).
    * @return The refined knots, the banded map R, and the refined control
    *   points the samples depend on.

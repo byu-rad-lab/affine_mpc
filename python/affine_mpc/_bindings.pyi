@@ -72,7 +72,8 @@ class Options:
             default), the sampled inputs (InputBoundMode.Exact), or the control
             points after knot insertion (InputBoundMode.Refined).
         refined_bound_interval: Longest knot interval, in samples, after the knot
-            insertion of InputBoundMode.Refined (positive, default 16).
+            insertion of InputBoundMode.Refined, which splits every interval at
+            least once (positive, default 16).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Slew-rate constraints on the parameterization control
@@ -126,7 +127,8 @@ class Options:
                 default), the sampled inputs (InputBoundMode.Exact), or the control
                 points after knot insertion (InputBoundMode.Refined).
             refined_bound_interval: Longest knot interval, in samples, after the knot
-                insertion of InputBoundMode.Refined (positive, default 16).
+                insertion of InputBoundMode.Refined, which splits every interval at
+                least once (positive, default 16).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Slew-rate constraints on the parameterization control

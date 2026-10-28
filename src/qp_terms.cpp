@@ -113,12 +113,17 @@ InputBounds::boundRows(const VectorParameterization& input_param,
   if (bspline && mode == InputBoundMode::ControlPoints)
     return M;
 
-  // Refined, degree >= 2: the refined control points the samples depend on.
-  // Degree 0 and 1 already have exact bounds with few rows, so Refined uses
-  // them (the control points for degree 0, the knot samples for degree 1).
-  if (bspline && mode == InputBoundMode::Refined && param.degree >= 2) {
-    const VectorParameterization::KnotRefinement r{
-        input_param.refineKnots(refined_bound_interval)};
+  // Refined, degree >= 2: the refined control points the samples depend on,
+  // unless they are at least as many as the samples (T); the sampled rows are
+  // then exact and fewer. Degree 0 and 1 already have exact bounds with few
+  // rows, so Refined uses them (the control points for degree 0, the knot
+  // samples for degree 1).
+  const VectorParameterization::KnotRefinement r{
+      bspline && mode == InputBoundMode::Refined && param.degree >= 2
+          ? input_param.refineKnots(refined_bound_interval)
+          : VectorParameterization::KnotRefinement{}};
+  if (!r.sampled.empty()
+      && r.sampled.size() < std::size_t(param.horizon_steps)) {
     const int num_rows{static_cast<int>(r.sampled.size())};
     M.start.reserve(r.sampled.size());
     M.weights.resize(r.weights.rows(), num_rows);

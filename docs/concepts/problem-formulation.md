@@ -105,7 +105,7 @@ How many constraints are added depends on the degree $p$:
 - A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whatever `input_bounds` is.
 
 With $p > 1$, `Exact` adds a row for every sample, so it can make OSQP slower on long horizons.
-`Refined` adds about $T / L + \eta$ rows per input instead, where $L$ is `refined_bound_interval`, the longest knot interval after the insertion (in samples); for $p \le 1$ it is the same as `Exact`, and a custom basis constrains every sample.
+`Refined` adds about $\max(T / L, 2(\eta - p)) + p$ rows per input instead, where $L$ is `refined_bound_interval`, the longest knot interval after the insertion (in samples), and it uses the `Exact` rows whenever those are not more; for $p \le 1$ it is the same as `Exact`, and a custom basis constrains every sample.
 See [Input Bounds](input-parameterization.md#input-bounds) for how the refined control points are built and how to choose $L$.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
