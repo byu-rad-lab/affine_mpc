@@ -1,5 +1,14 @@
 #include <Eigen/Core>
+#include <algorithm>
+#include <cstddef>
 #include <gtest/gtest.h>
+#include <numeric>
+#include <optional>
+#include <random>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/parameterization.hpp"
@@ -45,6 +54,7 @@ public:
   auto getS() const { return formulation().S(); }
   auto getV() const { return formulation().v(); }
   auto getP() const { return getQPCostMatrix(); }
+  auto stateCostProduct() const { return formulation().stateCostProduct(); }
   auto getQ() const { return this->qp().q; }
 
 private:
@@ -347,4 +357,147 @@ TEST(CondensedMPCProtectedTester,
   // Ramp reference starts lower, so the optimal first input should be smaller
   // than for a uniform reference at the endpoint
   ASSERT_LT(u_ramp(0), u_uniform(0));
+}
+
+namespace {
+
+// A random parameterization of the given kind: 0 move-blocking with random
+// change points, 1 uniform B-spline with a random knot ratio, 2 clamped
+// B-spline with random interior knots, 3 linear interpolation, 4 custom
+// dense basis. Empty if the random knots were rejected.
+std::optional<ampc::Parameterization> randomParameterization(const int kind,
+                                                             const int T,
+                                                             const int degree,
+                                                             const int ncp,
+                                                             std::mt19937& gen)
+{
+  std::uniform_real_distribution<double> unit{0.0, 1.0};
+  try {
+    switch (kind) {
+    case 0: {
+      std::vector<int> steps(static_cast<std::size_t>(T - 1));
+      std::iota(steps.begin(), steps.end(), 1);
+      std::shuffle(steps.begin(), steps.end(), gen);
+      steps.resize(static_cast<std::size_t>(ncp - 1));
+      std::sort(steps.begin(), steps.end());
+      VectorXd change_points{ncp};
+      change_points(0) = 0.0;
+      for (int i{1}; i < ncp; ++i)
+        change_points(i) = steps[static_cast<std::size_t>(i - 1)];
+      return ampc::Parameterization::moveBlocking(T, change_points);
+    }
+    case 1: // uniform knots with a control point per step (else too short)
+      return ampc::Parameterization::bspline(
+          T, degree, ncp, ncp == T ? 1.0 : 0.7 + 0.7 * unit(gen));
+    case 2: {
+      VectorXd knots{ncp + degree + 1};
+      knots.head(degree + 1).setZero();
+      knots.tail(degree + 1).setConstant(T - 1);
+      for (int i{degree + 1}; i < ncp; ++i)
+        knots(i) = (T - 1) * unit(gen);
+      std::sort(knots.data() + degree + 1, knots.data() + ncp);
+      return ampc::Parameterization{T, degree, knots};
+    }
+    case 3:
+      return ampc::Parameterization::linearInterp(T, ncp);
+    default: {
+      std::normal_distribution<double> normal;
+      return ampc::Parameterization::fromBasis(
+          T, MatrixXd::NullaryExpr(T, ncp, [&] { return normal(gen); }));
+    }
+    }
+  } catch (const std::invalid_argument&) {
+    return std::nullopt;
+  }
+}
+
+} // namespace
+
+// The state cost computed on the band (the upper triangle from each column's
+// first nonzero row, then mirrored) agrees with the plain product
+// S^T diag(Q) S to round-off, on both sides of the size threshold that
+// chooses between the dot products and the matrix-vector products, and the
+// dense basis keeps the plain product
+TEST(CondensedMPCProtectedTester, givenBandedBasis_StateCostMatchesPlainProduct)
+{
+  struct Size
+  {
+    int n, m, T;
+  };
+  const std::vector<Size> sizes{
+      {2, 1, 10}, {3, 2, 16}, {6, 2, 30}, {8, 3, 40}, {12, 4, 50}};
+  std::mt19937 gen{7};
+  std::normal_distribution<double> normal;
+  std::uniform_real_distribution<double> unit{0.0, 1.0};
+  using Product = ampc::detail::CondensedFormulation::StateCostProduct;
+  int num_dense{0}, num_dots{0}, num_gemv{0};
+  double max_rel{0.0};
+  for (const Size& s : sizes)
+    for (int kind{0}; kind < 5; ++kind)
+      for (int degree{kind == 2 ? 1 : 0}; degree <= 3; ++degree) {
+        if ((kind == 0 || kind >= 3) && degree > 0)
+          continue; // degree only varies for B-splines
+        for (const int ncp : {std::max(degree + 2, s.T / 4), s.T / 2, s.T}) {
+          if (kind == 2 && ncp == s.T)
+            continue; // too many random knots to keep the basis full rank
+          std::optional<ampc::Parameterization> param;
+          for (int attempt{0}; attempt < 20 && !param; ++attempt)
+            if (auto p{randomParameterization(kind, s.T, degree, ncp, gen)})
+              param.emplace(*p);
+          ASSERT_TRUE(param.has_value())
+              << "T " << s.T << " kind " << kind << " degree " << degree
+              << " ncp " << ncp;
+
+          CondensedMPCProtectedTester mpc{s.n, s.m, *param};
+          const MatrixXd Ad{MatrixXd::Identity(s.n, s.n)
+                            + 0.1 * MatrixXd::NullaryExpr(s.n, s.n, [&] {
+                                return normal(gen);
+                              })};
+          const MatrixXd Bd{
+              MatrixXd::NullaryExpr(s.n, s.m, [&] { return normal(gen); })};
+          mpc.setModelDiscrete(Ad, Bd, VectorXd::Zero(s.n));
+          const VectorXd Q{
+              VectorXd::NullaryExpr(s.n, [&] { return 2.0 * unit(gen); })};
+          const VectorXd Qf{
+              VectorXd::NullaryExpr(s.n, [&] { return 5.0 * unit(gen); })};
+          mpc.setStateWeights(Q, Qf);
+          mpc.findPAndQ(VectorXd::Zero(s.n));
+
+          VectorXd Q_big{s.n * s.T};
+          Q_big << Q.replicate(s.T - 1, 1), Qf;
+          const MatrixXd S{mpc.getS()};
+          const MatrixXd P_plain{S.transpose() * Q_big.asDiagonal() * S};
+          const MatrixXd P{mpc.getP()};
+          const double rel{(P - P_plain).cwiseAbs().maxCoeff()
+                           / P_plain.cwiseAbs().maxCoeff()};
+          max_rel = std::max(max_rel, rel);
+          EXPECT_LE(rel, 1e-14)
+              << "n " << s.n << " m " << s.m << " T " << s.T << " kind " << kind
+              << " degree " << degree << " ncp " << ncp;
+          if (kind == 4) { // a custom basis is dense
+            EXPECT_EQ(mpc.stateCostProduct(), Product::Dense);
+          }
+          switch (mpc.stateCostProduct()) {
+          case Product::Dense:
+            ++num_dense;
+            break;
+          case Product::BandDots:
+            ++num_dots;
+            break;
+          case Product::BandGemv:
+            ++num_gemv;
+            break;
+          }
+          if (mpc.stateCostProduct() != Product::Dense) {
+            EXPECT_TRUE(P == P.transpose()); // mirrored exactly
+          }
+        }
+      }
+  // every product is covered
+  EXPECT_GT(num_dense, 0);
+  EXPECT_GT(num_dots, 0);
+  EXPECT_GT(num_gemv, 0);
+  std::ostringstream max_rel_text;
+  max_rel_text << max_rel;
+  RecordProperty("max_relative_difference", max_rel_text.str());
 }
