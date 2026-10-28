@@ -28,4 +28,8 @@
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
 
+#ifdef AFFINE_MPC_WITH_DAQP
+#include "affine_mpc/daqp_solver.hpp"
+#endif
+
 #endif // AFFINE_MPC_HPP

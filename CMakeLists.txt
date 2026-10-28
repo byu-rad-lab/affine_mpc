@@ -31,6 +31,8 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
+option(AFFINE_MPC_WITH_DAQP
+  "Build the DAQP solver (dense active set) for the condensed formulation" OFF)
 include(cmake/compiler_warnings.cmake)
 
 # Internal flag for building python bindings
@@ -44,6 +46,9 @@ endif()
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 find_package(ZLIB QUIET)
+if(AFFINE_MPC_WITH_DAQP)
+  include(cmake/extern_daqp.cmake)
+endif()
 
 # --------------------------------------------------
 # Main library
@@ -63,6 +68,15 @@ add_library(${PROJECT_NAME}
   src/npy_writer.cpp
   src/npz_writer.cpp
 )
+if(AFFINE_MPC_WITH_DAQP)
+  target_sources(${PROJECT_NAME} PRIVATE src/daqp_solver.cpp)
+  target_include_directories(${PROJECT_NAME} PRIVATE
+    ${AFFINE_MPC_DAQP_INCLUDE_DIR}
+  )
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${affine_mpc_daqp_link})
+  # public, so consumers can check for DAQPSolver
+  target_compile_definitions(${PROJECT_NAME} PUBLIC AFFINE_MPC_WITH_DAQP)
+endif()
 
 # Namespaced alias
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -223,7 +237,14 @@ endif()
 # --------------------------------------------------
 # Installation
 # --------------------------------------------------
-install(TARGETS ${PROJECT_NAME}
+get_target_property(affine_mpc_library_type ${PROJECT_NAME} TYPE)
+# A static affine_mpc needs the fetched DAQP library next to it
+set(affine_mpc_install_targets ${PROJECT_NAME})
+if(AFFINE_MPC_WITH_DAQP AND NOT AFFINE_MPC_DAQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  list(APPEND affine_mpc_install_targets affine_mpc_daqp)
+endif()
+install(TARGETS ${affine_mpc_install_targets}
   EXPORT ${PROJECT_NAME}Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -231,10 +252,18 @@ install(TARGETS ${PROJECT_NAME}
   COMPONENT core
 )
 
-install(DIRECTORY include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  COMPONENT core
-)
+if(AFFINE_MPC_WITH_DAQP)
+  install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT core
+  )
+else()
+  install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT core
+    PATTERN daqp_solver.hpp EXCLUDE
+  )
+endif()
 
 set(config_package_location ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
@@ -251,11 +280,17 @@ write_basic_package_version_file(
   COMPATIBILITY SameMajorVersion
 )
 
-get_target_property(affine_mpc_library_type ${PROJECT_NAME} TYPE)
 if(TARGET ZLIB::ZLIB AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
   set(AFFINE_MPC_CONFIG_NEEDS_ZLIB TRUE)
 else()
   set(AFFINE_MPC_CONFIG_NEEDS_ZLIB FALSE)
+endif()
+# Likewise its private link to an installed DAQP package
+if(AFFINE_MPC_WITH_DAQP AND AFFINE_MPC_DAQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  set(AFFINE_MPC_CONFIG_NEEDS_DAQP TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_DAQP FALSE)
 endif()
 
 configure_package_config_file(
