@@ -76,6 +76,14 @@ if(AFFINE_MPC_WITH_DAQP)
   target_link_libraries(${PROJECT_NAME} PRIVATE ${affine_mpc_daqp_link})
   # public, so consumers can check for DAQPSolver
   target_compile_definitions(${PROJECT_NAME} PUBLIC AFFINE_MPC_WITH_DAQP)
+  # An installed shared DAQP outside the default search paths is a private
+  # dependency that consumers do not link, so the installed library keeps the
+  # path to it (system directories are left out)
+  if(AFFINE_MPC_DAQP_FOUND_PACKAGE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+  endif()
 endif()
 
 # Namespaced alias
