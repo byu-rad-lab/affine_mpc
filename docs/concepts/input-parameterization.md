@@ -250,7 +250,7 @@ Construction checks this condition exactly on the sampled basis and throws `std:
 Near-coincident knots pass this check, since the rank is still full, but they make the QP ill conditioned.
 Clustered or very short knot intervals make the QP worse conditioned in general, because nearby control points affect almost the same samples, and the condition number can grow by orders of magnitude compared with uniform or geometric knots.
 OSQP then needs more iterations and may stop at `MaxIterReached`.
-A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
+A small input weight `R` (with `input_cost`) improves the conditioning, as does spreading the knots.
 
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
 
@@ -315,9 +315,10 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
   B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Exact` is optional.
   A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whatever `input_bounds` is.
 - **Input cost.**
-  `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
+  With `InputCostMode::ControlPoints`, `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
   With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
-  No coefficients represent a constant input in general, so `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
+  No coefficients represent a constant input in general, so in this mode `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
+  `InputCostMode::Trajectory` weights the sampled inputs for any basis, and accepts a constant reference (`setReferenceInput()`) or a sampled one (`setReferenceInputTrajectory()`); see [Input Cost](problem-formulation.md#input-cost).
 - **Slew rates.**
   Differences of coefficients do not bound input changes, so `slew_control_points` throws `std::invalid_argument` (`ValueError` in Python) at construction.
   `slew_initial_input` still works, since it bounds the first sampled input.
@@ -358,7 +359,7 @@ def laguerre_basis(horizon_steps, num_functions, pole):
 T, ts = 40, 0.1
 basis, _ = np.linalg.qr(laguerre_basis(T, 4, 0.8))  # orthonormal columns
 param = ampc.Parameterization.fromBasis(T, basis)
-mpc = ampc.MPC(2, 1, param, ampc.Options(use_input_cost=True))
+mpc = ampc.MPC(2, 1, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
 
 A = np.array([[0.0, 1.0], [-0.6, -0.1]])
 B = np.array([0.0, 0.2])

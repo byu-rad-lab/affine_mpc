@@ -851,6 +851,28 @@ With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)
 $G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
 The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
 
+## Input Cost on the Sampled Inputs
+
+The derivations above use the input cost on the control points (`InputCostMode::ControlPoints`), whose block of $P$ is $\bar{R} = I_\eta \otimes R$.
+With `InputCostMode::Trajectory`, the input cost is evaluated on the sampled inputs $\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}$ instead.
+Like the rate cost, it only involves the control points, so it adds the same terms to both formulations.
+With $\bar{R}_T = I_T \otimes R$ and the stacked sampled reference $\mathbf{u}_{\mathrm{ref}}$,
+
+$$
+J_u
+    = (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})^\top \bar{R}_T (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})
+    = \mathbf{c}^\top \Psi^{p\top} \bar{R}_T \Psi^p \, \mathbf{c}
+    - 2 \left( \Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}} \right)^\top \mathbf{c}
+    + \text{const}.
+$$
+
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^{p\top} \bar{R}_T \Psi^p$ in place of $\bar{R}$, and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}}$ in place of $-\bar{R} \mathbf{c}_{\mathrm{ref}}$.
+
+With one basis shared by every input, $\Psi^{p\top} \bar{R}_T \Psi^p = \Phi^\top \Phi \otimes R$, where $\Phi$ is the $T \times \eta$ basis.
+$\Phi^\top \Phi$ depends only on the basis, so it is computed once and declared in the sparsity pattern at construction; a weight change only rescales it.
+For a B-spline of degree $p$ it is banded with bandwidth $2p + 1$ (diagonal for degree 0, where its entries are the block lengths of move-blocking), and it is dense for a custom basis.
+A reference change only updates $\mathbf{q}$, accumulated sample by sample from the band of $\Phi$, so it needs no matrix update or refactorization.
+
 ## General and Terminal Constraints
 
 The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:

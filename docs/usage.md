@@ -76,7 +76,7 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
 
     ```python
     opts = affine_mpc.Options(
-        use_input_cost=True,
+        input_cost=affine_mpc.InputCostMode.ControlPoints,
         input_bounds=affine_mpc.InputBoundMode.ControlPoints,
         slew_initial_input=False,
         slew_control_points=True,
@@ -88,14 +88,14 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
 
     ```cpp
     affine_mpc::Options opts;
-    opts.use_input_cost = true;
+    opts.input_cost = affine_mpc::InputCostMode::ControlPoints;
     opts.input_bounds = affine_mpc::InputBoundMode::ControlPoints;
     opts.slew_initial_input = false;
     opts.slew_control_points = true;
     opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
-The options are grouped into costs (`use_input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
 In Python they are keyword arguments; in C++20, designated initializers must follow this order.
 `input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Exact`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
 See [Concepts](concepts/index.md) for more details on options.
@@ -355,22 +355,28 @@ State trajectory reference:
     mpc.setReferenceStateTrajectory(x_traj);
     ```
 
-If input cost is enabled, input references can also be configured (with a [custom basis](concepts/input-parameterization.md#custom-bases), only `setReferenceInputControlPoints()`, which sets the coefficient references):
+If input cost is enabled, input references can also be configured.
+`setReferenceInput()` sets a constant reference in both modes (with `InputCostMode::ControlPoints` and a [custom basis](concepts/input-parameterization.md#custom-bases) it throws; use `setReferenceInputControlPoints()` there).
+`setReferenceInputControlPoints()` works only with `InputCostMode::ControlPoints`, and `setReferenceInputTrajectory()` only with `InputCostMode::Trajectory` (see [Input Cost](concepts/problem-formulation.md#input-cost)):
 
 === "Python"
 
     ```python
     mpc.setReferenceInput(u_step)
-    # OR
+    # OR, with InputCostMode.ControlPoints
     mpc.setReferenceInputControlPoints(control_points)
+    # OR, with InputCostMode.Trajectory (input_dim * horizon_steps values)
+    mpc.setReferenceInputTrajectory(u_traj)
     ```
 
 === "C++"
 
     ```cpp
     mpc.setReferenceInput(u_step);
-    // OR
+    // OR, with InputCostMode::ControlPoints
     mpc.setReferenceInputControlPoints(control_points);
+    // OR, with InputCostMode::Trajectory (input_dim * horizon_steps values)
+    mpc.setReferenceInputTrajectory(u_traj);
     ```
 
 ### 5. Initialize the solver

@@ -42,8 +42,19 @@ A [custom basis](input-parameterization.md#custom-bases) has no such property, s
 
 ### Input Cost
 
+The input cost is chosen with `Options::input_cost` (`InputCostMode`): `Off` (the default), `ControlPoints`, or `Trajectory`.
+Both modes use the same diagonal weight $R$, set with `setInputWeights()` (it defaults to ones), and differ in where it is evaluated.
+
+`InputCostMode::ControlPoints` weights the control points:
+
 $$
 J_u = \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
+$$
+
+`InputCostMode::Trajectory` weights the sampled inputs $\mathbf{u}_k$ over the horizon:
+
+$$
+J_u = \sum_{k=0}^{T-1} \left\lVert \mathbf{u}_{\mathrm{ref},k} - \mathbf{u}_k \right\rVert^2_R
 $$
 
 In unconstrained LQR-style formulations,
@@ -52,16 +63,23 @@ whereas MPC can also enforce hard input limits directly without an input regular
 
 **When you may want to use it:**
 
-- You specifically want to minimize control effort or energy (set $\mathbf{c}_{\mathrm{ref}}=0$)
-- You want to stay near an equilibrium value (set $\mathbf{c}_{\mathrm{ref}}=\mathbf{u}_e$)
-- You have a reference input trajectory, perhaps from using differential flatness
+- You specifically want to minimize control effort or energy (a zero reference, the default)
+- You want to stay near an equilibrium value $\mathbf{u}_e$ (`setReferenceInput()`)
+- You have a reference input trajectory, perhaps from using differential flatness (`setReferenceInputTrajectory()` with `Trajectory`)
 
-!!! note
+**Which mode to choose:**
 
-    `affine_mpc` currently only supports setting reference control points rather than a full reference input trajectory.
-    For all of our use cases thus far, regularizing only the control points has been sufficient.
+The two modes are the same up to a scale when every control point influences the same number of samples (e.g. move-blocking with equal blocks of length $L$, where `Trajectory` with $R$ equals `ControlPoints` with $L R$).
+They differ when control points influence different numbers of samples: move-blocking with unequal blocks (`Trajectory` weights each block by its length), geometric knots, and custom bases, whose coefficients may have no physical meaning.
 
-    If you need that functionality then please submit an issue or, better yet, a pull request!
+- `ControlPoints` is the cheaper choice: it only adds to the diagonal of the cost matrix.
+  Its reference is a set of control points (`setReferenceInputControlPoints()`), or a constant input (`setReferenceInput()`, B-splines only).
+- `Trajectory` weights the input trajectory itself, so $R$ means the same thing for every parameterization, including a [custom basis](input-parameterization.md#custom-bases).
+  Its reference is a sampled trajectory (`setReferenceInputTrajectory()`), which need not lie in the span of the basis, or a constant input (`setReferenceInput()`, for any basis).
+  It adds a banded block to the cost matrix (dense for a custom basis), which costs a little more per solve.
+
+Each mode keeps its own reference form, so the reference setter of the other mode throws `std::logic_error` (`RuntimeError` in Python).
+Changing a reference only updates the QP vector $\mathbf{q}$; changing $R$ updates the cost matrix.
 
 ### Input Rate Cost
 
@@ -76,7 +94,7 @@ The previous input is stored after every solve that returns `Success` or `Solved
 **When you may want to use it:**
 
 - You want smooth inputs, e.g. to limit actuator wear or excite fewer high-frequency modes, without the hard limit of a slew rate constraint
-- You compare parameterizations: unlike $R$, which weights the control points, $R_\Delta$ acts on the sampled inputs, so it penalizes the same input change equally for every basis, including a [custom basis](input-parameterization.md#custom-bases)
+- You compare parameterizations: like $R$ with `InputCostMode::Trajectory`, $R_\Delta$ acts on the sampled inputs, so it penalizes the same input change equally for every basis, including a [custom basis](input-parameterization.md#custom-bases)
 
 ### Input Trajectory Saturation Constraint
 
