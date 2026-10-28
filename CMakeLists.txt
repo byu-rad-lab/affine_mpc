@@ -149,6 +149,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/mpc_logger_tests.cpp
     test/affine_mpc/allocation_tests.cpp
     test/affine_mpc/input_bounds_tests.cpp
+    test/affine_mpc/input_cost_tests.cpp
     test/affine_mpc/input_rate_cost_tests.cpp
     test/affine_mpc/state_bounds_tests.cpp
     test/affine_mpc/general_constraints_tests.cpp
