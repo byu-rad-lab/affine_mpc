@@ -18,6 +18,7 @@
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
@@ -48,8 +49,8 @@ enum class Formulation
 
 /**
  * @class MPC
- * @brief Model predictive control of an affine model, solved as a QP with
- *   OSQP.
+ * @brief Model predictive control of an affine model, solved as a QP (with
+ *   OSQP by default).
  *
  * Optimizes the control points of an input trajectory parameterization
  * (B-splines, move-blocking, or a custom basis) subject to the costs and
@@ -168,6 +169,29 @@ public:
    *   ModelSparsity).
    */
   [[nodiscard]] bool initializeSolver(ModelSparsity model_sparsity);
+
+  /**
+   * @brief Initialize with the given QP solver instead of OSQP; see
+   *   initializeSolver(const OSQPSettings&, ModelSparsity) for the setup this
+   *   needs and what initialization fixes.
+   *
+   *   The MPC takes ownership of the solver, which must not be initialized
+   *   yet. After a successful initialization, a later call returns true and
+   *   discards the solver passed to it.
+   * @param solver The QP solver, e.g.
+   *   `std::make_unique<OSQPSolver>(mpc.getNumQPVariables(),
+   *   mpc.getNumQPConstraints(), settings)`.
+   * @param model_sparsity Which entries of Ad and Bd the solver tracks.
+   * @return True if initialization succeeds, false otherwise.
+   * @throws std::logic_error if a setter the solver or the options require
+   *   has not been called.
+   * @throws std::invalid_argument if the solver is null or already
+   *   initialized, if it does not support the formulation's QP storage, or for
+   *   ModelSparsity::Full with the condensed formulation.
+   */
+  [[nodiscard]] bool initializeSolver(
+      std::unique_ptr<QPSolver> solver,
+      ModelSparsity model_sparsity = ModelSparsity::InitialNonzeros);
 
   /**
    * @brief Solve the optimization problem for the given initial state.
@@ -850,7 +874,7 @@ public:
    */
   SolveInfo getSolveInfo() const noexcept
   {
-    SolveInfo info{solver_->getSolveInfo()};
+    SolveInfo info{solver_ ? solver_->getSolveInfo() : SolveInfo{}};
     info.mpc_solve_time = mpc_solve_time_;
     info.prepare_time = prepare_time_;
     return info;
@@ -866,7 +890,11 @@ public:
    *   results returned by the solution getters. No-op before
    *   initializeSolver().
    */
-  void resetWarmStart() noexcept { solver_->coldStart(); }
+  void resetWarmStart() noexcept
+  {
+    if (solver_)
+      solver_->coldStart();
+  }
 
   /**
    * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
@@ -990,7 +1018,8 @@ protected:
   const std::vector<int> bounded_states_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
-  std::unique_ptr<OSQPSolver> solver_;
+  /// The QP solver (null before initializeSolver())
+  std::unique_ptr<QPSolver> solver_;
 
   /// @brief The MPC data set through the setters (read-only).
   const MPCData& data() const noexcept { return data_; }
@@ -1021,8 +1050,6 @@ private:
   // false if a solver update failed, in which case the categories behind it
   // stay pending.
   bool applyPendingChanges();
-  // Send the matrices P and/or A to the solver in the QP's storage
-  bool sendMatrices(bool P, bool A);
   // Whether the model is zero outside the entries the solver tracks (true
   // before initializeSolver())
   bool modelWithinTrackedEntries() const;

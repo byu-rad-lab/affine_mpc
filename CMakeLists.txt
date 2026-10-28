@@ -138,6 +138,7 @@ if(AFFINE_MPC_BUILD_TESTS)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
+    test/affine_mpc/qp_solver_tests.cpp
     test/affine_mpc/parameterization_tests.cpp
     test/affine_mpc/discretizer_tests.cpp
     test/affine_mpc/mpc_tests.cpp

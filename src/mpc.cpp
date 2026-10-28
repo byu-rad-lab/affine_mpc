@@ -144,9 +144,6 @@ MPC::MPC(int state_dim,
     qp_builder_{std::make_unique<detail::QPBuilder>(
         formulation, state_dim_, input_param_, opts_)}
 {
-  // the options decided the terms and so the QP's sizes
-  solver_ = std::make_unique<OSQPSolver>(qp_builder_->numVariables(),
-                                         qp_builder_->numConstraints());
   qp_builder_->writeConstantParts(data_);
 }
 
@@ -324,10 +321,33 @@ bool MPC::initializeSolver(const ModelSparsity model_sparsity)
 bool MPC::initializeSolver(const OSQPSettings& solver_settings,
                            const ModelSparsity model_sparsity)
 {
+  // the options decided the terms and so the QP's sizes
+  return initializeSolver(std::make_unique<OSQPSolver>(
+                              qp_builder_->numVariables(),
+                              qp_builder_->numConstraints(), solver_settings),
+                          model_sparsity);
+}
+
+bool MPC::initializeSolver(std::unique_ptr<QPSolver> solver,
+                           const ModelSparsity model_sparsity)
+{
   checkSetup("initializeSolver", "initializing solver");
 
   if (solver_initialized_)
     return true;
+
+  if (!solver)
+    throw std::invalid_argument(
+        "[MPC::initializeSolver] The solver must not be null.");
+  if (solver->isInitialized())
+    throw std::invalid_argument("[MPC::initializeSolver] The solver is "
+                                "already initialized; pass a new one.");
+  if (!solver->supportsStorage(qp().storage))
+    throw std::invalid_argument(
+        std::string{"[MPC::initializeSolver] "} + solver->getName()
+        + " does not support the "
+        + (formulation_ == Formulation::Sparse ? "sparse" : "condensed")
+        + " formulation.");
 
   const bool sparse{qp().storage == detail::QPStorage::Sparse};
   if (model_sparsity == ModelSparsity::Full && !sparse)
@@ -355,14 +375,9 @@ bool MPC::initializeSolver(const OSQPSettings& solver_settings,
   x_full.setOnes();
   (void)qpUpdateX0(x_full);
 
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse)
-    solver_initialized_ =
-        solver_->initialize(qp_data.P_csc, qp_data.A_csc, qp_data.q, qp_data.l,
-                            qp_data.u, solver_settings);
-  else
-    solver_initialized_ = solver_->initialize(
-        qp_data.P, qp_data.A, qp_data.q, qp_data.l, qp_data.u, solver_settings);
+  solver_ = std::move(solver);
+  solver_initialized_ = solver_->initialize(
+      qp(), QPBlockLayout{getQPVariableBlocks(), getQPConstraintBlocks()});
   // According to Eigen's documentation, use "placement new" syntax to update
   // solution_map_ with the new pointer to the solution vector. This does not
   // allocate new memory that needs to be deleted, it just updates the pointer.
@@ -443,14 +458,14 @@ bool MPC::applyPendingChanges()
   // update rescales and refactors once instead of twice. The parts that
   // applyX0() writes are sent there.
   if (!written.P.empty() || !written.A.empty()) {
-    if (!sendMatrices(!written.P.empty(), !written.A.empty()))
+    if (!solver_->updateMatrices(qp(), !written.P.empty(), !written.A.empty()))
       pending_ |= written.P | written.A;
   }
   if (!written.q.empty() && !qp_builder_->applyX0WritesCostVector()
-      && !solver_->updateCostVector(qp().q))
+      && !solver_->updateCostVector(qp()))
     pending_ |= written.q;
   if (!written.bounds.empty() && !qp_builder_->applyX0WritesBounds()
-      && !solver_->updateBounds(qp().l, qp().u))
+      && !solver_->updateBounds(qp()))
     pending_ |= written.bounds;
   return pending_.empty();
 }
@@ -463,27 +478,10 @@ bool MPC::applyX0(const Ref<const VectorXd>& x0)
     return true;
   bool success{true};
   if (qp_builder_->applyX0WritesCostVector())
-    success &= solver_->updateCostVector(qp().q);
+    success &= solver_->updateCostVector(qp());
   if (qp_builder_->applyX0WritesBounds())
-    success &= solver_->updateBounds(qp().l, qp().u);
+    success &= solver_->updateBounds(qp());
   return success;
-}
-
-bool MPC::sendMatrices(const bool P, const bool A)
-{
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse) {
-    if (P && A)
-      return solver_->updateMatrices(qp_data.P_csc, qp_data.A_csc);
-    if (P)
-      return solver_->updateCostMatrix(qp_data.P_csc);
-    return solver_->updateConstraintMatrix(qp_data.A_csc);
-  }
-  if (P && A)
-    return solver_->updateMatrices(qp_data.P, qp_data.A);
-  if (P)
-    return solver_->updateCostMatrix(qp_data.P);
-  return solver_->updateConstraintMatrix(qp_data.A);
 }
 
 bool MPC::modelWithinTrackedEntries() const
@@ -498,10 +496,7 @@ bool MPC::isWithinSparsityPattern() const
     return true;
   if (!modelWithinTrackedEntries())
     return false;
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse)
-    return solver_->isWithinSparsityPattern(qp_data.P_csc, qp_data.A_csc);
-  return solver_->isWithinSparsityPattern(qp_data.P, qp_data.A);
+  return solver_->isWithinSparsityPattern(qp());
 }
 
 void MPC::getNextInput(Ref<VectorXd> u0) const
