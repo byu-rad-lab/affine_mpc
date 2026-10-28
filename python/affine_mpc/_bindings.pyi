@@ -45,12 +45,13 @@ class InputBoundMode(enum.Enum):
     hull property), but for degree > 1, or degree 1 with non-integer knots, it can
     keep the samples away from the limits, so the inputs do not use the full range.
     A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
-    inputs are always bounded, whatever the mode. Refined bounds, between the two in
-    rows and accuracy, are planned.
+    inputs are always bounded, whatever the mode. Refined bounds lie between the two
+    in rows and accuracy.
     """
 
     ControlPoints: typing.ClassVar[InputBoundMode]
     Exact: typing.ClassVar[InputBoundMode]
+    Refined: typing.ClassVar[InputBoundMode]
 
 class Options:
     """
@@ -68,7 +69,11 @@ class Options:
 
     Input constraints (the input limits are always enforced):
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-            default) or the sampled inputs (InputBoundMode.Exact).
+            default), the sampled inputs (InputBoundMode.Exact), or the control
+            points after knot insertion (InputBoundMode.Refined).
+        refined_bound_interval: Longest knot interval, in samples, after the knot
+            insertion of InputBoundMode.Refined, which splits every interval at
+            least once (positive, default 16).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Slew-rate constraints on the parameterization control
@@ -101,6 +106,7 @@ class Options:
         use_input_cost: bool = False,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
+        refined_bound_interval: int = 16,
         slew_initial_input: bool = False,
         slew_control_points: bool = False,
         state_bounds: StateBoundMode = StateBoundMode.Off,
@@ -118,7 +124,11 @@ class Options:
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-                default) or the sampled inputs (InputBoundMode.Exact).
+                default), the sampled inputs (InputBoundMode.Exact), or the control
+                points after knot insertion (InputBoundMode.Refined).
+            refined_bound_interval: Longest knot interval, in samples, after the knot
+                insertion of InputBoundMode.Refined, which splits every interval at
+                least once (positive, default 16).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Slew-rate constraints on the parameterization control
@@ -148,6 +158,10 @@ class Options:
     def num_terminal_constraints(self) -> int: ...
     @num_terminal_constraints.setter
     def num_terminal_constraints(self, arg0: int) -> None: ...
+    @property
+    def refined_bound_interval(self) -> int: ...
+    @refined_bound_interval.setter
+    def refined_bound_interval(self, arg0: int) -> None: ...
 
 class ModelSparsity(enum.Enum):
     """

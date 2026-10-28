@@ -12,6 +12,7 @@ def test_options_interface():
     opts = ampc.Options(slew_initial_input=False)
     opts = ampc.Options(slew_control_points=False)
     opts = ampc.Options(input_bounds=ampc.InputBoundMode.ControlPoints)
+    opts = ampc.Options(refined_bound_interval=16)
     opts = ampc.Options(state_bounds=ampc.StateBoundMode.Off)
     opts = ampc.Options(bounded_states=[])
     opts = ampc.Options(num_general_constraints=0)
@@ -35,12 +36,25 @@ def test_options_bound_modes():
     assert list(ampc.InputBoundMode) == [
         ampc.InputBoundMode.ControlPoints,
         ampc.InputBoundMode.Exact,
+        ampc.InputBoundMode.Refined,
     ]
     assert list(ampc.StateBoundMode) == [
         ampc.StateBoundMode.Off,
         ampc.StateBoundMode.Hard,
         ampc.StateBoundMode.Soft,
     ]
+
+
+def test_options_refined_bounds():
+    opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined)
+    assert opts.refined_bound_interval == 16
+    assert repr(opts) == "Options(input_bounds=InputBoundMode.Refined)"
+    opts.refined_bound_interval = 3
+    assert opts.refined_bound_interval == 3
+    assert repr(opts) == (
+        "Options(input_bounds=InputBoundMode.Refined, refined_bound_interval=3)"
+    )
+    assert "input_bounds=Refined, refined_bound_interval=3," in str(opts)
 
 
 def test_options_are_keyword_only():

@@ -254,6 +254,38 @@ A small input weight `R` (with `use_input_cost`) improves the conditioning, as d
 
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
 
+## Input Bounds
+
+The input limits $\mathbf{u}_{\min} \le \mathbf{u}_k \le \mathbf{u}_{\max}$ are always enforced, and `Options::input_bounds` (`Options.input_bounds` in Python) chooses the constraint rows that enforce them (see [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint)).
+
+- `InputBoundMode::ControlPoints` (the default) bounds the control points, one row per control point.
+  B-spline basis functions are non-negative and sum to one, so every sampled input is a convex combination of control points and stays inside the limits (the convex hull property).
+  For $p \ge 2$, and for $p = 1$ with non-integer knots, the spline does not pass through its control points, so whenever the input changes the bound keeps the sampled inputs away from the limits and part of the input range is unusable.
+- `InputBoundMode::Exact` bounds the sampled inputs.
+  For $p = 1$ only the samples next to each knot are needed (at most $2\eta - 2$ rows per input), but for $p \ge 2$ every sample is bounded ($T$ rows per input), which can make OSQP slower and less reliable on long horizons.
+- `InputBoundMode::Refined` bounds the control points of the same spline after knot insertion, described below.
+  It uses much of the range that `ControlPoints` loses, with far fewer rows than `Exact`.
+
+### Refined Bounds
+
+Inserting a knot changes the knot vector and the control points of a B-spline but not the spline itself: the new control points are fixed convex combinations of the old ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
+Per input channel, the refined control points are $\Gamma \mathbf{c}$, where $\Gamma$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
+The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
+
+`Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
+It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
+If that is not fewer than the $T$ rows of `Exact` (short horizons or a very small $L$), `Refined` uses the `Exact` rows instead, which are exact and fewer; this is decided once at construction.
+For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Exact`.
+$\Gamma$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
+
+A smaller $L$ bounds the sampled inputs more tightly with more rows.
+Very small values approach the row count of `Exact` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
+Because every interval is split at least once, `Refined` is tighter than `ControlPoints` even on short horizons whose knot intervals are all at most $L$ samples long.
+The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Exact`.
+
+Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Exact` (the samples next to each knot).
+A [custom basis](#custom-bases) always bounds every sampled input, whatever the mode.
+
 ## Custom Bases
 
 `fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Psi$ with one column per coefficient, so $\mathbf{u}_k = \sum_i \Psi_{k,i} \mathbf{c}_i$, where the coefficients $\mathbf{c}_i$ take the place of the control points.

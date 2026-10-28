@@ -521,6 +521,38 @@ TEST(ConsistencyTester,
   ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
 }
 
+TEST(ConsistencyTester, givenRefinedInputBounds_CondensedAndSparseMPCAgree)
+{
+  const int n{2}, m{1}, T{30}, nc{5};
+  for (const int deg : {2, 3}) {
+    SCOPED_TRACE("degree " + std::to_string(deg));
+    const auto param{ampc::Parameterization::bspline(T, deg, nc, 1.2)};
+    const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Refined,
+                             .refined_bound_interval = 3};
+    ConsistencyTester tester{n, m, param, opts};
+    tester.setup(); // input limits are [0, 3]
+
+    const Vector2d x0{0, 0};
+    ASSERT_EQ(tester.condensed.solve(x0), ampc::SolveStatus::Success);
+    ASSERT_EQ(tester.sparse.solve(x0), ampc::SolveStatus::Success);
+
+    VectorXd u_traj_condensed{m * T}, u_traj_sparse{m * T};
+    tester.condensed.getInputTrajectory(u_traj_condensed);
+    tester.sparse.getInputTrajectory(u_traj_sparse);
+    ASSERT_TRUE(expectEigenNear(u_traj_condensed, u_traj_sparse, 1e-4));
+
+    // every sample respects the limits, and the upper limit is nearly active
+    EXPECT_LE(u_traj_sparse.maxCoeff(), 3.0 + 1e-4);
+    EXPECT_GT(u_traj_sparse.maxCoeff(), 2.9);
+    EXPECT_GE(u_traj_sparse.minCoeff(), -1e-4);
+
+    VectorXd x_traj_condensed{n * T}, x_traj_sparse{n * T};
+    tester.condensed.getPredictedStateTrajectory(x_traj_condensed);
+    tester.sparse.getPredictedStateTrajectory(x_traj_sparse);
+    ASSERT_TRUE(expectEigenNear(x_traj_condensed, x_traj_sparse, 1e-4));
+  }
+}
+
 TEST(ConsistencyTester,
      givenDeg1InputTrajectorySaturation_CondensedAndSparseMPCAgree)
 {
@@ -1107,15 +1139,19 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
   mimo.Ad << 0.9, 0.1, 0.0, 0.0, 0.8, 0.1, 0.0, 0.0, 0.9;
   mimo.Bd << 0.1, 0.0, 0.0, 0.1, 0.05, 0.05;
 
-  for (int mask{0}; mask < 32; ++mask) {
+  // bits 0-3 choose the bools and state bounds, the rest the input bounds
+  const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
+                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Refined};
+  for (int mask{0}; mask < 48; ++mask) {
     ampc::Options opts;
     opts.use_input_cost = mask & 1;
     opts.slew_initial_input = mask & 2;
     opts.slew_control_points = mask & 4;
     opts.state_bounds =
         mask & 8 ? ampc::StateBoundMode::Hard : ampc::StateBoundMode::Off;
-    opts.input_bounds = mask & 16 ? ampc::InputBoundMode::Exact
-                                  : ampc::InputBoundMode::ControlPoints;
+    opts.input_bounds = input_modes[mask >> 4];
+    opts.refined_bound_interval = 2; // splits the degree 2 and 3 intervals
 
     for (int degree{0}; degree <= 3; ++degree) {
       const auto param{ampc::Parameterization::bspline(T, degree, nc)};

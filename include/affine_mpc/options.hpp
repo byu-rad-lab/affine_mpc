@@ -41,7 +41,7 @@ enum class StateBoundMode
  * knots, it can keep the samples away from the limits, so the inputs do not
  * use the full range. A custom basis (Parameterization::fromBasis()) has no
  * such property, so its sampled inputs are always bounded, whatever the mode.
- * Refined bounds, between the two in rows and accuracy, are planned.
+ * Refined bounds lie between the two in rows and accuracy.
  */
 enum class InputBoundMode
 {
@@ -55,6 +55,18 @@ enum class InputBoundMode
   /// sample (T rows per input), which can make OSQP slower on long
   /// horizons.
   Exact,
+  /// Bound the control points of the same spline after knot insertion: every
+  /// knot interval of length l is split into max(2, ceil(l / L)) equal parts,
+  /// with L = Options::refined_bound_interval samples, and the refined control
+  /// points that some sample depends on are bounded. By the convex hull
+  /// property of the refined control points, every sampled input stays inside
+  /// the limits, with less of the range lost than with ControlPoints and far
+  /// fewer rows than Exact on long horizons (about
+  /// max(T / L, 2 (num_control_points - degree)) + degree rows per input).
+  /// If that is not fewer than the rows of Exact (T per input), the rows of
+  /// Exact are used instead. Degree 0: the same as ControlPoints; degree 1:
+  /// the same as Exact (both are already exact and cheap).
+  Refined,
 };
 
 /**
@@ -73,8 +85,12 @@ enum class InputBoundMode
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  *
  * Input constraints (the input limits are always enforced):
- * - input_bounds: Bound the control points (ControlPoints, the default) or the
- *     sampled inputs (Exact) (see InputBoundMode).
+ * - input_bounds: Bound the control points (ControlPoints, the default), the
+ *     sampled inputs (Exact), or the control points after knot insertion
+ *     (Refined) (see InputBoundMode).
+ * - refined_bound_interval: Longest knot interval, in samples, after the knot
+ *     insertion of InputBoundMode::Refined, which splits every interval at
+ *     least once (positive).
  * - slew_initial_input: Slew-rate constraint on the initial input
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_control_points: Slew-rate constraints on the parameterization
@@ -113,6 +129,12 @@ struct Options
   /// Whether the input limits bound the control points or the sampled inputs
   /// (see InputBoundMode)
   InputBoundMode input_bounds{InputBoundMode::ControlPoints};
+
+  /// Longest knot interval, in samples, after the knot insertion of
+  /// InputBoundMode::Refined, which also splits every interval at least once
+  /// (positive; unused by the other modes). Smaller values bound the sampled
+  /// inputs more tightly with more rows.
+  int refined_bound_interval = 16;
 
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;

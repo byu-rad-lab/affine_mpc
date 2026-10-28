@@ -67,7 +67,7 @@ def test_mpc_interface():
 
     assert (
         repr(mpc)
-        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, use_input_rate_cost=False, input_bounds=ControlPoints, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
     assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -468,3 +468,40 @@ def test_mpc_logger_records_formulation(tmp_path):
         logger.finalize()
         params = (tmp_path / formulation.name / "params.yaml").read_text()
         assert f"formulation: {formulation.name.lower()}\n" in params
+
+
+def _input_bound_rows(mpc):
+    return next(b.size for b in mpc.getQPConstraintBlocks() if b.name == "input_bounds")
+
+
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_refined_input_bounds(formulation):
+    n, m, T, nc, deg = 2, 1, 60, 6, 2
+    param = ampc.Parameterization.bspline(T, deg, nc)
+    rows = {}
+    for mode in ampc.InputBoundMode:
+        opts = ampc.Options(input_bounds=mode, refined_bound_interval=5)
+        mpc = ampc.MPC(n, m, param, opts, formulation=formulation)
+        Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+        mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
+        mpc.setInputLimits(np.zeros(m), np.full(m, 3.0))
+        mpc.setStateWeights(np.array([1.0, 0.1]))
+        mpc.setReferenceState(np.array([1.0, 0.0]))
+        assert mpc.initializeSolver()
+        assert mpc.solve(np.zeros(n)) == ampc.SolveStatus.Success
+        u = np.zeros(m * T)
+        mpc.getInputTrajectory(u)
+        assert u.min() >= -1e-4 and u.max() <= 3.0 + 1e-4
+        rows[mode] = _input_bound_rows(mpc)
+
+    # 4 intervals of 14.75 samples, each split into 3: 12 + degree rows
+    assert rows[ampc.InputBoundMode.ControlPoints] == nc
+    assert rows[ampc.InputBoundMode.Refined] == 12 + deg
+    assert rows[ampc.InputBoundMode.Exact] == T
+
+
+def test_refined_bound_interval_must_be_positive():
+    param = ampc.Parameterization.bspline(20, 2, 5)
+    opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0)
+    with pytest.raises(ValueError, match="refined_bound_interval must be positive"):
+        ampc.MPC(2, 1, param, opts)

@@ -38,8 +38,8 @@ Bounding the control points of a B-spline bounds every sampled input (the convex
 hull property), but for degree > 1, or degree 1 with non-integer knots, it can
 keep the samples away from the limits, so the inputs do not use the full range.
 A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
-inputs are always bounded, whatever the mode. Refined bounds, between the two in
-rows and accuracy, are planned.
+inputs are always bounded, whatever the mode. Refined bounds lie between the two
+in rows and accuracy.
 )doc")
       .value("ControlPoints", ampc::InputBoundMode::ControlPoints,
              "Bound the control points (the default): one row per control "
@@ -51,6 +51,20 @@ rows and accuracy, are planned.
              "samples adjacent to each knot (at most 2*num_control_points-2 "
              "rows), which is exact. Degree > 1: every sample (T rows per "
              "input), which can make OSQP slower on long horizons.")
+      .value("Refined", ampc::InputBoundMode::Refined,
+             "Bound the control points of the same spline after knot "
+             "insertion: every knot interval of length l is split into "
+             "max(2, ceil(l / L)) equal parts, with L = "
+             "Options.refined_bound_interval samples, and the refined control "
+             "points that some sample depends on are bounded. By the convex "
+             "hull property of the refined control points, every sampled "
+             "input stays inside the limits, with less of the range lost than "
+             "with ControlPoints and far fewer rows than Exact on long "
+             "horizons (about max(T / L, 2 (num_control_points - degree)) + "
+             "degree rows per input). If that is not fewer than the rows of "
+             "Exact (T per input), the rows of Exact are used instead. Degree "
+             "0: the same as ControlPoints; degree 1: the same as Exact (both "
+             "are already exact and cheap).")
       .finalize();
 
   py::class_<ampc::Options> opt(m, "Options", R"doc(
@@ -68,7 +82,11 @@ Costs:
 
 Input constraints (the input limits are always enforced):
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-        default) or the sampled inputs (InputBoundMode.Exact).
+        default), the sampled inputs (InputBoundMode.Exact), or the control
+        points after knot insertion (InputBoundMode.Refined).
+    refined_bound_interval: Longest knot interval, in samples, after the knot
+        insertion of InputBoundMode.Refined, which splits every interval at
+        least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Slew-rate constraints on the parameterization control
@@ -91,6 +109,7 @@ General constraints:
   opt.def(
       py::init([](const bool use_input_cost, const bool use_input_rate_cost,
                   const ampc::InputBoundMode input_bounds,
+                  const int refined_bound_interval,
                   const bool slew_initial_input, const bool slew_control_points,
                   const ampc::StateBoundMode state_bounds,
                   const std::vector<int>& bounded_states,
@@ -100,6 +119,7 @@ General constraints:
         opts.use_input_cost = use_input_cost;
         opts.use_input_rate_cost = use_input_rate_cost;
         opts.input_bounds = input_bounds;
+        opts.refined_bound_interval = refined_bound_interval;
         opts.slew_initial_input = slew_initial_input;
         opts.slew_control_points = slew_control_points;
         opts.state_bounds = state_bounds;
@@ -118,7 +138,11 @@ Args:
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-        default) or the sampled inputs (InputBoundMode.Exact).
+        default), the sampled inputs (InputBoundMode.Exact), or the control
+        points after knot insertion (InputBoundMode.Refined).
+    refined_bound_interval: Longest knot interval, in samples, after the knot
+        insertion of InputBoundMode.Refined, which splits every interval at
+        least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_control_points: Slew-rate constraints on the parameterization control
@@ -136,6 +160,8 @@ Args:
       py::kw_only(), py::arg("use_input_cost") = false,
       py::arg("use_input_rate_cost") = false,
       py::arg("input_bounds") = ampc::InputBoundMode::ControlPoints,
+      py::arg("refined_bound_interval") =
+          ampc::Options{}.refined_bound_interval,
       py::arg("slew_initial_input") = false,
       py::arg("slew_control_points") = false,
       py::arg("state_bounds") = ampc::StateBoundMode::Off,
@@ -146,6 +172,8 @@ Args:
   opt.def_readwrite("use_input_cost", &ampc::Options::use_input_cost);
   opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
   opt.def_readwrite("input_bounds", &ampc::Options::input_bounds);
+  opt.def_readwrite("refined_bound_interval",
+                    &ampc::Options::refined_bound_interval);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
   opt.def_readwrite("slew_control_points", &ampc::Options::slew_control_points);
   opt.def_readwrite("state_bounds", &ampc::Options::state_bounds);
@@ -179,6 +207,11 @@ Args:
     if (opts.input_bounds != ampc::InputBoundMode::ControlPoints) {
       oss << (prev ? ", " : "") << "input_bounds=InputBoundMode."
           << opts.input_bounds;
+      prev = true;
+    }
+    if (opts.refined_bound_interval != ampc::Options{}.refined_bound_interval) {
+      oss << (prev ? ", " : "")
+          << "refined_bound_interval=" << opts.refined_bound_interval;
       prev = true;
     }
     addField(opts.slew_initial_input, "slew_initial_input");

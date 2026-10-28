@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <cassert>
+#include <cstddef>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -10,24 +11,6 @@
 using namespace Eigen;
 
 namespace affine_mpc::detail {
-
-namespace {
-
-// Sample indices whose inputs are bounded. An empty result means the control
-// points are bounded instead. Bounding B-spline control points bounds the
-// sampled inputs (convex hull property), so the samples are only bounded
-// with InputBoundMode::Exact. A custom basis has no such property, so its
-// sampled inputs are always bounded.
-std::vector<int> boundedSamples(const VectorParameterization& input_param,
-                                const InputBoundMode mode)
-{
-  if (mode == InputBoundMode::ControlPoints
-      && input_param.parameterization().type == Parameterization::Type::BSpline)
-    return {};
-  return input_param.inputSaturationSamples();
-}
-
-} // namespace
 
 // ---- StateCost --------------------------------------------------------------
 
@@ -115,13 +98,66 @@ void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
 
 // ---- InputBounds ------------------------------------------------------------
 
+// Bounding B-spline control points bounds the sampled inputs (convex hull
+// property), and so does bounding the control points of the same spline after
+// knot insertion. A custom basis has no such property, so its sampled inputs
+// are always bounded.
+InputBounds::BoundRows
+InputBounds::boundRows(const VectorParameterization& input_param,
+                       const InputBoundMode mode,
+                       const int refined_bound_interval)
+{
+  const Parameterization& param{input_param.parameterization()};
+  const bool bspline{param.type == Parameterization::Type::BSpline};
+  BoundRows M;
+  if (bspline && mode == InputBoundMode::ControlPoints)
+    return M;
+
+  // Refined, degree >= 2: the refined control points the samples depend on,
+  // unless they are at least as many as the samples (T); the sampled rows are
+  // then exact and fewer. Degree 0 and 1 already have exact bounds with few
+  // rows, so Refined uses them (the control points for degree 0, the knot
+  // samples for degree 1).
+  const VectorParameterization::KnotRefinement r{
+      bspline && mode == InputBoundMode::Refined && param.degree >= 2
+          ? input_param.refineKnots(refined_bound_interval)
+          : VectorParameterization::KnotRefinement{}};
+  if (!r.sampled.empty()
+      && r.sampled.size() < std::size_t(param.horizon_steps)) {
+    const int num_rows{static_cast<int>(r.sampled.size())};
+    M.start.reserve(r.sampled.size());
+    M.weights.resize(r.weights.rows(), num_rows);
+    for (int row{0}; row < num_rows; ++row) {
+      const int j{r.sampled[static_cast<std::size_t>(row)]};
+      M.start.push_back(r.start(j));
+      M.weights.col(row) = r.weights.col(j);
+    }
+    M.skip_zeros = true;
+    return M;
+  }
+
+  // the sampled inputs that make the bound exact (empty for degree 0: the
+  // control points are the sampled inputs)
+  const std::vector<int> samples{input_param.inputSaturationSamples()};
+  const int num_rows{static_cast<int>(samples.size())};
+  M.start.reserve(samples.size());
+  M.weights.resize(param.band_width, num_rows);
+  for (int row{0}; row < num_rows; ++row) {
+    const int k{samples[static_cast<std::size_t>(row)]};
+    M.start.push_back(param.band_start(k));
+    M.weights.col(row) = param.band_weights.col(k);
+  }
+  return M;
+}
+
 InputBounds::InputBounds(const VectorParameterization& input_param,
-                         const InputBoundMode mode) :
+                         const InputBoundMode mode,
+                         const int refined_bound_interval) :
     input_param_{input_param},
-    samples_{boundedSamples(input_param, mode)},
-    num_bounded_{samples_.empty()
+    M_{boundRows(input_param, mode, refined_bound_interval)},
+    num_bounded_{M_.start.empty()
                      ? input_param.parameterization().num_control_points
-                     : static_cast<int>(samples_.size())}
+                     : static_cast<int>(M_.start.size())}
 {}
 
 void InputBounds::declare(QPLayout& layout, FormulationImpl& /*f*/)
@@ -129,21 +165,24 @@ void InputBounds::declare(QPLayout& layout, FormulationImpl& /*f*/)
   rows_ = layout.addRows(input_param_.inputDim() * num_bounded_);
   // The control points come first in every formulation, so these rows do not
   // depend on it
-  if (samples_.empty()) {
+  if (M_.start.empty()) {
     // bound the control points directly (much fewer constraints)
     for (int i{0}; i < rows_.rows; ++i)
       A_.declare(rows_.offset + i, i, 1.0);
   } else {
-    // bound sampled inputs (each a weighted sum of control points)
-    const Parameterization& param{input_param_.parameterization()};
+    // bound weighted sums of control points (sampled inputs or refined
+    // control points), with the same weights for every channel
     const int m{input_param_.inputDim()};
     int row{rows_.offset};
-    for (const int k : samples_) {
-      for (int i{0}; i < param.band_width; ++i) {
-        const int col{
-            input_param_.coefficientIndex(0, param.band_start(k) + i)};
+    for (int r{0}; r < num_bounded_; ++r) {
+      for (int i{0}; i < M_.weights.rows(); ++i) {
+        const double w{M_.weights(i, r)};
+        if (M_.skip_zeros && w == 0.0)
+          continue;
+        const int col{input_param_.coefficientIndex(
+            0, M_.start[static_cast<std::size_t>(r)] + i)};
         for (int ch{0}; ch < m; ++ch)
-          A_.declare(row + ch, col + ch, param.band_weights(i, k));
+          A_.declare(row + ch, col + ch, w);
       }
       row += m;
     }

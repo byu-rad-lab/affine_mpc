@@ -81,6 +81,31 @@ public:
    */
   std::vector<int> inputSaturationSamples() const;
 
+  /// The knot refinement of InputBoundMode::Refined (see refineKnots()).
+  struct KnotRefinement
+  {
+    /// Refined knot vector (the knots plus the inserted ones).
+    Eigen::VectorXd knots;
+    /// Banded map R from the control points to the refined control points:
+    /// refined control point j is the sum over i of `weights(i, j)` times
+    /// control point `start(j) + i` (size degree+1 x num_refined).
+    Eigen::VectorXi start;
+    Eigen::MatrixXd weights;
+    /// Refined control points whose basis function is nonzero at some sample
+    /// (sorted); bounding them bounds every sampled input.
+    std::vector<int> sampled;
+  };
+
+  /**
+   * @brief Refine a B-spline by knot insertion (Oslo algorithm): split every
+   *   active knot interval of length l into max(2, ceil(l / max_interval))
+   *   equal parts.
+   * @param max_interval Longest refined knot interval in samples (positive).
+   * @return The refined knots, the banded map R, and the refined control
+   *   points the samples depend on.
+   */
+  KnotRefinement refineKnots(int max_interval) const;
+
 private:
   const Parameterization param_;
   const int input_dim_;

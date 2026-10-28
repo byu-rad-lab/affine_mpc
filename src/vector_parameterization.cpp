@@ -53,4 +53,12 @@ std::vector<int> VectorParameterization::inputSaturationSamples() const
   return param_.inputSaturationSamples();
 }
 
+VectorParameterization::KnotRefinement
+VectorParameterization::refineKnots(const int max_interval) const
+{
+  KnotRefinement r;
+  param_.refineKnots(max_interval, r.knots, r.start, r.weights, r.sampled);
+  return r;
+}
+
 } // namespace affine_mpc::detail

@@ -46,6 +46,8 @@
     | $\boldsymbol{\tau} = [\tau_0, \dots, \tau_{\mu-1}]$ | knot vector |
     | $b_i^p(k, \boldsymbol{\tau})$ | $i$th B-spline basis function evaluated at horizon step $k$ |
     | $\Psi^p(\boldsymbol{\tau})$ | B-spline basis in matrix form |
+    | $\eta_{\mathrm{r}}$ | number of refined control points bounded by `InputBoundMode::Refined` |
+    | $\Gamma \in \mathbb{R}^{\eta_{\mathrm{r}} \times \eta}$ | knot insertion matrix: control points to refined control points |
 
 <!-- --8<-- [end:parameterization-terms] -->
 

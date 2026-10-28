@@ -319,6 +319,23 @@ $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+
+**Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
+
+$$
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\leq
+\underbrace{
+    \begin{bmatrix} \Gamma \otimes I_m & \mathbf{0}_{m\eta_{\mathrm{r}} \times nT} \end{bmatrix}
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
+\leq
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+$$
+
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -676,6 +693,23 @@ $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+
+**Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
+
+$$
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\leq
+\underbrace{
+    \Gamma \otimes I_m
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
+\leq
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+$$
+
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -855,7 +889,7 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
 | `state_slacks` | variables | soft state bounds: one slack per bounded state |
 | `dynamics` | rows | sparse formulation only: the model as equality rows |
-| `input_bounds` | rows | input limits on the control points or the sampled inputs |
+| `input_bounds` | rows | input limits on the control points, the sampled inputs, or the refined control points |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
 | `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |

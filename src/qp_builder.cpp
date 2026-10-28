@@ -101,8 +101,9 @@ QPBuilder::QPBuilder(const Formulation kind,
     add<InputRateCost>(layout, input_param);
   if (opts.use_input_cost)
     add<InputCost>(layout);
-  rows_.input_bounds =
-      add<InputBounds>(layout, input_param, opts.input_bounds).rows();
+  rows_.input_bounds = add<InputBounds>(layout, input_param, opts.input_bounds,
+                                        opts.refined_bound_interval)
+                           .rows();
   if (opts.slew_initial_input)
     rows_.initial_slew = add<InitialSlew>(layout, input_param).rows();
   if (opts.slew_control_points)

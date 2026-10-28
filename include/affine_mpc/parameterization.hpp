@@ -311,6 +311,20 @@ private:
   // input, or empty when bounding the control points is already exact. Not
   // public until the interface for input bound rows is settled.
   std::vector<int> inputSaturationSamples() const;
+
+  // Knot refinement for InputBoundMode::Refined (B-splines only). Splits
+  // every active knot interval into max(2, ceil(length / max_interval)) equal
+  // parts and returns the refined knot vector, the banded map R from the
+  // control points to the refined control points of the same spline (refined
+  // control point j is the sum over i of R_weights(i, j) times control point
+  // R_start(j) + i), and the refined control points whose refined basis
+  // function is nonzero at some sample (sorted). Not public until the
+  // interface for input bound rows is settled.
+  void refineKnots(int max_interval,
+                   Eigen::VectorXd& refined_knots,
+                   Eigen::VectorXi& R_start,
+                   Eigen::MatrixXd& R_weights,
+                   std::vector<int>& sampled) const;
 };
 
 /**
