@@ -376,9 +376,9 @@ If input cost is enabled, input references can also be configured.
 
     ```cpp
     mpc.setReferenceInput(u_step);
-    // OR, with InputCostMode::ControlPoints
+    // OR, with InputCostMode::ControlPoints, input_dim x num_control_points
     mpc.setReferenceInputControlPoints(control_points);
-    // OR, with InputCostMode::Trajectory (input_dim * horizon_steps values)
+    // OR, with InputCostMode::Trajectory, input_dim x horizon_steps
     mpc.setReferenceInputTrajectory(u_traj);
     ```
 
