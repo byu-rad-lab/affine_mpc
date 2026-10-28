@@ -206,6 +206,25 @@ def test_from_basis_mpc_bounds_sampled_inputs():
         ampc.MPC(2, 1, param, ampc.Options(slew_control_points=True))
 
 
+def test_from_basis_omits_bounds_where_the_basis_decayed():
+    # rows of norm at most 1e-9 of the largest (decayed, or exactly zero) bound
+    # nothing and are omitted
+    T = 80
+    basis = _laguerre_basis(T, 4, 0.5)
+    basis[-5:] = 0.0
+    norms = np.linalg.norm(basis, axis=1)
+    expected = int(np.count_nonzero(norms > 1e-9 * norms.max()))
+    assert 4 < expected < T - 5
+    param = ampc.Parameterization.fromBasis(T, basis)
+    for formulation in list(ampc.Formulation):
+        mpc = _custom_basis_mpc(formulation, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
+        rows = {b.name: b.size for b in mpc.getQPConstraintBlocks()}
+        assert rows["input_bounds"] == expected
+        assert mpc.solve(np.array([0.5, -0.2])) == ampc.SolveStatus.Success
+        u_traj = mpc.getInputTrajectory()
+        assert u_traj.min() >= -1e-6 and u_traj.max() <= 3.0 + 1e-6
+
+
 def test_from_basis_logger_metadata(tmp_path):
     T = 12
     basis = _laguerre_basis(T, 3, 0.6)

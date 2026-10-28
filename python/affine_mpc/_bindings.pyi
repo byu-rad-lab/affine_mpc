@@ -291,8 +291,12 @@ class Parameterization:
         band_width = num_control_points, band_start = 0, band_weights = basis
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
-        always bounds every sampled input (whatever Options.input_bounds is) and rejects
-        slew_control_points. InputCostMode.ControlPoints weights the coefficients (and
+        bounds every sampled input (whatever Options.input_bounds is) and rejects
+        slew_control_points. It omits the bounds of samples whose basis row has a norm
+        of at most 1e-9 times the largest row norm (e.g. where a Laguerre basis has
+        decayed): such a sample can only leave the limits if the coefficients exceed
+        them by about 1e9, and its tiny row would hurt the solver's scaling.
+        InputCostMode.ControlPoints weights the coefficients (and
         rejects setReferenceInput()); InputCostMode.Trajectory weights the sampled
         inputs.
 

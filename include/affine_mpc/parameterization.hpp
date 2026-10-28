@@ -159,8 +159,12 @@ public:
    *   sample: band_width = num_control_points, band_start = 0, band_weights =
    *   basis transposed), and type is Type::Custom, with degree = -1 and empty
    *   knots. Since the B-spline convex hull property does not hold, an MPC
-   *   with a custom basis always bounds every sampled input (whatever
-   *   Options::input_bounds is) and rejects `slew_control_points`.
+   *   with a custom basis bounds every sampled input (whatever
+   *   Options::input_bounds is) and rejects `slew_control_points`. It omits
+   *   the bounds of samples whose basis row has a norm of at most 1e-9 times
+   *   the largest row norm (e.g. where a Laguerre basis has decayed): such a
+   *   sample can only leave the limits if the coefficients exceed them by
+   *   about 1e9, and its tiny row would hurt the solver's scaling.
    *   InputCostMode::ControlPoints weights the coefficients (and rejects
    *   setReferenceInput()); InputCostMode::Trajectory weights the sampled
    *   inputs.
@@ -310,8 +314,9 @@ private:
   Parameterization(int horizon_steps, const Eigen::MatrixXd& basis);
 
   // Sample indices whose bounds are equivalent to bounding every sampled
-  // input, or empty when bounding the control points is already exact. Not
-  // public until the interface for input bound rows is settled.
+  // input (for a custom basis, to within the 1e-9 relative row-norm
+  // threshold), or empty when bounding the control points is already exact.
+  // Not public until the interface for input bound rows is settled.
   std::vector<int> inputSaturationSamples() const;
 
   // Knot refinement for InputBoundMode::Refined (B-splines only). Splits

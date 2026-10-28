@@ -1656,6 +1656,42 @@ TEST(CustomBasisTester, givenLaguerreBasis_BoundsEverySampledInput)
   EXPECT_NEAR(u_sparse.maxCoeff(), 3.0, 1e-6); // the limit is active
 }
 
+TEST(CustomBasisTester, givenDecayedBasisRows_OmitsTheirBounds)
+{
+  // A fast pole over a long horizon decays far below round-off; the bounds of
+  // samples whose basis row norm is at most 1e-9 times the largest are
+  // omitted, and so are rows that are exactly zero. The kept samples still
+  // bound every sampled input (the decayed ones are frozen near zero).
+  const int n{2}, m{1}, T{80};
+  MatrixXd basis{laguerreBasis(T, 4, 0.5)};
+  basis.bottomRows(5).setZero();
+  const VectorXd row_norms{basis.rowwise().norm()};
+  const auto expected_rows{
+      (row_norms.array() > 1e-9 * row_norms.maxCoeff()).count()};
+  ASSERT_GT(expected_rows, 4);
+  ASSERT_LT(expected_rows, T - 5); // some nonzero rows decayed too
+
+  const auto param{ampc::Parameterization::fromBasis(T, basis)};
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints};
+  for (const auto formulation :
+       {ampc::Formulation::Condensed, ampc::Formulation::Sparse}) {
+    ampc::MPC mpc{n, m, param, opts, formulation};
+    setupCustomBasisMsd(mpc, opts);
+    int input_bound_rows{-1};
+    for (const ampc::QPBlock& b : mpc.getQPConstraintBlocks())
+      if (b.name == "input_bounds")
+        input_bound_rows = b.size;
+    EXPECT_EQ(input_bound_rows, m * expected_rows);
+
+    VectorXd u{T};
+    ASSERT_EQ(mpc.solve(Vector2d{0.5, -0.2}), ampc::SolveStatus::Success);
+    mpc.getInputTrajectory(u);
+    EXPECT_LE(u.maxCoeff(), 3.0 + 1e-6);
+    EXPECT_GE(u.minCoeff(), -1e-6);
+    EXPECT_NEAR(u.maxCoeff(), 3.0, 1e-6); // the limit is active
+  }
+}
+
 TEST(CustomBasisTester, givenBsplineOnlyFeatures_Throws)
 {
   const auto param{

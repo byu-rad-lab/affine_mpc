@@ -36,15 +36,13 @@ def laguerre_basis(horizon_steps: int, num_functions: int, pole: float) -> np.nd
 
 
 def prepare_basis(basis: np.ndarray) -> np.ndarray:
-    """Zero the rows that have decayed to round-off and orthonormalize the columns.
+    """Orthonormalize the columns.
 
-    The decayed rows only freeze the input at the offset, but their tiny
-    coefficients in the input bound rows hurt OSQP's scaling. Orthonormal
-    columns (same span, so the same input trajectories) keep the QP well
-    conditioned even for slow poles and many functions.
+    Orthonormal columns (same span, so the same input trajectories) keep the
+    QP well conditioned even for slow poles and many functions. The rows that
+    have decayed to round-off need no handling: the MPC omits their input
+    bound rows.
     """
-    row_norms = np.linalg.norm(basis, axis=1)
-    basis = np.where((row_norms > 1e-9 * row_norms.max())[:, None], basis, 0.0)
     q, _ = np.linalg.qr(basis)
     return q
 

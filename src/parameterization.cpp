@@ -561,9 +561,24 @@ std::vector<int> Parameterization::inputSaturationSamples() const
   if (type == Type::BSpline && degree == 0)
     return {};
 
-  // degree > 1 or a custom basis: every sample
+  // A custom basis: every sample whose basis row is not negligible. A decaying
+  // basis (e.g. Laguerre functions) has rows far below round-off late in a
+  // long horizon (about 1e-60), which add nothing to the feasible set unless
+  // the coefficients exceed the input limits by 1/prune_tol, but would give
+  // the constraint matrix a dynamic range that hurts the solver's scaling.
   std::vector<int> samples;
-  if (type == Type::Custom || degree > 1) {
+  if (type == Type::Custom) {
+    constexpr double prune_tol{1e-9};
+    const ArrayXd row_norms{band_weights.colwise().norm().transpose()};
+    const double keep_above{prune_tol * row_norms.maxCoeff()};
+    for (int k{0}; k < horizon_steps; ++k)
+      if (row_norms(k) > keep_above)
+        samples.push_back(k);
+    return samples;
+  }
+
+  // degree > 1: every sample
+  if (degree > 1) {
     samples.resize(horizon_steps);
     std::iota(samples.begin(), samples.end(), 0);
     return samples;

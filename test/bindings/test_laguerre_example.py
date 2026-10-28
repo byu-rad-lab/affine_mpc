@@ -50,9 +50,14 @@ def test_prepared_basis_is_orthonormal_with_the_same_span(example):
     coeffs = np.linalg.lstsq(q, basis, rcond=None)[0]
     np.testing.assert_allclose(q @ coeffs, basis, rtol=0, atol=1e-12)
 
-    # rows decayed to round-off are zeroed, and stay zero after QR
+    # rows decayed to round-off stay negligible after QR, so the MPC omits
+    # their input bounds
     decayed = example.prepare_basis(example.laguerre_basis(300, 3, 0.5))
-    assert np.all(decayed[-50:] == 0.0)
+    norms = np.linalg.norm(decayed, axis=1)
+    assert norms[-50:].max() <= 1e-9 * norms.max()
+    mpc = example.ampc.MPC(2, 1, example.ampc.Parameterization.fromBasis(300, decayed))
+    rows = {b.name: b.size for b in mpc.getQPConstraintBlocks()}
+    assert rows["input_bounds"] == np.count_nonzero(norms > 1e-9 * norms.max()) < 250
 
 
 def test_deviation_form_holds_the_reference(example):

@@ -6,7 +6,7 @@ It runs two forms of the controller in closed loop and prints the final position
 ## What the Example Demonstrates
 
 - Building a sampled basis matrix (discrete Laguerre functions) and passing it to `Parameterization.fromBasis()`
-- Preparing a custom basis: zeroing the rows that have decayed to round-off and orthonormalizing the columns with `numpy.linalg.qr`
+- Preparing a custom basis: orthonormalizing the columns with `numpy.linalg.qr` (the MPC omits the input bounds of samples where the basis has decayed)
 - The deviation form $\mathbf{u} = \mathbf{u}_{\mathrm{ss}} + \Psi \mathbf{c}$: the steady-state input $\mathbf{u}_{\mathrm{ss}}$ is computed outside the library and enters through the model offset $\mathbf{w}$ and shifted input limits
 - The direct form $\mathbf{u} = \Psi \mathbf{c}$ for comparison, whose planned input decays to zero over the horizon
 

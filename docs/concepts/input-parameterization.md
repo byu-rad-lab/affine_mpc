@@ -284,7 +284,7 @@ Because every interval is split at least once, `Refined` is tighter than `Contro
 The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Exact`.
 
 Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Exact` (the samples next to each knot).
-A [custom basis](#custom-bases) always bounds every sampled input, whatever the mode.
+A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the mode (omitting samples where the basis has decayed).
 
 ## Custom Bases
 
@@ -313,7 +313,9 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
 
 - **Input limits.**
   B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Exact` is optional.
-  A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whatever `input_bounds` is.
+  A custom basis has no such property, so the MPC bounds every sampled input (up to $T$ constraint rows per input channel), whatever `input_bounds` is.
+  It omits the rows of samples whose basis row norm is at most $10^{-9}$ times the largest, e.g. where a Laguerre basis has decayed late in a long horizon: such a sample can only leave the limits if the coefficients exceed them by about $10^9$, and rows many orders of magnitude below the others hurt OSQP's scaling.
+  This is a numerical threshold on the basis, not a constraint horizon chosen from the plant, so the feasible set is that of all $T$ samples to within that tolerance.
 - **Input cost.**
   With `InputCostMode::ControlPoints`, `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
   With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
@@ -386,7 +388,7 @@ for _ in range(100):
 
 Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
 `examples/laguerre.py` runs both forms and compares their closed-loop cost (see [Laguerre Basis](../examples/laguerre.md)).
-It also zeroes the rows of $\Psi$ that have decayed to round-off before the QR decomposition: those samples are frozen at $\mathbf{u}_{\mathrm{ss}}$ anyway (they can be many orders of magnitude below round-off for long horizons), and their tiny coefficients in the input bound rows would otherwise hurt OSQP's scaling.
+It orthonormalizes $\Psi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\mathbf{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
 
 ## Next Step
 
