@@ -12,23 +12,24 @@
  *  - Options configuration
  *  - Input parameterization (B-splines, move-blocking, etc.)
  *  - Model discretization (Discretizer)
- *  - Solve status codes
+ *  - Solve status codes and the QP solver interface (OSQPSolver)
  *  - The MPC class and its Formulation
  *  - Logging utilities
- *  - The former class names (MPCBase, CondensedMPC, SparseMPC)
  */
 
 #include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
+#include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/mpc_logger.hpp"
 
-#include "affine_mpc/condensed_mpc.hpp"
-#include "affine_mpc/mpc_base.hpp"
-#include "affine_mpc/sparse_mpc.hpp"
+#ifdef AFFINE_MPC_WITH_DAQP
+#include "affine_mpc/daqp_solver.hpp"
+#endif
 
 #endif // AFFINE_MPC_HPP

@@ -23,7 +23,7 @@ def model(tilt):
 
 
 def build(formulation, init_tilt, **init_kwargs):
-    opts = ampc.Options(use_input_cost=True, state_bounds=ampc.StateBoundMode.Hard)
+    opts = ampc.Options(input_cost=ampc.InputCostMode.ControlPoints, state_bounds=ampc.StateBoundMode.Hard)
     mpc = ampc.MPC(
         N, M, ampc.Parameterization.bspline(T, 2, NC), opts, formulation=formulation
     )

@@ -36,15 +36,13 @@ def laguerre_basis(horizon_steps: int, num_functions: int, pole: float) -> np.nd
 
 
 def prepare_basis(basis: np.ndarray) -> np.ndarray:
-    """Zero the rows that have decayed to round-off and orthonormalize the columns.
+    """Orthonormalize the columns.
 
-    The decayed rows only freeze the input at the offset, but their tiny
-    coefficients in the input bound rows hurt OSQP's scaling. Orthonormal
-    columns (same span, so the same input trajectories) keep the QP well
-    conditioned even for slow poles and many functions.
+    Orthonormal columns (same span, so the same input trajectories) keep the
+    QP well conditioned even for slow poles and many functions. The rows that
+    have decayed to round-off need no handling: the MPC omits their input
+    bound rows.
     """
-    row_norms = np.linalg.norm(basis, axis=1)
-    basis = np.where((row_norms > 1e-9 * row_norms.max())[:, None], basis, 0.0)
     q, _ = np.linalg.qr(basis)
     return q
 
@@ -53,7 +51,7 @@ def run(deviation: bool) -> tuple[float, float]:
     """Closed-loop run; returns the final position and the tracking cost."""
     T, N, pole, ts = 40, 4, 0.8, 0.1
     param = ampc.Parameterization.fromBasis(T, prepare_basis(laguerre_basis(T, N, pole)))
-    mpc = ampc.MPC(state_dim=2, input_dim=1, param=param, opts=ampc.Options(use_input_cost=True))
+    mpc = ampc.MPC(state_dim=2, input_dim=1, param=param, opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
 
     A = np.array([[0.0, 1.0], [-0.6, -0.1]])
     B = np.array([0.0, 0.2])

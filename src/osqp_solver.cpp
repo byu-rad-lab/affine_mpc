@@ -13,7 +13,42 @@
 
 namespace affine_mpc {
 
+namespace {
+
+SolveStatus osqpStatusToSolveStatus(const OSQPInt osqp_status)
+{
+  switch (osqp_status) {
+  case OSQP_SOLVED:
+    return SolveStatus::Success;
+  case OSQP_SOLVED_INACCURATE:
+    return SolveStatus::SolvedInaccurate;
+  case OSQP_PRIMAL_INFEASIBLE:
+  case OSQP_PRIMAL_INFEASIBLE_INACCURATE:
+    return SolveStatus::PrimalInfeasible;
+  case OSQP_DUAL_INFEASIBLE:
+  case OSQP_DUAL_INFEASIBLE_INACCURATE:
+    return SolveStatus::DualInfeasible;
+  case OSQP_MAX_ITER_REACHED:
+    return SolveStatus::MaxIterReached;
+  case OSQP_TIME_LIMIT_REACHED:
+    return SolveStatus::TimeLimitReached;
+  case OSQP_NON_CVX:
+  case OSQP_SIGINT:
+  case OSQP_UNSOLVED:
+  default:
+    return SolveStatus::OtherFailure;
+  }
+}
+
+} // namespace
+
 OSQPSolver::OSQPSolver(int num_variables, int num_constraints) :
+    OSQPSolver(num_variables, num_constraints, getRecommendedSettings())
+{}
+
+OSQPSolver::OSQPSolver(int num_variables,
+                       int num_constraints,
+                       const OSQPSettings& settings) :
     solver_{nullptr, osqp_cleanup},
     P_{nullptr, OSQPCscMatrix_free},
     A_{nullptr, OSQPCscMatrix_free},
@@ -22,6 +57,7 @@ OSQPSolver::OSQPSolver(int num_variables, int num_constraints) :
     A_is_set_{false},
     l_buf_{num_constraints},
     u_buf_{num_constraints},
+    settings_{settings},
     n_{num_variables},
     m_{num_constraints},
     P_p_{num_variables + 1},
@@ -549,6 +585,48 @@ void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
   A_.reset(
       OSQPCscMatrix_new(m_, n_, A_nnz_, A_x_.data(), A_i_.data(), A_p_.data()));
   A_is_set_ = true;
+}
+
+bool OSQPSolver::initialize(const detail::QP& qp, const QPBlockLayout&)
+{
+  if (qp.storage == detail::QPStorage::Sparse)
+    return initialize(qp.P_csc, qp.A_csc, qp.q, qp.l, qp.u, settings_);
+  return initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings_);
+}
+
+bool OSQPSolver::updateMatrices(const detail::QP& qp,
+                                const bool cost_matrix,
+                                const bool constraint_matrix)
+{
+  if (qp.storage == detail::QPStorage::Sparse) {
+    if (cost_matrix && constraint_matrix)
+      return updateMatrices(qp.P_csc, qp.A_csc);
+    if (cost_matrix)
+      return updateCostMatrix(qp.P_csc);
+    return !constraint_matrix || updateConstraintMatrix(qp.A_csc);
+  }
+  if (cost_matrix && constraint_matrix)
+    return updateMatrices(qp.P, qp.A);
+  if (cost_matrix)
+    return updateCostMatrix(qp.P);
+  return !constraint_matrix || updateConstraintMatrix(qp.A);
+}
+
+bool OSQPSolver::updateCostVector(const detail::QP& qp)
+{
+  return updateCostVector(qp.q);
+}
+
+bool OSQPSolver::updateBounds(const detail::QP& qp)
+{
+  return updateBounds(qp.l, qp.u);
+}
+
+bool OSQPSolver::isWithinSparsityPattern(const detail::QP& qp) const
+{
+  if (qp.storage == detail::QPStorage::Sparse)
+    return isWithinSparsityPattern(qp.P_csc, qp.A_csc);
+  return isWithinSparsityPattern(qp.P, qp.A);
 }
 
 std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings)

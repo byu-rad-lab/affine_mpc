@@ -168,9 +168,12 @@ struct MPCData
       x0{Eigen::VectorXd::Zero(state_dim)}
   {
     Q_big.setIdentity();
-    if (opts.use_input_cost) {
+    if (opts.input_cost == InputCostMode::ControlPoints) {
       R_big.setIdentity(input_dim * num_ctrl_pts);
       ctrls_ref.setZero(input_dim * num_ctrl_pts);
+    } else if (opts.input_cost == InputCostMode::Trajectory) {
+      R.setOnes(input_dim);
+      u_ref.setZero(input_dim * horizon_steps);
     }
     if (opts.slew_initial_input)
       u0_slew.setConstant(input_dim, inf);
@@ -213,13 +216,19 @@ struct MPCData
 
   /// state weights over the horizon (the last block is the terminal weight)
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q_big;
-  /// input weights for every control point (`use_input_cost`)
+  /// input weights for every control point (InputCostMode::ControlPoints)
   Eigen::DiagonalMatrix<double, Eigen::Dynamic> R_big;
+  /// diagonal input weights, one per input (InputCostMode::Trajectory)
+  Eigen::VectorXd R;
   /// diagonal input rate weights, one per input (`use_input_rate_cost`)
   Eigen::VectorXd R_rate;
 
-  Eigen::VectorXd x_ref;     ///< stacked reference states over the horizon
-  Eigen::VectorXd ctrls_ref; ///< stacked reference control points
+  Eigen::VectorXd x_ref; ///< stacked reference states over the horizon
+  /// stacked reference control points (InputCostMode::ControlPoints)
+  Eigen::VectorXd ctrls_ref;
+  /// stacked reference sampled inputs over the horizon
+  /// (InputCostMode::Trajectory)
+  Eigen::VectorXd u_ref;
 
   Eigen::VectorXd u_min, u_max; ///< input limits
   /// limits of the bounded states (`state_bounds`, see boundedStates())

@@ -18,6 +18,7 @@
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/quadratic_program.hpp"
 #include "affine_mpc/solve_status.hpp"
 
@@ -48,8 +49,8 @@ enum class Formulation
 
 /**
  * @class MPC
- * @brief Model predictive control of an affine model, solved as a QP with
- *   OSQP.
+ * @brief Model predictive control of an affine model, solved as a QP (with
+ *   OSQP by default).
  *
  * Optimizes the control points of an input trajectory parameterization
  * (B-splines, move-blocking, or a custom basis) subject to the costs and
@@ -170,6 +171,30 @@ public:
   [[nodiscard]] bool initializeSolver(ModelSparsity model_sparsity);
 
   /**
+   * @brief Initialize with the given QP solver instead of OSQP; see
+   *   initializeSolver(const OSQPSettings&, ModelSparsity) for the setup this
+   *   needs and what initialization fixes.
+   *
+   *   The MPC takes ownership of the solver, which must not be initialized
+   *   yet. After a successful initialization, a later call returns true and
+   *   discards the solver passed to it.
+   * @param solver The QP solver, e.g. `std::make_unique<DAQPSolver>()`
+   *   (condensed formulation, when built with DAQP) or
+   *   `std::make_unique<OSQPSolver>(mpc.getNumQPVariables(),
+   *   mpc.getNumQPConstraints(), settings)`.
+   * @param model_sparsity Which entries of Ad and Bd the solver tracks.
+   * @return True if initialization succeeds, false otherwise.
+   * @throws std::logic_error if a setter the solver or the options require
+   *   has not been called.
+   * @throws std::invalid_argument if the solver is null or already
+   *   initialized, if it does not support the formulation's QP storage, or for
+   *   ModelSparsity::Full with the condensed formulation.
+   */
+  [[nodiscard]] bool initializeSolver(
+      std::unique_ptr<QPSolver> solver,
+      ModelSparsity model_sparsity = ModelSparsity::InitialNonzeros);
+
+  /**
    * @brief Solve the optimization problem for the given initial state.
    *
    *   Must have previously called initializeSolver() prior to calling this.
@@ -236,21 +261,26 @@ public:
    *   the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
-   * @param control_points Output vector for stacked control points.
-   * @throws std::invalid_argument if control_points does not have size
-   *   input_dim * num_control_points.
+   * @param control_points Output for the control points: a stacked vector
+   *   (input_dim * num_control_points) or an input_dim x num_control_points
+   *   matrix whose column j is control point j. Its columns must be
+   *   contiguous (a whole matrix, a vector, or a Map).
+   * @throws std::invalid_argument if control_points has neither shape, or is
+   *   a block of a larger matrix with more rows.
    */
-  void getInputControlPoints(Eigen::Ref<Eigen::VectorXd> control_points) const;
+  void getInputControlPoints(Eigen::Ref<Eigen::MatrixXd> control_points) const;
 
   /**
    * @brief Get the full input trajectory from the previous solve.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
-   * @param u_traj Output vector for input trajectory.
-   * @throws std::invalid_argument if u_traj does not have size
-   *   input_dim * horizon_steps.
+   * @param u_traj Output for the inputs u_0, ..., u_{T-1}: a stacked vector
+   *   (input_dim * horizon_steps) or an input_dim x horizon_steps matrix
+   *   whose column k is u_k. Its columns must be contiguous.
+   * @throws std::invalid_argument if u_traj has neither shape, or is a block
+   *   of a larger matrix with more rows.
    */
-  void getInputTrajectory(Eigen::Ref<Eigen::VectorXd> u_traj) const;
+  void getInputTrajectory(Eigen::Ref<Eigen::MatrixXd> u_traj) const;
 
   /**
    * @brief Get the predicted state trajectory from the previous solve.
@@ -259,11 +289,13 @@ public:
    *   The condensed formulation computes it from the model, so after a
    *   prepare() that applied a model change, call it before prepare() to get
    *   the prediction of the previous solve.
-   * @param x_traj Output vector for state trajectory.
-   * @throws std::invalid_argument if x_traj does not have size
-   *   state_dim * horizon_steps.
+   * @param x_traj Output for the predicted states x_1, ..., x_T: a stacked
+   *   vector (state_dim * horizon_steps) or a state_dim x horizon_steps
+   *   matrix whose column k is x_{k+1}. Its columns must be contiguous.
+   * @throws std::invalid_argument if x_traj has neither shape, or is a block
+   *   of a larger matrix with more rows.
    */
-  void getPredictedStateTrajectory(Eigen::Ref<Eigen::VectorXd> x_traj) const;
+  void getPredictedStateTrajectory(Eigen::Ref<Eigen::MatrixXd> x_traj) const;
 
   /**
    * @brief Propagate the internal discrete-time model for one step.
@@ -356,7 +388,7 @@ public:
   /**
    * @brief Set state and input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off.
    * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
@@ -366,7 +398,7 @@ public:
   /**
    * @brief Set state, terminal state, and input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off.
    * @param Q_diag Vector for diagonal of state weight matrix (non-negative).
    * @param Qf_diag Vector for diagonal of terminal state weight matrix
    *   (non-negative).
@@ -396,7 +428,9 @@ public:
   /**
    * @brief Set only the input weights for the cost function.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
+   *   This method can only be called if `input_cost` is not Off. The same
+   *   R weights every control point (InputCostMode::ControlPoints) or every
+   *   sampled input (InputCostMode::Trajectory). Defaults to ones.
    * @param R_diag Vector for diagonal of input weight matrix (non-negative).
    */
   void setInputWeights(const Eigen::Ref<const Eigen::VectorXd>& R_diag);
@@ -408,9 +442,8 @@ public:
    *   Defaults to ones.
    *
    *   This method can only be called if `use_input_rate_cost` is enabled.
-   *   Unlike `R` (which weights the control points), the rate cost acts on
-   *   the sampled inputs, so it penalizes the same input change equally for
-   *   every basis.
+   *   The rate cost acts on the sampled inputs, so it penalizes the same
+   *   input change equally for every basis.
    * @param R_rate_diag Diagonal of the input rate weight matrix (size
    *   input_dim, non-negative).
    */
@@ -427,25 +460,29 @@ public:
 
   /**
    * @brief Set reference state trajectory for tracking.
-   * @param x_traj Reference state trajectory as a vector of stacked states.
-   *   Should have length of state_dim * horizon_steps. If you have a matrix
-   *   where each column is a state at index k in the horizon, then you can pass
-   *   in `x_traj.reshaped()` to convert it to a vector.
+   * @param x_traj Reference states x_ref,1, ..., x_ref,T: a stacked vector
+   *   (state_dim * horizon_steps) or a state_dim x horizon_steps matrix whose
+   *   column k is x_ref,k+1 (the same memory).
+   * @throws std::invalid_argument if x_traj has neither shape.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void
-  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::VectorXd>& x_traj);
+  setReferenceStateTrajectory(const Eigen::Ref<const Eigen::MatrixXd>& x_traj);
 
   /**
-   * @brief Set reference input trajectory as a step command (reference for all
-   *   control points set to this value).
+   * @brief Set reference input trajectory as a step command: every reference
+   *   control point (InputCostMode::ControlPoints) or every reference sampled
+   *   input (InputCostMode::Trajectory) is set to this value.
    *
-   *   This method can only be called if `use_input_cost` is enabled, and not
-   *   with a custom basis (Parameterization::fromBasis()), whose coefficients
-   *   do not represent a constant input; use setReferenceInputControlPoints()
-   *   there.
+   *   This method can only be called if `input_cost` is not Off. With
+   *   InputCostMode::ControlPoints it can not be used with a custom basis
+   *   (Parameterization::fromBasis()), whose coefficients do not represent a
+   *   constant input; use setReferenceInputControlPoints() or
+   *   InputCostMode::Trajectory there.
    * @param u_step Reference input vector to use for entire trajectory.
+   * @throws std::logic_error if `input_cost` is Off, or is ControlPoints with
+   *   a custom basis.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
@@ -455,16 +492,36 @@ public:
    * @brief Set reference control points that parameterize the reference input
    *   trajectory.
    *
-   *   This method can only be called if `use_input_cost` is enabled.
-   * @param control_points Reference input control points as a stacked vector.
-   *   Should have length of input_dim * num_control_points. If you have a
-   *   matrix where each column is a control point, then you can pass in
-   *   `control_points.reshaped()` to convert it to a vector.
+   *   This method can only be called if `input_cost` is
+   *   InputCostMode::ControlPoints.
+   * @param control_points Reference input control points: a stacked vector
+   *   (input_dim * num_control_points) or an input_dim x num_control_points
+   *   matrix whose column j is control point j (the same memory).
+   * @throws std::invalid_argument if control_points has neither shape.
+   * @throws std::logic_error if `input_cost` is not ControlPoints.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
   void setReferenceInputControlPoints(
-      const Eigen::Ref<const Eigen::VectorXd>& control_points);
+      const Eigen::Ref<const Eigen::MatrixXd>& control_points);
+
+  /**
+   * @brief Set the reference sampled input trajectory for the input cost on
+   *   the sampled inputs.
+   *
+   *   This method can only be called if `input_cost` is
+   *   InputCostMode::Trajectory. The reference need not lie in the span of
+   *   the basis (e.g. a feedforward input from a model).
+   * @param u_traj Reference inputs u_ref,0, ..., u_ref,T-1: a stacked vector
+   *   (input_dim * horizon_steps) or an input_dim x horizon_steps matrix
+   *   whose column k is u_ref,k (the same memory).
+   * @throws std::invalid_argument if u_traj has neither shape.
+   * @throws std::logic_error if `input_cost` is not Trajectory.
+   * @note The QP is updated in the next prepare() or solve(), which report
+   *   update failures.
+   */
+  void
+  setReferenceInputTrajectory(const Eigen::Ref<const Eigen::MatrixXd>& u_traj);
 
   /**
    * @brief Set input saturation limits.
@@ -664,7 +721,7 @@ public:
 
   /**
    * @brief Get the diagonal of the input weight matrix R.
-   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @throws std::logic_error if `input_cost` is Off.
    * @return Vector of size input_dim.
    */
   Eigen::VectorXd getInputWeights() const;
@@ -799,10 +856,17 @@ public:
 
   /**
    * @brief Get the reference input control points.
-   * @throws std::logic_error if `use_input_cost` is not enabled.
+   * @throws std::logic_error if `input_cost` is not ControlPoints.
    * @return Stacked control points of size input_dim * num_control_points.
    */
   const Eigen::VectorXd& getReferenceInputControlPoints() const;
+
+  /**
+   * @brief Get the reference sampled input trajectory.
+   * @throws std::logic_error if `input_cost` is not Trajectory.
+   * @return Stacked inputs of size input_dim * horizon_steps.
+   */
+  const Eigen::VectorXd& getReferenceInputTrajectory() const;
 
   /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,
@@ -817,7 +881,7 @@ public:
    */
   SolveInfo getSolveInfo() const noexcept
   {
-    SolveInfo info{solver_->getSolveInfo()};
+    SolveInfo info{solver_ ? solver_->getSolveInfo() : SolveInfo{}};
     info.mpc_solve_time = mpc_solve_time_;
     info.prepare_time = prepare_time_;
     return info;
@@ -825,7 +889,8 @@ public:
 
   /**
    * @brief Make the next solve() start from zero instead of warm starting
-   *   from the previous solution (an OSQP cold start).
+   *   from the previous solution (an OSQP cold start; DAQP starts from an
+   *   empty working set).
    *
    *   Useful after a failed solve, whose iterates may have diverged and would
    *   slow down or prevent convergence of the next solve. Does not change the
@@ -833,7 +898,11 @@ public:
    *   results returned by the solution getters. No-op before
    *   initializeSolver().
    */
-  void resetWarmStart() noexcept { solver_->coldStart(); }
+  void resetWarmStart() noexcept
+  {
+    if (solver_)
+      solver_->coldStart();
+  }
 
   /**
    * @brief Get the QP cost matrix P (the Hessian of the QP objective), for
@@ -957,7 +1026,8 @@ protected:
   const std::vector<int> bounded_states_;
   Eigen::Map<const Eigen::VectorXd> solution_map_;
 
-  std::unique_ptr<OSQPSolver> solver_;
+  /// The QP solver (null before initializeSolver())
+  std::unique_ptr<QPSolver> solver_;
 
   /// @brief The MPC data set through the setters (read-only).
   const MPCData& data() const noexcept { return data_; }
@@ -988,8 +1058,6 @@ private:
   // false if a solver update failed, in which case the categories behind it
   // stay pending.
   bool applyPendingChanges();
-  // Send the matrices P and/or A to the solver in the QP's storage
-  bool sendMatrices(bool P, bool A);
   // Whether the model is zero outside the entries the solver tracks (true
   // before initializeSolver())
   bool modelWithinTrackedEntries() const;

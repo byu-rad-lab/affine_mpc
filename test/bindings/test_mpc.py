@@ -19,7 +19,7 @@ def test_mpc_interface():
             horizon_steps=T, num_control_points=nc
         )
         opts = ampc.Options()
-        opts.use_input_cost = True
+        opts.input_cost = ampc.InputCostMode.ControlPoints
         opts.slew_control_points = True
         opts.slew_initial_input = True
         opts.state_bounds = ampc.StateBoundMode.Hard
@@ -67,7 +67,7 @@ def test_mpc_interface():
 
     assert (
         repr(mpc)
-        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(use_input_cost=True, use_input_rate_cost=False, input_bounds=ControlPoints, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
     )
     assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 def _all_options_mpc(n=2, m=2, T=6, nc=3):
     param = ampc.Parameterization.linearInterp(horizon_steps=T, num_control_points=nc)
     opts = ampc.Options(
-        use_input_cost=True,
+        input_cost=ampc.InputCostMode.ControlPoints,
         slew_initial_input=True,
         slew_control_points=True,
         state_bounds=ampc.StateBoundMode.Hard,
@@ -131,10 +131,21 @@ def test_mpc_getters_return_set_values():
 
     x_ref = np.linspace(0, 1, n * T)
     ctrls_ref = np.linspace(-1, 1, m * nc)
+    # flat (the C++ stacked layout) or one row per step; the getters return rows
     mpc.setReferenceStateTrajectory(x_traj=x_ref)
     mpc.setReferenceInputControlPoints(control_points=ctrls_ref)
-    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref)
-    np.testing.assert_array_equal(mpc.getReferenceInputControlPoints(), ctrls_ref)
+    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceInputControlPoints(), ctrls_ref.reshape(nc, m)
+    )
+    mpc.setReferenceStateTrajectory(x_traj=2 * x_ref.reshape(T, n))
+    mpc.setReferenceInputControlPoints(control_points=2 * ctrls_ref.reshape(nc, m))
+    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), 2 * x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceInputControlPoints(), 2 * ctrls_ref.reshape(nc, m)
+    )
+    with pytest.raises(ValueError, match=rf"x_traj must have shape \({T}, {n}\) or \({T * n},\), got \({n}, {T}\)"):
+        mpc.setReferenceStateTrajectory(x_ref.reshape(n, T))
 
     # getters return copies, so editing one does not change the MPC
     u_min = mpc.getInputMin()
@@ -146,7 +157,6 @@ def test_mpc_optional_getters_raise_when_disabled():
     mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 3))
     for getter in (
         mpc.getInputWeights,
-        mpc.getReferenceInputControlPoints,
         mpc.getStateMin,
         mpc.getStateMax,
         mpc.getSlewRate,
@@ -155,6 +165,74 @@ def test_mpc_optional_getters_raise_when_disabled():
     ):
         with pytest.raises(RuntimeError, match="not enabled"):
             getter()
+    with pytest.raises(RuntimeError, match="InputCostMode::ControlPoints"):
+        mpc.getReferenceInputControlPoints()
+    with pytest.raises(RuntimeError, match="InputCostMode::Trajectory"):
+        mpc.getReferenceInputTrajectory()
+
+
+def _trajectory_cost_mpc(formulation, param, input_cost=ampc.InputCostMode.Trajectory):
+    mpc = ampc.MPC(
+        2, 1, param, ampc.Options(input_cost=input_cost), formulation=formulation
+    )
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(2), 0.1)
+    mpc.setInputLimits(np.array([-3.0]), np.array([3.0]))
+    mpc.setStateWeights(np.array([1.0, 0.1]))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    return mpc
+
+
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_trajectory_input_cost(formulation):
+    T = 12
+    param = ampc.Parameterization.moveBlocking(T, 4, 1.3)
+    mpc = _trajectory_cost_mpc(formulation, param)
+    np.testing.assert_array_equal(mpc.getInputWeights(), [1.0])
+    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), np.zeros((T, 1)))
+    u_ref = 0.5 + 0.1 * np.sin(np.arange(T))
+    mpc.setInputWeights(np.array([0.5]))
+    mpc.setReferenceInputTrajectory(u_traj=u_ref)
+    np.testing.assert_array_equal(mpc.getReferenceInputTrajectory(), u_ref[:, None])
+    assert "input_cost=InputCostMode.Trajectory" in repr(mpc.getOptions())
+    assert "R=[0.5]" in repr(mpc)
+
+    # the cost block of P is Phi^T Phi R and the linear term -Phi^T R u_ref
+    without = _trajectory_cost_mpc(formulation, param, ampc.InputCostMode.Off)
+    x0 = np.array([0.2, 0.0])
+    nc = param.num_control_points
+    try:  # scipy converts P (the sparse extra)
+        import scipy.sparse  # noqa: F401
+    except ImportError:
+        scipy_found = False
+    else:
+        scipy_found = True
+    if scipy_found:
+        qp, qp_without = ampc.QuadraticProgram(), ampc.QuadraticProgram()
+        mpc.assembleQP(x0, qp)
+        without.assembleQP(x0, qp_without)
+        Phi = np.zeros((T, nc))
+        for k in range(T):
+            start = param.band_start[k]
+            Phi[k, start : start + param.band_width] = param.band_weights[:, k]
+        dP = qp.P.toarray()[:nc, :nc] - qp_without.P.toarray()[:nc, :nc]
+        np.testing.assert_allclose(dP, 0.5 * Phi.T @ Phi, atol=1e-12)
+        dq = qp.q[:nc] - qp_without.q[:nc]
+        np.testing.assert_allclose(dq, -0.5 * Phi.T @ u_ref, atol=1e-12)
+
+    assert mpc.initializeSolver()
+    assert mpc.solve(x0) == ampc.SolveStatus.Success
+    assert mpc.getInputTrajectory().shape == (T, 1)
+
+    with pytest.raises(RuntimeError, match="InputCostMode::ControlPoints"):
+        mpc.setReferenceInputControlPoints(np.zeros(nc))
+    control_points = _trajectory_cost_mpc(
+        formulation, param, ampc.InputCostMode.ControlPoints
+    )
+    with pytest.raises(RuntimeError, match="InputCostMode::Trajectory"):
+        control_points.setReferenceInputTrajectory(u_ref)
+    with pytest.raises(RuntimeError, match="not enabled"):
+        without.setReferenceInput(np.zeros(1))
 
 
 def _msd_mpc(formulation):
@@ -250,7 +328,7 @@ def test_input_rate_cost(formulation):
         return mpc.getInputTrajectory()
 
     def variation(u):
-        return np.abs(np.diff(np.concatenate(([0.0], u)))).sum()
+        return np.abs(np.diff(np.concatenate(([0.0], u[:, 0])))).sum()
 
     assert variation(solve(100.0)) < 0.5 * variation(solve(0.01))
 
@@ -285,7 +363,7 @@ def test_partial_and_soft_state_bounds(formulation):
     hard, status = build(opts, np.zeros(2))
     assert status == ampc.SolveStatus.Success
     assert hard.getBoundedStates() == [0]
-    x_traj = hard.getPredictedStateTrajectory().reshape(-1, 2)
+    x_traj = hard.getPredictedStateTrajectory()
     assert x_traj[:, 0].max() == pytest.approx(0.5, abs=1e-7)
 
     soft_opts = ampc.Options(state_bounds=ampc.StateBoundMode.Soft, bounded_states=[0])
@@ -342,8 +420,9 @@ def test_general_and_terminal_constraints(formulation):
     x0 = np.zeros(2)
     assert mpc.solve(x0) == ampc.SolveStatus.Success
 
-    x = mpc.getPredictedStateTrajectory().reshape(T, 2)
-    u = mpc.getInputTrajectory()
+    x = mpc.getPredictedStateTrajectory()
+    assert x.shape == (T, 2)
+    u = mpc.getInputTrajectory()[:, 0]
     g = np.concatenate([[x0[0] + u[0]], x[:-1, 0] + u[1:]])
     assert g.max() <= 3.0 + 1e-7
     assert x[-1, 0] <= 0.8 + 1e-7
@@ -410,9 +489,9 @@ def test_get_and_assemble_qp(formulation):
     z = np.empty(nv)
     for b in mpc.getQPVariableBlocks():
         if b.name == "control_points":
-            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints()
+            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints().ravel()
         else:
-            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory()
+            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory().ravel()
     objective = 0.5 * z @ (qp.P @ z) + qp.q @ z
     assert objective == pytest.approx(mpc.getSolveInfo().objective, rel=1e-9, abs=1e-12)
     Az = qp.A @ z
@@ -437,18 +516,18 @@ def test_assemble_qp_requires_setup():
 def test_mpc_formulation_argument():
     Sparse, Condensed = ampc.Formulation.Sparse, ampc.Formulation.Condensed
     param = ampc.Parameterization.linearInterp(10, 4)
-    opts = ampc.Options(use_input_cost=True)
+    opts = ampc.Options(input_cost=ampc.InputCostMode.ControlPoints)
     cases = [
-        (ampc.MPC(2, 1, param), Condensed, False, 4),
-        (ampc.MPC(2, 1, param, opts), Condensed, True, 4),
-        (ampc.MPC(2, 1, param, opts, formulation=Sparse), Sparse, True, 4),
-        (ampc.MPC(2, 1, param, formulation=Sparse), Sparse, False, 4),
-        (ampc.MPC(state_dim=2, input_dim=1, horizon_steps=10), Condensed, False, 10),
-        (ampc.MPC(2, 1, 10, opts=opts, formulation=Sparse), Sparse, True, 10),
+        (ampc.MPC(2, 1, param), Condensed, ampc.InputCostMode.Off, 4),
+        (ampc.MPC(2, 1, param, opts), Condensed, ampc.InputCostMode.ControlPoints, 4),
+        (ampc.MPC(2, 1, param, opts, formulation=Sparse), Sparse, ampc.InputCostMode.ControlPoints, 4),
+        (ampc.MPC(2, 1, param, formulation=Sparse), Sparse, ampc.InputCostMode.Off, 4),
+        (ampc.MPC(state_dim=2, input_dim=1, horizon_steps=10), Condensed, ampc.InputCostMode.Off, 10),
+        (ampc.MPC(2, 1, 10, opts=opts, formulation=Sparse), Sparse, ampc.InputCostMode.ControlPoints, 10),
     ]
     for mpc, formulation, input_cost, nc in cases:
         assert mpc.getFormulation() == formulation
-        assert mpc.getOptions().use_input_cost == input_cost
+        assert mpc.getOptions().input_cost == input_cost
         assert mpc.num_control_points == nc
         names = [b.name for b in mpc.getQPVariableBlocks()]
         assert ("states" in names) == (formulation == Sparse)
@@ -468,3 +547,40 @@ def test_mpc_logger_records_formulation(tmp_path):
         logger.finalize()
         params = (tmp_path / formulation.name / "params.yaml").read_text()
         assert f"formulation: {formulation.name.lower()}\n" in params
+
+
+def _input_bound_rows(mpc):
+    return next(b.size for b in mpc.getQPConstraintBlocks() if b.name == "input_bounds")
+
+
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_refined_input_bounds(formulation):
+    n, m, T, nc, deg = 2, 1, 60, 6, 2
+    param = ampc.Parameterization.bspline(T, deg, nc)
+    rows = {}
+    for mode in ampc.InputBoundMode:
+        opts = ampc.Options(input_bounds=mode, refined_bound_interval=5)
+        mpc = ampc.MPC(n, m, param, opts, formulation=formulation)
+        Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+        mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
+        mpc.setInputLimits(np.zeros(m), np.full(m, 3.0))
+        mpc.setStateWeights(np.array([1.0, 0.1]))
+        mpc.setReferenceState(np.array([1.0, 0.0]))
+        assert mpc.initializeSolver()
+        assert mpc.solve(np.zeros(n)) == ampc.SolveStatus.Success
+        u = np.zeros(m * T)
+        mpc.getInputTrajectory(u)
+        assert u.min() >= -1e-4 and u.max() <= 3.0 + 1e-4
+        rows[mode] = _input_bound_rows(mpc)
+
+    # 4 intervals of 14.75 samples, each split into 3: 12 + degree rows
+    assert rows[ampc.InputBoundMode.ControlPoints] == nc
+    assert rows[ampc.InputBoundMode.Refined] == 12 + deg
+    assert rows[ampc.InputBoundMode.Exact] == T
+
+
+def test_refined_bound_interval_must_be_positive():
+    param = ampc.Parameterization.bspline(20, 2, 5)
+    opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0)
+    with pytest.raises(ValueError, match="refined_bound_interval must be positive"):
+        ampc.MPC(2, 1, param, opts)

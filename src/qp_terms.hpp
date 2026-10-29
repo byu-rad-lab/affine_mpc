@@ -94,7 +94,7 @@ public:
 };
 
 /// 1/2 sum_i (c_i - c_ref,i)^T R (c_i - c_ref,i) on the control points
-/// (`use_input_cost`).
+/// (InputCostMode::ControlPoints).
 class InputCost final : public QPTerm
 {
 public:
@@ -109,6 +109,72 @@ public:
   }
   void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
   void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
+};
+
+/// A symmetric matrix G on one input channel's control points, added on every
+/// channel's control points times that channel's weight (G (x) diag(w) in the
+/// interleaved layout). G depends only on the basis, so its nonzero entries
+/// are kept once. Used by the cost terms on the sampled inputs.
+class ChannelMatrix
+{
+public:
+  /// Keep the nonzero entries of G (num_control_points square).
+  explicit ChannelMatrix(const Eigen::MatrixXd& G);
+  /// Declare the entries on every channel (allocates the values).
+  void declare(const VectorParameterization& input_param,
+               QPLayout& layout,
+               FormulationImpl& f);
+  /// Add G times weights(ch) on each channel ch.
+  void add(const VectorParameterization& input_param,
+           const Eigen::VectorXd& weights,
+           FormulationImpl& f);
+
+private:
+  struct Entry // a nonzero G(i, j) between control points i and j
+  {
+    int i, j;
+    double value;
+  };
+  std::vector<Entry> G_;
+  // G on each channel's control points (channel by channel, G_'s order), and
+  // its values times the weights
+  QPEntries P_c_;
+  Eigen::VectorXd P_c_values_;
+};
+
+/// The basis sampled densely: Phi(k, i) is the weight of control point i in
+/// the input at step k (horizon_steps x num_control_points). For construction
+/// only.
+Eigen::MatrixXd sampledBasis(const Parameterization& param);
+
+/// 1/2 sum_k (u_k - u_ref,k)^T R (u_k - u_ref,k) over the sampled inputs
+/// k = 0, ..., T-1 (InputCostMode::Trajectory).
+///
+/// Per input channel, the samples are Phi c, so the matrix part is
+/// G = Phi^T Phi times the channel's weight (banded, bandwidth 2 degree + 1
+/// for B-splines; dense for custom bases), and the linear part is
+/// -Phi^T R u_ref, accumulated from the basis band of each sample.
+class InputTrajectoryCost final : public QPTerm
+{
+public:
+  explicit InputTrajectoryCost(const VectorParameterization& input_param);
+  bool isCost() const noexcept override { return true; }
+  DataChangeSet matrixDependsOn(const FormulationImpl&) const override
+  {
+    return DataChange::Weights;
+  }
+  DataChangeSet vectorDependsOn(const FormulationImpl&) const override
+  {
+    return DataChange::Weights | DataChange::References;
+  }
+  void declare(QPLayout& layout, FormulationImpl& f) override;
+  void updateMatrix(const MPCData& d, FormulationImpl& f, QP& qp) override;
+  void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
+
+private:
+  const VectorParameterization& input_param_;
+  ChannelMatrix G_;
+  Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 
 /// 1/2 sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
@@ -138,34 +204,34 @@ public:
   void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
-  struct GEntry // a nonzero G(i, j) between control points i and j
-  {
-    int i, j;
-    double value;
-  };
   struct Phi0Entry // a nonzero Phi_0(i)
   {
     int i;
     double value;
   };
 
+  InputRateCost(const VectorParameterization& input_param,
+                const Eigen::MatrixXd& Phi);
+
   const VectorParameterization& input_param_;
-  std::vector<GEntry> G_;
+  ChannelMatrix G_;
   std::vector<Phi0Entry> phi0_;
-  // G on each channel's control points (channel by channel, G_'s order), and
-  // its values times the weights
-  QPEntries P_c_;
-  Eigen::VectorXd P_c_values_;
   Eigen::VectorXd q_c_; // the linear part, on all coefficients
 };
 
-/// u_min <= input <= u_max, on the control points or, with
-/// InputBoundMode::Exact or a custom basis, on the sampled inputs that
-/// make it exact.
+/// u_min <= M c <= u_max on each input channel's control points c, where the
+/// rows of M are chosen by the InputBoundMode so that bounding M c bounds
+/// every sampled input: the identity (ControlPoints), the sampled basis rows
+/// that make it exact (Exact, or any mode with a custom basis), or the map
+/// from the control points to the refined control points after knot
+/// insertion (Refined, or the sampled rows when those are fewer). M is banded
+/// and depends only on the basis, so it is computed once.
 class InputBounds final : public QPTerm
 {
 public:
-  InputBounds(const VectorParameterization& input_param, InputBoundMode mode);
+  InputBounds(const VectorParameterization& input_param,
+              InputBoundMode mode,
+              int refined_bound_interval);
   void declare(QPLayout& layout, FormulationImpl& f) override;
   DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
@@ -179,10 +245,24 @@ public:
   void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
+  // The rows of M in banded form: row r is the sum over i of weights(i, r)
+  // times control point start[r] + i. Empty: M is the identity.
+  struct BoundRows
+  {
+    std::vector<int> start;
+    Eigen::MatrixXd weights;
+    // leave zero weights out of the pattern (refined rows, whose band often
+    // has exact zeros where no knot was inserted); the sampled rows keep the
+    // whole band
+    bool skip_zeros{false};
+  };
+  static BoundRows boundRows(const VectorParameterization& input_param,
+                             InputBoundMode mode,
+                             int refined_bound_interval);
+
   const VectorParameterization& input_param_;
-  // bounded sample indices (empty: the control points are bounded instead)
-  const std::vector<int> samples_;
-  const int num_bounded_; // number of bounded inputs (samples or points)
+  const BoundRows M_;
+  const int num_bounded_; // number of bounded rows per channel
   ConstantEntries A_;
 };
 

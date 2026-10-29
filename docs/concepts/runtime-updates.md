@@ -44,6 +44,9 @@ In practice this means:
 - existing nonzero entries may change value
 - new nonzero positions cannot be introduced through runtime updates
 
+The optional DAQP solver (condensed formulation, C++ only; see [Choosing the QP solver](../usage.md#choosing-the-qp-solver)) uses the dense $P$ and the dense general rows of $A_\mathrm{qp}$ as they are, so their values may change anywhere.
+It fixes one structural choice at initialization instead: rows of $A_\mathrm{qp}$ with a single nonzero become bounds on that variable, so such a row must keep its single nonzero (`isWithinSparsityPattern()` checks this).
+
 ## Which User Inputs Affect QP Structure?
 
 The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
@@ -173,7 +176,7 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $A$, $B$, $\mathbf{w}$                               | `setModelDiscrete()`, `setModelContinuous2Discrete()`     |
 | $\mathbf{w}$ only                                    | `setModelOffsetDiscrete()`, `setModelOffsetContinuous2Discrete()` |
 | $\mathbf{x}_{\mathrm{ref}}$                          | `setReferenceState()`, `setReferenceStateTrajectory()`    |
-| $\mathbf{c}_{\mathrm{ref}}$                          | `setReferenceInput()`, `setReferenceInputControlPoints()` |
+| $\mathbf{c}_{\mathrm{ref}}$ or $\mathbf{u}_{\mathrm{ref}}$   | `setReferenceInput()`, `setReferenceInputControlPoints()`, `setReferenceInputTrajectory()` |
 | $Q$, $Q_{\mathrm{f}}$                                | `setWeights()`, `setStateWeights()`                       |
 | $R$                                                  | `setWeights()`, `setInputWeights()`                       |
 | $\mathbf{x}_\mathrm{min}$, $\mathbf{x}_\mathrm{max}$ | `setStateLimits()`                                        |

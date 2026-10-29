@@ -35,7 +35,7 @@ def test_bspline_mpc_interface():
                 horizon_steps=T, degree=deg, num_control_points=nc
             ),
             opts=ampc.Options(
-                use_input_cost=True,
+                input_cost=ampc.InputCostMode.ControlPoints,
                 slew_initial_input=True,
                 slew_control_points=True,
                 state_bounds=ampc.StateBoundMode.Hard,

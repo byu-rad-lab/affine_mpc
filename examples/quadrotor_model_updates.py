@@ -257,7 +257,7 @@ def build_mpc(dt, rng):
     param = ampc.Parameterization.bspline(
         horizon_steps, degree=2, num_control_points=8, knot_ratio=1.5
     )
-    mpc = ampc.MPC(N_STATES, N_INPUTS, param, ampc.Options(use_input_cost=True))
+    mpc = ampc.MPC(N_STATES, N_INPUTS, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
     # Initialize with a model at a random point so that the QP sparsity pattern
     # covers every entry that becomes nonzero away from hover.
     x_rand = rng.uniform(-0.5, 0.5, N_STATES)
@@ -335,7 +335,7 @@ def simulate(strategy, rate, duration, delay_scale, seed, save_dir, progress=Non
             x[9:12] += KICK
         # Work before the measurement: references (and for the predicted
         # strategies the model, see the end of the loop) are applied by prepare().
-        mpc.setReferenceStateTrajectory(x_ref[k + 1 : k + 1 + horizon_steps].ravel())
+        mpc.setReferenceStateTrajectory(x_ref[k + 1 : k + 1 + horizon_steps])
         mpc.setReferenceInput(u_ref[k])
         if strategy in ("predicted", "hybrid"):
             mpc.prepare()

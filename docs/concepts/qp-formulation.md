@@ -319,6 +319,23 @@ $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+
+**Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
+
+$$
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\leq
+\underbrace{
+    \begin{bmatrix} \Gamma \otimes I_m & \mathbf{0}_{m\eta_{\mathrm{r}} \times nT} \end{bmatrix}
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
+\leq
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+$$
+
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -676,6 +693,23 @@ $$
 
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+
+**Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
+
+$$
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\leq
+\underbrace{
+    \Gamma \otimes I_m
+}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
+\leq
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+$$
+
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
 ### Slew Initial Input
@@ -817,6 +851,28 @@ With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)
 $G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
 The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
 
+## Input Cost on the Sampled Inputs
+
+The derivations above use the input cost on the control points (`InputCostMode::ControlPoints`), whose block of $P$ is $\bar{R} = I_\eta \otimes R$.
+With `InputCostMode::Trajectory`, the input cost is evaluated on the sampled inputs $\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}$ instead.
+Like the rate cost, it only involves the control points, so it adds the same terms to both formulations.
+With $\bar{R}_T = I_T \otimes R$ and the stacked sampled reference $\mathbf{u}_{\mathrm{ref}}$,
+
+$$
+J_u
+    = (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})^\top \bar{R}_T (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})
+    = \mathbf{c}^\top \Psi^{p\top} \bar{R}_T \Psi^p \, \mathbf{c}
+    - 2 \left( \Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}} \right)^\top \mathbf{c}
+    + \text{const}.
+$$
+
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^{p\top} \bar{R}_T \Psi^p$ in place of $\bar{R}$, and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}}$ in place of $-\bar{R} \mathbf{c}_{\mathrm{ref}}$.
+
+With one basis shared by every input, $\Psi^{p\top} \bar{R}_T \Psi^p = \Phi^\top \Phi \otimes R$, where $\Phi$ is the $T \times \eta$ basis.
+$\Phi^\top \Phi$ depends only on the basis, so it is computed once and declared in the sparsity pattern at construction; a weight change only rescales it.
+For a B-spline of degree $p$ it is banded with bandwidth $2p + 1$ (diagonal for degree 0, where its entries are the block lengths of move-blocking), and it is dense for a custom basis.
+A reference change only updates $\mathbf{q}$, accumulated sample by sample from the band of $\Phi$, so it needs no matrix update or refactorization.
+
 ## General and Terminal Constraints
 
 The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
@@ -855,7 +911,7 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
 | `state_slacks` | variables | soft state bounds: one slack per bounded state |
 | `dynamics` | rows | sparse formulation only: the model as equality rows |
-| `input_bounds` | rows | input limits on the control points or the sampled inputs |
+| `input_bounds` | rows | input limits on the control points, the sampled inputs, or the refined control points |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
 | `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |

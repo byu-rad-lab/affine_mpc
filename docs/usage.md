@@ -76,7 +76,7 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
 
     ```python
     opts = affine_mpc.Options(
-        use_input_cost=True,
+        input_cost=affine_mpc.InputCostMode.ControlPoints,
         input_bounds=affine_mpc.InputBoundMode.ControlPoints,
         slew_initial_input=False,
         slew_control_points=True,
@@ -88,15 +88,16 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
 
     ```cpp
     affine_mpc::Options opts;
-    opts.use_input_cost = true;
+    opts.input_cost = affine_mpc::InputCostMode::ControlPoints;
     opts.input_bounds = affine_mpc::InputBoundMode::ControlPoints;
     opts.slew_initial_input = false;
     opts.slew_control_points = true;
     opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
-The options are grouped into costs (`use_input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
 In Python they are keyword arguments; in C++20, designated initializers must follow this order.
+`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Exact`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
@@ -182,6 +183,7 @@ An optional fifth argument, `tol` (default `1e-10`), sets the truncation toleran
 The default gives results close to machine precision.
 If you update the affine approximation and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
 If only the model offset changes between solves (with $A$ and $B$ fixed), set it with `setModelOffsetDiscrete(wd)` or `setModelOffsetContinuous2Discrete(wc)` instead, which avoids rebuilding and refactoring the QP (see [Runtime Updates](concepts/runtime-updates.md#what-can-change-between-solves)).
+In Python, model matrices written in place into Fortran-order arrays avoid a copy on every call (see [Interface Notes](#interface-notes)).
 
 The same discretization is available on its own as `Discretizer`, e.g. to simulate the plant or to discretize a model before passing it to several MPC objects:
 
@@ -341,35 +343,44 @@ State step reference:
     ```
 
 State trajectory reference:
+In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\mathbf{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
+In C++, they are matrices with one column per step, e.g. `x_traj.col(k)` in a `state_dim x horizon_steps` matrix.
+Both also accept the stacked layout (`horizon_steps * state_dim` values, step after step), which has the same memory as either one, so a whole matrix or array is copied in one pass.
 
 === "Python"
 
     ```python
-    mpc.setReferenceStateTrajectory(x_traj)
+    mpc.setReferenceStateTrajectory(x_traj)  # (horizon_steps, state_dim) or flat
     ```
 
 === "C++"
 
     ```cpp
-    mpc.setReferenceStateTrajectory(x_traj);
+    mpc.setReferenceStateTrajectory(x_traj); // state_dim x horizon_steps, or stacked
     ```
 
-If input cost is enabled, input references can also be configured (with a [custom basis](concepts/input-parameterization.md#custom-bases), only `setReferenceInputControlPoints()`, which sets the coefficient references):
+If input cost is enabled, input references can also be configured.
+`setReferenceInput()` sets a constant reference in both modes (with `InputCostMode::ControlPoints` and a [custom basis](concepts/input-parameterization.md#custom-bases) it throws; use `setReferenceInputControlPoints()` there).
+`setReferenceInputControlPoints()` works only with `InputCostMode::ControlPoints`, and `setReferenceInputTrajectory()` only with `InputCostMode::Trajectory` (see [Input Cost](concepts/problem-formulation.md#input-cost)):
 
 === "Python"
 
     ```python
     mpc.setReferenceInput(u_step)
-    # OR
+    # OR, with InputCostMode.ControlPoints, (num_control_points, input_dim)
     mpc.setReferenceInputControlPoints(control_points)
+    # OR, with InputCostMode.Trajectory, (horizon_steps, input_dim)
+    mpc.setReferenceInputTrajectory(u_traj)
     ```
 
 === "C++"
 
     ```cpp
     mpc.setReferenceInput(u_step);
-    // OR
+    // OR, with InputCostMode::ControlPoints, input_dim x num_control_points
     mpc.setReferenceInputControlPoints(control_points);
+    // OR, with InputCostMode::Trajectory, input_dim x horizon_steps
+    mpc.setReferenceInputTrajectory(u_traj);
     ```
 
 ### 5. Initialize the solver
@@ -409,6 +420,39 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```
 
+#### Choosing the QP solver
+
+OSQP is the default solver for both formulations.
+For the condensed formulation, the C++ interface can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver.
+DAQP is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
+It is not available from Python yet.
+
+```cpp
+#include "affine_mpc/daqp_solver.hpp"
+
+affine_mpc::DAQPSettings daqp_settings; // DAQP's defaults
+if (!mpc.initializeSolver(std::make_unique<affine_mpc::DAQPSolver>(daqp_settings))) {
+  /* handle the error */
+}
+```
+
+`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface.
+Passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+
+!!! warning "Experimental interface"
+    Writing your own `QPSolver` is experimental: the interface passes the library's internal QP type and may change in any minor release.
+    Passing `OSQPSolver` or `DAQPSolver` to `initializeSolver()` is stable.
+
+Prefer DAQP for condensed problems of moderate size, where its active-set iterations return the solution to its tolerance (1e-6 on the constraints by default) instead of the approximate solution of OSQP's first-order iterations.
+In our measurements on this library's mass-spring-damper example (`examples/sim.cpp`), a `solve()` call with DAQP was more than ten times faster than with OSQP.
+DAQP's work grows with the cube of the number of QP variables (control points and slacks) and with the number of active constraints, so OSQP, or the sparse formulation, remains the choice for long horizons with many control points.
+
+DAQP needs a positive definite cost matrix `P` for its standard iterations.
+When `P` is only positive semidefinite (for example with `InputCostMode::Off` and some states unweighted, or soft state limits with only an L1 penalty), DAQP detects this while factorizing `P` and switches to proximal-point iterations, which still find a minimizer.
+`DAQPSettings::eps_prox` controls this: negative (the default) uses them only when needed, positive always, and zero never, in which case a singular `P` makes `initializeSolver()` return false (or `solve()` return `UpdateFailed` after a weight or model change).
+
+`resetWarmStart()` empties DAQP's working set (the constraints it starts from), and `SolveInfo::qp_solve_time` is DAQP's own solve time, which excludes factorizing `P` after a weight or model change.
+
 ### 6. Solve in the control loop
 
 Configuration misuse tends to throw exceptions, but `solve()` returns a `SolveStatus` type rather than throwing since it
@@ -416,7 +460,7 @@ is in the main runtime loop. Common cases include:
 
 - `Success`
 - `NotInitialized` (`solve()` was called prior to `initializeSolver()`)
-- `UpdateFailed` (OSQP rejected an update to the QP data, often from non-finite model or weight values; the QP was not solved, and the update is retried at the next solve, which usually recovers once the values are valid again)
+- `UpdateFailed` (the solver rejected an update to the QP data, often from non-finite model or weight values; the QP was not solved, and the update is retried at the next solve, which usually recovers once the values are valid again)
 - OSQP-derived failure conditions (see [OSQP documentation](https://osqp.org/docs/interfaces/status_values.html#status-values))
 
 How to respond to a failed solve depends on the application.
@@ -477,23 +521,25 @@ You can also access the full input and predicted state trajectories:
 === "Python"
 
     ```python
-    u_traj = mpc.getInputTrajectory()
-    u_control_points = mpc.getInputControlPoints()
-    x_pred = mpc.getPredictedStateTrajectory()
+    u_traj = mpc.getInputTrajectory()  # (horizon_steps, input_dim)
+    u_control_points = mpc.getInputControlPoints()  # (num_control_points, input_dim)
+    x_pred = mpc.getPredictedStateTrajectory()  # (horizon_steps, state_dim), x_1 first
     ```
 
 === "C++"
 
     ```cpp
-    Eigen::VectorXd u_traj(input_dim * horizon_steps);
+    Eigen::MatrixXd u_traj(input_dim, horizon_steps); // column k is u_k
     mpc.getInputTrajectory(u_traj);
 
-    Eigen::VectorXd u_control_points(input_dim * num_control_points);
+    Eigen::MatrixXd u_control_points(input_dim, num_control_points);
     mpc.getInputControlPoints(u_control_points);
 
-    Eigen::VectorXd x_pred(state_dim * horizon_steps);
+    Eigen::MatrixXd x_pred(state_dim, horizon_steps); // column k is x_{k+1}
     mpc.getPredictedStateTrajectory(x_pred);
     ```
+
+    A stacked `Eigen::VectorXd` (e.g. `state_dim * horizon_steps`) works as well, and so do whole columns of a larger matrix (`X.middleCols(j, horizon_steps)`); a block with fewer rows than its matrix is rejected, since the getters write in place.
 
 Solver diagnostics from the last solve (status, iterations, objective, and timing) are available as a `SolveInfo`:
 
@@ -513,7 +559,7 @@ Solver diagnostics from the last solve (status, iterations, objective, and timin
     ```
 
 `objective` is the QP objective, which omits constant terms of the MPC cost, so use it to compare solves with the same initial state and references rather than as the absolute MPC cost.
-`qp_solve_time` is the time OSQP spent solving (zero if OSQP is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
+`qp_solve_time` is the time the QP solver spent solving (for OSQP zero if it is built without profiling), and `mpc_solve_time` is the whole `solve()` call, so `mpc_solve_time - qp_solve_time` is the library's own overhead (QP assembly, data updates, and refactorization).
 Setters only store their values and the QP is updated in `solve()`, so `mpc_solve_time` covers essentially all of the MPC's work.
 The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
 If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
@@ -577,7 +623,7 @@ See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
     ```python
     uk = mpc.getNextInput()  # most common
     u_traj = mpc.getInputTrajectory()
-    u_traj_ctrl_pts = mpc.getParameterizedInputTrajectory()
+    u_control_points = mpc.getInputControlPoints()
     x_pred = mpc.getPredictedStateTrajectory()
     ```
 
@@ -586,9 +632,29 @@ See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
     ```python
     uk = np.empty(m)
     mpc.getNextInput(uk)  # uk is also returned
+    x_pred = np.empty((T, n))  # or flat np.empty(T * n)
+    mpc.getPredictedStateTrajectory(x_pred)
     ```
 
+    The trajectory getters write in place, so their array must be a writable, C-contiguous `float64` array of the right shape (they raise `ValueError` otherwise, instead of converting it).
+
     The in-place form can be useful if you want to reuse arrays in tight loops for extra performance.
+
+    Vectors and per-step trajectories of vectors (e.g. `x_traj` of shape `(T, n)`) in NumPy's default C order are passed without a copy.
+    Matrix arguments are different: Eigen stores matrices column-major, and NumPy arrays are row-major (C order) by default, so a matrix such as `Ad`, `Bd`, `Ac`, `Bc`, `Hx`, `Hu`, `Hf`, or a basis is copied into a temporary on each call.
+    If your code writes a model into existing arrays at every control update, allocate them once in Fortran order, so they are used without that copy:
+
+    ```python
+    Ad = np.zeros((n, n), order="F")  # allocate once, outside the loop
+    Bd = np.zeros((n, m), order="F")
+    wd = np.zeros(n)
+    while running:
+        affine_model(x, u, Ad, Bd, wd)  # your code writes the entries in place, e.g. Ad[1, 0] = -k / mass
+        mpc.setModelDiscrete(Ad, Bd, wd)
+    ```
+
+    If your code returns new arrays (e.g. from JAX or CasADi), pass them to the setter directly: copying them into Fortran-order arrays costs about as much as the copy it avoids.
+    The copy is small next to a solve (about a microsecond for a 12-state model), so this only matters when you time a Python loop.
 
 === "C++"
 

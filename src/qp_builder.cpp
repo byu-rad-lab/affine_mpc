@@ -99,10 +99,13 @@ QPBuilder::QPBuilder(const Formulation kind,
   // block once instead of zeroing it first for InputCost's diagonal
   if (opts.use_input_rate_cost)
     add<InputRateCost>(layout, input_param);
-  if (opts.use_input_cost)
+  if (opts.input_cost == InputCostMode::ControlPoints)
     add<InputCost>(layout);
-  rows_.input_bounds =
-      add<InputBounds>(layout, input_param, opts.input_bounds).rows();
+  else if (opts.input_cost == InputCostMode::Trajectory)
+    add<InputTrajectoryCost>(layout, input_param);
+  rows_.input_bounds = add<InputBounds>(layout, input_param, opts.input_bounds,
+                                        opts.refined_bound_interval)
+                           .rows();
   if (opts.slew_initial_input)
     rows_.initial_slew = add<InitialSlew>(layout, input_param).rows();
   if (opts.slew_control_points)

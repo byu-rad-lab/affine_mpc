@@ -105,14 +105,14 @@ TEST(MPCTester, givenConfiguration_GettersReturnSetValues)
 {
   const int n{2}, m{2}, T{6}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
-  const ampc::Options opts{.use_input_cost = true,
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
                            .slew_control_points = true,
                            .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, param, opts};
 
   const ampc::Options& got{base.getOptions()};
-  EXPECT_EQ(got.use_input_cost, opts.use_input_cost);
+  EXPECT_EQ(got.input_cost, opts.input_cost);
   EXPECT_EQ(got.slew_initial_input, opts.slew_initial_input);
   EXPECT_EQ(got.slew_control_points, opts.slew_control_points);
   EXPECT_EQ(got.state_bounds, opts.state_bounds);
@@ -165,7 +165,10 @@ TEST(MPCTester, givenDisabledOptions_OptionalGettersThrow)
                               "Input cost is not enabled");
   expectLogicErrorWithMessage(
       [&]() { (void)base.getReferenceInputControlPoints(); },
-      "Input cost is not enabled");
+      "Requires input_cost to be InputCostMode::ControlPoints");
+  expectLogicErrorWithMessage(
+      [&]() { (void)base.getReferenceInputTrajectory(); },
+      "Requires input_cost to be InputCostMode::Trajectory");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMin(); },
                               "State bounds are not enabled");
   expectLogicErrorWithMessage([&]() { (void)base.getStateMax(); },
@@ -184,7 +187,7 @@ TEST(MPCTester, givenDisabledOptions_OptionalGettersThrow)
 TEST(MPCTester, givenSetters_MarkTheirChangeCategoriesOnly)
 {
   const int n{2}, m{1};
-  const ampc::Options opts{.use_input_cost = true,
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
                            .slew_control_points = true,
                            .state_bounds = ampc::StateBoundMode::Hard};
@@ -437,7 +440,8 @@ TEST(MPCTester, givenInvalidDiscretizationArgs_Throws)
 TEST(MPCTester, givenQandR_FormsQbigAndRbigCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
   Eigen::Vector2d Q{1, 2}, R{3, 4};
   base.setWeights(Q, R);
 
@@ -457,27 +461,45 @@ TEST(MPCConstructorTester, givenEachConstructor_StoresFormulationAndOptions)
 {
   using ampc::Formulation;
   const auto param{ampc::Parameterization::linearInterp(10, 4)};
-  const ampc::Options opts{.use_input_cost = true};
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints};
   struct Case
   {
     ampc::MPC mpc;
     Formulation formulation;
-    bool input_cost;
+    ampc::InputCostMode input_cost;
     int num_control_points;
   };
   const Case cases[]{
-      {{2, 1, param}, Formulation::Condensed, false, 4},
-      {{2, 1, param, opts}, Formulation::Condensed, true, 4},
-      {{2, 1, param, opts, Formulation::Sparse}, Formulation::Sparse, true, 4},
-      {{2, 1, param, Formulation::Sparse}, Formulation::Sparse, false, 4},
-      {{2, 1, 10}, Formulation::Condensed, false, 10},
-      {{2, 1, 10, opts}, Formulation::Condensed, true, 10},
-      {{2, 1, 10, opts, Formulation::Sparse}, Formulation::Sparse, true, 10},
-      {{2, 1, 10, Formulation::Sparse}, Formulation::Sparse, false, 10},
+      {{2, 1, param}, Formulation::Condensed, ampc::InputCostMode::Off, 4},
+      {{2, 1, param, opts},
+       Formulation::Condensed,
+       ampc::InputCostMode::ControlPoints,
+       4},
+      {{2, 1, param, opts, Formulation::Sparse},
+       Formulation::Sparse,
+       ampc::InputCostMode::ControlPoints,
+       4},
+      {{2, 1, param, Formulation::Sparse},
+       Formulation::Sparse,
+       ampc::InputCostMode::Off,
+       4},
+      {{2, 1, 10}, Formulation::Condensed, ampc::InputCostMode::Off, 10},
+      {{2, 1, 10, opts},
+       Formulation::Condensed,
+       ampc::InputCostMode::ControlPoints,
+       10},
+      {{2, 1, 10, opts, Formulation::Sparse},
+       Formulation::Sparse,
+       ampc::InputCostMode::ControlPoints,
+       10},
+      {{2, 1, 10, Formulation::Sparse},
+       Formulation::Sparse,
+       ampc::InputCostMode::Off,
+       10},
   };
   for (const Case& c : cases) {
     EXPECT_EQ(c.mpc.getFormulation(), c.formulation);
-    EXPECT_EQ(c.mpc.getOptions().use_input_cost, c.input_cost);
+    EXPECT_EQ(c.mpc.getOptions().input_cost, c.input_cost);
     EXPECT_EQ(c.mpc.getNumControlPoints(), c.num_control_points);
     EXPECT_EQ(c.mpc.getHorizonSteps(), 10);
     EXPECT_STREQ(c.mpc.getClassName(), "MPC");
@@ -490,7 +512,7 @@ TEST(MPCConstructorTester, givenEachConstructor_StoresFormulationAndOptions)
 TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
 {
   const ampc::Parameterization param{5, 1, 3};
-  const ampc::Options opts{.use_input_cost = true,
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
                            .slew_control_points = true,
                            .state_bounds = ampc::StateBoundMode::Hard};
@@ -520,8 +542,9 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, "
+            "  options = Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "refined_bound_interval=16, "
             "slew_initial_input=true, slew_control_points=true, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
@@ -542,8 +565,9 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "MPC(formulation=Condensed, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, "
+            "options=Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "refined_bound_interval=16, "
             "slew_initial_input=true, slew_control_points=true, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
@@ -561,8 +585,9 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  input_dim = 1\n"
             "  parameterization = Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4])\n"
-            "  options = Options(use_input_cost=true, "
+            "  options = Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "refined_bound_interval=16, "
             "slew_initial_input=true, slew_control_points=true, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
@@ -583,8 +608,9 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "MPC(formulation=Sparse, state_dim=2, input_dim=1, "
             "parameterization=Parameterization(horizon_steps=5, degree=1, "
             "num_control_points=3, knots=[0, 0, 2, 4, 4]), "
-            "options=Options(use_input_cost=true, "
+            "options=Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
+            "refined_bound_interval=16, "
             "slew_initial_input=true, slew_control_points=true, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
@@ -597,7 +623,8 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
 TEST(MPCTester, askedToUpdateTrajectories_updatesCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   Eigen::Vector2d x_des{1, 2}, u_des{3, 4};
   base.setReferenceState(x_des);
@@ -612,6 +639,42 @@ TEST(MPCTester, askedToUpdateTrajectories_updatesCorrectly)
                               base.getReferenceStateTrajectory(), 1e-6));
   ASSERT_TRUE(expectEigenNear(u_traj_expected,
                               base.getReferenceInputControlPoints(), 1e-6));
+}
+
+TEST(MPCTester, givenStackedOrMatrixReferences_StoresTheSameTrajectory)
+{
+  const int n{2}, m{2}, T{4}, nc{3}, deg{1};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
+
+  // column k of the matrix is step k, the same memory as the stacked vector
+  const MatrixXd X{MatrixXd::Random(n, T)};
+  const VectorXd x{X.reshaped()};
+  base.setReferenceStateTrajectory(x);
+  ASSERT_TRUE(expectEigenNear(x, base.getReferenceStateTrajectory(), 0));
+  base.setReferenceStateTrajectory(2 * X);
+  ASSERT_TRUE(expectEigenNear(2 * x, base.getReferenceStateTrajectory(), 0));
+  // a block of a larger matrix (its columns are not contiguous)
+  MatrixXd big{MatrixXd::Zero(n + 3, T + 2)};
+  big.block(1, 2, n, T) = 3 * X;
+  base.setReferenceStateTrajectory(big.block(1, 2, n, T));
+  ASSERT_TRUE(expectEigenNear(3 * x, base.getReferenceStateTrajectory(), 0));
+  expectInvalidArgumentWithMessage(
+      [&]() { base.setReferenceStateTrajectory(X.transpose()); },
+      "[MPC::setReferenceStateTrajectory] x_traj must be 8x1 or 2x4, got "
+      "4x2.");
+
+  const MatrixXd C{MatrixXd::Random(m, nc)};
+  base.setReferenceInputControlPoints(C);
+  ASSERT_TRUE(
+      expectEigenNear(C.reshaped(), base.getReferenceInputControlPoints(), 0));
+
+  MPCTester trajectory{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::Trajectory}};
+  const MatrixXd U{MatrixXd::Random(m, T)};
+  trajectory.setReferenceInputTrajectory(U);
+  ASSERT_TRUE(expectEigenNear(U.reshaped(),
+                              trajectory.getReferenceInputTrajectory(), 0));
 }
 
 TEST(MPCTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
@@ -640,7 +703,8 @@ TEST(MPCTester, givenStateWeights_FormsQbigWithTerminalCostCorrectly)
 TEST(MPCTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   Eigen::Vector<double, 1> R{3.0};
 
@@ -656,7 +720,8 @@ TEST(MPCTester, givenInputWeights_FormsQbigWithTerminalCostCorrectly)
 TEST(MPCTester, givenAllWeights_FormsQbigWithTerminalCostCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   Eigen::Vector2d Q{1.0, 2.0}, Qf{10.0, 20.0};
   Eigen::Vector<double, 1> R{3.0};
@@ -721,7 +786,82 @@ TEST(MPCTester, inputCostDisabledButUsed_Throws)
                               "Input cost is not enabled");
   expectLogicErrorWithMessage(
       [&base, &R]() { base.setReferenceInputControlPoints(R); },
-      "Input cost is not enabled");
+      "Requires input_cost to be InputCostMode::ControlPoints");
+  expectLogicErrorWithMessage(
+      [&base]() { base.setReferenceInputTrajectory(VectorXd::Ones(T)); },
+      "Requires input_cost to be InputCostMode::Trajectory");
+}
+
+TEST(MPCTester, givenInputCostMode_ReferenceSettersOfTheOtherModeThrow)
+{
+  const int n{2}, m{1}, T{4}, nc{2}, deg{1};
+  MPCTester control_points{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
+  expectLogicErrorWithMessage(
+      [&]() { control_points.setReferenceInputTrajectory(VectorXd::Ones(T)); },
+      "[MPC::setReferenceInputTrajectory] Requires input_cost to be "
+      "InputCostMode::Trajectory");
+  expectLogicErrorWithMessage(
+      [&]() { (void)control_points.getReferenceInputTrajectory(); },
+      "Requires input_cost to be InputCostMode::Trajectory");
+
+  MPCTester trajectory{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::Trajectory}};
+  expectLogicErrorWithMessage(
+      [&]() { trajectory.setReferenceInputControlPoints(VectorXd::Ones(nc)); },
+      "[MPC::setReferenceInputControlPoints] Requires input_cost to be "
+      "InputCostMode::ControlPoints");
+  expectLogicErrorWithMessage(
+      [&]() { (void)trajectory.getReferenceInputControlPoints(); },
+      "Requires input_cost to be InputCostMode::ControlPoints");
+  expectInvalidArgumentWithMessage(
+      [&]() { trajectory.setReferenceInputTrajectory(VectorXd::Ones(nc)); },
+      "u_traj must be 4x1 or 1x4, got 2x1.");
+  expectInvalidArgumentWithMessage(
+      [&]() { trajectory.setInputWeights(VectorXd::Constant(1, -1.0)); },
+      "must be non-negative");
+
+  // defaults: unit weights and a zero reference, then the set values
+  EXPECT_TRUE(
+      expectEigenNear(trajectory.getInputWeights(), VectorXd::Ones(m), 0.0));
+  EXPECT_TRUE(expectEigenNear(trajectory.getReferenceInputTrajectory(),
+                              VectorXd::Zero(m * T), 0.0));
+  trajectory.setInputWeights(VectorXd::Constant(1, 2.5));
+  EXPECT_TRUE(expectEigenNear(trajectory.getInputWeights(),
+                              VectorXd::Constant(1, 2.5), 0.0));
+  trajectory.setReferenceInput(VectorXd::Constant(1, 0.7));
+  EXPECT_TRUE(expectEigenNear(trajectory.getReferenceInputTrajectory(),
+                              VectorXd::Constant(m * T, 0.7), 0.0));
+  const VectorXd u_traj{VectorXd::LinSpaced(m * T, -1.0, 1.0)};
+  trajectory.setReferenceInputTrajectory(u_traj);
+  EXPECT_TRUE(
+      expectEigenNear(trajectory.getReferenceInputTrajectory(), u_traj, 0.0));
+}
+
+TEST(MPCTester, givenTrajectoryInputCost_SettersMarkTheirChangeCategoriesOnly)
+{
+  const int n{2}, m{1}, T{5};
+  MPCTester base{n,
+                 m,
+                 ampc::Parameterization::linearInterp(T, 3),
+                 {.input_cost = ampc::InputCostMode::Trajectory}};
+  using ampc::detail::DataChange;
+  base.applyChanges();
+  const VectorXd v1{VectorXd::Ones(m)};
+
+  base.setInputWeights(v1);
+  EXPECT_EQ(base.getPendingChanges(), DataChange::Weights);
+  base.applyChanges();
+  base.setWeights(Vector2d::Ones(), v1);
+  EXPECT_EQ(base.getPendingChanges(), DataChange::Weights);
+  base.applyChanges();
+  base.setReferenceInput(v1);
+  EXPECT_EQ(base.getPendingChanges(), DataChange::References);
+  base.applyChanges();
+  base.setReferenceInputTrajectory(VectorXd::Ones(m * T));
+  EXPECT_EQ(base.getPendingChanges(), DataChange::References);
+  base.applyChanges();
+  EXPECT_TRUE(base.getPendingChanges().empty());
 }
 
 TEST(MPCTester, initialSlewRateDisabledButUsed_Throws)
@@ -823,7 +963,8 @@ TEST(MPCTester, givenInvalidStateWeights_Throws)
 TEST(MPCTester, givenInvalidInputWeights_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   Eigen::Vector<double, 1> R{-1};
   expectInvalidArgumentWithMessage([&base, &R]() { base.setInputWeights(R); },
@@ -833,7 +974,7 @@ TEST(MPCTester, givenInvalidInputWeights_Throws)
 TEST(MPCTester, givenWrongSizeArguments_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  const ampc::Options opts{.use_input_cost = true,
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
                            .slew_control_points = true,
                            .state_bounds = ampc::StateBoundMode::Hard};
@@ -874,12 +1015,12 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
                                    "x_step must have size 2");
   expectInvalidArgumentWithMessage(
       [&]() { base.setReferenceStateTrajectory(x2); },
-      "x_traj must have size 8");
+      "x_traj must be 8x1 or 2x4, got 2x1.");
   expectInvalidArgumentWithMessage([&]() { base.setReferenceInput(u2); },
                                    "u_step must have size 1");
   expectInvalidArgumentWithMessage(
       [&]() { base.setReferenceInputControlPoints(u2); },
-      "control_points must have size 3");
+      "control_points must be 3x1 or 1x3, got 2x1.");
 
   expectInvalidArgumentWithMessage([&]() { base.setInputLimits(u2, u1); },
                                    "u_min must have size 1");
@@ -1383,7 +1524,8 @@ TEST(MPCTester, givenModel_PropagateModelAllowsAliasing)
 TEST(MPCTester, givenInputControlPointsReference_SetsUgoalCorrectly)
 {
   const int n{2}, m{2}, T{3}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   VectorXd u_ctrl_pts{m * nc};
   u_ctrl_pts << 1.0, 2.0, 3.0, 4.0, 5.0, 6.0;
@@ -1402,7 +1544,8 @@ TEST(MPCTester,
   // sets the full control-point vector directly. Verify they differ for a
   // non-trivial target.
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.use_input_cost = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.input_cost = ampc::InputCostMode::ControlPoints}};
 
   VectorXd u_step{m};
   u_step << 2.0;

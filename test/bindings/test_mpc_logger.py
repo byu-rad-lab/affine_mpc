@@ -13,8 +13,8 @@ def _has_zlib() -> bool:
     return os.environ.get("AFFINE_MPC_HAS_ZLIB") == "1"
 
 
-def _make_mpc(use_input_cost: bool = True) -> ampc.MPC:
-    opts = ampc.Options(use_input_cost=use_input_cost)
+def _make_mpc(input_cost: ampc.InputCostMode = ampc.InputCostMode.ControlPoints) -> ampc.MPC:
+    opts = ampc.Options(input_cost=input_cost)
     mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
 
     A = np.array([[1.0, 0.1], [0.0, 1.0]])
@@ -23,7 +23,7 @@ def _make_mpc(use_input_cost: bool = True) -> ampc.MPC:
     ts = 0.1
     mpc.setModelContinuous2Discrete(A, B, w, ts)
     mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
-    if use_input_cost:
+    if input_cost != ampc.InputCostMode.Off:
         mpc.setWeights(np.ones(2), np.ones(1))
     else:
         mpc.setStateWeights(np.ones(2))
@@ -38,10 +38,10 @@ def _log_single_step(
     *,
     prediction_stride: int,
     log_control_points: bool,
-    use_input_cost: bool = True,
+    input_cost: ampc.InputCostMode = ampc.InputCostMode.ControlPoints,
     mode: ampc.MPCLogger.Mode = ampc.MPCLogger.Mode.NpzCompressed,
 ):
-    mpc = _make_mpc(use_input_cost=use_input_cost)
+    mpc = _make_mpc(input_cost=input_cost)
     logger = ampc.MPCLogger(
         mpc=mpc,
         save_dir=save_dir,
@@ -68,7 +68,7 @@ def test_mpc_logger_interface():
             "log",
             prediction_stride=1,
             log_control_points=False,
-            use_input_cost=True,
+            input_cost=ampc.InputCostMode.ControlPoints,
         )
 
         assert param_path.exists()
@@ -94,7 +94,7 @@ def test_mpc_logger_npz_contents_default_stride():
 
 def test_mpc_logger_logs_timing():
     with tempfile.TemporaryDirectory() as tmpdir:
-        mpc = _make_mpc(use_input_cost=True)
+        mpc = _make_mpc(input_cost=ampc.InputCostMode.ControlPoints)
         logger = ampc.MPCLogger(mpc=mpc, save_dir=Path(tmpdir), ts=0.1)
         x0 = np.array([1.0, 0.5])
         infos = []
@@ -175,7 +175,7 @@ def test_mpc_logger_without_input_cost():
             "no_input_cost",
             prediction_stride=1,
             log_control_points=False,
-            use_input_cost=False,
+            input_cost=ampc.InputCostMode.Off,
         )
 
         with np.load(npz_path, allow_pickle=False) as data:
@@ -260,3 +260,43 @@ def test_log_step_before_initialize_raises():
         with pytest.raises(RuntimeError, match="must be initialized"):
             logger.logStep(t=0.0, x0=np.array([1.0, 0.5]))
         logger.finalize()
+
+
+@pytest.mark.parametrize("log_control_points", [False, True])
+def test_mpc_logger_trajectory_input_cost(log_control_points):
+    T = 5
+    mpc = ampc.MPC(
+        2,
+        1,
+        ampc.Parameterization.linearInterp(T, 2),
+        ampc.Options(input_cost=ampc.InputCostMode.Trajectory),
+    )
+    mpc.setModelContinuous2Discrete(
+        np.array([[1.0, 0.1], [0.0, 1.0]]), np.array([0.0, 0.1]), np.zeros(2), 0.1
+    )
+    mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+    u_ref = np.linspace(0.0, 0.4, T)
+    mpc.setReferenceInputTrajectory(u_ref)
+    assert mpc.initializeSolver()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        logger = ampc.MPCLogger(
+            mpc=mpc,
+            save_dir=Path(tmpdir),
+            ts=0.1,
+            log_control_points=log_control_points,
+            save_name="log",
+        )
+        x0 = np.array([1.0, 0.5])
+        assert mpc.solve(x0) == ampc.SolveStatus.Success
+        logger.logStep(t=0.0, x0=x0)
+        logger.finalize()
+        params = (Path(tmpdir) / "params.yaml").read_text()
+        assert "opt_input_cost: trajectory\n" in params
+        assert "opt_use_input_cost: 1\n" in params
+        with np.load(Path(tmpdir) / "log.npz", allow_pickle=False) as data:
+            assert data["meta_opt_use_input_cost"].item() == 1
+            # the sampled reference is logged at the strided steps like
+            # ref_states, also with log_control_points: k = 0, ..., T, the last
+            # input repeated at k = T
+            expected = np.append(u_ref, u_ref[-1]).reshape(1, T + 1, 1)
+            np.testing.assert_allclose(data["ref_inputs"], expected)

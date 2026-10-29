@@ -3,20 +3,20 @@
 
 /**
  * @file solve_status.hpp
- * @brief Defines SolveStatus enum and related helpers for OSQP solve results.
+ * @brief Defines the SolveStatus enum and the SolveInfo diagnostics of a
+ *   solve.
  */
 
 #include <iosfwd>
-#include <osqp_api_constants.h>
 
 namespace affine_mpc {
 
 /**
  * @enum SolveStatus
- * @brief High-level status codes for OSQP solver results.
+ * @brief High-level status codes for QP solver results.
  *
- * Maps OSQP's integer status codes to a simplified set of categories for MPC
- * usage.
+ * Each QP solver maps its own status codes to this simplified set of
+ * categories for MPC usage.
  */
 enum class SolveStatus
 {
@@ -25,41 +25,11 @@ enum class SolveStatus
   SolvedInaccurate, ///< QP solved but solution may be inaccurate
   PrimalInfeasible, ///< Problem is primal infeasible
   DualInfeasible,   ///< Problem is dual infeasible
-  MaxIterReached,   ///< OSQP hit max iterations
-  TimeLimitReached, ///< OSQP hit time limit
-  OtherFailure,     ///< Any other OSQP error
-  UpdateFailed      ///< OSQP rejected a QP data update; the QP was not solved
+  MaxIterReached,   ///< The solver hit its iteration limit
+  TimeLimitReached, ///< The solver hit its time limit
+  OtherFailure,     ///< Any other solver error
+  UpdateFailed      ///< The solver rejected a data update; QP not solved
 };
-
-/**
- * @brief Converts an OSQP status code to a SolveStatus value.
- * @param osqp_status Integer status code from OSQP.
- * @return Corresponding SolveStatus value.
- */
-inline SolveStatus osqpStatusToSolveStatus(int osqp_status)
-{
-  switch (osqp_status) {
-  case osqp_status_type::OSQP_SOLVED:
-    return SolveStatus::Success;
-  case osqp_status_type::OSQP_SOLVED_INACCURATE:
-    return SolveStatus::SolvedInaccurate;
-  case osqp_status_type::OSQP_PRIMAL_INFEASIBLE:
-  case osqp_status_type::OSQP_PRIMAL_INFEASIBLE_INACCURATE:
-    return SolveStatus::PrimalInfeasible;
-  case osqp_status_type::OSQP_DUAL_INFEASIBLE:
-  case osqp_status_type::OSQP_DUAL_INFEASIBLE_INACCURATE:
-    return SolveStatus::DualInfeasible;
-  case osqp_status_type::OSQP_MAX_ITER_REACHED:
-    return SolveStatus::MaxIterReached;
-  case osqp_status_type::OSQP_TIME_LIMIT_REACHED:
-    return SolveStatus::TimeLimitReached;
-  case osqp_status_type::OSQP_NON_CVX:
-  case osqp_status_type::OSQP_SIGINT:
-  case osqp_status_type::OSQP_UNSOLVED:
-  default:
-    return SolveStatus::OtherFailure;
-  }
-}
 
 /**
  * @struct SolveInfo
@@ -83,14 +53,14 @@ struct SolveInfo
   /// it is not the full MPC cost.
   double objective{0.0};
 
-  /// Time the QP solver spent solving, including polishing (seconds). Zero
-  /// when OSQP is built without profiling.
+  /// Time the QP solver spent solving (seconds). For OSQP, the solve
+  /// including polishing, zero when OSQP is built without profiling.
   double qp_solve_time{0.0};
 
   /// Duration of the whole last MPC::solve() call after initialization,
   /// including QP assembly, data updates, refactorization, and the solver
   /// (seconds). Measured with `std::chrono::steady_clock`, so it does not
-  /// depend on OSQP profiling.
+  /// depend on the solver's profiling.
   double mpc_solve_time{0.0};
 
   /// Total duration of the MPC::prepare() calls between the previous

@@ -14,6 +14,7 @@ __all__: list[str] = [
     "Discretizer",
     "Formulation",
     "InputBoundMode",
+    "InputCostMode",
     "MPC",
     "MPCLogger",
     "ModelSparsity",
@@ -26,6 +27,20 @@ __all__: list[str] = [
     "SolveStatus",
     "StateBoundMode",
 ]
+
+class InputCostMode(enum.Enum):
+    """
+    Whether and where the MPC evaluates the input cost with weight R, chosen with
+    Options.input_cost.
+
+    The two costs differ whenever control points influence different numbers of
+    samples (e.g. move-blocking with unequal blocks, geometric knots, or a custom
+    basis, whose coefficients may have no physical meaning).
+    """
+
+    ControlPoints: typing.ClassVar[InputCostMode]
+    Off: typing.ClassVar[InputCostMode]
+    Trajectory: typing.ClassVar[InputCostMode]
 
 class StateBoundMode(enum.Enum):
     """
@@ -45,12 +60,13 @@ class InputBoundMode(enum.Enum):
     hull property), but for degree > 1, or degree 1 with non-integer knots, it can
     keep the samples away from the limits, so the inputs do not use the full range.
     A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
-    inputs are always bounded, whatever the mode. Refined bounds, between the two in
-    rows and accuracy, are planned.
+    inputs are always bounded, whatever the mode. Refined bounds lie between the two
+    in rows and accuracy.
     """
 
     ControlPoints: typing.ClassVar[InputBoundMode]
     Exact: typing.ClassVar[InputBoundMode]
+    Refined: typing.ClassVar[InputBoundMode]
 
 class Options:
     """
@@ -61,14 +77,18 @@ class Options:
     fields are grouped as follows.
 
     Costs:
-        use_input_cost: Enables the input cost on the control points
-            ((uref_k - u_k)^T R (uref_k - u_k)).
+        input_cost: InputCostMode.Off (the default), the input cost on the
+            control points (ControlPoints), or on the sampled inputs (Trajectory).
         use_input_rate_cost: Enables a cost on the change of the sampled inputs
             ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
 
     Input constraints (the input limits are always enforced):
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-            default) or the sampled inputs (InputBoundMode.Exact).
+            default), the sampled inputs (InputBoundMode.Exact), or the control
+            points after knot insertion (InputBoundMode.Refined).
+        refined_bound_interval: Longest knot interval, in samples, after the knot
+            insertion of InputBoundMode.Refined, which splits every interval at
+            least once (positive, default 16).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_control_points: Slew-rate constraints on the parameterization control
@@ -90,17 +110,18 @@ class Options:
     """
 
     input_bounds: InputBoundMode
+    input_cost: InputCostMode
     slew_control_points: bool
     slew_initial_input: bool
     state_bounds: StateBoundMode
-    use_input_cost: bool
     use_input_rate_cost: bool
     def __init__(
         self,
         *,
-        use_input_cost: bool = False,
+        input_cost: InputCostMode = ...,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
+        refined_bound_interval: int = 16,
         slew_initial_input: bool = False,
         slew_control_points: bool = False,
         state_bounds: StateBoundMode = StateBoundMode.Off,
@@ -113,12 +134,16 @@ class Options:
         arguments are keyword-only.
 
         Args:
-            use_input_cost: Enables the input cost on the control points
-                ((uref_k - u_k)^T R (uref_k - u_k)).
+            input_cost: InputCostMode.Off (the default), the input cost on the
+                control points (ControlPoints), or on the sampled inputs (Trajectory).
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-                default) or the sampled inputs (InputBoundMode.Exact).
+                default), the sampled inputs (InputBoundMode.Exact), or the control
+                points after knot insertion (InputBoundMode.Refined).
+            refined_bound_interval: Longest knot interval, in samples, after the knot
+                insertion of InputBoundMode.Refined, which splits every interval at
+                least once (positive, default 16).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_control_points: Slew-rate constraints on the parameterization control
@@ -148,6 +173,10 @@ class Options:
     def num_terminal_constraints(self) -> int: ...
     @num_terminal_constraints.setter
     def num_terminal_constraints(self, arg0: int) -> None: ...
+    @property
+    def refined_bound_interval(self) -> int: ...
+    @refined_bound_interval.setter
+    def refined_bound_interval(self, arg0: int) -> None: ...
 
 class ModelSparsity(enum.Enum):
     """
@@ -262,9 +291,14 @@ class Parameterization:
         band_width = num_control_points, band_start = 0, band_weights = basis
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
-        always bounds every sampled input (whatever Options.input_bounds is), rejects
-        slew_control_points, and rejects setReferenceInput(); the input cost weights the
-        coefficients.
+        bounds every sampled input (whatever Options.input_bounds is) and rejects
+        slew_control_points. It omits the bounds of samples whose basis row has a norm
+        of at most 1e-9 times the largest row norm (e.g. where a Laguerre basis has
+        decayed): such a sample can only leave the limits if the coefficients exceed
+        them by about 1e9, and its tiny row would hurt the solver's scaling.
+        InputCostMode.ControlPoints weights the coefficients (and
+        rejects setReferenceInput()); InputCostMode.Trajectory weights the sampled
+        inputs.
 
         Args:
             horizon_steps: Number of discrete steps in the MPC horizon.
@@ -1142,39 +1176,34 @@ class MPC:
 
     @typing.overload
     def getInputControlPoints(
-        self,
-        control_points: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, control_points: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
         Get the control points that parameterize the input trajectory from the previous
-        solve.
+        solve, writing them into control_points.
 
         Args:
-            control_points (vector): Result will be stored here (equivalent to return
-                value).
+            control_points: Writable C-contiguous float64 array of shape
+                (num_control_points, input_dim) or (num_control_points * input_dim,),
+                e.g. preallocated once outside the control loop.
 
         Returns:
-            control_points (vector): The stacked control points.
+            control_points: The same array, row j holding control point j.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If control_points has the wrong size.
+            ValueError: If control_points has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getInputControlPoints(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getInputControlPoints(self) -> numpy.typing.NDArray[numpy.float64]:
         """
         Get the control points that parameterize the input trajectory from the previous
         solve.
 
         Returns:
-            control_points (vector): The stacked control points.
+            control_points: (num_control_points, input_dim) array, row j holding
+                control point j.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1206,36 +1235,30 @@ class MPC:
 
     @typing.overload
     def getInputTrajectory(
-        self,
-        u_traj: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, u_traj: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
-        Get the full input trajectory from the previous solve.
+        Get the full input trajectory from the previous solve, writing it into u_traj.
 
         Args:
-            u_traj (vector): Result will be stored here (equivalent to return value).
+            u_traj: Writable C-contiguous float64 array of shape
+                (horizon_steps, input_dim) or (horizon_steps * input_dim,).
 
-        returns:
-            u_traj (vector): The input trajectory.
+        Returns:
+            u_traj: The same array, row k holding u_k.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If u_traj has the wrong size.
+            ValueError: If u_traj has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getInputTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getInputTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
         Get the full input trajectory from the previous solve.
 
-        returns:
-            u_traj (vector): The input trajectory.
+        Returns:
+            u_traj: (horizon_steps, input_dim) array, row k holding u_k.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1248,7 +1271,7 @@ class MPC:
         Get the diagonal of the input weight matrix R (size input_dim).
 
         Raises:
-            RuntimeError: If `use_input_cost` is not enabled.
+            RuntimeError: If `input_cost` is InputCostMode.Off.
         """
 
     def getModelSparsity(self) -> ModelSparsity:
@@ -1317,36 +1340,31 @@ class MPC:
 
     @typing.overload
     def getPredictedStateTrajectory(
-        self,
-        x_traj: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-        ],
-    ) -> typing.Annotated[
-        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
-    ]:
+        self, x_traj: numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]
+    ) -> numpy.ndarray[typing.Any, numpy.dtype[typing.Any]]:
         """
-        Get the predicted state trajectory from the previous solve.
+        Get the predicted state trajectory x_1, ..., x_T from the previous solve,
+        writing it into x_traj.
 
         Args:
-            x_traj (vector): Result will be stored here (equivalent to return value).
+            x_traj: Writable C-contiguous float64 array of shape
+                (horizon_steps, state_dim) or (horizon_steps * state_dim,).
 
-        returns:
-            x_traj (vector): The predicted state trajectory.
+        Returns:
+            x_traj: The same array, row k holding x_{k+1}.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
-            ValueError: If x_traj has the wrong size.
+            ValueError: If x_traj has the wrong shape, dtype, or layout.
         """
 
     @typing.overload
-    def getPredictedStateTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getPredictedStateTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the predicted state trajectory from the previous solve.
+        Get the predicted state trajectory x_1, ..., x_T from the previous solve.
 
-        returns:
-            x_traj (vector): The predicted state trajectory.
+        Returns:
+            x_traj: (horizon_steps, state_dim) array, row k holding x_{k+1}.
 
         Raises:
             RuntimeError: If the solver has not been initialized.
@@ -1427,22 +1445,27 @@ class MPC:
             blocks (list[QPBlock]): The variable blocks in order.
         """
 
-    def getReferenceInputControlPoints(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getReferenceInputControlPoints(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the reference input control points as a stacked vector (size
-        input_dim * num_control_points).
+        Get the reference input control points as a
+        (num_control_points, input_dim) array, row j holding control point j.
 
         Raises:
-            RuntimeError: If `use_input_cost` is not enabled.
+            RuntimeError: If `input_cost` is not InputCostMode.ControlPoints.
         """
 
-    def getReferenceStateTrajectory(
-        self,
-    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+    def getReferenceInputTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
         """
-        Get the reference state trajectory as stacked states (size state_dim * horizon_steps).
+        Get the reference sampled input trajectory as a (horizon_steps, input_dim)
+        array, row k holding u_ref,k.
+
+        Raises:
+            RuntimeError: If `input_cost` is not InputCostMode.Trajectory.
+        """
+
+    def getReferenceStateTrajectory(self) -> numpy.typing.NDArray[numpy.float64]:
+        """
+        Get the reference state trajectory as a (horizon_steps, state_dim) array, row k holding x_ref,k+1.
         """
 
     def getSlewRate(
@@ -1786,9 +1809,9 @@ class MPC:
         sum_k (u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) over the sampled inputs,
         where u_{-1} is the previous input (see setPreviousInput()). Defaults to ones.
 
-        This method can only be called if `use_input_rate_cost` is enabled. Unlike `R`
-        (which weights the control points), the rate cost acts on the sampled inputs,
-        so it penalizes the same input change equally for every basis.
+        This method can only be called if `use_input_rate_cost` is enabled. The rate
+        cost acts on the sampled inputs, so it penalizes the same input change equally
+        for every basis.
 
         Args:
             R_rate_diag: Diagonal of the input rate weight matrix (size input_dim,
@@ -1801,7 +1824,9 @@ class MPC:
         """
         Set only the input weights for the cost function.
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `input_cost` is not Off. The same R weights
+        every control point (InputCostMode.ControlPoints) or every sampled input
+        (InputCostMode.Trajectory). Defaults to ones.
 
         Args:
             R_diag: Vector for diagonal of input weight matrix (non-negative).
@@ -1947,15 +1972,21 @@ class MPC:
         self, u_step: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set reference input trajectory as a step command (reference for all control
-        points set to this value).
+        Set reference input trajectory as a step command: every reference control point
+        (InputCostMode.ControlPoints) or every reference sampled input
+        (InputCostMode.Trajectory) is set to this value.
 
-        This method can only be called if `use_input_cost` is enabled, and not with a
-        custom basis (Parameterization.fromBasis()), whose coefficients do not
-        represent a constant input; use setReferenceInputControlPoints() there.
+        This method can only be called if `input_cost` is not Off. With
+        InputCostMode.ControlPoints it can not be used with a custom basis
+        (Parameterization.fromBasis()), whose coefficients do not represent a constant
+        input; use setReferenceInputControlPoints() or InputCostMode.Trajectory there.
 
         Args:
             u_step: Reference input vector to use for entire trajectory.
+
+        Raises:
+            RuntimeError: If `input_cost` is Off, or is ControlPoints with a custom
+                basis.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -1963,19 +1994,46 @@ class MPC:
         """
 
     def setReferenceInputControlPoints(
-        self,
-        control_points: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"],
+        self, control_points: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
     ) -> None:
         """
         Set reference control points that parameterize the reference input trajectory.
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `input_cost` is InputCostMode.ControlPoints.
 
         Args:
-            control_points (vector): Reference input control points as a stacked vector.
-                Should have length of input_dim * num_control_points. If you have a
-                matrix where each row is a control point, then you can pass in
-                `control_points.ravel()` to convert it to a vector.
+            control_points: Reference input control points, as a
+                (num_control_points, input_dim) array with row j holding control
+                point j, or flat (num_control_points * input_dim,) as in C++.
+
+        Raises:
+            ValueError: If the shape is wrong.
+            RuntimeError: If `input_cost` is not ControlPoints.
+
+        Note:
+            The QP is updated in the next prepare() or solve(), which report update
+            failures.
+        """
+
+    def setReferenceInputTrajectory(
+        self, u_traj: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
+    ) -> None:
+        """
+        Set the reference sampled input trajectory for the input cost on the sampled
+        inputs.
+
+        This method can only be called if `input_cost` is InputCostMode.Trajectory. The
+        reference need not lie in the span of the basis (e.g. a feedforward input from a
+        model).
+
+        Args:
+            u_traj: Reference inputs u_ref,0, ..., u_ref,T-1, as a
+                (horizon_steps, input_dim) array with row k holding u_ref,k, or flat
+                (horizon_steps * input_dim,) as in C++.
+
+        Raises:
+            ValueError: If the shape is wrong.
+            RuntimeError: If `input_cost` is not Trajectory.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -1997,16 +2055,18 @@ class MPC:
         """
 
     def setReferenceStateTrajectory(
-        self, x_traj: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
+        self, x_traj: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]
     ) -> None:
         """
         Set reference state trajectory.
 
         Args:
-            x_traj (vector): Reference state trajectory as a vector of stacked states.
-                Should have length of state_dim * horizon_steps. If you have a matrix
-                where each row is the state at index k in the horizon, then you can pass
-                in `x_traj.ravel()` to convert it to a vector.
+            x_traj: Reference states x_ref,1, ..., x_ref,T, as a
+                (horizon_steps, state_dim) array with row k holding x_ref,k+1, or
+                flat (horizon_steps * state_dim,) as in C++.
+
+        Raises:
+            ValueError: If the shape is wrong.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -2182,7 +2242,7 @@ class MPC:
         """
         Set state and input weights for the cost function.
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `input_cost` is not Off.
 
         Args:
             Q_diag: Vector for diagonal of state weight matrix (non-negative).
@@ -2199,7 +2259,7 @@ class MPC:
         """
         Set state, terminal state, and input weights for the cost function.
 
-        This method can only be called if `use_input_cost` is enabled.
+        This method can only be called if `input_cost` is not Off.
 
         Args:
             Q_diag: Vector for diagonal of state weight matrix (non-negative).

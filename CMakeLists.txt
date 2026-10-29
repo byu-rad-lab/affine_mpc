@@ -31,6 +31,8 @@ include(CMakePackageConfigHelpers)
 # --------------------------------------------------
 option(AFFINE_MPC_BUILD_TESTS "Build unit tests" OFF)
 option(AFFINE_MPC_BUILD_EXAMPLES "Build examples" OFF)
+option(AFFINE_MPC_WITH_DAQP
+  "Build the DAQP solver (dense active set) for the condensed formulation" OFF)
 include(cmake/compiler_warnings.cmake)
 
 # Internal flag for building python bindings
@@ -44,6 +46,9 @@ endif()
 include(cmake/extern_eigen.cmake)
 include(cmake/extern_osqp.cmake)
 find_package(ZLIB QUIET)
+if(AFFINE_MPC_WITH_DAQP)
+  include(cmake/extern_daqp.cmake)
+endif()
 
 # --------------------------------------------------
 # Main library
@@ -63,6 +68,23 @@ add_library(${PROJECT_NAME}
   src/npy_writer.cpp
   src/npz_writer.cpp
 )
+if(AFFINE_MPC_WITH_DAQP)
+  target_sources(${PROJECT_NAME} PRIVATE src/daqp_solver.cpp)
+  target_include_directories(${PROJECT_NAME} PRIVATE
+    ${AFFINE_MPC_DAQP_INCLUDE_DIR}
+  )
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${affine_mpc_daqp_link})
+  # public, so consumers can check for DAQPSolver
+  target_compile_definitions(${PROJECT_NAME} PUBLIC AFFINE_MPC_WITH_DAQP)
+  # An installed shared DAQP outside the default search paths is a private
+  # dependency that consumers do not link, so the installed library keeps the
+  # path to it (system directories are left out)
+  if(AFFINE_MPC_DAQP_FOUND_PACKAGE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+  endif()
+endif()
 
 # Namespaced alias
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -138,6 +160,7 @@ if(AFFINE_MPC_BUILD_TESTS)
 
   set(TEST_SOURCES
     test/affine_mpc/osqp_solver_tests.cpp
+    test/affine_mpc/qp_solver_tests.cpp
     test/affine_mpc/parameterization_tests.cpp
     test/affine_mpc/discretizer_tests.cpp
     test/affine_mpc/mpc_tests.cpp
@@ -148,14 +171,18 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/npz_writer_tests.cpp
     test/affine_mpc/mpc_logger_tests.cpp
     test/affine_mpc/allocation_tests.cpp
+    test/affine_mpc/input_bounds_tests.cpp
+    test/affine_mpc/input_cost_tests.cpp
     test/affine_mpc/input_rate_cost_tests.cpp
     test/affine_mpc/state_bounds_tests.cpp
     test/affine_mpc/general_constraints_tests.cpp
     test/affine_mpc/qp_pattern_tests.cpp
     test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
-    test/affine_mpc/deprecated_tests.cpp
   )
+  if(AFFINE_MPC_WITH_DAQP)
+    list(APPEND TEST_SOURCES test/affine_mpc/daqp_solver_tests.cpp)
+  endif()
 
   add_executable(np_writer_fixture test/affine_mpc/np_writer_fixture.cpp)
   set_target_properties(np_writer_fixture PROPERTIES FOLDER tests)
@@ -216,39 +243,19 @@ if(AFFINE_MPC_BUILD_TESTS)
     endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
-
-  # The deprecated names (removed in 0.5.0) must warn: building a use of each
-  # with deprecation warnings as errors must fail with the deprecation message.
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    foreach(name IN ITEMS CondensedMPC SparseMPC MPCBase)
-      set(target deprecated_${name}_use)
-      add_executable(${target} EXCLUDE_FROM_ALL
-        test/affine_mpc/deprecated_use.cpp
-      )
-      target_link_libraries(${target} PRIVATE ${PROJECT_NAME}::${PROJECT_NAME})
-      target_compile_definitions(${target}
-        PRIVATE AMPC_DEPRECATED_NAME=${name}
-      )
-      target_compile_options(${target}
-        PRIVATE -Werror=deprecated-declarations
-      )
-      add_test(NAME deprecated_${name}_warns
-        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
-          --target ${target} --config $<CONFIG>
-      )
-      set_tests_properties(deprecated_${name}_warns PROPERTIES
-        PASS_REGULAR_EXPRESSION
-          "${name}[^\n]* is deprecated: use MPC[^\n]*\\(removed in 0\\.5\\.0\\)"
-        RESOURCE_LOCK affine_mpc_build_tree
-      )
-    endforeach()
-  endif()
 endif()
 
 # --------------------------------------------------
 # Installation
 # --------------------------------------------------
-install(TARGETS ${PROJECT_NAME}
+get_target_property(affine_mpc_library_type ${PROJECT_NAME} TYPE)
+# A static affine_mpc needs the fetched DAQP library next to it
+set(affine_mpc_install_targets ${PROJECT_NAME})
+if(AFFINE_MPC_WITH_DAQP AND NOT AFFINE_MPC_DAQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  list(APPEND affine_mpc_install_targets affine_mpc_daqp)
+endif()
+install(TARGETS ${affine_mpc_install_targets}
   EXPORT ${PROJECT_NAME}Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -256,10 +263,18 @@ install(TARGETS ${PROJECT_NAME}
   COMPONENT core
 )
 
-install(DIRECTORY include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  COMPONENT core
-)
+if(AFFINE_MPC_WITH_DAQP)
+  install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT core
+  )
+else()
+  install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT core
+    PATTERN daqp_solver.hpp EXCLUDE
+  )
+endif()
 
 set(config_package_location ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
@@ -275,6 +290,19 @@ write_basic_package_version_file(
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
+
+if(TARGET ZLIB::ZLIB AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  set(AFFINE_MPC_CONFIG_NEEDS_ZLIB TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_ZLIB FALSE)
+endif()
+# Likewise its private link to an installed DAQP package
+if(AFFINE_MPC_WITH_DAQP AND AFFINE_MPC_DAQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
+  set(AFFINE_MPC_CONFIG_NEEDS_DAQP TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_DAQP FALSE)
+endif()
 
 configure_package_config_file(
   cmake/${PROJECT_NAME}Config.cmake.in

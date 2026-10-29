@@ -30,7 +30,10 @@ def main():
 
     data = np.load(npz_path)
 
-    use_input_cost = bool(data["meta_opt_use_input_cost"])
+    # logged with an input cost: (N, nc, m) control points for
+    # InputCostMode.ControlPoints with log_control_points, otherwise at the logged
+    # steps like ref_states; index 0 is the first input either way
+    has_input_ref = "ref_inputs" in data.files
 
     time: ArrayF = data["time"]
     states: ArrayF = data["states"]  # (N, K, n) or (N, n)
@@ -88,8 +91,8 @@ def main():
     ax_t_vel.plot(time, vel_ref, ref_style)
 
     ax_t_F.step(time, force, where="post")
-    if use_input_cost:
-        ref_inputs = data["ref_inputs"]  # same shape as inputs
+    if has_input_ref:
+        ref_inputs = data["ref_inputs"]
         ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
         force_ref = ur_hist.squeeze()
         ax_t_F.plot(time, force_ref, ref_style)
@@ -140,8 +143,8 @@ def main():
         ax_p_vel.plot(time, vel_ref, ref_style)
 
         ax_p_F.step(time, force, where="post")
-        if use_input_cost:
-            ref_inputs = data["ref_inputs"]  # same shape as inputs
+        if has_input_ref:
+            ref_inputs = data["ref_inputs"]
             ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
             force_ref = ur_hist.squeeze()
             ax_p_F.plot(time, force_ref, ref_style)

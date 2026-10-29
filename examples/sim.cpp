@@ -16,7 +16,7 @@ int main()
   const int n{2}, m{1}, T{10}, nc{3};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{
-      .use_input_cost = true,
+      .input_cost = ampc::InputCostMode::ControlPoints,
       .slew_control_points = true,
   };
   ampc::MPC msd_mpc{n, m, param, opts, ampc::Formulation::Condensed};

@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <cassert>
+#include <cstddef>
 #include <vector>
 
 #include "affine_mpc/parameterization.hpp"
@@ -10,24 +11,6 @@
 using namespace Eigen;
 
 namespace affine_mpc::detail {
-
-namespace {
-
-// Sample indices whose inputs are bounded. An empty result means the control
-// points are bounded instead. Bounding B-spline control points bounds the
-// sampled inputs (convex hull property), so the samples are only bounded
-// with InputBoundMode::Exact. A custom basis has no such property, so its
-// sampled inputs are always bounded.
-std::vector<int> boundedSamples(const VectorParameterization& input_param,
-                                const InputBoundMode mode)
-{
-  if (mode == InputBoundMode::ControlPoints
-      && input_param.parameterization().type == Parameterization::Type::BSpline)
-    return {};
-  return input_param.inputSaturationSamples();
-}
-
-} // namespace
 
 // ---- StateCost --------------------------------------------------------------
 
@@ -53,54 +36,128 @@ void InputCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
   f.addControlQuadraticVector(d.R_big.diagonal(), d.ctrls_ref);
 }
 
-// ---- InputRateCost ----------------------------------------------------------
+// ---- ChannelMatrix ----------------------------------------------------------
 
-InputRateCost::InputRateCost(const VectorParameterization& input_param) :
-    input_param_{input_param},
-    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+ChannelMatrix::ChannelMatrix(const MatrixXd& G)
 {
-  // Construction only: the dense basis Phi (one row per sample), the
-  // differences D Phi, and G = (D Phi)^T (D Phi)
-  const Parameterization& param{input_param.parameterization()};
-  const int T{param.horizon_steps}, ncp{param.num_control_points};
-  MatrixXd Phi{MatrixXd::Zero(T, ncp)};
-  for (int k{0}; k < T; ++k)
-    for (int i{0}; i < param.band_width; ++i)
-      Phi(k, param.band_start(k) + i) = param.band_weights(i, k);
-  MatrixXd DPhi{Phi};
-  DPhi.bottomRows(T - 1) -= Phi.topRows(T - 1);
-  const MatrixXd G{DPhi.transpose() * DPhi};
-
-  for (int j{0}; j < ncp; ++j)
-    for (int i{0}; i < ncp; ++i)
+  for (Index j{0}; j < G.cols(); ++j)
+    for (Index i{0}; i < G.rows(); ++i)
       if (G(i, j) != 0.0)
-        G_.push_back({i, j, G(i, j)});
-  for (int i{0}; i < ncp; ++i)
-    if (Phi(0, i) != 0.0)
-      phi0_.push_back({i, Phi(0, i)});
+        G_.push_back({static_cast<int>(i), static_cast<int>(j), G(i, j)});
 }
 
-void InputRateCost::declare(QPLayout& layout, FormulationImpl& f)
+void ChannelMatrix::declare(const VectorParameterization& input_param,
+                            QPLayout& layout,
+                            FormulationImpl& f)
 {
-  const int m{input_param_.inputDim()};
+  const int m{input_param.inputDim()};
   const Index size{m * static_cast<Index>(G_.size())};
   P_c_.reserve(static_cast<std::size_t>(size));
   P_c_values_.resize(size);
   for (int ch{0}; ch < m; ++ch)
-    for (const GEntry& e : G_)
-      P_c_.declare(input_param_.coefficientIndex(ch, e.i),
-                   input_param_.coefficientIndex(ch, e.j));
+    for (const Entry& e : G_)
+      P_c_.declare(input_param.coefficientIndex(ch, e.i),
+                   input_param.coefficientIndex(ch, e.j));
   f.declareControlMatrix(layout, P_c_);
+}
+
+void ChannelMatrix::add(const VectorParameterization& input_param,
+                        const VectorXd& weights,
+                        FormulationImpl& f)
+{
+  // G times each channel's weight
+  Index idx{0};
+  for (int ch{0}; ch < input_param.inputDim(); ++ch)
+    for (const Entry& e : G_)
+      P_c_values_(idx++) = e.value * weights(ch);
+  f.addControlMatrix(P_c_, P_c_values_);
+}
+
+MatrixXd sampledBasis(const Parameterization& param)
+{
+  MatrixXd Phi{MatrixXd::Zero(param.horizon_steps, param.num_control_points)};
+  for (int k{0}; k < param.horizon_steps; ++k)
+    for (int i{0}; i < param.band_width; ++i)
+      Phi(k, param.band_start(k) + i) = param.band_weights(i, k);
+  return Phi;
+}
+
+// ---- InputTrajectoryCost ----------------------------------------------------
+
+InputTrajectoryCost::InputTrajectoryCost(
+    const VectorParameterization& input_param) :
+    input_param_{input_param},
+    G_{[&input_param] {
+      // Construction only: G = Phi^T Phi
+      const MatrixXd Phi{sampledBasis(input_param.parameterization())};
+      return MatrixXd{Phi.transpose() * Phi};
+    }()},
+    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+{}
+
+void InputTrajectoryCost::declare(QPLayout& layout, FormulationImpl& f)
+{
+  G_.declare(input_param_, layout, f);
+}
+
+void InputTrajectoryCost::updateMatrix(const MPCData& d,
+                                       FormulationImpl& f,
+                                       QP&)
+{
+  G_.add(input_param_, d.R, f);
+}
+
+void InputTrajectoryCost::updateVector(const MPCData& d,
+                                       FormulationImpl& f,
+                                       QP&)
+{
+  // -Phi^T R u_ref, channel by channel, from the basis band of each sample
+  const Parameterization& param{input_param_.parameterization()};
+  const int m{input_param_.inputDim()};
+  q_c_.setZero();
+  for (int k{0}; k < param.horizon_steps; ++k) {
+    for (int i{0}; i < param.band_width; ++i) {
+      const double w{param.band_weights(i, k)};
+      const int cp{param.band_start(k) + i};
+      for (int ch{0}; ch < m; ++ch)
+        q_c_(input_param_.coefficientIndex(ch, cp)) -=
+            w * d.R(ch) * d.u_ref(k * m + ch);
+    }
+  }
+  f.addControlLinear(q_c_);
+}
+
+// ---- InputRateCost ----------------------------------------------------------
+
+InputRateCost::InputRateCost(const VectorParameterization& input_param) :
+    InputRateCost{input_param, sampledBasis(input_param.parameterization())}
+{}
+
+InputRateCost::InputRateCost(const VectorParameterization& input_param,
+                             const MatrixXd& Phi) :
+    input_param_{input_param},
+    G_{[&Phi] {
+      // Construction only: the differences D Phi, and G = (D Phi)^T (D Phi)
+      const Index T{Phi.rows()};
+      MatrixXd DPhi{Phi};
+      DPhi.bottomRows(T - 1) -= Phi.topRows(T - 1);
+      return MatrixXd{DPhi.transpose() * DPhi};
+    }()},
+    q_c_{VectorXd::Zero(input_param.numCoefficients())}
+{
+  for (Index i{0}; i < Phi.cols(); ++i)
+    if (Phi(0, i) != 0.0)
+      phi0_.push_back({static_cast<int>(i), Phi(0, i)});
+}
+
+void InputRateCost::declare(QPLayout& layout, FormulationImpl& f)
+{
+  G_.declare(input_param_, layout, f);
 }
 
 void InputRateCost::updateMatrix(const MPCData& d, FormulationImpl& f, QP&)
 {
-  // G times each channel's weight
-  Index idx{0};
-  for (int ch{0}; ch < input_param_.inputDim(); ++ch)
-    for (const GEntry& e : G_)
-      P_c_values_(idx++) = e.value * d.R_rate(ch);
-  f.addControlMatrix(P_c_, P_c_values_);
+  G_.add(input_param_, d.R_rate, f);
 }
 
 void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
@@ -115,13 +172,66 @@ void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
 
 // ---- InputBounds ------------------------------------------------------------
 
+// Bounding B-spline control points bounds the sampled inputs (convex hull
+// property), and so does bounding the control points of the same spline after
+// knot insertion. A custom basis has no such property, so its sampled inputs
+// are always bounded.
+InputBounds::BoundRows
+InputBounds::boundRows(const VectorParameterization& input_param,
+                       const InputBoundMode mode,
+                       const int refined_bound_interval)
+{
+  const Parameterization& param{input_param.parameterization()};
+  const bool bspline{param.type == Parameterization::Type::BSpline};
+  BoundRows M;
+  if (bspline && mode == InputBoundMode::ControlPoints)
+    return M;
+
+  // Refined, degree >= 2: the refined control points the samples depend on,
+  // unless they are at least as many as the samples (T); the sampled rows are
+  // then exact and fewer. Degree 0 and 1 already have exact bounds with few
+  // rows, so Refined uses them (the control points for degree 0, the knot
+  // samples for degree 1).
+  const VectorParameterization::KnotRefinement r{
+      bspline && mode == InputBoundMode::Refined && param.degree >= 2
+          ? input_param.refineKnots(refined_bound_interval)
+          : VectorParameterization::KnotRefinement{}};
+  if (!r.sampled.empty()
+      && r.sampled.size() < std::size_t(param.horizon_steps)) {
+    const int num_rows{static_cast<int>(r.sampled.size())};
+    M.start.reserve(r.sampled.size());
+    M.weights.resize(r.weights.rows(), num_rows);
+    for (int row{0}; row < num_rows; ++row) {
+      const int j{r.sampled[static_cast<std::size_t>(row)]};
+      M.start.push_back(r.start(j));
+      M.weights.col(row) = r.weights.col(j);
+    }
+    M.skip_zeros = true;
+    return M;
+  }
+
+  // the sampled inputs that make the bound exact (empty for degree 0: the
+  // control points are the sampled inputs)
+  const std::vector<int> samples{input_param.inputSaturationSamples()};
+  const int num_rows{static_cast<int>(samples.size())};
+  M.start.reserve(samples.size());
+  M.weights.resize(param.band_width, num_rows);
+  for (int row{0}; row < num_rows; ++row) {
+    const int k{samples[static_cast<std::size_t>(row)]};
+    M.start.push_back(param.band_start(k));
+    M.weights.col(row) = param.band_weights.col(k);
+  }
+  return M;
+}
+
 InputBounds::InputBounds(const VectorParameterization& input_param,
-                         const InputBoundMode mode) :
+                         const InputBoundMode mode,
+                         const int refined_bound_interval) :
     input_param_{input_param},
-    samples_{boundedSamples(input_param, mode)},
-    num_bounded_{samples_.empty()
+    M_{boundRows(input_param, mode, refined_bound_interval)},
+    num_bounded_{M_.start.empty()
                      ? input_param.parameterization().num_control_points
-                     : static_cast<int>(samples_.size())}
+                     : static_cast<int>(M_.start.size())}
 {}
 
 void InputBounds::declare(QPLayout& layout, FormulationImpl& /*f*/)
@@ -129,21 +239,24 @@ void InputBounds::declare(QPLayout& layout, FormulationImpl& /*f*/)
   rows_ = layout.addRows(input_param_.inputDim() * num_bounded_);
   // The control points come first in every formulation, so these rows do not
   // depend on it
-  if (samples_.empty()) {
+  if (M_.start.empty()) {
     // bound the control points directly (much fewer constraints)
     for (int i{0}; i < rows_.rows; ++i)
       A_.declare(rows_.offset + i, i, 1.0);
   } else {
-    // bound sampled inputs (each a weighted sum of control points)
-    const Parameterization& param{input_param_.parameterization()};
+    // bound weighted sums of control points (sampled inputs or refined
+    // control points), with the same weights for every channel
     const int m{input_param_.inputDim()};
     int row{rows_.offset};
-    for (const int k : samples_) {
-      for (int i{0}; i < param.band_width; ++i) {
-        const int col{
-            input_param_.coefficientIndex(0, param.band_start(k) + i)};
+    for (int r{0}; r < num_bounded_; ++r) {
+      for (int i{0}; i < M_.weights.rows(); ++i) {
+        const double w{M_.weights(i, r)};
+        if (M_.skip_zeros && w == 0.0)
+          continue;
+        const int col{input_param_.coefficientIndex(
+            0, M_.start[static_cast<std::size_t>(r)] + i)};
         for (int ch{0}; ch < m; ++ch)
-          A_.declare(row + ch, col + ch, param.band_weights(i, k));
+          A_.declare(row + ch, col + ch, w);
       }
       row += m;
     }

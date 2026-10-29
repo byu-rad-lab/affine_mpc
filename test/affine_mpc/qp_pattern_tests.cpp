@@ -128,10 +128,16 @@ Case drawCase(Draw& draw)
          {},
          0};
   ampc::Options& o{c.opts};
-  o.use_input_cost = draw.coin();
+  const ampc::InputCostMode cost_modes[]{ampc::InputCostMode::Off,
+                                         ampc::InputCostMode::ControlPoints,
+                                         ampc::InputCostMode::Trajectory};
+  o.input_cost = cost_modes[draw.integer(0, 2)];
   o.use_input_rate_cost = draw.coin();
-  o.input_bounds = draw.coin() ? ampc::InputBoundMode::Exact
-                               : ampc::InputBoundMode::ControlPoints;
+  const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
+                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Refined};
+  o.input_bounds = input_modes[draw.integer(0, 2)];
+  o.refined_bound_interval = draw.integer(1, 4);
   o.slew_initial_input = draw.coin();
   o.slew_control_points = draw.coin() && c.param.num_control_points > 1
                           && c.param.type == P::Type::BSpline;
@@ -169,10 +175,12 @@ void setAll(ampc::MPC& mpc,
     Bd = Bd.cwiseProduct(Bd_mask->cast<double>());
   mpc.setModelDiscrete(Ad, Bd, draw.sparse(n, 1));
   mpc.setStateWeights(draw.weights(n), draw.weights(n));
-  if (o.use_input_cost) {
+  if (o.input_cost != ampc::InputCostMode::Off)
     mpc.setInputWeights(draw.weights(m));
+  if (o.input_cost == ampc::InputCostMode::ControlPoints)
     mpc.setReferenceInputControlPoints(draw.sparse(nc, 1));
-  }
+  if (o.input_cost == ampc::InputCostMode::Trajectory)
+    mpc.setReferenceInputTrajectory(draw.sparse(m * T, 1));
   if (o.use_input_rate_cost)
     mpc.setInputRateWeights(draw.weights(m));
   mpc.setReferenceStateTrajectory(draw.sparse(n * T, 1));
@@ -208,10 +216,12 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.horizon_steps) + " nc"
                 + std::to_string(c.param.num_control_points) + " deg"
                 + std::to_string(c.param.degree) + " opts "};
-  for (const bool b : {o.use_input_cost, o.use_input_rate_cost,
-                       o.input_bounds == ampc::InputBoundMode::Exact,
-                       o.slew_initial_input, o.slew_control_points})
+  s += std::to_string(static_cast<int>(o.input_cost));
+  for (const bool b :
+       {o.use_input_rate_cost, o.slew_initial_input, o.slew_control_points})
     s += b ? '1' : '0';
+  s += " input_bounds " + std::to_string(static_cast<int>(o.input_bounds))
+       + " interval " + std::to_string(o.refined_bound_interval);
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
   s += " bounded " + std::to_string(o.bounded_states.size()) + " p"
        + std::to_string(o.num_general_constraints) + " pf"
@@ -678,14 +688,14 @@ TEST(QPAccessTester, givenAnyOptions_AssembleQPMatchesAndKeepsSolvesUnchanged)
 namespace {
 
 // Mass-spring-damper with every constraint kind (hard state bounds)
-const ampc::Options constrained_msd_opts{.use_input_cost = true,
-                                         .use_input_rate_cost = true,
-                                         .slew_initial_input = true,
-                                         .slew_control_points = true,
-                                         .state_bounds =
-                                             ampc::StateBoundMode::Hard,
-                                         .num_general_constraints = 1,
-                                         .num_terminal_constraints = 1};
+const ampc::Options constrained_msd_opts{
+    .input_cost = ampc::InputCostMode::ControlPoints,
+    .use_input_rate_cost = true,
+    .slew_initial_input = true,
+    .slew_control_points = true,
+    .state_bounds = ampc::StateBoundMode::Hard,
+    .num_general_constraints = 1,
+    .num_terminal_constraints = 1};
 
 void setConstrainedMsd(ampc::MPC& mpc)
 {

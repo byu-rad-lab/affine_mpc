@@ -117,7 +117,7 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `states`: `(N, K, n)` or `(N, n)` depending on stride
 - `ref_states`: same shape as `states`
 - `inputs`: `(N, K, m)`, `(N, nc, m)`, or `(N, m)` depending on mode
-- `ref_inputs`: same general shape as `inputs` when input reference data is applicable
+- `ref_inputs`: logged with an input cost; the reference control points, `(N, nc, m)`, for `InputCostMode::ControlPoints` with `log_control_points`, and otherwise the reference at the logged steps like `ref_states`, `(N, K, m)` or `(N, m)`: the reference control points evaluated there (`ControlPoints`) or the sampled reference (`Trajectory`, also with `log_control_points`, since a sampled reference has no control point form)
 - `mpc_solve_time`: `(N,)` duration of each whole `solve()` call (`SolveInfo.mpc_solve_time`)
 - `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
 - `prepare_time`: `(N,)` total time of the `prepare()` calls before each solve (`SolveInfo.prepare_time`, zero when `prepare()` is not used)
@@ -146,7 +146,7 @@ The logger records configuration metadata such as:
 - formulation (`formulation`: `condensed` or `sparse`)
 - parameterization type (`bspline` or `custom`)
 - B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
-- enabled options (`opt_*`), with the bound modes as `opt_input_bounds` (`control_points` or `exact`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`) and `opt_saturate_states` (1 unless `off`) are kept for readers of earlier logs
+- enabled options (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`), the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`), `opt_saturate_states` (1 unless `off`), and `opt_use_input_cost` (1 unless `off`) are kept for readers of earlier logs
 - limits
 - weights
 - prediction stride

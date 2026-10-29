@@ -14,6 +14,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "affine_mpc/detail/qp.hpp"
+#include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
@@ -31,12 +33,15 @@ static_assert(std::is_same_v<OSQPFloat, double>,
  *
  * Provides initialization, update, and solve routines for quadratic programs
  * in MPC applications. Handles sparse matrix storage and ensures safe usage
- * of OSQP's memory model.
+ * of OSQP's memory model. Implements QPSolver for both QP storages: the
+ * sparse formulation's CSC matrices go to OSQP directly, and the condensed
+ * formulation's dense matrices are copied into CSC buffers (their nonzeros at
+ * initialization, plus the diagonal of P).
  *
  * Copy and move operations are deleted to prevent accidental sharing of solver
  * state.
  */
-class OSQPSolver
+class OSQPSolver : public QPSolver
 {
 public:
   /// Eigen matrix type for OSQPFloat elements.
@@ -57,7 +62,20 @@ public:
    */
   OSQPSolver(int num_variables, int num_constraints);
 
-  virtual ~OSQPSolver() = default;
+  /**
+   * @brief Construct an OSQPSolver for a problem of given size, with the
+   *   settings initialize(const detail::QP&, const QPBlockLayout&) uses.
+   * @param num_variables Number of QP decision variables
+   *   (MPC::getNumQPVariables()).
+   * @param num_constraints Number of QP constraints
+   *   (MPC::getNumQPConstraints()).
+   * @param settings OSQP solver settings.
+   */
+  OSQPSolver(int num_variables,
+             int num_constraints,
+             const OSQPSettings& settings);
+
+  ~OSQPSolver() override = default;
 
   // Delete copy and move operations (C API state should not be transferred)
   OSQPSolver(const OSQPSolver&) = delete;
@@ -87,13 +105,13 @@ public:
    *   changes after each solve).
    */
   [[nodiscard]] const Eigen::Map<const VectorXF>
-  getSolutionMap() const noexcept;
+  getSolutionMap() const noexcept override;
 
   /**
    * @brief Returns diagnostics from the last solve, as reported by OSQP.
    * @return SolveInfo with default values if the solver is not initialized.
    */
-  SolveInfo getSolveInfo() const noexcept;
+  SolveInfo getSolveInfo() const noexcept override;
 
   /**
    * @brief Solve the QP and write the solution to the provided vector.
@@ -107,14 +125,46 @@ public:
    * @brief Solve the QP and update the internal solution buffer.
    * @return SolveStatus indicating result.
    */
-  [[nodiscard]] SolveStatus solve();
+  [[nodiscard]] SolveStatus solve() override;
 
   /**
    * @brief Zero OSQP's internal iterates so the next solve starts from zero
    *   instead of the previous solution (osqp_cold_start). The problem data and
    *   the solution buffer are unchanged. No-op if not initialized.
    */
-  void coldStart() noexcept;
+  void coldStart() noexcept override;
+
+  /// @name QPSolver interface
+  /// The functions MPC calls, which pass the QP in either storage to the
+  /// matching dense or sparse functions below.
+  ///@{
+  const char* getName() const noexcept override { return "OSQP"; }
+  detail::QPStorage nativeStorage() const noexcept override
+  {
+    return detail::QPStorage::Sparse;
+  }
+  /// Both storages: dense matrices are copied into CSC buffers.
+  bool supportsStorage(detail::QPStorage) const noexcept override
+  {
+    return true;
+  }
+  /// Initializes with the settings given at construction (the recommended
+  /// settings for the constructor without settings).
+  [[nodiscard]] bool initialize(const detail::QP& qp,
+                                const QPBlockLayout& layout) override;
+  bool isInitialized() const noexcept override { return initialized_; }
+  [[nodiscard]] bool updateMatrices(const detail::QP& qp,
+                                    bool cost_matrix,
+                                    bool constraint_matrix) override;
+  [[nodiscard]] bool updateCostVector(const detail::QP& qp) override;
+  [[nodiscard]] bool updateBounds(const detail::QP& qp) override;
+  [[nodiscard]] bool
+  isWithinSparsityPattern(const detail::QP& qp) const override;
+  ///@}
+
+  /// @brief The settings initialize(const detail::QP&, const QPBlockLayout&)
+  ///   uses.
+  const OSQPSettings& getSettings() const noexcept { return settings_; }
 
   /**
    * @brief Initialize the OSQP solver with QP matrices and settings.
@@ -308,6 +358,8 @@ private:
   // OSQP only treats bounds beyond OSQP_INFTY as unbounded; with IEEE
   // infinities it can not detect convergence, so bounds are clamped here.
   VectorXF l_buf_, u_buf_;
+  // settings for initialize(const detail::QP&, const QPBlockLayout&)
+  OSQPSettings settings_;
 
 protected:          // Not private for unit tests
   const OSQPInt n_; ///< Number of decision variables.

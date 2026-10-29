@@ -13,6 +13,31 @@
 namespace affine_mpc {
 
 /**
+ * @enum InputCostMode
+ * @brief Whether and where the MPC evaluates the input cost with weight R,
+ *   chosen with Options::input_cost.
+ *
+ * The two costs differ whenever control points influence different numbers
+ * of samples (e.g. move-blocking with unequal blocks, geometric knots, or a
+ * custom basis, whose coefficients may have no physical meaning).
+ */
+enum class InputCostMode
+{
+  /// No input cost (the default).
+  Off,
+  /// The cost sum_i (c_ref,i - c_i)^T R (c_ref,i - c_i) on the control points
+  /// c_i, which weights every control point equally (references set with
+  /// MPC::setReferenceInput() or MPC::setReferenceInputControlPoints()).
+  ControlPoints,
+  /// The cost sum_k (u_ref,k - u_k)^T R (u_ref,k - u_k) on the sampled inputs
+  /// u_k, k = 0, ..., T-1, which weights the input trajectory itself
+  /// (references set with MPC::setReferenceInput() or
+  /// MPC::setReferenceInputTrajectory()). Adds a banded block to the cost
+  /// matrix (bandwidth 2 degree + 1 for B-splines, dense for custom bases).
+  Trajectory,
+};
+
+/**
  * @enum StateBoundMode
  * @brief Whether and how the MPC bounds the predicted states, chosen with
  *   Options::state_bounds.
@@ -41,7 +66,7 @@ enum class StateBoundMode
  * knots, it can keep the samples away from the limits, so the inputs do not
  * use the full range. A custom basis (Parameterization::fromBasis()) has no
  * such property, so its sampled inputs are always bounded, whatever the mode.
- * Refined bounds, between the two in rows and accuracy, are planned.
+ * Refined bounds lie between the two in rows and accuracy.
  */
 enum class InputBoundMode
 {
@@ -55,6 +80,18 @@ enum class InputBoundMode
   /// sample (T rows per input), which can make OSQP slower on long
   /// horizons.
   Exact,
+  /// Bound the control points of the same spline after knot insertion: every
+  /// knot interval of length l is split into max(2, ceil(l / L)) equal parts,
+  /// with L = Options::refined_bound_interval samples, and the refined control
+  /// points that some sample depends on are bounded. By the convex hull
+  /// property of the refined control points, every sampled input stays inside
+  /// the limits, with less of the range lost than with ControlPoints and far
+  /// fewer rows than Exact on long horizons (about
+  /// max(T / L, 2 (num_control_points - degree)) + degree rows per input).
+  /// If that is not fewer than the rows of Exact (T per input), the rows of
+  /// Exact are used instead. Degree 0: the same as ControlPoints; degree 1:
+  /// the same as Exact (both are already exact and cheap).
+  Refined,
 };
 
 /**
@@ -67,14 +104,19 @@ enum class InputBoundMode
  * instance. The fields are grouped as follows.
  *
  * Costs:
- * - use_input_cost: Enables the input cost on the control points
- *     ((uref_k - u_k)^T R (uref_k - u_k)).
+ * - input_cost: Off (the default), the input cost on the control points
+ *     (ControlPoints), or on the sampled inputs (Trajectory) (see
+ *     InputCostMode).
  * - use_input_rate_cost: Enables a cost on the change of the sampled inputs
  *     ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
  *
  * Input constraints (the input limits are always enforced):
- * - input_bounds: Bound the control points (ControlPoints, the default) or the
- *     sampled inputs (Exact) (see InputBoundMode).
+ * - input_bounds: Bound the control points (ControlPoints, the default), the
+ *     sampled inputs (Exact), or the control points after knot insertion
+ *     (Refined) (see InputBoundMode).
+ * - refined_bound_interval: Longest knot interval, in samples, after the knot
+ *     insertion of InputBoundMode::Refined, which splits every interval at
+ *     least once (positive).
  * - slew_initial_input: Slew-rate constraint on the initial input
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_control_points: Slew-rate constraints on the parameterization
@@ -99,8 +141,8 @@ struct Options
   /// @name Costs
   /// @{
 
-  /// Enables the input cost term in the MPC objective
-  bool use_input_cost = false;
+  /// Whether and where the input cost is evaluated (see InputCostMode)
+  InputCostMode input_cost{InputCostMode::Off};
 
   /// Enables a cost on the change of the sampled inputs (u_k - u_{k-1}),
   /// starting from the previous input (i.e. u_0 - u_prev)
@@ -113,6 +155,12 @@ struct Options
   /// Whether the input limits bound the control points or the sampled inputs
   /// (see InputBoundMode)
   InputBoundMode input_bounds{InputBoundMode::ControlPoints};
+
+  /// Longest knot interval, in samples, after the knot insertion of
+  /// InputBoundMode::Refined, which also splits every interval at least once
+  /// (positive; unused by the other modes). Smaller values bound the sampled
+  /// inputs more tightly with more rows.
+  int refined_bound_interval = 16;
 
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;
@@ -191,6 +239,9 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools);
  * @return Reference to the output stream.
  */
 std::ostream& operator<<(std::ostream& os, const Options& opts);
+
+/// @brief Stream the name of an input cost mode (e.g. `Trajectory`).
+std::ostream& operator<<(std::ostream& os, InputCostMode mode);
 
 /// @brief Stream the name of a state bound mode (e.g. `Hard`).
 std::ostream& operator<<(std::ostream& os, StateBoundMode mode);

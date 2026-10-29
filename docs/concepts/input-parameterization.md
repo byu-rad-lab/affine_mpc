@@ -250,9 +250,41 @@ Construction checks this condition exactly on the sampled basis and throws `std:
 Near-coincident knots pass this check, since the rank is still full, but they make the QP ill conditioned.
 Clustered or very short knot intervals make the QP worse conditioned in general, because nearby control points affect almost the same samples, and the condition number can grow by orders of magnitude compared with uniform or geometric knots.
 OSQP then needs more iterations and may stop at `MaxIterReached`.
-A small input weight `R` (with `use_input_cost`) improves the conditioning, as does spreading the knots.
+A small input weight `R` (with `input_cost`) improves the conditioning, as does spreading the knots.
 
 Parameterization is therefore both a dimensionality-reduction tool and a way to shape the family of trajectories the optimizer may select.
+
+## Input Bounds
+
+The input limits $\mathbf{u}_{\min} \le \mathbf{u}_k \le \mathbf{u}_{\max}$ are always enforced, and `Options::input_bounds` (`Options.input_bounds` in Python) chooses the constraint rows that enforce them (see [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint)).
+
+- `InputBoundMode::ControlPoints` (the default) bounds the control points, one row per control point.
+  B-spline basis functions are non-negative and sum to one, so every sampled input is a convex combination of control points and stays inside the limits (the convex hull property).
+  For $p \ge 2$, and for $p = 1$ with non-integer knots, the spline does not pass through its control points, so whenever the input changes the bound keeps the sampled inputs away from the limits and part of the input range is unusable.
+- `InputBoundMode::Exact` bounds the sampled inputs.
+  For $p = 1$ only the samples next to each knot are needed (at most $2\eta - 2$ rows per input), but for $p \ge 2$ every sample is bounded ($T$ rows per input), which can make OSQP slower and less reliable on long horizons.
+- `InputBoundMode::Refined` bounds the control points of the same spline after knot insertion, described below.
+  It uses much of the range that `ControlPoints` loses, with far fewer rows than `Exact`.
+
+### Refined Bounds
+
+Inserting a knot changes the knot vector and the control points of a B-spline but not the spline itself: the new control points are fixed convex combinations of the old ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
+Per input channel, the refined control points are $\Gamma \mathbf{c}$, where $\Gamma$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
+The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
+
+`Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
+It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
+If that is not fewer than the $T$ rows of `Exact` (short horizons or a very small $L$), `Refined` uses the `Exact` rows instead, which are exact and fewer; this is decided once at construction.
+For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Exact`.
+$\Gamma$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
+
+A smaller $L$ bounds the sampled inputs more tightly with more rows.
+Very small values approach the row count of `Exact` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
+Because every interval is split at least once, `Refined` is tighter than `ControlPoints` even on short horizons whose knot intervals are all at most $L$ samples long.
+The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Exact`.
+
+Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Exact` (the samples next to each knot).
+A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the mode (omitting samples where the basis has decayed).
 
 ## Custom Bases
 
@@ -281,11 +313,14 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
 
 - **Input limits.**
   B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Exact` is optional.
-  A custom basis has no such property, so the MPC always bounds every sampled input ($T$ constraint rows per input channel), whatever `input_bounds` is.
+  A custom basis has no such property, so the MPC bounds every sampled input (up to $T$ constraint rows per input channel), whatever `input_bounds` is.
+  It omits the rows of samples whose basis row norm is at most $10^{-9}$ times the largest, e.g. where a Laguerre basis has decayed late in a long horizon: such a sample can only leave the limits if the coefficients exceed them by about $10^9$, and rows many orders of magnitude below the others hurt OSQP's scaling.
+  This is a numerical threshold on the basis, not a constraint horizon chosen from the plant, so the feasible set is that of all $T$ samples to within that tolerance.
 - **Input cost.**
-  `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
+  With `InputCostMode::ControlPoints`, `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
   With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
-  No coefficients represent a constant input in general, so `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
+  No coefficients represent a constant input in general, so in this mode `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
+  `InputCostMode::Trajectory` weights the sampled inputs for any basis, and accepts a constant reference (`setReferenceInput()`) or a sampled one (`setReferenceInputTrajectory()`); see [Input Cost](problem-formulation.md#input-cost).
 - **Slew rates.**
   Differences of coefficients do not bound input changes, so `slew_control_points` throws `std::invalid_argument` (`ValueError` in Python) at construction.
   `slew_initial_input` still works, since it bounds the first sampled input.
@@ -326,7 +361,7 @@ def laguerre_basis(horizon_steps, num_functions, pole):
 T, ts = 40, 0.1
 basis, _ = np.linalg.qr(laguerre_basis(T, 4, 0.8))  # orthonormal columns
 param = ampc.Parameterization.fromBasis(T, basis)
-mpc = ampc.MPC(2, 1, param, ampc.Options(use_input_cost=True))
+mpc = ampc.MPC(2, 1, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
 
 A = np.array([[0.0, 1.0], [-0.6, -0.1]])
 B = np.array([0.0, 0.2])
@@ -353,7 +388,7 @@ for _ in range(100):
 
 Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
 `examples/laguerre.py` runs both forms and compares their closed-loop cost (see [Laguerre Basis](../examples/laguerre.md)).
-It also zeroes the rows of $\Psi$ that have decayed to round-off before the QR decomposition: those samples are frozen at $\mathbf{u}_{\mathrm{ss}}$ anyway (they can be many orders of magnitude below round-off for long horizons), and their tiny coefficients in the input bound rows would otherwise hurt OSQP's scaling.
+It orthonormalizes $\Psi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\mathbf{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
 
 ## Next Step
 

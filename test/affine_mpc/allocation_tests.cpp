@@ -1,11 +1,17 @@
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/parameterization.hpp"
+#ifdef AFFINE_MPC_WITH_DAQP
+#include "affine_mpc/daqp_solver.hpp"
+#endif
 
 #include <Eigen/Core>
 #include <cstddef>
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
+
+#include "utils.hpp"
 
 using namespace Eigen;
 namespace ampc = affine_mpc;
@@ -94,7 +100,8 @@ template <typename Fn> std::size_t countAllocations(Fn&& fn)
 template <ampc::Formulation F>
 void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
                                        const ampc::Options& opts,
-                                       bool use_prepare)
+                                       bool use_prepare,
+                                       bool use_daqp = false)
 {
 #ifndef AMPC_COUNT_ALLOCATIONS
   GTEST_SKIP() << "allocation counting needs glibc and no sanitizer";
@@ -108,7 +115,7 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   mpc.setInputLimits(VectorXd::Constant(m, -3.0), VectorXd::Constant(m, 3.0));
   mpc.setStateWeights(Vector2d{1.0, 0.1});
   mpc.setReferenceState(Vector2d{1.0, 0.0});
-  if (opts.use_input_cost) {
+  if (opts.input_cost != ampc::InputCostMode::Off) {
     mpc.setInputWeights(VectorXd::Constant(m, 1e-3));
     mpc.setReferenceInput(VectorXd::Zero(m));
   }
@@ -134,7 +141,13 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
     mpc.setGeneralConstraints(Hx, Hu, h_min, h_max);
   if (opts.num_terminal_constraints > 0)
     mpc.setTerminalConstraints(Hf, h_min, h_max);
-  ASSERT_TRUE(mpc.initializeSolver());
+  if (use_daqp) {
+#ifdef AFFINE_MPC_WITH_DAQP
+    ASSERT_TRUE(mpc.initializeSolver(std::make_unique<ampc::DAQPSolver>()));
+#endif
+  } else {
+    ASSERT_TRUE(mpc.initializeSolver());
+  }
 
   const Vector2d x0{0.5, -0.2};
   VectorXd u0{m}, u_traj{m * param.horizon_steps};
@@ -175,6 +188,18 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "offset";
   mpc.setReferenceState(Vector2d{0.5, 0.0});
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "references";
+  if (opts.input_cost == ampc::InputCostMode::Trajectory) {
+    const VectorXd u_ref{
+        VectorXd::LinSpaced(m * param.horizon_steps, -0.5, 0.5)};
+    mpc.setReferenceInputTrajectory(u_ref);
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "input references";
+  }
+  if (opts.input_cost != ampc::InputCostMode::Off) {
+    mpc.setInputWeights(VectorXd::Constant(m, 2e-3));
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
+        << "input weights";
+  }
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "limits";
   if (opts.num_general_constraints > 0) {
@@ -202,27 +227,44 @@ struct AllocationCase
 // change, in prepare() or solve() (steady-state solves still do not allocate).
 std::vector<AllocationCase> allocationCases()
 {
-  const ampc::Options all{.use_input_cost = true,
+  const ampc::Options all{.input_cost = ampc::InputCostMode::ControlPoints,
                           .use_input_rate_cost = true,
                           .slew_initial_input = true,
                           .slew_control_points = true,
                           .state_bounds = ampc::StateBoundMode::Hard};
-  const ampc::Options sampled{.use_input_cost = true,
+  const ampc::Options sampled{.input_cost = ampc::InputCostMode::ControlPoints,
                               .input_bounds = ampc::InputBoundMode::Exact};
-  const ampc::Options soft{.use_input_cost = true,
+  const ampc::Options refined{.input_cost = ampc::InputCostMode::ControlPoints,
+                              .input_bounds = ampc::InputBoundMode::Refined,
+                              .refined_bound_interval = 2};
+  const ampc::Options soft{.input_cost = ampc::InputCostMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Soft,
                            .bounded_states = {0}};
-  const ampc::Options constraints{.use_input_cost = true,
+  const ampc::Options constraints{.input_cost =
+                                      ampc::InputCostMode::ControlPoints,
                                   .num_general_constraints = 1,
                                   .num_terminal_constraints = 1};
+  const ampc::Options trajectory{.input_cost = ampc::InputCostMode::Trajectory,
+                                 .use_input_rate_cost = true,
+                                 .slew_initial_input = true};
   return {
+      {"trajectoryCost", ampc::Parameterization::bspline(10, 2, 5), trajectory},
+      {"trajectoryCostMoveBlocking",
+       ampc::Parameterization::moveBlocking(12, 4, 1.3), trajectory},
+      {"trajectoryCostCustomBasis",
+       ampc::Parameterization::fromBasis(10, laguerreBasis(10, 4, 0.6)),
+       trajectory},
       {"defaults", ampc::Parameterization::linearInterp(10, 4), {}},
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
+      {"refinedBounds", ampc::Parameterization::bspline(10, 3, 5), refined},
       {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
       {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),
        constraints},
+      // large enough that the condensed state cost uses one matrix-vector
+      // product per column (the cases above use dot products)
+      {"longHorizon", ampc::Parameterization::bspline(100, 2, 30), {}},
   };
 }
 
@@ -254,6 +296,20 @@ TEST_P(AllocationTester, givenInitializedSparseMPC_PrepareAndSolveDoNotAllocate)
       GetParam().param, GetParam().opts, true);
 }
 
+#ifdef AFFINE_MPC_WITH_DAQP
+TEST_P(AllocationTester, givenCondensedMPCWithDAQP_SolveDoesNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, false, true);
+}
+
+TEST_P(AllocationTester, givenCondensedMPCWithDAQP_PrepareAndSolveDoNotAllocate)
+{
+  checkNoAllocationsAfterInitialize<ampc::Formulation::Condensed>(
+      GetParam().param, GetParam().opts, true, true);
+}
+#endif
+
 TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
 {
 #ifndef AMPC_COUNT_ALLOCATIONS
@@ -263,7 +319,7 @@ TEST(AllocationTester, givenLargeCondensedMPCAfterPrepare_SolveDoesNotAllocate)
   // blocking buffers. prepare() does that work, so solve() still does not
   // allocate.
   const int n{4}, m{2}, T{300}, nc{60};
-  const ampc::Options opts{.use_input_cost = true};
+  const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints};
   ampc::MPC mpc{n, m, ampc::Parameterization::bspline(T, 2, nc), opts};
   MatrixXd Ad{MatrixXd::Identity(n, n)};
   Ad.topRightCorner(n - 1, n - 1).diagonal().setConstant(0.01);

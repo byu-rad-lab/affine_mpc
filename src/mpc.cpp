@@ -62,6 +62,9 @@ const Options& validateOptions(const Options& opts,
           "increasing state indices in [0, state_dim).");
     previous = i;
   }
+  if (opts.refined_bound_interval < 1)
+    throw std::invalid_argument(
+        "[MPC::validateOptions] refined_bound_interval must be positive.");
   if (opts.num_general_constraints < 0 || opts.num_terminal_constraints < 0)
     throw std::invalid_argument(
         "[MPC::validateOptions] num_general_constraints and "
@@ -98,6 +101,71 @@ void validateShape(const Ref<const MatrixXd>& mat,
         std::string{"[MPC::"} + func + "] " + name + " must be "
         + std::to_string(rows) + "x" + std::to_string(cols) + ", got "
         + std::to_string(mat.rows()) + "x" + std::to_string(mat.cols()) + ".");
+}
+
+// A per-step trajectory is a stacked vector (dim * steps) or a dim x steps
+// matrix with one column per step, which have the same memory when the
+// matrix's columns are contiguous. Returns whether it is the stacked vector.
+bool validateSteps(Index rows,
+                   Index cols,
+                   Index dim,
+                   Index steps,
+                   const char* func,
+                   const char* name)
+{
+  const bool stacked{rows == dim * steps && cols == 1};
+  if (!stacked && (rows != dim || cols != steps))
+    throw std::invalid_argument(
+        std::string{"[MPC::"} + func + "] " + name + " must be "
+        + std::to_string(dim * steps) + "x1 or " + std::to_string(dim) + "x"
+        + std::to_string(steps) + ", got " + std::to_string(rows) + "x"
+        + std::to_string(cols) + ".");
+  return stacked;
+}
+
+// A per-step trajectory viewed as the dim x steps matrix, column k is step k
+using StepView = Map<const MatrixXd, 0, OuterStride<>>;
+
+StepView stepView(const Ref<const MatrixXd>& src,
+                  Index dim,
+                  Index steps,
+                  const char* func,
+                  const char* name)
+{
+  const bool stacked{
+      validateSteps(src.rows(), src.cols(), dim, steps, func, name)};
+  return {src.data(), dim, steps,
+          OuterStride<>{stacked ? dim : src.outerStride()}};
+}
+
+// Copy a per-step trajectory into stacked storage: one linear copy when its
+// columns are contiguous (any vector, whole matrix, or Map); only a block of
+// a larger matrix is copied column by column.
+void copySteps(const StepView& src, Ref<VectorXd> dst)
+{
+  if (src.outerStride() == src.rows())
+    dst = Map<const VectorXd>{src.data(), src.size()};
+  else
+    Map<MatrixXd>{dst.data(), src.rows(), src.cols()} = src;
+}
+
+// The stacked vector inside a caller's per-step output (a stacked vector or a
+// dim x steps matrix). Its columns must be contiguous: a block of a larger
+// matrix with fewer rows is rejected instead of written through a buffer.
+Map<VectorXd> stackedOutput(Ref<MatrixXd> dst,
+                            Index dim,
+                            Index steps,
+                            const char* func,
+                            const char* name)
+{
+  const bool stacked{
+      validateSteps(dst.rows(), dst.cols(), dim, steps, func, name)};
+  if (!stacked && dst.outerStride() != dim)
+    throw std::invalid_argument(
+        std::string{"[MPC::"} + func + "] " + name
+        + " must have contiguous columns, not be a block of a larger "
+          "matrix with more rows.");
+  return {dst.data(), dim * steps};
 }
 
 } // namespace
@@ -141,9 +209,6 @@ MPC::MPC(int state_dim,
     qp_builder_{std::make_unique<detail::QPBuilder>(
         formulation, state_dim_, input_param_, opts_)}
 {
-  // the options decided the terms and so the QP's sizes
-  solver_ = std::make_unique<OSQPSolver>(qp_builder_->numVariables(),
-                                         qp_builder_->numConstraints());
   qp_builder_->writeConstantParts(data_);
 }
 
@@ -321,10 +386,33 @@ bool MPC::initializeSolver(const ModelSparsity model_sparsity)
 bool MPC::initializeSolver(const OSQPSettings& solver_settings,
                            const ModelSparsity model_sparsity)
 {
+  // the options decided the terms and so the QP's sizes
+  return initializeSolver(std::make_unique<OSQPSolver>(
+                              qp_builder_->numVariables(),
+                              qp_builder_->numConstraints(), solver_settings),
+                          model_sparsity);
+}
+
+bool MPC::initializeSolver(std::unique_ptr<QPSolver> solver,
+                           const ModelSparsity model_sparsity)
+{
   checkSetup("initializeSolver", "initializing solver");
 
   if (solver_initialized_)
     return true;
+
+  if (!solver)
+    throw std::invalid_argument(
+        "[MPC::initializeSolver] The solver must not be null.");
+  if (solver->isInitialized())
+    throw std::invalid_argument("[MPC::initializeSolver] The solver is "
+                                "already initialized; pass a new one.");
+  if (!solver->supportsStorage(qp().storage))
+    throw std::invalid_argument(
+        std::string{"[MPC::initializeSolver] "} + solver->getName()
+        + " does not support the "
+        + (formulation_ == Formulation::Sparse ? "sparse" : "condensed")
+        + " formulation.");
 
   const bool sparse{qp().storage == detail::QPStorage::Sparse};
   if (model_sparsity == ModelSparsity::Full && !sparse)
@@ -352,14 +440,9 @@ bool MPC::initializeSolver(const OSQPSettings& solver_settings,
   x_full.setOnes();
   (void)qpUpdateX0(x_full);
 
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse)
-    solver_initialized_ =
-        solver_->initialize(qp_data.P_csc, qp_data.A_csc, qp_data.q, qp_data.l,
-                            qp_data.u, solver_settings);
-  else
-    solver_initialized_ = solver_->initialize(
-        qp_data.P, qp_data.A, qp_data.q, qp_data.l, qp_data.u, solver_settings);
+  solver_ = std::move(solver);
+  solver_initialized_ = solver_->initialize(
+      qp(), QPBlockLayout{getQPVariableBlocks(), getQPConstraintBlocks()});
   // According to Eigen's documentation, use "placement new" syntax to update
   // solution_map_ with the new pointer to the solution vector. This does not
   // allocate new memory that needs to be deleted, it just updates the pointer.
@@ -440,14 +523,14 @@ bool MPC::applyPendingChanges()
   // update rescales and refactors once instead of twice. The parts that
   // applyX0() writes are sent there.
   if (!written.P.empty() || !written.A.empty()) {
-    if (!sendMatrices(!written.P.empty(), !written.A.empty()))
+    if (!solver_->updateMatrices(qp(), !written.P.empty(), !written.A.empty()))
       pending_ |= written.P | written.A;
   }
   if (!written.q.empty() && !qp_builder_->applyX0WritesCostVector()
-      && !solver_->updateCostVector(qp().q))
+      && !solver_->updateCostVector(qp()))
     pending_ |= written.q;
   if (!written.bounds.empty() && !qp_builder_->applyX0WritesBounds()
-      && !solver_->updateBounds(qp().l, qp().u))
+      && !solver_->updateBounds(qp()))
     pending_ |= written.bounds;
   return pending_.empty();
 }
@@ -460,27 +543,10 @@ bool MPC::applyX0(const Ref<const VectorXd>& x0)
     return true;
   bool success{true};
   if (qp_builder_->applyX0WritesCostVector())
-    success &= solver_->updateCostVector(qp().q);
+    success &= solver_->updateCostVector(qp());
   if (qp_builder_->applyX0WritesBounds())
-    success &= solver_->updateBounds(qp().l, qp().u);
+    success &= solver_->updateBounds(qp());
   return success;
-}
-
-bool MPC::sendMatrices(const bool P, const bool A)
-{
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse) {
-    if (P && A)
-      return solver_->updateMatrices(qp_data.P_csc, qp_data.A_csc);
-    if (P)
-      return solver_->updateCostMatrix(qp_data.P_csc);
-    return solver_->updateConstraintMatrix(qp_data.A_csc);
-  }
-  if (P && A)
-    return solver_->updateMatrices(qp_data.P, qp_data.A);
-  if (P)
-    return solver_->updateCostMatrix(qp_data.P);
-  return solver_->updateConstraintMatrix(qp_data.A);
 }
 
 bool MPC::modelWithinTrackedEntries() const
@@ -495,10 +561,7 @@ bool MPC::isWithinSparsityPattern() const
     return true;
   if (!modelWithinTrackedEntries())
     return false;
-  const detail::QP& qp_data{qp()};
-  if (qp_data.storage == detail::QPStorage::Sparse)
-    return solver_->isWithinSparsityPattern(qp_data.P_csc, qp_data.A_csc);
-  return solver_->isWithinSparsityPattern(qp_data.P, qp_data.A);
+  return solver_->isWithinSparsityPattern(qp());
 }
 
 void MPC::getNextInput(Ref<VectorXd> u0) const
@@ -509,29 +572,30 @@ void MPC::getNextInput(Ref<VectorXd> u0) const
   input_param_.evaluate(0, solution_map_, u0);
 }
 
-void MPC::getInputControlPoints(Ref<VectorXd> control_points) const
+void MPC::getInputControlPoints(Ref<MatrixXd> control_points) const
 {
   assert(solver_initialized_);
-  validateSize(control_points.size(), ctrls_dim_, "getInputControlPoints",
-               "control_points");
   // Assumes that the control points are first elements of solution
-  control_points = solution_map_.head(ctrls_dim_);
+  stackedOutput(control_points, input_dim_, num_ctrl_pts_,
+                "getInputControlPoints", "control_points") =
+      solution_map_.head(ctrls_dim_);
 }
 
-void MPC::getInputTrajectory(Ref<VectorXd> u_traj) const
+void MPC::getInputTrajectory(Ref<MatrixXd> u_traj) const
 {
   assert(solver_initialized_);
-  validateSize(u_traj.size(), u_traj_dim_, "getInputTrajectory", "u_traj");
   // Assumes that the control points are first elements of solution
-  input_param_.evaluateTrajectory(solution_map_, u_traj);
+  input_param_.evaluateTrajectory(
+      solution_map_, stackedOutput(u_traj, input_dim_, horizon_steps_,
+                                   "getInputTrajectory", "u_traj"));
 }
 
-void MPC::getPredictedStateTrajectory(Ref<VectorXd> x_traj) const
+void MPC::getPredictedStateTrajectory(Ref<MatrixXd> x_traj) const
 {
   assert(solver_initialized_);
-  validateSize(x_traj.size(), x_traj_dim_, "getPredictedStateTrajectory",
-               "x_traj");
-  qp_builder_->predictStates(solution_map_, x_traj);
+  qp_builder_->predictStates(
+      solution_map_, stackedOutput(x_traj, state_dim_, horizon_steps_,
+                                   "getPredictedStateTrajectory", "x_traj"));
 }
 
 void MPC::propagateModel(const Ref<const VectorXd>& x0,
@@ -655,13 +719,17 @@ void MPC::setStateWeights(const Ref<const VectorXd>& Q_diag,
 
 void MPC::setInputWeights(const Ref<const VectorXd>& R_diag)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::setInputWeights] Input cost is not enabled.");
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::setInputWeights] Input cost is not enabled "
+                           "(input_cost is Off).");
   validateSize(R_diag.size(), input_dim_, "setInputWeights", "R_diag");
   if (R_diag.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPC::setInputWeights] Input weights must be non-negative.");
-  data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
+  if (opts_.input_cost == InputCostMode::ControlPoints)
+    data_.R_big.diagonal() = R_diag.replicate(num_ctrl_pts_, 1);
+  else
+    data_.R = R_diag;
   pending_ |= DataChange::Weights;
 }
 
@@ -686,39 +754,56 @@ void MPC::setReferenceState(const Ref<const VectorXd>& x_step)
   pending_ |= DataChange::References;
 }
 
-void MPC::setReferenceStateTrajectory(const Ref<const VectorXd>& x_traj)
+void MPC::setReferenceStateTrajectory(const Ref<const MatrixXd>& x_traj)
 {
-  validateSize(x_traj.size(), x_traj_dim_, "setReferenceStateTrajectory",
-               "x_traj");
-  data_.x_ref = x_traj;
+  copySteps(stepView(x_traj, state_dim_, horizon_steps_,
+                     "setReferenceStateTrajectory", "x_traj"),
+            data_.x_ref);
   pending_ |= DataChange::References;
 }
 
 void MPC::setReferenceInput(const Ref<const VectorXd>& u_step)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error(
-        "[MPC::setReferenceInput] Input cost is not enabled.");
-  if (input_param_.parameterization().type != Parameterization::Type::BSpline)
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::setReferenceInput] Input cost is not "
+                           "enabled (input_cost is Off).");
+  if (opts_.input_cost == InputCostMode::ControlPoints
+      && input_param_.parameterization().type
+             != Parameterization::Type::BSpline)
     throw std::logic_error(
         "[MPC::setReferenceInput] A custom basis has no control points "
-        "that represent a constant input; the input cost weights the basis "
-        "coefficients, whose reference defaults to zero. Use "
-        "setReferenceInputControlPoints() to set coefficient references.");
+        "that represent a constant input; with InputCostMode::ControlPoints "
+        "the input cost weights the basis coefficients, whose reference "
+        "defaults to zero. Use setReferenceInputControlPoints() to set "
+        "coefficient references, or InputCostMode::Trajectory.");
   validateSize(u_step.size(), input_dim_, "setReferenceInput", "u_step");
-  data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
+  if (opts_.input_cost == InputCostMode::ControlPoints)
+    data_.ctrls_ref = u_step.replicate(num_ctrl_pts_, 1);
+  else
+    data_.u_ref = u_step.replicate(horizon_steps_, 1);
   pending_ |= DataChange::References;
 }
 
 void MPC::setReferenceInputControlPoints(
-    const Ref<const VectorXd>& control_points)
+    const Ref<const MatrixXd>& control_points)
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::setReferenceInputControlPoints] "
-                           "Input cost is not enabled.");
-  validateSize(control_points.size(), ctrls_dim_,
-               "setReferenceInputControlPoints", "control_points");
-  data_.ctrls_ref = control_points;
+  if (opts_.input_cost != InputCostMode::ControlPoints)
+    throw std::logic_error("[MPC::setReferenceInputControlPoints] Requires "
+                           "input_cost to be InputCostMode::ControlPoints.");
+  copySteps(stepView(control_points, input_dim_, num_ctrl_pts_,
+                     "setReferenceInputControlPoints", "control_points"),
+            data_.ctrls_ref);
+  pending_ |= DataChange::References;
+}
+
+void MPC::setReferenceInputTrajectory(const Ref<const MatrixXd>& u_traj)
+{
+  if (opts_.input_cost != InputCostMode::Trajectory)
+    throw std::logic_error("[MPC::setReferenceInputTrajectory] Requires "
+                           "input_cost to be InputCostMode::Trajectory.");
+  copySteps(stepView(u_traj, input_dim_, horizon_steps_,
+                     "setReferenceInputTrajectory", "u_traj"),
+            data_.u_ref);
   pending_ |= DataChange::References;
 }
 
@@ -876,8 +961,11 @@ VectorXd MPC::getTerminalStateWeights() const
 
 VectorXd MPC::getInputWeights() const
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::getInputWeights] Input cost is not enabled.");
+  if (opts_.input_cost == InputCostMode::Off)
+    throw std::logic_error("[MPC::getInputWeights] Input cost is not enabled "
+                           "(input_cost is Off).");
+  if (opts_.input_cost == InputCostMode::Trajectory)
+    return data_.R;
   return data_.R_big.diagonal().head(input_dim_);
 }
 
@@ -1004,10 +1092,18 @@ const VectorXd& MPC::getPreviousInput() const
 
 const VectorXd& MPC::getReferenceInputControlPoints() const
 {
-  if (!opts_.use_input_cost)
-    throw std::logic_error("[MPC::getReferenceInputControlPoints] "
-                           "Input cost is not enabled.");
+  if (opts_.input_cost != InputCostMode::ControlPoints)
+    throw std::logic_error("[MPC::getReferenceInputControlPoints] Requires "
+                           "input_cost to be InputCostMode::ControlPoints.");
   return data_.ctrls_ref;
+}
+
+const VectorXd& MPC::getReferenceInputTrajectory() const
+{
+  if (opts_.input_cost != InputCostMode::Trajectory)
+    throw std::logic_error("[MPC::getReferenceInputTrajectory] Requires "
+                           "input_cost to be InputCostMode::Trajectory.");
+  return data_.u_ref;
 }
 
 std::ostream& operator<<(std::ostream& os, const Formulation formulation)
@@ -1035,7 +1131,7 @@ std::ostream& print(std::ostream& os, const MPC& mpc, bool capitalize_bools)
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
   os << "\n  Q = " << mpc.getStateWeights().format(fmt)
      << "\n  Qf = " << mpc.getTerminalStateWeights().format(fmt);
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost != InputCostMode::Off)
     os << "\n  R = " << mpc.getInputWeights().format(fmt);
   if (mpc.getOptions().use_input_rate_cost)
     os << "\n  R_rate = " << mpc.getInputRateWeights().format(fmt);
@@ -1085,7 +1181,7 @@ printInline(std::ostream& os, const MPC& mpc, bool capitalize_bools)
       StreamPrecision, DontAlignCols, ", ", ", ", "", "", "[", "]"};
   os << ", Q=" << mpc.getStateWeights().format(fmt)
      << ", Qf=" << mpc.getTerminalStateWeights().format(fmt);
-  if (mpc.getOptions().use_input_cost)
+  if (mpc.getOptions().input_cost != InputCostMode::Off)
     os << ", R=" << mpc.getInputWeights().format(fmt);
   if (mpc.getOptions().use_input_rate_cost)
     os << ", R_rate=" << mpc.getInputRateWeights().format(fmt);

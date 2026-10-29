@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <Eigen/SVD>
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -560,9 +561,24 @@ std::vector<int> Parameterization::inputSaturationSamples() const
   if (type == Type::BSpline && degree == 0)
     return {};
 
-  // degree > 1 or a custom basis: every sample
+  // A custom basis: every sample whose basis row is not negligible. A decaying
+  // basis (e.g. Laguerre functions) has rows far below round-off late in a
+  // long horizon (about 1e-60), which add nothing to the feasible set unless
+  // the coefficients exceed the input limits by 1/prune_tol, but would give
+  // the constraint matrix a dynamic range that hurts the solver's scaling.
   std::vector<int> samples;
-  if (type == Type::Custom || degree > 1) {
+  if (type == Type::Custom) {
+    constexpr double prune_tol{1e-9};
+    const ArrayXd row_norms{band_weights.colwise().norm().transpose()};
+    const double keep_above{prune_tol * row_norms.maxCoeff()};
+    for (int k{0}; k < horizon_steps; ++k)
+      if (row_norms(k) > keep_above)
+        samples.push_back(k);
+    return samples;
+  }
+
+  // degree > 1: every sample
+  if (degree > 1) {
     samples.resize(horizon_steps);
     std::iota(samples.begin(), samples.end(), 0);
     return samples;
@@ -598,6 +614,89 @@ std::vector<int> Parameterization::inputSaturationSamples() const
   std::sort(samples.begin(), samples.end());
   samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
   return samples;
+}
+
+void Parameterization::refineKnots(const int max_interval,
+                                   VectorXd& refined_knots,
+                                   VectorXi& R_start,
+                                   MatrixXd& R_weights,
+                                   std::vector<int>& sampled) const
+{
+  assert(type == Type::BSpline && max_interval > 0);
+  const int p{degree}, n{num_control_points};
+  const VectorXd& t{knots};
+
+  // Split every nonempty active knot interval [t_i, t_{i+1}] (i = p, ...,
+  // n-1) into max(2, ceil(length / max_interval)) equal parts, so every
+  // interval is split at least once and none is longer than max_interval.
+  // Lengths within round-off of a multiple of max_interval are not split
+  // further.
+  const double max_length{max_interval * (1.0 + 1e-9)};
+  std::vector<double> tau(t.data(), t.data() + p + 1);
+  for (int i{p}; i < n; ++i) {
+    const double length{t(i + 1) - t(i)};
+    if (length > 0.0) {
+      const int parts{
+          std::max(2, static_cast<int>(std::ceil(length / max_length)))};
+      for (int q{1}; q < parts; ++q)
+        tau.push_back(t(i) + length * q / parts);
+    }
+    tau.push_back(t(i + 1));
+  }
+  tau.insert(tau.end(), t.data() + n + 1, t.data() + t.size());
+  refined_knots =
+      Map<const VectorXd>{tau.data(), static_cast<Index>(tau.size())};
+  const int n_ref{static_cast<int>(tau.size()) - p - 1};
+
+  // Refined control point j is the blossom of the spline at
+  // (tau_{j+1}, ..., tau_{j+p}), evaluated on the polynomial piece of any
+  // nonempty refined interval [tau_l, tau_{l+1}) in its support inside the
+  // active range (j <= l <= j+p, p <= l <= n_ref-1). That piece lies in the
+  // original interval [t_mu, t_{mu+1}), so the blossom is de Boor's algorithm
+  // on control points mu-p, ..., mu with the argument tau_{j+r} at level r
+  // (the Oslo algorithm). Each refined control point is a combination of at
+  // most p+1 consecutive control points, so R is banded.
+  R_start.resize(n_ref);
+  R_weights.resize(p + 1, n_ref);
+  MatrixXd D{p + 1, p + 1}; // column c: d_{mu-p+c} on control points mu-p..mu
+  for (int j{0}; j < n_ref; ++j) {
+    int l{std::max(j, p)};
+    const int l_max{std::min(j + p, n_ref - 1)};
+    while (l < l_max && !(tau[l] < tau[l + 1]))
+      ++l;
+    assert(tau[l] < tau[l + 1]);
+    const int mu{
+        static_cast<int>(std::upper_bound(t.data(), t.data() + n, tau[l])
+                         - t.data())
+        - 1};
+    assert(mu >= p && mu < n);
+    D.setIdentity();
+    for (int r{1}; r <= p; ++r) {
+      const double x{tau[j + r]};
+      for (int c{p}; c >= r; --c) {
+        const int i{mu - p + c};
+        const double alpha{(x - t(i)) / (t(i + p + 1 - r) - t(i))};
+        D.col(c) = (1.0 - alpha) * D.col(c - 1) + alpha * D.col(c);
+      }
+    }
+    R_start(j) = mu - p;
+    R_weights.col(j) = D.col(p);
+  }
+
+  // The refined control points that some sample depends on (each sampled
+  // input is a convex combination of them)
+  std::vector<bool> used(n_ref, false);
+  const VectorXd tau_vec{refined_knots};
+  const VectorXi start{computeBandStart(horizon_steps, p, tau_vec)};
+  const MatrixXd weights{computeBandWeights(horizon_steps, p, tau_vec)};
+  for (int k{0}; k < horizon_steps; ++k)
+    for (int i{0}; i <= p; ++i)
+      if (weights(i, k) != 0.0)
+        used[start(k) + i] = true;
+  sampled.clear();
+  for (int j{0}; j < n_ref; ++j)
+    if (used[j])
+      sampled.push_back(j);
 }
 
 std::ostream& operator<<(std::ostream& os, const Parameterization& param)

@@ -67,6 +67,19 @@ std::string stateBoundModeToString(affine_mpc::StateBoundMode mode)
   return "unknown";
 }
 
+std::string inputCostModeToString(affine_mpc::InputCostMode mode)
+{
+  switch (mode) {
+  case InputCostMode::Off:
+    return "off";
+  case InputCostMode::ControlPoints:
+    return "control_points";
+  case InputCostMode::Trajectory:
+    return "trajectory";
+  }
+  return "unknown";
+}
+
 std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
 {
   switch (mode) {
@@ -74,6 +87,8 @@ std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
     return "control_points";
   case InputBoundMode::Exact:
     return "exact";
+  case InputBoundMode::Refined:
+    return "refined";
   }
   return "unknown";
 }
@@ -110,6 +125,10 @@ MPCLogger::MPCLogger(const MPC* const mpc,
     ts_{ts},
     prediction_stride_{prediction_stride},
     log_control_points_{log_control_points},
+    log_ref_inputs_{mpc_->getOptions().input_cost != InputCostMode::Off},
+    ref_inputs_control_points_{log_control_points
+                               && mpc_->getOptions().input_cost
+                                      == InputCostMode::ControlPoints},
     logging_mode_{mode},
     save_dir_{save_dir.lexically_normal()},
     save_name_{save_name},
@@ -136,11 +155,14 @@ MPCLogger::MPCLogger(const MPC* const mpc,
   logged_x_dim_ = state_dim_ * strided_k_.size();
   logged_u_dim_ = log_control_points_ ? input_dim_ * num_ctrls_
                                       : input_dim_ * strided_k_.size();
+  logged_ref_u_dim_ = ref_inputs_control_points_
+                          ? input_dim_ * num_ctrls_
+                          : input_dim_ * strided_k_.size();
 
   states_out_buf_.resize(logged_x_dim_);
   inputs_out_buf_.resize(logged_u_dim_);
   ref_states_out_buf_.resize(logged_x_dim_);
-  ref_inputs_out_buf_.resize(logged_u_dim_);
+  ref_inputs_out_buf_.resize(logged_ref_u_dim_);
 
   captureMPCSnapshot();
 
@@ -194,8 +216,9 @@ void MPCLogger::captureMPCSnapshot()
                     param.band_weights.data(), param.band_weights.size()}});
   }
 
+  // released key, derived from the mode (also logged as opt_input_cost)
   addMetadata("opt_use_input_cost",
-              static_cast<int>(mpc_->getOptions().use_input_cost));
+              int{mpc_->getOptions().input_cost != InputCostMode::Off});
   addMetadata("opt_slew_initial_input",
               static_cast<int>(mpc_->getOptions().slew_initial_input));
   addMetadata("opt_slew_control_points",
@@ -208,8 +231,12 @@ void MPCLogger::captureMPCSnapshot()
               int{mpc_->getOptions().input_bounds == InputBoundMode::Exact});
   addMetadata("opt_use_input_rate_cost",
               static_cast<int>(mpc_->getOptions().use_input_rate_cost));
+  addMetadata("opt_input_cost",
+              inputCostModeToString(mpc_->getOptions().input_cost));
   addMetadata("opt_input_bounds",
               inputBoundModeToString(mpc_->getOptions().input_bounds));
+  addMetadata("opt_refined_bound_interval",
+              mpc_->getOptions().refined_bound_interval);
   addMetadata("opt_state_bounds",
               stateBoundModeToString(mpc_->getOptions().state_bounds));
   addMetadata("opt_num_general_constraints",
@@ -222,7 +249,7 @@ void MPCLogger::captureMPCSnapshot()
   addMetadata("Q_diag", mpc_->getStateWeights());
   addMetadata("Qf_diag", mpc_->getTerminalStateWeights());
 
-  if (mpc_->getOptions().use_input_cost)
+  if (mpc_->getOptions().input_cost != InputCostMode::Off)
     addMetadata("R_diag", mpc_->getInputWeights());
   if (mpc_->getOptions().use_input_rate_cost)
     addMetadata("R_rate_diag", mpc_->getInputRateWeights());
@@ -290,11 +317,13 @@ void MPCLogger::logStep(double t,
   prepare_time_ = info.prepare_time;
 
   mpc_->getPredictedStateTrajectory(x_traj_buf_);
-  const bool has_input_ref{mpc_->getOptions().use_input_cost};
+  const bool strided_input_ref{log_ref_inputs_ && !ref_inputs_control_points_};
+  const bool sampled_input_ref{mpc_->getOptions().input_cost
+                               == InputCostMode::Trajectory};
 
   if (log_control_points_) {
     mpc_->getInputControlPoints(inputs_out_buf_);
-    if (has_input_ref)
+    if (ref_inputs_control_points_)
       ref_inputs_out_buf_ = mpc_->getReferenceInputControlPoints();
   } else {
     mpc_->getInputTrajectory(u_traj_buf_);
@@ -316,16 +345,20 @@ void MPCLogger::logStep(double t,
                                                       state_dim_);
     }
 
+    const Eigen::Index u_idx{std::min(k, horizon_steps_ - 1)};
     if (!log_control_points_) {
-      const Eigen::Index u_idx{std::min(k, horizon_steps_ - 1)};
       inputs_out_buf_.segment(i_idx * input_dim_, input_dim_) =
           u_traj_buf_.segment(u_idx * input_dim_, input_dim_);
+    }
 
-      if (has_input_ref) {
-        input_param_.evaluate(
-            u_idx, mpc_->getReferenceInputControlPoints(),
-            ref_inputs_out_buf_.segment(i_idx * input_dim_, input_dim_));
-      }
+    if (strided_input_ref && sampled_input_ref) {
+      ref_inputs_out_buf_.segment(i_idx * input_dim_, input_dim_) =
+          mpc_->getReferenceInputTrajectory().segment(u_idx * input_dim_,
+                                                      input_dim_);
+    } else if (strided_input_ref) {
+      input_param_.evaluate(
+          u_idx, mpc_->getReferenceInputControlPoints(),
+          ref_inputs_out_buf_.segment(i_idx * input_dim_, input_dim_));
     }
   }
 
@@ -381,7 +414,7 @@ void MPCLogger::initRawFiles()
   open_bin(states_bin_, "states");
   open_bin(inputs_bin_, "inputs");
   open_bin(ref_states_bin_, "ref_states");
-  if (mpc_->getOptions().use_input_cost)
+  if (log_ref_inputs_)
     open_bin(ref_inputs_bin_, "ref_inputs");
 }
 
@@ -429,33 +462,17 @@ std::vector<MPCLogger::PayloadEntry> MPCLogger::buildPayloadEntries() const
                         {N, K, n}});
   }
 
-  if (log_control_points_) {
+  const std::vector<size_t> control_point_shape{N, nc, m};
+  const std::vector<size_t> strided_shape{
+      K == 1 ? std::vector<size_t>{N, m} : std::vector<size_t>{N, K, m}};
+
+  payloads.push_back(
+      {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"),
+       log_control_points_ ? control_point_shape : strided_shape});
+  if (log_ref_inputs_) {
     payloads.push_back(
-        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, nc, m}});
-    if (mpc_->getOptions().use_input_cost) {
-      payloads.push_back({"ref_inputs",
-                          rawDataPath("ref_inputs"),
-                          rawHeaderPath("ref_inputs"),
-                          {N, nc, m}});
-    }
-  } else if (K == 1) {
-    payloads.push_back(
-        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, m}});
-    if (mpc_->getOptions().use_input_cost) {
-      payloads.push_back({"ref_inputs",
-                          rawDataPath("ref_inputs"),
-                          rawHeaderPath("ref_inputs"),
-                          {N, m}});
-    }
-  } else {
-    payloads.push_back(
-        {"inputs", rawDataPath("inputs"), rawHeaderPath("inputs"), {N, K, m}});
-    if (mpc_->getOptions().use_input_cost) {
-      payloads.push_back({"ref_inputs",
-                          rawDataPath("ref_inputs"),
-                          rawHeaderPath("ref_inputs"),
-                          {N, K, m}});
-    }
+        {"ref_inputs", rawDataPath("ref_inputs"), rawHeaderPath("ref_inputs"),
+         ref_inputs_control_points_ ? control_point_shape : strided_shape});
   }
 
   return payloads;
@@ -669,7 +686,7 @@ void MPCLogger::writeStep(double t)
   writeBinary(states_bin_, states_out_buf_);
   writeBinary(inputs_bin_, inputs_out_buf_);
   writeBinary(ref_states_bin_, ref_states_out_buf_);
-  if (mpc_->getOptions().use_input_cost)
+  if (log_ref_inputs_)
     writeBinary(ref_inputs_bin_, ref_inputs_out_buf_);
   ++num_logged_steps_;
 }
