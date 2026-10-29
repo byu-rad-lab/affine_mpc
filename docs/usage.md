@@ -183,6 +183,7 @@ An optional fifth argument, `tol` (default `1e-10`), sets the truncation toleran
 The default gives results close to machine precision.
 If you update the affine approximation and rediscretize the model every time step, a looser value such as `1e-6` saves a few matrix products while keeping errors far below typical model error.
 If only the model offset changes between solves (with $A$ and $B$ fixed), set it with `setModelOffsetDiscrete(wd)` or `setModelOffsetContinuous2Discrete(wc)` instead, which avoids rebuilding and refactoring the QP (see [Runtime Updates](concepts/runtime-updates.md#what-can-change-between-solves)).
+In Python, model matrices written in place into Fortran-order arrays avoid a copy on every call (see [Interface Notes](#interface-notes)).
 
 The same discretization is available on its own as `Discretizer`, e.g. to simulate the plant or to discretize a model before passing it to several MPC objects:
 
@@ -633,6 +634,22 @@ See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
     The trajectory getters write in place, so their array must be a writable, C-contiguous `float64` array of the right shape (they raise `ValueError` otherwise, instead of converting it).
 
     The in-place form can be useful if you want to reuse arrays in tight loops for extra performance.
+
+    Vectors and per-step trajectories of vectors (e.g. `x_traj` of shape `(T, n)`) in NumPy's default C order are passed without a copy.
+    Matrix arguments are different: Eigen stores matrices column-major, and NumPy arrays are row-major (C order) by default, so a matrix such as `Ad`, `Bd`, `Ac`, `Bc`, `Hx`, `Hu`, `Hf`, or a basis is copied into a temporary on each call.
+    If your code writes a model into existing arrays at every control update, allocate them once in Fortran order, so they are used without that copy:
+
+    ```python
+    Ad = np.zeros((n, n), order="F")  # allocate once, outside the loop
+    Bd = np.zeros((n, m), order="F")
+    wd = np.zeros(n)
+    while running:
+        affine_model(x, u, Ad, Bd, wd)  # your code writes the entries in place, e.g. Ad[1, 0] = -k / mass
+        mpc.setModelDiscrete(Ad, Bd, wd)
+    ```
+
+    If your code returns new arrays (e.g. from JAX or CasADi), pass them to the setter directly: copying them into Fortran-order arrays costs about as much as the copy it avoids.
+    The copy is small next to a solve (about a microsecond for a 12-state model), so this only matters when you time a Python loop.
 
 === "C++"
 
