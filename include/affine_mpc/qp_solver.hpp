@@ -40,8 +40,13 @@ struct QPBlockLayout
  *
  * The QP passed to initialize() is the one passed to every later call, and
  * it stays at the same address while the solver is used, so a solver may
- * keep pointers into it. The QP type is internal (affine_mpc/detail) and may
- * change between minor releases.
+ * keep pointers into it.
+ *
+ * @warning Experimental: implementing QPSolver outside the library is
+ *   supported, but this interface (its methods, QPBlockLayout, and the
+ *   internal detail::QP and detail::QPStorage types it takes) may change in
+ *   any minor release. Using OSQPSolver or DAQPSolver through
+ *   MPC::initializeSolver() is stable.
  *
  * Copy and move operations are deleted, since solvers own C solver state.
  */

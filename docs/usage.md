@@ -436,7 +436,12 @@ if (!mpc.initializeSolver(std::make_unique<affine_mpc::DAQPSolver>(daqp_settings
 }
 ```
 
-`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface; passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface.
+Passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+
+!!! warning "Experimental interface"
+    Writing your own `QPSolver` is experimental: the interface passes the library's internal QP type and may change in any minor release.
+    Passing `OSQPSolver` or `DAQPSolver` to `initializeSolver()` is stable.
 
 Prefer DAQP for condensed problems of moderate size, where its active-set iterations return the solution to its tolerance (1e-6 on the constraints by default) instead of the approximate solution of OSQP's first-order iterations.
 In our measurements on this library's mass-spring-damper example (`examples/sim.cpp`), a `solve()` call with DAQP was more than ten times faster than with OSQP.
