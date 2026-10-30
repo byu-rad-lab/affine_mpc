@@ -234,3 +234,55 @@ Before opening a PR:
 1. Keep changes focused and easy to review.
 
 See `CONTRIBUTING.md` for the broader contribution process.
+
+## Making a Release
+
+Changes go into `main`, and a release is a tag on `main`: a release PR bumps the versions, and publishing the GitHub release uploads the wheels and sdist to PyPI.
+Every PR into `main` that changes the code or packaging runs the full wheel build, so packaging problems show up before anything is published.
+The docs site deploys from `main` whenever `docs/` changes, so it can describe features shortly before they are released.
+
+### Choosing the Version
+
+Versions follow semantic versioning with the usual convention before 1.0:
+
+- `0.MINOR.0` for breaking changes: anything that makes users change their code (C++ or Python)
+- `0.MINOR.PATCH` for fixes and backward-compatible features
+
+A change that only breaks the C++ ABI (e.g. a new field in `SolveInfo` or a new virtual function in `QPSolver`) can go in a patch release, as long as the release notes say that C++ code must be rebuilt.
+The Python wheels contain the library, so ABI changes do not affect Python users.
+
+### Steps
+
+1. Make sure every change for the release is on `main` and CI passes there.
+1. On a branch from `main`, update the version in `CMakeLists.txt` (`project(... VERSION X.Y.Z)`) and in `CITATION.cff` (`version` and `date-released`).
+   The Python package's version comes from the git tag (setuptools_scm), so nothing in Python changes.
+1. If a bundled dependency's version changed (`cmake/extern_*.cmake`), update its row in `licenses/README.md` and replace its license file if the text changed.
+1. If the binding surface changed, make sure the stubs are regenerated (see [Stub Generation](#stub-generation)).
+1. Open a PR into `main` titled exactly `Release X.Y.Z`, with the release notes as its body (see below).
+   The title matters: CI checks it against the versions in `CMakeLists.txt` and `CITATION.cff`, and editing the title later does not rerun that check (push a commit to rerun it).
+1. Wait for CI: the build and test jobs, the stub check, and the wheel build (`Build and publish to PyPI`, which builds and tests every wheel and the sdist on PRs without uploading them).
+1. Merge the PR.
+1. Create a GitHub release with the tag `vX.Y.Z` on `main`, titled `Release X.Y.Z`, with the same notes, and publish it.
+   Publishing creates the tag and runs the wheel workflow again, which checks the tag against the versions and uploads to PyPI.
+1. Check that the new version is on PyPI and installs (`pip install affine_mpc==X.Y.Z`).
+
+### Patch Releases With Unreleased Work on `main`
+
+If `main` already has changes that should wait for a later release, make the patch release from the previous release's tag instead:
+
+1. Create a branch from the tag (`git switch -c release/X.Y vX.Y.Z`), commit the fix and the version bump on it, and push it.
+1. Build and test it locally, including the bindings: the wheel build runs on PRs into `main`, not on this branch, until the release is published.
+1. Create the GitHub release with the new tag and that branch as its target, and publish it.
+1. Bring the fix into `main` with a PR (without the version bump if `main` is already ahead).
+
+### Release Notes
+
+Start with one paragraph that summarizes the release, then use the sections that apply, in this order:
+
+- **Breaking changes**, with a migration for each
+- **Fixes and changes that can change results**
+- **New features**
+- **Performance**, with measured speedups
+- **Packaging**, **Logging and printing**, and **Documentation**
+
+Say in a note or warning at the top whether the API is source compatible and whether the C++ library is ABI compatible with the previous release.
