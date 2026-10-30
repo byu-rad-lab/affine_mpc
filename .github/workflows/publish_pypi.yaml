@@ -3,8 +3,9 @@ name: Build and publish to PyPI
 on:
   release:
     types: [published]
-  # Build and test the wheels and sdist on PRs into main (release PRs) without
-  # publishing, so packaging problems show up before a release is published.
+  # Build and test the wheels and sdist on PRs into main without publishing, so
+  # packaging problems show up before a release is published. The changes job
+  # skips the builds when a PR changes nothing that goes into them.
   pull_request:
     branches: [main]
     paths:
@@ -19,6 +20,9 @@ on:
       - licenses/**
       - CITATION.cff
       - .github/workflows/publish_pypi.yaml
+  # Build everything by hand, e.g. after changing this workflow's build steps
+  # (a PR that only changes this file does not build)
+  workflow_dispatch:
 
 # A new push to a PR cancels its unfinished wheel builds; releases always finish.
 concurrency:
@@ -82,8 +86,64 @@ jobs:
           fi
           echo "Release $expected matches"
 
+  # Whether to build the wheels and sdist: always for a release or a manual
+  # run. A PR builds only if it changes what goes into them, and a push to a PR
+  # that changes none of that does not build again if the build of the previous
+  # push passed. When in doubt (a cancelled or failed previous build, or a
+  # force push), it builds.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether to build
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # what goes into the wheels or sdist
+          build_paths='^(CMakeLists\.txt|cmake/|include/|src/|python/|pyproject\.toml|README\.md|LICENSE$|licenses/)'
+          # true if the changes in the range $1 touch build_paths, or cannot be
+          # listed (e.g. a commit lost to a force push)
+          changes_build() {
+            local files
+            files=$(git diff --name-only "$1") || return 0
+            grep -qE "$build_paths" <<< "$files"
+          }
+          build=true
+          if [ "$EVENT" = pull_request ]; then
+            if ! changes_build "$BASE...$HEAD"; then
+              echo "The PR changes nothing that goes into the wheels or sdist"
+              build=false
+            elif [ "$ACTION" = synchronize ] && [ -n "$BEFORE" ] && ! changes_build "$BEFORE..$HEAD"; then
+              previous=$(gh run list --workflow publish_pypi.yaml --commit "$BEFORE" \
+                --json conclusion --jq '.[0].conclusion // ""')
+              echo "The last push changed nothing that goes into the wheels or sdist; the build of $BEFORE: ${previous:-none}"
+              if [ "$previous" = success ]; then
+                build=false
+              fi
+            fi
+          fi
+          echo "build=$build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   build-wheels:
-    needs: check-version
+    needs: [check-version, changes]
+    if: needs.changes.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -147,7 +207,8 @@ jobs:
           path: wheelhouse/*.whl
 
   build-sdist:
-    needs: check-version
+    needs: [check-version, changes]
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
 
     steps:

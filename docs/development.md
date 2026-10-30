@@ -271,7 +271,7 @@ The Python wheels contain the library, so ABI changes do not affect Python users
 If `main` already has changes that should wait for a later release, make the patch release from the previous release's tag instead:
 
 1. Create a branch from the tag (`git switch -c release/X.Y vX.Y.Z`), commit the fix and the version bump on it, and push it.
-1. Build and test it locally, including the bindings: the wheel build runs on PRs into `main`, not on this branch, until the release is published.
+1. Run the wheel build on that branch by hand (Actions, `Build and publish to PyPI`, Run workflow), since it runs automatically only on PRs into `main`.
 1. Create the GitHub release with the new tag and that branch as its target, and publish it.
 1. Bring the fix into `main` with a PR (without the version bump if `main` is already ahead).
 
