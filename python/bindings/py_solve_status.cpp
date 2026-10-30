@@ -19,7 +19,10 @@ void moduleAddSolveStatus(py::module& m)
       .value("NotInitialized", ampc::SolveStatus::NotInitialized,
              "MPC solver not initialized - must call initializeSolver() first")
       .value("SolvedInaccurate", ampc::SolveStatus::SolvedInaccurate,
-             "OSQP reported value - see their docs")
+             "The solver stopped early with a solution that meets only "
+             "relaxed tolerances. For OSQP: it hit max_iter or the time "
+             "limit, with residuals within 10 times eps_abs and eps_rel "
+             "(see SolveInfo's residuals).")
       .value("PrimalInfeasible", ampc::SolveStatus::PrimalInfeasible,
              "OSQP reported value - see their docs")
       .value("DualInfeasible", ampc::SolveStatus::DualInfeasible,

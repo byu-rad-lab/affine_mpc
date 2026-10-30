@@ -21,9 +21,12 @@ namespace affine_mpc {
  */
 enum class SolveStatus
 {
-  Success,          ///< QP solved successfully
-  NotInitialized,   ///< Solver not initialized
-  SolvedInaccurate, ///< QP solved but solution may be inaccurate
+  Success,        ///< QP solved successfully
+  NotInitialized, ///< Solver not initialized
+  /// The solver stopped early with a solution that meets only relaxed
+  /// tolerances. For OSQP: it hit max_iter or the time limit, with residuals
+  /// within 10 times eps_abs and eps_rel (see SolveInfo's residuals).
+  SolvedInaccurate,
   PrimalInfeasible, ///< Problem is primal infeasible
   DualInfeasible,   ///< Problem is dual infeasible
   MaxIterReached,   ///< The solver hit its iteration limit

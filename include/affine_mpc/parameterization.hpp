@@ -174,7 +174,9 @@ public:
    *   finite entries and full column rank: its smallest singular value must
    *   exceed 1e-9 times its largest. Full rank does not make the QP well
    *   conditioned; orthonormalizing the columns (e.g. by a QR decomposition)
-   *   helps for bases such as slowly decaying Laguerre functions.
+   *   helps for bases such as slowly decaying Laguerre functions. For nearly
+   *   dependent columns, pass instead the left singular vectors whose
+   *   singular values exceed a tolerance (a truncated SVD).
    * @throws std::invalid_argument if the shape is wrong, an entry is not
    *   finite, or the basis does not have full column rank.
    * @return Parameterization instance.

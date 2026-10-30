@@ -1176,6 +1176,9 @@ TEST(ParameterizationFromBasis, givenNonFiniteOrRankDeficientBasis_Throws)
   basis << 1, 1, 1, 1 + 4e-10, 1, 1, 1, 1;
   expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
                                    "basis must have full column rank");
+  // the message suggests a truncated SVD for nearly dependent columns
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "with the SVD basis = U S V^T");
   // ratio about 1e-8 is accepted
   basis(1, 1) = 1 + 4e-8;
   EXPECT_NO_THROW(P::fromBasis(4, basis));

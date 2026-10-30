@@ -454,9 +454,13 @@ Parameterization Parameterization::fromBasis(int horizon_steps,
        << "basis must have full column rank: its smallest singular value is "
        << ratio << " times its largest (at most " << rank_tol
        << "), so some combination of coefficients has (almost) no effect on "
-       << "any sampled input. Remove dependent columns, or orthonormalize the "
-       << "columns (e.g. by a QR decomposition) if they are only badly "
-       << "scaled.\n";
+       << "any sampled input. If the columns are only badly scaled, "
+       << "orthonormalize them (e.g. by a QR decomposition). If they are "
+       << "nearly dependent, orthonormalizing would turn the dependent "
+       << "direction into a column of round-off; instead keep the directions "
+       << "that affect the inputs: with the SVD basis = U S V^T, pass the "
+       << "columns of U whose singular values exceed a tolerance (e.g. 1e-6 "
+       << "times the largest).\n";
     throw std::invalid_argument(ss.str());
   }
   return Parameterization{horizon_steps, MatrixXd{basis}};

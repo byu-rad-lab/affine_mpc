@@ -306,6 +306,15 @@ The basis must have finite entries and full column rank, tested by its singular 
 Full rank does not make the QP well conditioned, since the condition number of the QP Hessian grows like the square of that of $\Psi$.
 For example, many Laguerre functions with a pole close to 1 pass the rank test, yet can make the QP so badly conditioned that OSQP fails to converge.
 Orthonormalizing the columns (e.g. `numpy.linalg.qr`) spans the same input trajectories and improves the conditioning by many orders of magnitude.
+That fixes columns that are badly scaled, but not columns that are nearly dependent, such as long Laguerre bases with a slow pole: for those, orthonormalizing turns the dependent direction into a column of round-off.
+Drop that direction instead with a truncated SVD, which keeps the input trajectories the basis can actually produce:
+
+```python
+U, s, _ = np.linalg.svd(basis, full_matrices=False)
+basis = U[:, s > 1e-6 * s[0]]  # fewer columns if some were nearly dependent
+```
+
+The coefficients then refer to the new columns, so set coefficient references (`setReferenceInputControlPoints()`) in terms of them.
 B-splines are well conditioned without this, and orthonormalizing would destroy their banded structure and their convex hull property.
 
 A custom basis has `type` `Custom`, `degree` $-1$, and empty `knots`, and it is treated as dense: every coefficient can affect every sample, so the QP rows of each sampled input involve every coefficient.

@@ -477,6 +477,13 @@ so call `resetWarmStart()` to start the next solve from zero.
 With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
 Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
+`SolvedInaccurate` means OSQP stopped at `max_iter` or its time limit with residuals within 10 times `eps_abs` and `eps_rel`, so treat it as a solve with looser tolerances; `SolveInfo`'s residuals say how loose.
+
+OSQP's first-order iterations are also less accurate when $P$ is badly conditioned (its largest eigenvalue many orders of magnitude above its smallest), for example with nearly dependent custom basis functions, no input weight, or slow dynamics over a long horizon.
+Directions in which the cost barely changes are then weakly determined, so OSQP can stop with a first input that is noticeably off even when it reports `Success`, and warm starting can carry that error from step to step, which shows up in closed loop as input chatter or a small limit cycle.
+Tightening `eps_abs` and `eps_rel`, adding an input or input-rate weight, or using DAQP for a condensed problem fixes this; polishing does not help when no constraints are active.
+To check, compute the condition number of $P$ from `getQP()` (e.g. `np.linalg.cond(mpc.getQP().P.toarray())`, outside the control loop).
+
 === "Python"
 
     ```python
