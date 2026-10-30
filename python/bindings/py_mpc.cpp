@@ -271,6 +271,29 @@ Raises:
            py::arg("solver_settings") =
                ampc::OSQPSolver::getRecommendedSettings(),
            py::arg("model_sparsity") = ampc::ModelSparsity::InitialNonzeros);
+  base.def("initializeSolver",
+           static_cast<bool (ampc::MPC::*)(const ampc::DAQPSettings&,
+                                           ampc::ModelSparsity)>(
+               &ampc::MPC::initializeSolver),
+           R"doc(
+Initialize with DAQP, a dense active-set solver, instead of OSQP. The setup it
+needs and what initialization fixes are as for the OSQP overload. DAQP solves
+the condensed formulation only.
+
+Args:
+    solver_settings: DAQP solver settings.
+    model_sparsity: Which entries of Ad and Bd the solver tracks.
+
+Returns:
+    success: True if initialization succeeds, false otherwise.
+
+Raises:
+    RuntimeError: If the library was built without DAQP (see hasDAQP()), or if
+        a setter the solver or the options require has not been called.
+    ValueError: For the sparse formulation, or for ModelSparsity.Full.
+           )doc",
+           py::arg("solver_settings"),
+           py::arg("model_sparsity") = ampc::ModelSparsity::InitialNonzeros);
 
   base.def("solve", &ampc::MPC::solve,
            R"doc(

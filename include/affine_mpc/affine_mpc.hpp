@@ -17,6 +17,7 @@
  *  - Logging utilities
  */
 
+#include "affine_mpc/daqp_settings.hpp"
 #include "affine_mpc/discretizer.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"

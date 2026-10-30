@@ -426,21 +426,29 @@ The library gives OSQP $\mathbf{q} = 0$ at those times, so the cost scaling depe
 #### Choosing the QP solver
 
 OSQP is the default solver for both formulations.
-For the condensed formulation, the C++ interface can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver.
-DAQP is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
-It is not available from Python yet.
+For the condensed formulation, you can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver, by passing `DAQPSettings` to `initializeSolver()`:
 
-```cpp
-#include "affine_mpc/daqp_solver.hpp"
+=== "Python"
 
-affine_mpc::DAQPSettings daqp_settings; // DAQP's defaults
-if (!mpc.initializeSolver(std::make_unique<affine_mpc::DAQPSolver>(daqp_settings))) {
-  /* handle the error */
-}
-```
+    ```python
+    settings = affine_mpc.DAQPSettings()  # DAQP's defaults
+    if not mpc.initializeSolver(settings):
+        raise RuntimeError("Failed to initialize solver")
+    ```
 
-`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface.
-Passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+=== "C++"
+
+    ```cpp
+    affine_mpc::DAQPSettings settings; // DAQP's defaults
+    if (!mpc.initializeSolver(settings)) { /* handle the error */ }
+    ```
+
+The Python wheels include DAQP.
+In C++ it is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
+`DAQPSettings` and the `initializeSolver()` overload exist in every build, but without DAQP the overload throws `std::logic_error` (`RuntimeError` in Python); `hasDAQP()` tells whether the library has it.
+With the sparse formulation it throws `std::invalid_argument` (`ValueError`).
+
+In C++, `initializeSolver(std::unique_ptr<QPSolver>)` also takes a solver object, such as `std::make_unique<DAQPSolver>(settings)` (from `affine_mpc/daqp_solver.hpp`) or any other implementation of the `QPSolver` interface.
 
 !!! warning "Experimental interface"
     Writing your own `QPSolver` is experimental: the interface passes the library's internal QP type and may change in any minor release.

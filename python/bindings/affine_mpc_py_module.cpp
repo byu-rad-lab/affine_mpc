@@ -13,6 +13,7 @@ PYBIND11_MODULE(_bindings, m)
   moduleAddParameterization(m);
   moduleAddDiscretizer(m);
   moduleAddOsqpSettings(m);
+  moduleAddDaqpSettings(m);
   moduleAddSolveStatus(m);
   moduleAddQuadraticProgram(m);
   moduleAddMPC(m);

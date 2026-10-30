@@ -11,6 +11,7 @@ import scipy.sparse
 import typing
 
 __all__: list[str] = [
+    "DAQPSettings",
     "Discretizer",
     "Formulation",
     "InputBoundMode",
@@ -26,6 +27,7 @@ __all__: list[str] = [
     "SolveInfo",
     "SolveStatus",
     "StateBoundMode",
+    "hasDAQP",
 ]
 
 class InputCostMode(enum.Enum):
@@ -870,6 +872,57 @@ class OSQPSettings:
     @warm_starting.setter
     def warm_starting(self, arg0: int) -> None: ...
 
+class DAQPSettings:
+    """
+    DAQP solver settings; the defaults are DAQP's.
+
+    Pass them to MPC.initializeSolver() to solve with DAQP, a dense active-set
+    solver, instead of OSQP (condensed formulation only). The class exists in every
+    build, but initializing with it needs a library built with DAQP; check with
+    hasDAQP().
+
+    Attributes:
+        primal_tol: Tolerance for primal infeasibility: constraints may be violated
+            by up to this much.
+        dual_tol: Tolerance for dual infeasibility (the sign of the multipliers).
+        iter_limit: Maximum number of active-set iterations.
+        time_limit: Time limit for a solve (seconds); zero or negative for none.
+        eps_prox: Proximal-point regularization, which lets DAQP solve QPs whose
+            cost matrix P is only positive semidefinite (singular). Negative (the
+            default, -1e-6): automatic, used only when P is singular or too
+            ill-conditioned to factorize, starting from |eps_prox|. Positive: always
+            used, with this eps. Zero: never used, so a singular P makes
+            initializeSolver() return False (or, after a weight or model change,
+            the next solve return UpdateFailed).
+    """
+
+    def __init__(self) -> None:
+        """
+        Constructor sets DAQP's default values.
+        """
+
+    def __repr__(self) -> str: ...
+    @property
+    def dual_tol(self) -> float: ...
+    @dual_tol.setter
+    def dual_tol(self, arg0: float) -> None: ...
+    @property
+    def eps_prox(self) -> float: ...
+    @eps_prox.setter
+    def eps_prox(self, arg0: float) -> None: ...
+    @property
+    def iter_limit(self) -> int: ...
+    @iter_limit.setter
+    def iter_limit(self, arg0: int) -> None: ...
+    @property
+    def primal_tol(self) -> float: ...
+    @primal_tol.setter
+    def primal_tol(self, arg0: float) -> None: ...
+    @property
+    def time_limit(self) -> float: ...
+    @time_limit.setter
+    def time_limit(self, arg0: float) -> None: ...
+
 class SolveStatus(enum.Enum):
     """
     Enum for reporting the status of an MPC solve.
@@ -1662,6 +1715,7 @@ class MPC:
         Get the diagonal of the terminal state weight matrix Q_f (size state_dim).
         """
 
+    @typing.overload
     def initializeSolver(
         self,
         solver_settings: OSQPSettings = OSQPSettings(),
@@ -1698,6 +1752,30 @@ class MPC:
             RuntimeError: If a setter the solver or the options require has not been
                 called.
             ValueError: For ModelSparsity.Full with the condensed formulation.
+        """
+
+    @typing.overload
+    def initializeSolver(
+        self,
+        solver_settings: DAQPSettings,
+        model_sparsity: ModelSparsity = ModelSparsity.InitialNonzeros,
+    ) -> bool:
+        """
+        Initialize with DAQP, a dense active-set solver, instead of OSQP. The setup it
+        needs and what initialization fixes are as for the OSQP overload. DAQP solves
+        the condensed formulation only.
+
+        Args:
+            solver_settings: DAQP solver settings.
+            model_sparsity: Which entries of Ad and Bd the solver tracks.
+
+        Returns:
+            success: True if initialization succeeds, false otherwise.
+
+        Raises:
+            RuntimeError: If the library was built without DAQP (see hasDAQP()), or if
+                a setter the solver or the options require has not been called.
+            ValueError: For the sparse formulation, or for ModelSparsity.Full.
         """
 
     def isSolverInitialized(self) -> bool:
@@ -2520,3 +2598,9 @@ class MPCLogger:
         Args:
             filename: Output filename (should end with .yaml or .yml).
         """
+
+def hasDAQP() -> bool:
+    """
+    Whether the library was built with DAQP, so that MPC.initializeSolver() accepts
+    DAQPSettings. The wheels on PyPI are built with it.
+    """

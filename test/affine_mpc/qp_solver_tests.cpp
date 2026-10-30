@@ -1,3 +1,4 @@
+#include "affine_mpc/daqp_settings.hpp"
 #include "affine_mpc/mpc.hpp"
 #include "affine_mpc/options.hpp"
 #include "affine_mpc/osqp_solver.hpp"
@@ -200,4 +201,37 @@ TEST(QPSolverInterfaceTester, givenWrongSize_GetDualSolutionThrows)
   ASSERT_TRUE(mpc.initializeSolver());
   VectorXd y(mpc.getNumQPConstraints() + 1);
   EXPECT_THROW((void)mpc.getDualSolution(y), std::invalid_argument);
+}
+
+// The DAQPSettings overload exists in every build: with DAQP it solves like
+// OSQP at a tight tolerance (and reports NaN residuals, as DAQP does); without
+// it, it throws
+TEST(QPSolverInterfaceTester, givenDAQPSettings_UsesDAQPWhenBuiltWithIt)
+{
+  const auto param{ampc::Parameterization::linearInterp(10, 3)};
+  ampc::MPC daqp{2, 1, param, msd_opts}, ref{2, 1, param, msd_opts};
+  ampc::MPC sparse{2, 1, param, msd_opts, ampc::Formulation::Sparse};
+  for (ampc::MPC* mpc : {&daqp, &ref, &sparse})
+    setupMassSpringDamper(*mpc);
+  if (!ampc::hasDAQP()) {
+    expectLogicErrorWithMessage(
+        [&] { (void)daqp.initializeSolver(ampc::DAQPSettings{}); },
+        "built without DAQP");
+    return;
+  }
+  EXPECT_THROW((void)sparse.initializeSolver(ampc::DAQPSettings{}),
+               std::invalid_argument);
+
+  ASSERT_TRUE(daqp.initializeSolver(ampc::DAQPSettings{}));
+  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  settings.eps_abs = settings.eps_rel = 1e-10;
+  settings.max_iter = 100000;
+  ASSERT_TRUE(ref.initializeSolver(settings));
+  ASSERT_EQ(daqp.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  ASSERT_EQ(ref.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  VectorXd u_daqp(1), u_ref(1);
+  daqp.getNextInput(u_daqp);
+  ref.getNextInput(u_ref);
+  EXPECT_NEAR(u_daqp(0), u_ref(0), 1e-5);
+  EXPECT_TRUE(std::isnan(daqp.getSolveInfo().dual_residual));
 }

@@ -15,6 +15,9 @@
 
 #include "affine_mpc/detail/vector_parameterization.hpp"
 #include "affine_mpc/parameterization.hpp"
+#ifdef AFFINE_MPC_WITH_DAQP
+#include "affine_mpc/daqp_solver.hpp"
+#endif
 #include "affine_mpc/solve_status.hpp"
 #include "eigen_compat.hpp" // remove this once Eigen 3.5 is required
 #include "formulation.hpp"
@@ -391,6 +394,29 @@ bool MPC::initializeSolver(const OSQPSettings& solver_settings,
                               qp_builder_->numVariables(),
                               qp_builder_->numConstraints(), solver_settings),
                           model_sparsity);
+}
+
+bool MPC::initializeSolver(const DAQPSettings& solver_settings,
+                           const ModelSparsity model_sparsity)
+{
+#ifdef AFFINE_MPC_WITH_DAQP
+  return initializeSolver(std::make_unique<DAQPSolver>(solver_settings),
+                          model_sparsity);
+#else
+  (void)solver_settings;
+  (void)model_sparsity;
+  throw std::logic_error("[MPC::initializeSolver] affine_mpc was built without "
+                         "DAQP (needs -DAFFINE_MPC_WITH_DAQP=ON).");
+#endif
+}
+
+bool hasDAQP() noexcept
+{
+#ifdef AFFINE_MPC_WITH_DAQP
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool MPC::initializeSolver(std::unique_ptr<QPSolver> solver,

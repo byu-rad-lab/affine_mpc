@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 
+#include "affine_mpc/daqp_settings.hpp"
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -169,6 +170,27 @@ public:
    *   ModelSparsity).
    */
   [[nodiscard]] bool initializeSolver(ModelSparsity model_sparsity);
+
+  /**
+   * @brief Initialize with DAQP, a dense active-set solver, instead of OSQP;
+   *   see initializeSolver(const OSQPSettings&, ModelSparsity) for the setup
+   *   this needs and what initialization fixes.
+   *
+   *   Equivalent to passing `std::make_unique<DAQPSolver>(solver_settings)`
+   *   to initializeSolver(std::unique_ptr<QPSolver>, ModelSparsity). DAQP
+   *   solves the condensed formulation only. Declared in every build; use
+   *   hasDAQP() to check that the library was built with DAQP.
+   * @param solver_settings DAQP solver settings.
+   * @param model_sparsity Which entries of Ad and Bd the solver tracks.
+   * @return True if initialization succeeds, false otherwise.
+   * @throws std::logic_error if the library was built without DAQP, or if a
+   *   setter the solver or the options require has not been called.
+   * @throws std::invalid_argument for the sparse formulation, or for
+   *   ModelSparsity::Full.
+   */
+  [[nodiscard]] bool initializeSolver(
+      const DAQPSettings& solver_settings,
+      ModelSparsity model_sparsity = ModelSparsity::InitialNonzeros);
 
   /**
    * @brief Initialize with the given QP solver instead of OSQP; see
