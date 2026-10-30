@@ -97,6 +97,34 @@ CondensedFormulation::StateCostProduct chooseStateCostProduct(
                                                             : Product::BandGemv;
 }
 
+// v = [Ad x0 + wd; Ad v_0 + wd; ...; Ad v_(T-2) + wd], the free response.
+// Adding wd separately avoids a temporary for the product inside a sum. With
+// Inline, the T products of Ad (n x n) and an n-vector use lazyProduct(),
+// which is inlined; otherwise operator* calls Eigen's general matrix-vector
+// kernel for each of them.
+template <bool Inline>
+void freeResponse(const MatrixXd& Ad,
+                  const VectorXd& x0,
+                  const VectorXd& wd,
+                  const int T,
+                  VectorXd& v)
+{
+  const int n{static_cast<int>(x0.size())};
+  if constexpr (Inline)
+    v.head(n).noalias() = Ad.lazyProduct(x0);
+  else
+    v.head(n).noalias() = Ad * x0;
+  v.head(n) += wd;
+
+  for (int k{1}, row{n}; k < T; ++k, row += n) {
+    if constexpr (Inline)
+      v.segment(row, n).noalias() = Ad.lazyProduct(v.segment(row - n, n));
+    else
+      v.segment(row, n).noalias() = Ad * v.segment(row - n, n);
+    v.segment(row, n) += wd;
+  }
+}
+
 } // namespace
 
 // ---- StateRowMap ------------------------------------------------------------
@@ -407,16 +435,16 @@ void CondensedFormulation::updateS(const MPCData& d)
 
 void CondensedFormulation::updateV(const MPCData& d)
 {
-  // add dynamics of initial time step (k=0). Adding wd separately avoids a
-  // temporary for the product inside a sum.
-  v_.head(n_).noalias() = d.Ad * d.x0;
-  v_.head(n_) += d.wd;
-
-  for (int k{1}, row{n_}; k < T_; ++k, row += n_) {
-    // add cumulative effect of all previous dynamics
-    v_.segment(row, n_).noalias() = d.Ad * v_.segment(row - n_, n_);
-    v_.segment(row, n_) += d.wd;
-  }
+  // For small n the kernel's per-call cost dominates the x0 update, and the
+  // inlined products take 25-40% less time (n <= 4). For n >= 24 the kernel
+  // is faster: inlining took up to 1.7x as long on x86-64 and 1.15x on a
+  // Raspberry Pi. n = 8 to 12 is close to even, and n = 12 already favors the
+  // kernel on the Raspberry Pi.
+  constexpr int max_inline_states{8};
+  if (n_ <= max_inline_states)
+    freeResponse<true>(d.Ad, d.x0, d.wd, T_, v_);
+  else
+    freeResponse<false>(d.Ad, d.x0, d.wd, T_, v_);
 }
 
 // ---- SparseFormulation ------------------------------------------------------
