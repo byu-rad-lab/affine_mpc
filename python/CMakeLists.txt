@@ -48,6 +48,8 @@ set_target_properties(_bindings PROPERTIES
 )
 
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
+# As for the library: only Eigen code under MPL-2.0 or a compatible license
+target_compile_definitions(_bindings PRIVATE EIGEN_MPL2_ONLY)
 
 # Copy the Python package into the build tree so the built extension is
 # importable for local testing and stub generation.

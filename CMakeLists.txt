@@ -115,6 +115,9 @@ target_link_libraries(${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
   PUBLIC osqp::osqp
 )
+# Fail to compile if any Eigen code under a license other than MPL-2.0 (or a
+# compatible one) is used, so the compiled library stays as licenses/ describes
+target_compile_definitions(${PROJECT_NAME} PRIVATE EIGEN_MPL2_ONLY)
 
 if(TARGET ZLIB::ZLIB)
   target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIB)

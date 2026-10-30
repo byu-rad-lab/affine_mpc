@@ -16,6 +16,7 @@ on:
       - pyproject.toml
       - README.md
       - LICENSE
+      - licenses/**
       - .github/workflows/publish_pypi.yaml
 
 # A new push to a PR cancels its unfinished wheel builds; releases always finish.
