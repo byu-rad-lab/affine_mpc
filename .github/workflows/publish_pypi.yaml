@@ -17,6 +17,7 @@ on:
       - README.md
       - LICENSE
       - licenses/**
+      - CITATION.cff
       - .github/workflows/publish_pypi.yaml
 
 # A new push to a PR cancels its unfinished wheel builds; releases always finish.
@@ -45,7 +46,44 @@ env:
   CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
 
 jobs:
+  # The release's version (the tag vX.Y.Z, or a PR title "Release X.Y.Z") must
+  # match CMakeLists.txt and CITATION.cff, which are bumped by hand; the Python
+  # version comes from the tag. Other PRs only check that the two files agree.
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check the versions
+        env:
+          # passed through the environment, not expanded into the script
+          TAG: ${{ github.event.release.tag_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          cmake_version=$(sed -nE 's/^ *VERSION ([0-9]+\.[0-9]+\.[0-9]+) *$/\1/p' CMakeLists.txt | head -n 1)
+          citation_version=$(sed -nE 's/^version: *"?([^" ]+)"? *$/\1/p' CITATION.cff)
+          echo "CMakeLists.txt: ${cmake_version:-none}, CITATION.cff: ${citation_version:-none}"
+          if [ -z "$cmake_version" ] || [ "$cmake_version" != "$citation_version" ]; then
+            echo "::error::CMakeLists.txt and CITATION.cff must have the same version"
+            exit 1
+          fi
+          if [ -n "$TAG" ]; then
+            expected=${TAG#v}
+          elif [[ "$PR_TITLE" =~ ^Release\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            expected=${BASH_REMATCH[1]}
+          else
+            echo "Not a release (the title is not 'Release X.Y.Z')"
+            exit 0
+          fi
+          if [ "$cmake_version" != "$expected" ]; then
+            echo "::error::The release is $expected, but CMakeLists.txt and CITATION.cff say $cmake_version"
+            exit 1
+          fi
+          echo "Release $expected matches"
+
   build-wheels:
+    needs: check-version
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -109,6 +147,7 @@ jobs:
           path: wheelhouse/*.whl
 
   build-sdist:
+    needs: check-version
     runs-on: ubuntu-latest
 
     steps:
