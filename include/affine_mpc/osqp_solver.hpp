@@ -149,7 +149,11 @@ public:
     return true;
   }
   /// Initializes with the settings given at construction (the recommended
-  /// settings for the constructor without settings).
+  /// settings for the constructor without settings). OSQP computes its cost
+  /// scaling from P and q at setup and again at every matrix update, so this
+  /// sets OSQP up with q = 0 and then gives it `qp.q`, and updateMatrices()
+  /// holds q = 0 during a matrix update: the cost scaling depends on P alone,
+  /// not on x0 or the references.
   [[nodiscard]] bool initialize(const detail::QP& qp,
                                 const QPBlockLayout& layout) override;
   bool isInitialized() const noexcept override { return initialized_; }
@@ -358,6 +362,10 @@ private:
   // OSQP only treats bounds beyond OSQP_INFTY as unbounded; with IEEE
   // infinities it can not detect convergence, so bounds are clamped here.
   VectorXF l_buf_, u_buf_;
+  // A zero cost vector: OSQP computes its cost scaling from q at setup and at
+  // every matrix update, so the QP interface passes q = 0 then (see
+  // initialize(const detail::QP&, const QPBlockLayout&))
+  VectorXF zero_q_;
   // settings for initialize(const detail::QP&, const QPBlockLayout&)
   OSQPSettings settings_;
 

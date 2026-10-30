@@ -436,6 +436,8 @@ bool MPC::initializeSolver(std::unique_ptr<QPSolver> solver,
   // x0 only affects vector terms (q, l, u) so the values don't matter to set
   // initial sparsity structure. Setting to ones. The solver is not
   // initialized yet, so only the assembled QP matters here, not the result.
+  // OSQPSolver sets OSQP up with q = 0, so the placeholder does not affect
+  // its cost scaling either.
   VectorXd x_full{state_dim_};
   x_full.setOnes();
   (void)qpUpdateX0(x_full);

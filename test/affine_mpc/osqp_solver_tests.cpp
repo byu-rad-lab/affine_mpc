@@ -5,6 +5,7 @@
 #include <limits>
 #include <sstream>
 
+#include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
 #include "utils.hpp"
@@ -523,6 +524,87 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   oss << info;
   EXPECT_NE(oss.str().find("SolveInfo(status=Success, iterations="),
             std::string::npos);
+}
+
+TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithZeroCostVector)
+{
+  // OSQP fixes its cost scaling at setup from P and ||q||_inf, so setting up
+  // with q = 0 and then updating q differs from setting up with q
+  const int n{2}, m{3};
+  affine_mpc::detail::QP qp;
+  qp.P.resize(n, n);
+  qp.P << 4, 1, 1, 2;
+  qp.A.resize(m, n);
+  qp.A << 1, 1, 1, 0, 0, 1;
+  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
+  qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
+  qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.eps_abs = settings.eps_rel = 1e-8;
+
+  affine_mpc::OSQPSolver by_qp{n, m, settings};
+  ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
+  affine_mpc::OSQPSolver zero_then_q{n, m, settings};
+  ASSERT_TRUE(zero_then_q.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l,
+                                     qp.u, settings));
+  ASSERT_TRUE(zero_then_q.updateCostVector(qp.q));
+  affine_mpc::OSQPSolver with_q{n, m, settings};
+  ASSERT_TRUE(with_q.initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings));
+
+  Eigen::Vector2d z_qp, z_zero, z_q;
+  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(zero_then_q.solve(z_zero), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(with_q.solve(z_q), affine_mpc::SolveStatus::Success);
+
+  EXPECT_EQ(by_qp.getSolveInfo().iterations,
+            zero_then_q.getSolveInfo().iterations);
+  EXPECT_EQ(z_qp, z_zero);
+  // the test can tell the two setups apart
+  EXPECT_NE(by_qp.getSolveInfo().iterations, with_q.getSolveInfo().iterations);
+}
+
+TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesWithZeroQ)
+{
+  // A matrix update recomputes OSQP's scaling, the cost scaling from the q it
+  // holds; through the QP interface it must match a fresh setup with q = 0
+  const int n{2}, m{3};
+  affine_mpc::detail::QP qp;
+  qp.P.resize(n, n);
+  qp.P << 4, 1, 1, 2;
+  qp.A.resize(m, n);
+  qp.A << 1, 1, 1, 0, 0, 1;
+  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
+  qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
+  qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.eps_abs = settings.eps_rel = 1e-8;
+  Eigen::Matrix2d P_new;
+  P_new << 8, 2, 2, 3;
+
+  affine_mpc::OSQPSolver by_qp{n, m, settings};
+  ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
+  qp.P = P_new;
+  ASSERT_TRUE(by_qp.updateMatrices(qp, true, false));
+
+  affine_mpc::OSQPSolver fresh{n, m, settings};
+  ASSERT_TRUE(fresh.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l, qp.u,
+                               settings));
+  ASSERT_TRUE(fresh.updateCostVector(qp.q));
+
+  // the raw update keeps OSQP's behavior: it rescales with the q it holds
+  affine_mpc::OSQPSolver raw{n, m, settings};
+  ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A,
+                             Eigen::Vector2d::Zero(), qp.l, qp.u, settings));
+  ASSERT_TRUE(raw.updateCostVector(qp.q));
+  ASSERT_TRUE(raw.updateCostMatrix(P_new));
+
+  Eigen::Vector2d z_qp, z_fresh, z_raw;
+  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(fresh.solve(z_fresh), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(raw.solve(z_raw), affine_mpc::SolveStatus::Success);
+  EXPECT_EQ(by_qp.getSolveInfo().iterations, fresh.getSolveInfo().iterations);
+  EXPECT_TRUE(expectEigenNear(z_qp, z_fresh, 1e-12));
+  EXPECT_NE(by_qp.getSolveInfo().iterations, raw.getSolveInfo().iterations);
 }
 
 TEST(OSQPSolverProtectedTester, askedBeforeInitialize_ReturnsSafeDefaults)

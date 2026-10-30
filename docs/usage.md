@@ -420,6 +420,9 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```
 
+With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A$ change (a model or weight update).
+The library gives OSQP $\mathbf{q} = 0$ at those times, so the cost scaling depends only on $P$, not on any particular $x_0$ or reference.
+
 #### Choosing the QP solver
 
 OSQP is the default solver for both formulations.

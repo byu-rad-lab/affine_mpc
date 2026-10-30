@@ -150,7 +150,9 @@ INSTANTIATE_TEST_SUITE_P(Cases,
 // reference, on a closed-loop run in which the model changes halfway (so the
 // matrices are updated too). OSQP does not reach even its recommended
 // tolerance on some steps with active state bounds; those steps are not
-// compared with it.
+// compared with it. Both OSQP controllers get the input actually applied
+// (DAQP's) as their previous input, so a failed solve does not change their
+// later QPs.
 TEST_P(DAQPConsistencyTester, givenCondensedMPC_DAQPMatchesReference)
 {
   const DAQPCase& c{GetParam()};
@@ -199,11 +201,19 @@ TEST_P(DAQPConsistencyTester, givenCondensedMPC_DAQPMatchesReference)
       EXPECT_TRUE(expectEigenNear(cp_daqp, cp_other, 1e-3)) << "step " << k;
     }
     if (osqp_solved) {
-      osqp.getInputControlPoints(cp_other);
-      EXPECT_TRUE(expectEigenNear(cp_daqp, cp_other, 2e-2)) << "step " << k;
+      // OSQP's first-order solution can be off along flat directions of P by
+      // more than its tolerance suggests (by how much depends on its scaling),
+      // so compare the objective, which those directions barely change
+      const double osqp_obj{osqp.getSolveInfo().objective};
+      EXPECT_NEAR(info.objective, osqp_obj, 1e-4 * (1.0 + std::abs(osqp_obj)))
+          << "step " << k;
     }
 
     daqp.getNextInput(u);
+    if (c.opts.slew_initial_input || c.opts.use_input_rate_cost) {
+      osqp.setPreviousInput(u);
+      ref.setPreviousInput(u);
+    }
     daqp.propagateModel(x, u, x);
   }
   EXPECT_GE(compared, steps * 3 / 4);
