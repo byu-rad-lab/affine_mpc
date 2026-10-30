@@ -869,8 +869,33 @@ public:
   const Eigen::VectorXd& getReferenceInputTrajectory() const;
 
   /**
+   * @brief Get the dual solution (Lagrange multipliers) of the QP from the
+   *   previous solve: one value per row of the QP's constraint matrix A,
+   *   in the order of getQPConstraintBlocks().
+   *
+   *   The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so
+   *   y_i is positive when row i is at its upper bound, negative at its lower
+   *   bound, and zero when inactive. They are the multipliers of the QP's
+   *   cost, which is half the MPC cost. With a solver whose solutions are
+   *   approximate (OSQP), they are approximate too; the
+   *   SolveInfo::dual_residual of getSolveInfo() says how closely they
+   *   satisfy the equation above. After a failed solve they are the solver's
+   *   last iterate, like the primal solution. With DAQP, call this before
+   *   prepare() applies new data.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
+   * @param y Output vector of size getNumQPConstraints().
+   * @return False, leaving y unchanged, if the solver does not provide a dual
+   *   solution (a custom QPSolver may not); true for OSQPSolver and
+   *   DAQPSolver.
+   * @throws std::invalid_argument if y does not have size
+   *   getNumQPConstraints().
+   */
+  [[nodiscard]] bool getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const;
+
+  /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,
-   *   objective, and timing).
+   *   objective, residuals, and timing).
    *
    *   After a solve() that returned `UpdateFailed`, the solver fields still
    *   describe the previous solve, while `mpc_solve_time` covers the failed

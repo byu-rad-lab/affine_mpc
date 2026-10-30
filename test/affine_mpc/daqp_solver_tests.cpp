@@ -187,6 +187,16 @@ TEST_P(DAQPConsistencyTester, givenCondensedMPC_DAQPMatchesReference)
     EXPECT_NEAR(objective(qp, z), info.objective,
                 1e-9 * (1.0 + std::abs(info.objective)))
         << "step " << k;
+    // its multipliers, mapped back to the rows, satisfy the optimality
+    // conditions with z; DAQP does not report residuals
+    VectorXd y(daqp.getNumQPConstraints());
+    ASSERT_TRUE(daqp.getDualSolution(y));
+    const KKTResiduals kkt{kktResiduals(qp, z, y)};
+    const double y_scale{1.0 + y.lpNorm<Infinity>()};
+    EXPECT_LE(kkt.stationarity, 1e-8 * y_scale) << "step " << k;
+    EXPECT_LE(kkt.complementarity, 1e-6 * y_scale) << "step " << k;
+    EXPECT_TRUE(std::isnan(info.primal_residual));
+    EXPECT_TRUE(std::isnan(info.dual_residual));
 
     VectorXd cp_daqp(daqp.getNumControlPoints()), cp_other(cp_daqp.size());
     daqp.getInputControlPoints(cp_daqp);

@@ -121,6 +121,21 @@ public:
   virtual const Eigen::Map<const Eigen::VectorXd>
   getSolutionMap() const noexcept = 0;
 
+  /**
+   * @brief Write the dual solution of the last solve() into y: one value per
+   *   row of A, with P z + q + A^T y = 0 at a solution (positive when a row
+   *   is at its upper bound, negative at its lower bound, zero when
+   *   inactive).
+   * @param y Output of size equal to the number of rows of A.
+   * @return False, leaving y unchanged, if the solver does not provide a dual
+   *   solution (the default) or is not initialized.
+   */
+  [[nodiscard]] virtual bool
+  getDualSolution(Eigen::Ref<Eigen::VectorXd> /*y*/) const
+  {
+    return false;
+  }
+
   /// @brief Diagnostics of the last solve() (SolveInfo's solver fields).
   virtual SolveInfo getSolveInfo() const noexcept = 0;
 

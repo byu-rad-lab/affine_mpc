@@ -109,6 +109,12 @@ public:
   [[nodiscard]] SolveStatus solve() override;
   const Eigen::Map<const Eigen::VectorXd>
   getSolutionMap() const noexcept override;
+  /// DAQP's multipliers in row order: the multiplier of a variable bound
+  /// goes to the simple row that sets it (divided by its coefficient), and
+  /// the other simple rows of that variable get zero.
+  [[nodiscard]] bool
+  getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const override;
+  /// The residuals are NaN: DAQP does not report them.
   SolveInfo getSolveInfo() const noexcept override;
   void coldStart() noexcept override;
   /// Whether every row taken as a simple bound still has a single nonzero

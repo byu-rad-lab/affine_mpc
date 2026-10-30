@@ -544,7 +544,7 @@ You can also access the full input and predicted state trajectories:
 
     A stacked `Eigen::VectorXd` (e.g. `state_dim * horizon_steps`) works as well, and so do whole columns of a larger matrix (`X.middleCols(j, horizon_steps)`); a block with fewer rows than its matrix is rejected, since the getters write in place.
 
-Solver diagnostics from the last solve (status, iterations, objective, and timing) are available as a `SolveInfo`:
+Solver diagnostics from the last solve (status, iterations, objective, residuals, and timing) are available as a `SolveInfo`:
 
 === "Python"
 
@@ -567,6 +567,7 @@ Setters only store their values and the QP is updated in `solve()`, so `mpc_solv
 The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
 If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
 `prepare_time` is the total time of the `prepare()` calls since the previous solve (zero if there were none), so `prepare_time + mpc_solve_time` is the MPC's work for the step while `mpc_solve_time` alone is its latency.
+`primal_residual` and `dual_residual` are the solver's absolute residuals (NaN when it does not report them, as with DAQP); for example, they tell how far a `SolvedInaccurate` solution is from optimal (see [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp)).
 
 ### 8. (Optional) Logging
 
@@ -613,6 +614,7 @@ See [Logging](logging.md) for output format and workflow details.
 `getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
 `getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
 These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
+`getDualSolution()` gives the multipliers of the rows from the last solve; it only fills the vector you pass in C++.
 See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
 
 ## Interface Notes

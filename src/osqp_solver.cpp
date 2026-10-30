@@ -122,12 +122,26 @@ SolveInfo OSQPSolver::getSolveInfo() const noexcept
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
   // mpc_solve_time and prepare_time are only known to MPC
-  return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
+  SolveInfo result{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
                    static_cast<int>(info.iter),
                    info.obj_val,
                    info.solve_time + info.polish_time,
                    0.0,
                    0.0};
+  if (info.status_val != OSQP_UNSOLVED) {
+    result.primal_residual = info.prim_res;
+    result.dual_residual = info.dual_res;
+  }
+  return result;
+}
+
+bool OSQPSolver::getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const
+{
+  assert(y.size() == m_);
+  if (!initialized_)
+    return false;
+  y = Eigen::Map<const VectorXF>{solver_->solution->y, m_, 1};
+  return true;
 }
 
 SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)

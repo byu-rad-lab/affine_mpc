@@ -65,6 +65,18 @@ done in MPC.prepare() is reported separately in prepare_time.
                     "previous solve() and this one (seconds), zero if there "
                     "were none. prepare_time + mpc_solve_time is the MPC's "
                     "work for the step; mpc_solve_time alone is its latency.")
+      .def_readonly("primal_residual", &ampc::SolveInfo::primal_residual,
+                    "Primal residual of the solution: the largest violation "
+                    "of l <= A z <= u (max norm), as the solver reports it. "
+                    "NaN if the solver does not report it, or before the "
+                    "first solve.")
+      .def_readonly("dual_residual", &ampc::SolveInfo::dual_residual,
+                    "Dual residual of the solution: max norm of "
+                    "P z + q + A^T y, with y from MPC.getDualSolution(), as "
+                    "the solver reports it. NaN if the solver does not report "
+                    "it, or before the first solve. Both residuals are "
+                    "absolute: compare them with your own tolerance rather "
+                    "than reading them as pass or fail.")
       .def("__repr__", [](const ampc::SolveInfo& self) {
         std::ostringstream oss;
         oss << self;

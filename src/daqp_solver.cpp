@@ -61,6 +61,14 @@ struct DAQPSolver::Impl
     Eigen::Index row, var;
   };
 
+  // The simple row that sets a variable bound (row -1 if none) and its
+  // coefficient when the bounds were converted
+  struct BoundRow
+  {
+    Eigen::Index row;
+    double coefficient;
+  };
+
   explicit Impl(const DAQPSettings& s) : settings{s} {}
 
   ~Impl()
@@ -86,11 +94,16 @@ struct DAQPSolver::Impl
   }
 
   // l <= A z <= u as DAQP's bounds: the simple rows intersected per variable,
-  // then the general rows
+  // then the general rows. Records the row (and its coefficient) that sets
+  // each variable bound, for the dual solution.
   void convertBounds(const detail::QP& qp)
   {
     bu.head(num_vars).setConstant(DAQP_INF);
     bl.head(num_vars).setConstant(-DAQP_INF);
+    std::fill(lower_bound_row.begin(), lower_bound_row.end(),
+              BoundRow{-1, 0.0});
+    std::fill(upper_bound_row.begin(), upper_bound_row.end(),
+              BoundRow{-1, 0.0});
     for (const SimpleRow& s : simple_rows) {
       const double a{qp.A(s.row, s.var)};
       if (a == 0.0)
@@ -98,8 +111,15 @@ struct DAQPSolver::Impl
       double lo{qp.l(s.row) / a}, hi{qp.u(s.row) / a};
       if (a < 0.0)
         std::swap(lo, hi);
-      bl(s.var) = std::max(bl(s.var), clampInfinity(lo));
-      bu(s.var) = std::min(bu(s.var), clampInfinity(hi));
+      const auto var{static_cast<std::size_t>(s.var)};
+      if (clampInfinity(lo) > bl(s.var)) {
+        bl(s.var) = clampInfinity(lo);
+        lower_bound_row[var] = {s.row, a};
+      }
+      if (clampInfinity(hi) < bu(s.var)) {
+        bu(s.var) = clampInfinity(hi);
+        upper_bound_row[var] = {s.row, a};
+      }
     }
     for (Eigen::Index i{0}; i < num_general; ++i) {
       const Eigen::Index row{general_rows[static_cast<std::size_t>(i)]};
@@ -126,6 +146,9 @@ struct DAQPSolver::Impl
   Eigen::Index num_vars{0}, num_general{0};
   std::vector<SimpleRow> simple_rows;
   std::vector<Eigen::Index> general_rows;
+  Eigen::Index num_rows{0}; // rows of A
+  // per variable, the simple row that sets its lower and upper bound
+  std::vector<BoundRow> lower_bound_row, upper_bound_row;
   RowMajorMatrix A_general;
   Eigen::VectorXd bu, bl; // simple bounds, then general rows
   Eigen::VectorXd x, lam;
@@ -167,6 +190,9 @@ bool DAQPSolver::initialize(const detail::QP& qp, const QPBlockLayout&)
   }
   d.num_vars = n;
   d.num_general = static_cast<Eigen::Index>(d.general_rows.size());
+  d.num_rows = m;
+  d.lower_bound_row.assign(static_cast<std::size_t>(n), {-1, 0.0});
+  d.upper_bound_row.assign(static_cast<std::size_t>(n), {-1, 0.0});
   d.A_general.resize(d.num_general, n);
   d.copyGeneralRows(qp);
   // The bounds of the QP passed here depend on a placeholder initial state
@@ -295,6 +321,30 @@ DAQPSolver::getSolutionMap() const noexcept
   if (!impl_->initialized)
     return Eigen::Map<const Eigen::VectorXd>{nullptr, 0};
   return Eigen::Map<const Eigen::VectorXd>{impl_->x.data(), impl_->num_vars};
+}
+
+bool DAQPSolver::getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const
+{
+  const Impl& d{*impl_};
+  if (!d.initialized)
+    return false;
+  assert(y.size() == d.num_rows);
+  // DAQP has one multiplier per variable bound, which intersects the simple
+  // rows of that variable, so it belongs to the row that sets the active
+  // bound, divided by that row's coefficient; the other simple rows get zero
+  y.setZero();
+  for (Eigen::Index j{0}; j < d.num_vars; ++j) {
+    const double lam{d.lam(j)};
+    if (lam == 0.0)
+      continue;
+    const auto& rows{lam > 0.0 ? d.upper_bound_row : d.lower_bound_row};
+    const Impl::BoundRow& b{rows[static_cast<std::size_t>(j)]};
+    if (b.row >= 0)
+      y(b.row) = lam / b.coefficient;
+  }
+  for (Eigen::Index i{0}; i < d.num_general; ++i)
+    y(d.general_rows[static_cast<std::size_t>(i)]) = d.lam(d.num_vars + i);
+  return true;
 }
 
 SolveInfo DAQPSolver::getSolveInfo() const noexcept

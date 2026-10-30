@@ -108,7 +108,20 @@ public:
   getSolutionMap() const noexcept override;
 
   /**
+   * @brief Write OSQP's dual solution y of the last solve (one value per
+   *   constraint row, P z + q + A^T y = 0 at a solution).
+   * @param y Output vector of size num_constraints.
+   * @return False, leaving y unchanged, if the solver is not initialized.
+   */
+  [[nodiscard]] bool
+  getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const override;
+
+  /**
    * @brief Returns diagnostics from the last solve, as reported by OSQP.
+   *
+   *   The residuals are OSQP's unscaled max-norm residuals of its last
+   *   iterate (of the polished solution when polishing succeeds), NaN before
+   *   the first solve.
    * @return SolveInfo with default values if the solver is not initialized.
    */
   SolveInfo getSolveInfo() const noexcept override;

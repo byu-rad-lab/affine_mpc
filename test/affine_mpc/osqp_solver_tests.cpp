@@ -1,6 +1,7 @@
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <sstream>
@@ -493,6 +494,8 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   const affine_mpc::SolveInfo info_init{base.getSolveInfo()};
   EXPECT_EQ(info_init.status, affine_mpc::SolveStatus::NotInitialized);
   EXPECT_EQ(info_init.iterations, 0);
+  EXPECT_TRUE(std::isnan(info_init.primal_residual));
+  EXPECT_TRUE(std::isnan(info_init.dual_residual));
 
   Eigen::Matrix<OSQPFloat, m, n> A;
   A << 1, 1, 1, 0, 0, 1;
@@ -516,6 +519,8 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_EQ(info.status, affine_mpc::SolveStatus::Success);
   EXPECT_GT(info.iterations, 0);
   EXPECT_NEAR(info.objective, 1.88, 1e-5);
+  EXPECT_LE(info.primal_residual, 1e-6);
+  EXPECT_LE(info.dual_residual, 1e-6);
   EXPECT_GE(info.qp_solve_time, 0.0);
   // only MPC::solve() measures the whole call
   EXPECT_EQ(info.mpc_solve_time, 0.0);
@@ -605,6 +610,36 @@ TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesWithZeroQ)
   EXPECT_EQ(by_qp.getSolveInfo().iterations, fresh.getSolveInfo().iterations);
   EXPECT_TRUE(expectEigenNear(z_qp, z_fresh, 1e-12));
   EXPECT_NE(by_qp.getSolveInfo().iterations, raw.getSolveInfo().iterations);
+}
+
+TEST(OSQPSolverProtectedTester, givenExample_ReportsDualSolution)
+{
+  const int n{2}, m{3};
+  OSQPSolverProtectedTester base{n, m};
+  Eigen::Vector3d y{Eigen::Vector3d::Constant(7.0)};
+  EXPECT_FALSE(base.getDualSolution(y));
+  EXPECT_EQ(y, Eigen::Vector3d::Constant(7.0));
+
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 1, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P << 4, 1, 1, 2;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  settings.verbose = false;
+  settings.polishing = true;
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+  Eigen::Vector2d solution;
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+
+  // z = (0.3, 0.7): P z + q = (2.9, 2.7) = -A^T y with row 0 an equality,
+  // row 1 inactive, and row 2 at its upper bound (positive)
+  ASSERT_TRUE(base.getDualSolution(y));
+  EXPECT_TRUE(expectEigenNear(y, Eigen::Vector3d{-2.9, 0.0, 0.2}, 1e-5));
 }
 
 TEST(OSQPSolverProtectedTester, askedBeforeInitialize_ReturnsSafeDefaults)

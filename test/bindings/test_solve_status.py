@@ -26,6 +26,8 @@ def test_solve_info_from_mpc():
 
     mpc = ampc.MPC(2, 1, 10)
     assert mpc.getSolveInfo().status == ampc.SolveStatus.NotInitialized
+    assert np.isnan(mpc.getSolveInfo().primal_residual)
+    assert np.isnan(mpc.getSolveInfo().dual_residual)
 
     mpc.setModelDiscrete(
         np.array([[1.0, 0.1], [-0.06, 0.99]]), np.array([0.0, 0.02]), np.zeros(2)
@@ -45,6 +47,9 @@ def test_solve_info_from_mpc():
     assert not hasattr(info, "run_time")
     assert repr(info).startswith("SolveInfo(status=Success, iterations=")
     assert info.prepare_time == 0.0  # prepare() was never called
+    assert 0.0 <= info.primal_residual < 1e-3
+    assert 0.0 <= info.dual_residual < 1e-3
+    assert "primal_residual=" in repr(info) and "dual_residual=" in repr(info)
 
 
 def _configured_mpc(formulation):

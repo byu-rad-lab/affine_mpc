@@ -8,6 +8,7 @@
  */
 
 #include <iosfwd>
+#include <limits>
 
 namespace affine_mpc {
 
@@ -68,6 +69,21 @@ struct SolveInfo
   /// done before the measurement, so `prepare_time + mpc_solve_time` is the
   /// MPC's work for the step while `mpc_solve_time` alone is its latency.
   double prepare_time{0.0};
+
+  /// Primal residual of the solution: the largest violation of
+  /// l <= A z <= u (max norm), as the solver reports it. NaN if the solver
+  /// does not report it (DAQP, whose active-set solutions meet its own
+  /// tolerances) or before the first solve.
+  double primal_residual{std::numeric_limits<double>::quiet_NaN()};
+
+  /// Dual residual of the solution: max norm of P z + q + A^T y, with y the
+  /// dual solution (MPC::getDualSolution()), as the solver reports it. NaN if
+  /// the solver does not report it or before the first solve.
+  ///
+  /// Both residuals are absolute: OSQP accepts a solution when each is below
+  /// eps_abs + eps_rel times a problem-dependent scale, so compare them with
+  /// your own tolerance rather than reading them as pass or fail.
+  double dual_residual{std::numeric_limits<double>::quiet_NaN()};
 };
 
 /**

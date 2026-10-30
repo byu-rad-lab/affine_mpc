@@ -893,6 +893,12 @@ class SolveInfo:
 
     def __repr__(self) -> str: ...
     @property
+    def dual_residual(self) -> float:
+        """
+        Dual residual of the solution: max norm of P z + q + A^T y, with y from MPC.getDualSolution(), as the solver reports it. NaN if the solver does not report it, or before the first solve. Both residuals are absolute: compare them with your own tolerance rather than reading them as pass or fail.
+        """
+
+    @property
     def iterations(self) -> int:
         """
         Number of solver iterations.
@@ -914,6 +920,12 @@ class SolveInfo:
     def prepare_time(self) -> float:
         """
         Total duration of the prepare() calls between the previous solve() and this one (seconds), zero if there were none. prepare_time + mpc_solve_time is the MPC's work for the step; mpc_solve_time alone is its latency.
+        """
+
+    @property
+    def primal_residual(self) -> float:
+        """
+        Primal residual of the solution: the largest violation of l <= A z <= u (max norm), as the solver reports it. NaN if the solver does not report it, or before the first solve.
         """
 
     @property
@@ -1123,6 +1135,62 @@ class MPC:
         """
         Get the indices of the bounded states (Options.bounded_states, or every state
         when it is empty; none with StateBoundMode.Off).
+        """
+
+    @typing.overload
+    def getDualSolution(
+        self,
+        y: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+        ],
+    ) -> typing.Annotated[
+        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+    ]:
+        """
+        Get the dual solution (Lagrange multipliers) of the QP from the previous
+        solve: one value per row of the QP's constraint matrix A, in the order of
+        getQPConstraintBlocks().
+
+        The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+        positive when row i is at its upper bound, negative at its lower bound, and
+        zero when inactive. They are the multipliers of the QP's cost, which is half
+        the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+        closely they satisfy the equation above. After a failed solve they are the
+        solver's last iterate, like the primal solution.
+
+        Args:
+            y: Result will be stored here (equivalent to return value), of size
+                getNumQPConstraints().
+
+        Returns:
+            y: The dual solution.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
+            ValueError: If y has the wrong size.
+        """
+
+    @typing.overload
+    def getDualSolution(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the dual solution (Lagrange multipliers) of the QP from the previous
+        solve: one value per row of the QP's constraint matrix A, in the order of
+        getQPConstraintBlocks().
+
+        The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+        positive when row i is at its upper bound, negative at its lower bound, and
+        zero when inactive. They are the multipliers of the QP's cost, which is half
+        the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+        closely they satisfy the equation above. After a failed solve they are the
+        solver's last iterate, like the primal solution.
+
+        Returns:
+            y: The dual solution, of size getNumQPConstraints().
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     def getFormulation(self) -> Formulation:
@@ -1491,7 +1559,7 @@ class MPC:
     def getSolveInfo(self) -> SolveInfo:
         """
         Get solver diagnostics from the last solve() (status, iterations, objective,
-        and timing).
+        residuals, and timing).
 
         After a solve() that returned `UpdateFailed`, the solver fields still describe
         the previous solve, while `mpc_solve_time` covers the failed call.

@@ -3,8 +3,10 @@
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/qp_solver.hpp"
+#include "affine_mpc/quadratic_program.hpp"
 
 #include <Eigen/Core>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -29,6 +31,17 @@ void setupMassSpringDamper(ampc::MPC& mpc)
 
 const ampc::Options msd_opts{.input_cost = ampc::InputCostMode::ControlPoints,
                              .slew_control_points = true};
+
+// An OSQPSolver that does not provide a dual solution (QPSolver's default)
+class SolverWithoutDuals : public ampc::OSQPSolver
+{
+public:
+  using OSQPSolver::OSQPSolver;
+  bool getDualSolution(Ref<VectorXd> y) const override
+  {
+    return QPSolver::getDualSolution(y);
+  }
+};
 
 } // namespace
 
@@ -128,4 +141,63 @@ TEST(QPSolverInterfaceTester, beforeInitialization_SolverQueriesAreSafe)
   EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::NotInitialized);
   EXPECT_TRUE(mpc.isWithinSparsityPattern());
   EXPECT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::NotInitialized);
+}
+
+// From rest toward 1 m the input starts at its upper limit, so the dual
+// solution has active rows; it and OSQP's residuals must match the QP
+TEST_P(QPSolverInterfaceTester, givenSolve_DualSolutionAndResidualsMatchTheQP)
+{
+  const auto param{ampc::Parameterization::linearInterp(10, 3)};
+  ampc::MPC mpc{2, 1, param, msd_opts, GetParam()};
+  setupMassSpringDamper(mpc);
+  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  settings.eps_abs = settings.eps_rel = 1e-9;
+  auto solver{std::make_unique<ampc::OSQPSolver>(
+      mpc.getNumQPVariables(), mpc.getNumQPConstraints(), settings)};
+  const ampc::OSQPSolver& osqp{*solver};
+  ASSERT_TRUE(mpc.initializeSolver(std::move(solver)));
+  EXPECT_TRUE(std::isnan(mpc.getSolveInfo().primal_residual));
+  EXPECT_TRUE(std::isnan(mpc.getSolveInfo().dual_residual));
+
+  ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  VectorXd y(mpc.getNumQPConstraints());
+  ASSERT_TRUE(mpc.getDualSolution(y));
+  EXPECT_GT(y.lpNorm<Infinity>(), 1e-3);
+
+  const ampc::QuadraticProgram qp{mpc.getQP()};
+  const VectorXd z{osqp.getSolutionMap()};
+  const KKTResiduals kkt{kktResiduals(qp, z, y)};
+  EXPECT_LE(kkt.stationarity, 1e-7);
+  EXPECT_LE(kkt.complementarity, 1e-7);
+
+  const ampc::SolveInfo info{mpc.getSolveInfo()};
+  EXPECT_NEAR(info.dual_residual, kkt.stationarity, 1e-9);
+  const VectorXd Az{qp.A * z};
+  const double violation{
+      std::max({0.0, (qp.l - Az).maxCoeff(), (Az - qp.u).maxCoeff()})};
+  EXPECT_LE(info.primal_residual, 1e-7);
+  EXPECT_NEAR(info.primal_residual, violation, 1e-7);
+}
+
+TEST(QPSolverInterfaceTester, givenSolverWithoutDuals_GetDualSolutionIsFalse)
+{
+  const auto param{ampc::Parameterization::linearInterp(10, 3)};
+  ampc::MPC mpc{2, 1, param, msd_opts};
+  setupMassSpringDamper(mpc);
+  ASSERT_TRUE(mpc.initializeSolver(std::make_unique<SolverWithoutDuals>(
+      mpc.getNumQPVariables(), mpc.getNumQPConstraints())));
+  ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  VectorXd y{VectorXd::Constant(mpc.getNumQPConstraints(), 7.0)};
+  EXPECT_FALSE(mpc.getDualSolution(y));
+  EXPECT_EQ(y, VectorXd::Constant(mpc.getNumQPConstraints(), 7.0));
+}
+
+TEST(QPSolverInterfaceTester, givenWrongSize_GetDualSolutionThrows)
+{
+  const auto param{ampc::Parameterization::linearInterp(10, 3)};
+  ampc::MPC mpc{2, 1, param, msd_opts};
+  setupMassSpringDamper(mpc);
+  ASSERT_TRUE(mpc.initializeSolver());
+  VectorXd y(mpc.getNumQPConstraints() + 1);
+  EXPECT_THROW((void)mpc.getDualSolution(y), std::invalid_argument);
 }

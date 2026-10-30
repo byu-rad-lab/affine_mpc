@@ -574,6 +574,13 @@ void MPC::getNextInput(Ref<VectorXd> u0) const
   input_param_.evaluate(0, solution_map_, u0);
 }
 
+bool MPC::getDualSolution(Ref<VectorXd> y) const
+{
+  assert(solver_initialized_);
+  validateSize(y.size(), getNumQPConstraints(), "getDualSolution", "y");
+  return solver_ && solver_->getDualSolution(y);
+}
+
 void MPC::getInputControlPoints(Ref<MatrixXd> control_points) const
 {
   assert(solver_initialized_);
