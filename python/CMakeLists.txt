@@ -31,6 +31,7 @@ pybind11_add_module(_bindings MODULE
   bindings/py_parameterization.cpp
   bindings/py_discretizer.cpp
   bindings/py_osqp_settings.cpp
+  bindings/py_daqp_settings.cpp
   bindings/py_solve_status.cpp
   bindings/py_quadratic_program.cpp
   bindings/py_mpc.cpp
@@ -47,6 +48,8 @@ set_target_properties(_bindings PROPERTIES
 )
 
 target_link_libraries(_bindings PRIVATE affine_mpc::affine_mpc)
+# As for the library: only Eigen code under MPL-2.0 or a compatible license
+target_compile_definitions(_bindings PRIVATE EIGEN_MPL2_ONLY)
 
 # Copy the Python package into the build tree so the built extension is
 # importable for local testing and stub generation.

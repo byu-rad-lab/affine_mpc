@@ -1,10 +1,12 @@
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <sstream>
 
+#include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
 #include "utils.hpp"
@@ -492,6 +494,8 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   const affine_mpc::SolveInfo info_init{base.getSolveInfo()};
   EXPECT_EQ(info_init.status, affine_mpc::SolveStatus::NotInitialized);
   EXPECT_EQ(info_init.iterations, 0);
+  EXPECT_TRUE(std::isnan(info_init.primal_residual));
+  EXPECT_TRUE(std::isnan(info_init.dual_residual));
 
   Eigen::Matrix<OSQPFloat, m, n> A;
   A << 1, 1, 1, 0, 0, 1;
@@ -515,6 +519,8 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   EXPECT_EQ(info.status, affine_mpc::SolveStatus::Success);
   EXPECT_GT(info.iterations, 0);
   EXPECT_NEAR(info.objective, 1.88, 1e-5);
+  EXPECT_LE(info.primal_residual, 1e-6);
+  EXPECT_LE(info.dual_residual, 1e-6);
   EXPECT_GE(info.qp_solve_time, 0.0);
   // only MPC::solve() measures the whole call
   EXPECT_EQ(info.mpc_solve_time, 0.0);
@@ -523,6 +529,117 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   oss << info;
   EXPECT_NE(oss.str().find("SolveInfo(status=Success, iterations="),
             std::string::npos);
+}
+
+TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithZeroCostVector)
+{
+  // OSQP fixes its cost scaling at setup from P and ||q||_inf, so setting up
+  // with q = 0 and then updating q differs from setting up with q
+  const int n{2}, m{3};
+  affine_mpc::detail::QP qp;
+  qp.P.resize(n, n);
+  qp.P << 4, 1, 1, 2;
+  qp.A.resize(m, n);
+  qp.A << 1, 1, 1, 0, 0, 1;
+  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
+  qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
+  qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.eps_abs = settings.eps_rel = 1e-8;
+
+  affine_mpc::OSQPSolver by_qp{n, m, settings};
+  ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
+  affine_mpc::OSQPSolver zero_then_q{n, m, settings};
+  ASSERT_TRUE(zero_then_q.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l,
+                                     qp.u, settings));
+  ASSERT_TRUE(zero_then_q.updateCostVector(qp.q));
+  affine_mpc::OSQPSolver with_q{n, m, settings};
+  ASSERT_TRUE(with_q.initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings));
+
+  Eigen::Vector2d z_qp, z_zero, z_q;
+  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(zero_then_q.solve(z_zero), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(with_q.solve(z_q), affine_mpc::SolveStatus::Success);
+
+  EXPECT_EQ(by_qp.getSolveInfo().iterations,
+            zero_then_q.getSolveInfo().iterations);
+  EXPECT_EQ(z_qp, z_zero);
+  // the test can tell the two setups apart
+  EXPECT_NE(by_qp.getSolveInfo().iterations, with_q.getSolveInfo().iterations);
+}
+
+TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesWithZeroQ)
+{
+  // A matrix update recomputes OSQP's scaling, the cost scaling from the q it
+  // holds; through the QP interface it must match a fresh setup with q = 0
+  const int n{2}, m{3};
+  affine_mpc::detail::QP qp;
+  qp.P.resize(n, n);
+  qp.P << 4, 1, 1, 2;
+  qp.A.resize(m, n);
+  qp.A << 1, 1, 1, 0, 0, 1;
+  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
+  qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
+  qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.eps_abs = settings.eps_rel = 1e-8;
+  Eigen::Matrix2d P_new;
+  P_new << 8, 2, 2, 3;
+
+  affine_mpc::OSQPSolver by_qp{n, m, settings};
+  ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
+  qp.P = P_new;
+  ASSERT_TRUE(by_qp.updateMatrices(qp, true, false));
+
+  affine_mpc::OSQPSolver fresh{n, m, settings};
+  ASSERT_TRUE(fresh.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l, qp.u,
+                               settings));
+  ASSERT_TRUE(fresh.updateCostVector(qp.q));
+
+  // the raw update keeps OSQP's behavior: it rescales with the q it holds
+  affine_mpc::OSQPSolver raw{n, m, settings};
+  ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A,
+                             Eigen::Vector2d::Zero(), qp.l, qp.u, settings));
+  ASSERT_TRUE(raw.updateCostVector(qp.q));
+  ASSERT_TRUE(raw.updateCostMatrix(P_new));
+
+  Eigen::Vector2d z_qp, z_fresh, z_raw;
+  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(fresh.solve(z_fresh), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(raw.solve(z_raw), affine_mpc::SolveStatus::Success);
+  EXPECT_EQ(by_qp.getSolveInfo().iterations, fresh.getSolveInfo().iterations);
+  EXPECT_TRUE(expectEigenNear(z_qp, z_fresh, 1e-12));
+  EXPECT_NE(by_qp.getSolveInfo().iterations, raw.getSolveInfo().iterations);
+}
+
+TEST(OSQPSolverProtectedTester, givenExample_ReportsDualSolution)
+{
+  const int n{2}, m{3};
+  OSQPSolverProtectedTester base{n, m};
+  Eigen::Vector3d y{Eigen::Vector3d::Constant(7.0)};
+  EXPECT_FALSE(base.getDualSolution(y));
+  EXPECT_EQ(y, Eigen::Vector3d::Constant(7.0));
+
+  Eigen::Matrix<OSQPFloat, m, n> A;
+  A << 1, 1, 1, 0, 0, 1;
+  Eigen::Matrix<OSQPFloat, n, 1> q;
+  q.setOnes();
+  Eigen::Matrix<OSQPFloat, m, 1> l, u;
+  l << 1, 0, 0;
+  u << 1, 0.7, 0.7;
+  Eigen::Matrix<OSQPFloat, n, n> P;
+  P << 4, 1, 1, 2;
+  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  settings.verbose = false;
+  settings.polishing = true;
+  ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
+  Eigen::Vector2d solution;
+  ASSERT_EQ(base.solve(solution), affine_mpc::SolveStatus::Success);
+
+  // z = (0.3, 0.7): P z + q = (2.9, 2.7) = -A^T y with row 0 an equality,
+  // row 1 inactive, and row 2 at its upper bound (positive)
+  ASSERT_TRUE(base.getDualSolution(y));
+  EXPECT_TRUE(expectEigenNear(y, Eigen::Vector3d{-2.9, 0.0, 0.2}, 1e-5));
 }
 
 TEST(OSQPSolverProtectedTester, askedBeforeInitialize_ReturnsSafeDefaults)

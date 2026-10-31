@@ -505,6 +505,42 @@ def test_get_and_assemble_qp(formulation):
         np.testing.assert_array_equal(a, b)
 
 
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_dual_solution_and_residuals(formulation):
+    pytest.importorskip("scipy.sparse")
+    mpc = _msd_mpc(formulation)
+    nr = mpc.getNumQPConstraints()
+    with pytest.raises(ValueError):
+        mpc.getDualSolution(np.empty(nr + 1))
+    assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success
+
+    y = mpc.getDualSolution()
+    assert y.shape == (nr,)
+    assert np.max(np.abs(y)) > 1e-3  # the input starts at its upper limit
+    y_buf = np.empty(nr)
+    assert mpc.getDualSolution(y_buf) is not None
+    np.testing.assert_array_equal(y_buf, y)
+
+    # OSQP's dual residual is the max norm of P z + q + A^T y
+    qp = mpc.getQP()
+    z = np.empty(mpc.getNumQPVariables())
+    for b in mpc.getQPVariableBlocks():
+        if b.name == "control_points":
+            z[b.offset : b.offset + b.size] = mpc.getInputControlPoints().ravel()
+        else:
+            z[b.offset : b.offset + b.size] = mpc.getPredictedStateTrajectory().ravel()
+    stationarity = np.max(np.abs(qp.P @ z + qp.q + qp.A.T @ y))
+    info = mpc.getSolveInfo()
+    assert stationarity == pytest.approx(info.dual_residual, rel=1e-6, abs=1e-9)
+    assert 0.0 <= info.primal_residual < 1e-3
+
+
+def test_dual_solution_requires_initialized_solver():
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
+    with pytest.raises(RuntimeError, match="Solver must be initialized"):
+        mpc.getDualSolution()
+
+
 def test_assemble_qp_requires_setup():
     mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
     with pytest.raises(

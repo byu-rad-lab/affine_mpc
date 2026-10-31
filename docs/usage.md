@@ -420,24 +420,35 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```
 
+With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A$ change (a model or weight update).
+The library gives OSQP $\mathbf{q} = 0$ at those times, so the cost scaling depends only on $P$, not on any particular $x_0$ or reference.
+
 #### Choosing the QP solver
 
 OSQP is the default solver for both formulations.
-For the condensed formulation, the C++ interface can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver.
-DAQP is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
-It is not available from Python yet.
+For the condensed formulation, you can use [DAQP](https://github.com/darnstrom/daqp) instead, a dense dual active-set solver, by passing `DAQPSettings` to `initializeSolver()`:
 
-```cpp
-#include "affine_mpc/daqp_solver.hpp"
+=== "Python"
 
-affine_mpc::DAQPSettings daqp_settings; // DAQP's defaults
-if (!mpc.initializeSolver(std::make_unique<affine_mpc::DAQPSolver>(daqp_settings))) {
-  /* handle the error */
-}
-```
+    ```python
+    settings = affine_mpc.DAQPSettings()  # DAQP's defaults
+    if not mpc.initializeSolver(settings):
+        raise RuntimeError("Failed to initialize solver")
+    ```
 
-`initializeSolver(std::unique_ptr<QPSolver>)` takes any solver that implements the `QPSolver` interface.
-Passing a `DAQPSolver` to an MPC with the sparse formulation throws `std::invalid_argument`.
+=== "C++"
+
+    ```cpp
+    affine_mpc::DAQPSettings settings; // DAQP's defaults
+    if (!mpc.initializeSolver(settings)) { /* handle the error */ }
+    ```
+
+The Python wheels include DAQP.
+In C++ it is optional: build the library with `-DAFFINE_MPC_WITH_DAQP=ON` (an installed DAQP is used if CMake finds one, otherwise it is downloaded and built with the library).
+`DAQPSettings` and the `initializeSolver()` overload exist in every build, but without DAQP the overload throws `std::logic_error` (`RuntimeError` in Python); `hasDAQP()` tells whether the library has it.
+With the sparse formulation it throws `std::invalid_argument` (`ValueError`).
+
+In C++, `initializeSolver(std::unique_ptr<QPSolver>)` also takes a solver object, such as `std::make_unique<DAQPSolver>(settings)` (from `affine_mpc/daqp_solver.hpp`) or any other implementation of the `QPSolver` interface.
 
 !!! warning "Experimental interface"
     Writing your own `QPSolver` is experimental: the interface passes the library's internal QP type and may change in any minor release.
@@ -473,6 +484,13 @@ so call `resetWarmStart()` to start the next solve from zero.
 `MaxIterReached` is a partial exception.
 With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
 Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
+
+`SolvedInaccurate` means OSQP stopped at `max_iter` or its time limit with residuals within 10 times `eps_abs` and `eps_rel`, so treat it as a solve with looser tolerances; `SolveInfo`'s residuals say how loose.
+
+OSQP's first-order iterations are also less accurate when $P$ is badly conditioned (its largest eigenvalue many orders of magnitude above its smallest), for example with nearly dependent custom basis functions, no input weight, or slow dynamics over a long horizon.
+Directions in which the cost barely changes are then weakly determined, so OSQP can stop with a first input that is noticeably off even when it reports `Success`, and warm starting can carry that error from step to step, which shows up in closed loop as input chatter or a small limit cycle.
+Tightening `eps_abs` and `eps_rel`, adding an input or input-rate weight, or using DAQP for a condensed problem fixes this; polishing does not help when no constraints are active.
+To check, compute the condition number of $P$ from `getQP()` (e.g. `np.linalg.cond(mpc.getQP().P.toarray())`, outside the control loop).
 
 === "Python"
 
@@ -541,7 +559,7 @@ You can also access the full input and predicted state trajectories:
 
     A stacked `Eigen::VectorXd` (e.g. `state_dim * horizon_steps`) works as well, and so do whole columns of a larger matrix (`X.middleCols(j, horizon_steps)`); a block with fewer rows than its matrix is rejected, since the getters write in place.
 
-Solver diagnostics from the last solve (status, iterations, objective, and timing) are available as a `SolveInfo`:
+Solver diagnostics from the last solve (status, iterations, objective, residuals, and timing) are available as a `SolveInfo`:
 
 === "Python"
 
@@ -564,6 +582,7 @@ Setters only store their values and the QP is updated in `solve()`, so `mpc_solv
 The exception is `setModelContinuous2Discrete()`, which computes a matrix exponential inside the setter, so time it yourself if the model changes every step.
 If the model or weights change every step, the optional `prepare()` can do the matrix work before the next measurement (see [Runtime Updates](concepts/runtime-updates.md#preparing-before-the-measurement)).
 `prepare_time` is the total time of the `prepare()` calls since the previous solve (zero if there were none), so `prepare_time + mpc_solve_time` is the MPC's work for the step while `mpc_solve_time` alone is its latency.
+`primal_residual` and `dual_residual` are the solver's absolute residuals (NaN when it does not report them, as with DAQP); for example, they tell how far a `SolvedInaccurate` solution is from optimal (see [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp)).
 
 ### 8. (Optional) Logging
 
@@ -610,6 +629,7 @@ See [Logging](logging.md) for output format and workflow details.
 `getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
 `getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
 These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
+`getDualSolution()` gives the multipliers of the rows from the last solve; it only fills the vector you pass in C++.
 See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
 
 ## Interface Notes

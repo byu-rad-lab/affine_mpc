@@ -4,7 +4,7 @@
 /**
  * @file daqp_solver.hpp
  * @brief Defines the DAQPSolver class (the DAQP dense active-set solver for
- *   the condensed formulation) and its DAQPSettings.
+ *   the condensed formulation); its settings are in daqp_settings.hpp.
  *
  * Available only when the library is built with
  * `-DAFFINE_MPC_WITH_DAQP=ON`, which also defines `AFFINE_MPC_WITH_DAQP` for
@@ -18,40 +18,12 @@
 #include <Eigen/Core>
 #include <memory>
 
+#include "affine_mpc/daqp_settings.hpp"
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
 
 namespace affine_mpc {
-
-/**
- * @struct DAQPSettings
- * @brief The DAQP settings DAQPSolver exposes; the defaults are DAQP's.
- */
-struct DAQPSettings
-{
-  /// Tolerance for primal infeasibility: constraints may be violated by up to
-  /// this much.
-  double primal_tol{1e-6};
-  /// Tolerance for dual infeasibility (the sign of the multipliers).
-  double dual_tol{1e-12};
-  /// Maximum number of active-set iterations.
-  int iter_limit{10000};
-  /// Time limit for a solve (seconds); zero or negative for none. Needs DAQP
-  /// built with profiling (the fetched DAQP is).
-  double time_limit{0.0};
-  /**
-   * Proximal-point regularization, which lets DAQP solve QPs whose cost
-   * matrix P is only positive semidefinite (singular): it solves a sequence
-   * of QPs with P + eps I. Negative (the default, -1e-6): automatic, used only
-   * when P is singular or too ill-conditioned to factorize, starting from
-   * |eps_prox|. Positive: always used, with this eps. Zero: never used, so a
-   * singular P makes initialization fail (MPC::initializeSolver() returns
-   * false) or, after a cost matrix update, the next solve return
-   * UpdateFailed.
-   */
-  double eps_prox{-1e-6};
-};
 
 /**
  * @class DAQPSolver
@@ -109,6 +81,12 @@ public:
   [[nodiscard]] SolveStatus solve() override;
   const Eigen::Map<const Eigen::VectorXd>
   getSolutionMap() const noexcept override;
+  /// DAQP's multipliers in row order: the multiplier of a variable bound
+  /// goes to the simple row that sets it (divided by its coefficient), and
+  /// the other simple rows of that variable get zero.
+  [[nodiscard]] bool
+  getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const override;
+  /// The residuals are NaN: DAQP does not report them.
   SolveInfo getSolveInfo() const noexcept override;
   void coldStart() noexcept override;
   /// Whether every row taken as a simple bound still has a single nonzero

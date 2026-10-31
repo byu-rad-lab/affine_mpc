@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 
+#include "affine_mpc/daqp_settings.hpp"
 #include "affine_mpc/detail/mpc_data.hpp"
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/detail/vector_parameterization.hpp"
@@ -169,6 +170,27 @@ public:
    *   ModelSparsity).
    */
   [[nodiscard]] bool initializeSolver(ModelSparsity model_sparsity);
+
+  /**
+   * @brief Initialize with DAQP, a dense active-set solver, instead of OSQP;
+   *   see initializeSolver(const OSQPSettings&, ModelSparsity) for the setup
+   *   this needs and what initialization fixes.
+   *
+   *   Equivalent to passing `std::make_unique<DAQPSolver>(solver_settings)`
+   *   to initializeSolver(std::unique_ptr<QPSolver>, ModelSparsity). DAQP
+   *   solves the condensed formulation only. Declared in every build; use
+   *   hasDAQP() to check that the library was built with DAQP.
+   * @param solver_settings DAQP solver settings.
+   * @param model_sparsity Which entries of Ad and Bd the solver tracks.
+   * @return True if initialization succeeds, false otherwise.
+   * @throws std::logic_error if the library was built without DAQP, or if a
+   *   setter the solver or the options require has not been called.
+   * @throws std::invalid_argument for the sparse formulation, or for
+   *   ModelSparsity::Full.
+   */
+  [[nodiscard]] bool initializeSolver(
+      const DAQPSettings& solver_settings,
+      ModelSparsity model_sparsity = ModelSparsity::InitialNonzeros);
 
   /**
    * @brief Initialize with the given QP solver instead of OSQP; see
@@ -869,8 +891,33 @@ public:
   const Eigen::VectorXd& getReferenceInputTrajectory() const;
 
   /**
+   * @brief Get the dual solution (Lagrange multipliers) of the QP from the
+   *   previous solve: one value per row of the QP's constraint matrix A,
+   *   in the order of getQPConstraintBlocks().
+   *
+   *   The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so
+   *   y_i is positive when row i is at its upper bound, negative at its lower
+   *   bound, and zero when inactive. They are the multipliers of the QP's
+   *   cost, which is half the MPC cost. With a solver whose solutions are
+   *   approximate (OSQP), they are approximate too; the
+   *   SolveInfo::dual_residual of getSolveInfo() says how closely they
+   *   satisfy the equation above. After a failed solve they are the solver's
+   *   last iterate, like the primal solution. With DAQP, call this before
+   *   prepare() applies new data.
+   *
+   *   Precondition: initializeSolver() succeeded (not checked in Release).
+   * @param y Output vector of size getNumQPConstraints().
+   * @return False, leaving y unchanged, if the solver does not provide a dual
+   *   solution (a custom QPSolver may not); true for OSQPSolver and
+   *   DAQPSolver.
+   * @throws std::invalid_argument if y does not have size
+   *   getNumQPConstraints().
+   */
+  [[nodiscard]] bool getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const;
+
+  /**
    * @brief Get solver diagnostics from the last solve() (status, iterations,
-   *   objective, and timing).
+   *   objective, residuals, and timing).
    *
    *   After a solve() that returned `UpdateFailed`, the solver fields still
    *   describe the previous solve, while `mpc_solve_time` covers the failed

@@ -22,7 +22,7 @@ It is people like you that make open-source research software better.
 1.  Ensure your code follows the existing style (we use `.clang-format`).
 1.  **Tests are required.** Any new feature or bug fix must include corresponding unit tests in the `test/` directory.
 1.  Update the relevant documentation (`README.md`, files under `docs/`, and public API comments or stubs when needed).
-1.  Issue your pull request!
+1.  Open your pull request against `main`.
 
 ## Development Environment
 

@@ -940,6 +940,15 @@ For example, to hand the QP to another solver or to count its rows and nonzeros:
       std::cout << block.name << " " << block.offset << " " << block.size << "\n";
     ```
 
+`getDualSolution()` gives the dual solution $\mathbf{y}$ of the last solve, one value per row of $A$ in the order of `getQPConstraintBlocks()`.
+It satisfies $P\mathbf{z} + \mathbf{q} + A^\top\mathbf{y} = 0$ at a solution, so $y_i > 0$ when row $i$ is at its upper bound, $y_i < 0$ at its lower bound, and $y_i = 0$ when it is inactive; for example, the nonzero entries of the `input_bounds` block show where the input saturates.
+These are the multipliers of the QP's cost, which is half the MPC cost.
+With OSQP they are approximate, like its primal solution, and `SolveInfo` reports how closely the solution satisfies the optimality conditions:
+`primal_residual` is the largest violation of $\mathbf{l} \le A\mathbf{z} \le \mathbf{u}$, and `dual_residual` the largest entry of $|P\mathbf{z} + \mathbf{q} + A^\top\mathbf{y}|$.
+They are the solver's own values, so they cost nothing to read in the control loop, while computing them from `getQP()` copies the QP.
+They are absolute, so compare them with a tolerance that suits your problem; OSQP accepts a solution once each is below `eps_abs` plus `eps_rel` times a problem-dependent scale.
+DAQP does not report residuals (they are NaN), since its active-set solutions meet its tolerances.
+
 ## Implementation Mapping
 
 At a high level,

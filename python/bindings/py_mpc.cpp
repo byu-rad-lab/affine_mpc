@@ -271,6 +271,29 @@ Raises:
            py::arg("solver_settings") =
                ampc::OSQPSolver::getRecommendedSettings(),
            py::arg("model_sparsity") = ampc::ModelSparsity::InitialNonzeros);
+  base.def("initializeSolver",
+           static_cast<bool (ampc::MPC::*)(const ampc::DAQPSettings&,
+                                           ampc::ModelSparsity)>(
+               &ampc::MPC::initializeSolver),
+           R"doc(
+Initialize with DAQP, a dense active-set solver, instead of OSQP. The setup it
+needs and what initialization fixes are as for the OSQP overload. DAQP solves
+the condensed formulation only.
+
+Args:
+    solver_settings: DAQP solver settings.
+    model_sparsity: Which entries of Ad and Bd the solver tracks.
+
+Returns:
+    success: True if initialization succeeds, false otherwise.
+
+Raises:
+    RuntimeError: If the library was built without DAQP (see hasDAQP()), or if
+        a setter the solver or the options require has not been called.
+    ValueError: For the sparse formulation, or for ModelSparsity.Full.
+           )doc",
+           py::arg("solver_settings"),
+           py::arg("model_sparsity") = ampc::ModelSparsity::InitialNonzeros);
 
   base.def("solve", &ampc::MPC::solve,
            R"doc(
@@ -1336,10 +1359,74 @@ Raises:
     RuntimeError: If `input_cost` is not InputCostMode.Trajectory.
       )doc");
 
+  base.def(
+      "getDualSolution",
+      [](ampc::MPC& self, Eigen::Ref<Eigen::VectorXd> y) {
+        requireSolverInitialized(self, "getDualSolution");
+        if (!self.getDualSolution(y))
+          throw std::runtime_error(
+              "[MPC::getDualSolution] The solver does not provide a dual "
+              "solution.");
+        return y;
+      },
+      R"doc(
+Get the dual solution (Lagrange multipliers) of the QP from the previous
+solve: one value per row of the QP's constraint matrix A, in the order of
+getQPConstraintBlocks().
+
+The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+positive when row i is at its upper bound, negative at its lower bound, and
+zero when inactive. They are the multipliers of the QP's cost, which is half
+the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+closely they satisfy the equation above. After a failed solve they are the
+solver's last iterate, like the primal solution.
+
+Args:
+    y: Result will be stored here (equivalent to return value), of size
+        getNumQPConstraints().
+
+Returns:
+    y: The dual solution.
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
+    ValueError: If y has the wrong size.
+      )doc",
+      py::arg("y"));
+  base.def(
+      "getDualSolution",
+      [](ampc::MPC& self) {
+        requireSolverInitialized(self, "getDualSolution");
+        Eigen::VectorXd y{self.getNumQPConstraints()};
+        if (!self.getDualSolution(y))
+          throw std::runtime_error(
+              "[MPC::getDualSolution] The solver does not provide a dual "
+              "solution.");
+        return y;
+      },
+      R"doc(
+Get the dual solution (Lagrange multipliers) of the QP from the previous
+solve: one value per row of the QP's constraint matrix A, in the order of
+getQPConstraintBlocks().
+
+The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+positive when row i is at its upper bound, negative at its lower bound, and
+zero when inactive. They are the multipliers of the QP's cost, which is half
+the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+closely they satisfy the equation above. After a failed solve they are the
+solver's last iterate, like the primal solution.
+
+Returns:
+    y: The dual solution, of size getNumQPConstraints().
+
+Raises:
+    RuntimeError: If the solver has not been initialized.
+      )doc");
+
   base.def("getSolveInfo", &ampc::MPC::getSolveInfo,
            R"doc(
 Get solver diagnostics from the last solve() (status, iterations, objective,
-and timing).
+residuals, and timing).
 
 After a solve() that returned `UpdateFailed`, the solver fields still describe
 the previous solve, while `mpc_solve_time` covers the failed call.

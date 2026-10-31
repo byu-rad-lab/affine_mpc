@@ -1176,6 +1176,23 @@ TEST(ParameterizationFromBasis, givenNonFiniteOrRankDeficientBasis_Throws)
   basis << 1, 1, 1, 1 + 4e-10, 1, 1, 1, 1;
   expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
                                    "basis must have full column rank");
+  // the message says the columns are nearly dependent and suggests a
+  // truncated SVD
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "The columns are nearly dependent");
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, basis); },
+                                   "with the SVD basis = U S V^T");
+
+  // independent columns of very different scale: ratio 1e-12 < 1e-9, but full
+  // rank once normalized, so the message says they are only badly scaled
+  MatrixXd scaled{MatrixXd::Identity(4, 2)};
+  scaled(1, 1) = 1e-12;
+  expectInvalidArgumentWithMessage([&] { P::fromBasis(4, scaled); },
+                                   "The columns are only badly scaled");
+  // a zero column can not be normalized: dependent
+  expectInvalidArgumentWithMessage(
+      [] { P::fromBasis(4, MatrixXd::Zero(4, 2)); },
+      "The columns are nearly dependent");
   // ratio about 1e-8 is accepted
   basis(1, 1) = 1 + 4e-8;
   EXPECT_NO_THROW(P::fromBasis(4, basis));

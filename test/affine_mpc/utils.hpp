@@ -2,6 +2,7 @@
 #define UTILS_HPP
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -12,6 +13,7 @@
 
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/parameterization.hpp"
+#include "affine_mpc/quadratic_program.hpp"
 
 #define PRINT_MAT(A) (std::cout << #A << ":\n" << A << std::endl)
 
@@ -40,6 +42,30 @@ inline Eigen::MatrixXd denseA(const affine_mpc::detail::QP& qp)
   Eigen::MatrixXd A;
   affine_mpc::detail::denseConstraintMatrix(qp, A);
   return A;
+}
+
+// Optimality residuals of a QP solution z with dual solution y: stationarity
+// is the max norm of P z + q + A^T y, and complementarity the largest |y_i|
+// times the distance of row i from the bound the sign of y_i names (upper for
+// positive, lower for negative), infinite if that bound is infinite
+struct KKTResiduals
+{
+  double stationarity, complementarity;
+};
+inline KKTResiduals kktResiduals(const affine_mpc::QuadraticProgram& qp,
+                                 const Eigen::VectorXd& z,
+                                 const Eigen::VectorXd& y)
+{
+  const Eigen::VectorXd Az{qp.A * z};
+  const Eigen::VectorXd grad{qp.P * z + qp.q + qp.A.transpose() * y};
+  double complementarity{0.0};
+  for (Eigen::Index i{0}; i < y.size(); ++i) {
+    if (y(i) == 0.0)
+      continue;
+    const double gap{y(i) > 0.0 ? qp.u(i) - Az(i) : Az(i) - qp.l(i)};
+    complementarity = std::max(complementarity, std::abs(y(i) * gap));
+  }
+  return {grad.lpNorm<Eigen::Infinity>(), complementarity};
 }
 
 // Records a GoogleTest failure (and returns false) unless mat1 and mat2 have

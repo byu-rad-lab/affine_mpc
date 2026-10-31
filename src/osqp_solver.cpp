@@ -57,6 +57,7 @@ OSQPSolver::OSQPSolver(int num_variables,
     A_is_set_{false},
     l_buf_{num_constraints},
     u_buf_{num_constraints},
+    zero_q_{VectorXF::Zero(num_variables)},
     settings_{settings},
     n_{num_variables},
     m_{num_constraints},
@@ -121,12 +122,26 @@ SolveInfo OSQPSolver::getSolveInfo() const noexcept
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
   // mpc_solve_time and prepare_time are only known to MPC
-  return SolveInfo{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
+  SolveInfo result{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
                    static_cast<int>(info.iter),
                    info.obj_val,
                    info.solve_time + info.polish_time,
                    0.0,
                    0.0};
+  if (info.status_val != OSQP_UNSOLVED) {
+    result.primal_residual = info.prim_res;
+    result.dual_residual = info.dual_res;
+  }
+  return result;
+}
+
+bool OSQPSolver::getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const
+{
+  assert(y.size() == m_);
+  if (!initialized_)
+    return false;
+  y = Eigen::Map<const VectorXF>{solver_->solution->y, m_, 1};
+  return true;
 }
 
 SolveStatus OSQPSolver::solve(Eigen::Ref<VectorXF> solution)
@@ -589,27 +604,46 @@ void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
 
 bool OSQPSolver::initialize(const detail::QP& qp, const QPBlockLayout&)
 {
-  if (qp.storage == detail::QPStorage::Sparse)
-    return initialize(qp.P_csc, qp.A_csc, qp.q, qp.l, qp.u, settings_);
-  return initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings_);
+  // OSQP fixes its cost scaling at setup, from P and ||q||_inf. Set up with
+  // q = 0 so it depends on P alone, not on the x0 the QP was assembled with
+  // (MPC::initializeSolver() uses a placeholder), then pass the actual q.
+  const bool ok{
+      qp.storage == detail::QPStorage::Sparse
+          ? initialize(qp.P_csc, qp.A_csc, zero_q_, qp.l, qp.u, settings_)
+          : initialize(qp.P, qp.A, zero_q_, qp.l, qp.u, settings_)};
+  return ok && updateCostVector(qp.q);
 }
 
 bool OSQPSolver::updateMatrices(const detail::QP& qp,
                                 const bool cost_matrix,
                                 const bool constraint_matrix)
 {
+  if (!cost_matrix && !constraint_matrix)
+    return true;
+  // With scaling, a matrix update recomputes OSQP's scaling, the cost scaling
+  // from the q it holds, so hold q = 0 during the update (as at setup) and
+  // pass the actual q again after it
+  const bool rescales{initialized_ && settings_.scaling != 0};
+  if (rescales && !updateCostVector(zero_q_))
+    return false;
+  bool ok;
   if (qp.storage == detail::QPStorage::Sparse) {
     if (cost_matrix && constraint_matrix)
-      return updateMatrices(qp.P_csc, qp.A_csc);
-    if (cost_matrix)
-      return updateCostMatrix(qp.P_csc);
-    return !constraint_matrix || updateConstraintMatrix(qp.A_csc);
-  }
-  if (cost_matrix && constraint_matrix)
-    return updateMatrices(qp.P, qp.A);
-  if (cost_matrix)
-    return updateCostMatrix(qp.P);
-  return !constraint_matrix || updateConstraintMatrix(qp.A);
+      ok = updateMatrices(qp.P_csc, qp.A_csc);
+    else if (cost_matrix)
+      ok = updateCostMatrix(qp.P_csc);
+    else
+      ok = updateConstraintMatrix(qp.A_csc);
+  } else if (cost_matrix && constraint_matrix)
+    ok = updateMatrices(qp.P, qp.A);
+  else if (cost_matrix)
+    ok = updateCostMatrix(qp.P);
+  else
+    ok = updateConstraintMatrix(qp.A);
+  // restore q even if the matrix update failed
+  if (rescales)
+    ok = updateCostVector(qp.q) && ok;
+  return ok;
 }
 
 bool OSQPSolver::updateCostVector(const detail::QP& qp)

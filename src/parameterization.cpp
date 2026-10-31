@@ -446,17 +446,36 @@ Parameterization Parameterization::fromBasis(int horizon_steps,
   // does not make the QP well conditioned (cond(P) grows like the square of
   // cond(basis)).
   constexpr double rank_tol{1e-9};
-  const VectorXd sv{JacobiSVD<MatrixXd>{basis}.singularValues()};
-  const double ratio{sv(0) > 0.0 ? sv(sv.size() - 1) / sv(0) : 0.0};
+  const auto singularValueRatio = [](const MatrixXd& b) {
+    const VectorXd sv{JacobiSVD<MatrixXd>{b}.singularValues()};
+    return sv(0) > 0.0 ? sv(sv.size() - 1) / sv(0) : 0.0;
+  };
+  const double ratio{singularValueRatio(basis)};
   if (!(ratio > rank_tol)) {
+    // Tell badly scaled columns (full rank once normalized) from nearly
+    // dependent ones; this only runs when the basis is rejected
+    const VectorXd norms{basis.colwise().norm().transpose()};
+    const bool badly_scaled{
+        (norms.array() > 0.0).all()
+        && singularValueRatio(basis * norms.cwiseInverse().asDiagonal())
+               > rank_tol};
     std::stringstream ss;
     ss << std::setprecision(3) << prefix
        << "basis must have full column rank: its smallest singular value is "
        << ratio << " times its largest (at most " << rank_tol
        << "), so some combination of coefficients has (almost) no effect on "
-       << "any sampled input. Remove dependent columns, or orthonormalize the "
-       << "columns (e.g. by a QR decomposition) if they are only badly "
-       << "scaled.\n";
+       << "any sampled input. ";
+    if (badly_scaled)
+      ss << "The columns are only badly scaled (normalized, they have full "
+         << "rank): rescale them, or orthonormalize them (e.g. by a QR "
+         << "decomposition).\n";
+    else
+      ss << "The columns are nearly dependent (normalizing them does not "
+         << "help), and orthonormalizing would turn the dependent direction "
+         << "into a column of round-off; instead keep the directions that "
+         << "affect the inputs: with the SVD basis = U S V^T, pass the "
+         << "columns of U whose singular values exceed a tolerance (e.g. 1e-6 "
+         << "times the largest).\n";
     throw std::invalid_argument(ss.str());
   }
   return Parameterization{horizon_steps, MatrixXd{basis}};

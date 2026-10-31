@@ -11,6 +11,7 @@ import scipy.sparse
 import typing
 
 __all__: list[str] = [
+    "DAQPSettings",
     "Discretizer",
     "Formulation",
     "InputBoundMode",
@@ -26,6 +27,7 @@ __all__: list[str] = [
     "SolveInfo",
     "SolveStatus",
     "StateBoundMode",
+    "hasDAQP",
 ]
 
 class InputCostMode(enum.Enum):
@@ -307,7 +309,9 @@ class Parameterization:
                 finite entries and full column rank: its smallest singular value must
                 exceed 1e-9 times its largest. Full rank does not make the QP well
                 conditioned; orthonormalizing the columns (e.g. by numpy.linalg.qr)
-                helps for bases such as slowly decaying Laguerre functions.
+                helps for bases such as slowly decaying Laguerre functions. For nearly
+                dependent columns, pass instead the left singular vectors whose
+                singular values exceed a tolerance (a truncated SVD).
 
         Raises:
             ValueError: If the shape is wrong, an entry is not finite, or the basis
@@ -868,6 +872,57 @@ class OSQPSettings:
     @warm_starting.setter
     def warm_starting(self, arg0: int) -> None: ...
 
+class DAQPSettings:
+    """
+    DAQP solver settings; the defaults are DAQP's.
+
+    Pass them to MPC.initializeSolver() to solve with DAQP, a dense active-set
+    solver, instead of OSQP (condensed formulation only). The class exists in every
+    build, but initializing with it needs a library built with DAQP; check with
+    hasDAQP().
+
+    Attributes:
+        primal_tol: Tolerance for primal infeasibility: constraints may be violated
+            by up to this much.
+        dual_tol: Tolerance for dual infeasibility (the sign of the multipliers).
+        iter_limit: Maximum number of active-set iterations.
+        time_limit: Time limit for a solve (seconds); zero or negative for none.
+        eps_prox: Proximal-point regularization, which lets DAQP solve QPs whose
+            cost matrix P is only positive semidefinite (singular). Negative (the
+            default, -1e-6): automatic, used only when P is singular or too
+            ill-conditioned to factorize, starting from |eps_prox|. Positive: always
+            used, with this eps. Zero: never used, so a singular P makes
+            initializeSolver() return False (or, after a weight or model change,
+            the next solve return UpdateFailed).
+    """
+
+    def __init__(self) -> None:
+        """
+        Constructor sets DAQP's default values.
+        """
+
+    def __repr__(self) -> str: ...
+    @property
+    def dual_tol(self) -> float: ...
+    @dual_tol.setter
+    def dual_tol(self, arg0: float) -> None: ...
+    @property
+    def eps_prox(self) -> float: ...
+    @eps_prox.setter
+    def eps_prox(self, arg0: float) -> None: ...
+    @property
+    def iter_limit(self) -> int: ...
+    @iter_limit.setter
+    def iter_limit(self, arg0: int) -> None: ...
+    @property
+    def primal_tol(self) -> float: ...
+    @primal_tol.setter
+    def primal_tol(self, arg0: float) -> None: ...
+    @property
+    def time_limit(self) -> float: ...
+    @time_limit.setter
+    def time_limit(self, arg0: float) -> None: ...
+
 class SolveStatus(enum.Enum):
     """
     Enum for reporting the status of an MPC solve.
@@ -893,6 +948,12 @@ class SolveInfo:
 
     def __repr__(self) -> str: ...
     @property
+    def dual_residual(self) -> float:
+        """
+        Dual residual of the solution: max norm of P z + q + A^T y, with y from MPC.getDualSolution(), as the solver reports it. NaN if the solver does not report it, or before the first solve. Both residuals are absolute: compare them with your own tolerance rather than reading them as pass or fail.
+        """
+
+    @property
     def iterations(self) -> int:
         """
         Number of solver iterations.
@@ -914,6 +975,12 @@ class SolveInfo:
     def prepare_time(self) -> float:
         """
         Total duration of the prepare() calls between the previous solve() and this one (seconds), zero if there were none. prepare_time + mpc_solve_time is the MPC's work for the step; mpc_solve_time alone is its latency.
+        """
+
+    @property
+    def primal_residual(self) -> float:
+        """
+        Primal residual of the solution: the largest violation of l <= A z <= u (max norm), as the solver reports it. NaN if the solver does not report it, or before the first solve.
         """
 
     @property
@@ -1123,6 +1190,62 @@ class MPC:
         """
         Get the indices of the bounded states (Options.bounded_states, or every state
         when it is empty; none with StateBoundMode.Off).
+        """
+
+    @typing.overload
+    def getDualSolution(
+        self,
+        y: typing.Annotated[
+            numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+        ],
+    ) -> typing.Annotated[
+        numpy.typing.NDArray[numpy.float64], "[m, 1]", "flags.writeable"
+    ]:
+        """
+        Get the dual solution (Lagrange multipliers) of the QP from the previous
+        solve: one value per row of the QP's constraint matrix A, in the order of
+        getQPConstraintBlocks().
+
+        The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+        positive when row i is at its upper bound, negative at its lower bound, and
+        zero when inactive. They are the multipliers of the QP's cost, which is half
+        the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+        closely they satisfy the equation above. After a failed solve they are the
+        solver's last iterate, like the primal solution.
+
+        Args:
+            y: Result will be stored here (equivalent to return value), of size
+                getNumQPConstraints().
+
+        Returns:
+            y: The dual solution.
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
+            ValueError: If y has the wrong size.
+        """
+
+    @typing.overload
+    def getDualSolution(
+        self,
+    ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
+        """
+        Get the dual solution (Lagrange multipliers) of the QP from the previous
+        solve: one value per row of the QP's constraint matrix A, in the order of
+        getQPConstraintBlocks().
+
+        The values satisfy P z + q + A^T y = 0 at a solution (see getQP()), so y[i] is
+        positive when row i is at its upper bound, negative at its lower bound, and
+        zero when inactive. They are the multipliers of the QP's cost, which is half
+        the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
+        closely they satisfy the equation above. After a failed solve they are the
+        solver's last iterate, like the primal solution.
+
+        Returns:
+            y: The dual solution, of size getNumQPConstraints().
+
+        Raises:
+            RuntimeError: If the solver has not been initialized.
         """
 
     def getFormulation(self) -> Formulation:
@@ -1491,7 +1614,7 @@ class MPC:
     def getSolveInfo(self) -> SolveInfo:
         """
         Get solver diagnostics from the last solve() (status, iterations, objective,
-        and timing).
+        residuals, and timing).
 
         After a solve() that returned `UpdateFailed`, the solver fields still describe
         the previous solve, while `mpc_solve_time` covers the failed call.
@@ -1592,6 +1715,7 @@ class MPC:
         Get the diagonal of the terminal state weight matrix Q_f (size state_dim).
         """
 
+    @typing.overload
     def initializeSolver(
         self,
         solver_settings: OSQPSettings = OSQPSettings(),
@@ -1628,6 +1752,30 @@ class MPC:
             RuntimeError: If a setter the solver or the options require has not been
                 called.
             ValueError: For ModelSparsity.Full with the condensed formulation.
+        """
+
+    @typing.overload
+    def initializeSolver(
+        self,
+        solver_settings: DAQPSettings,
+        model_sparsity: ModelSparsity = ModelSparsity.InitialNonzeros,
+    ) -> bool:
+        """
+        Initialize with DAQP, a dense active-set solver, instead of OSQP. The setup it
+        needs and what initialization fixes are as for the OSQP overload. DAQP solves
+        the condensed formulation only.
+
+        Args:
+            solver_settings: DAQP solver settings.
+            model_sparsity: Which entries of Ad and Bd the solver tracks.
+
+        Returns:
+            success: True if initialization succeeds, false otherwise.
+
+        Raises:
+            RuntimeError: If the library was built without DAQP (see hasDAQP()), or if
+                a setter the solver or the options require has not been called.
+            ValueError: For the sparse formulation, or for ModelSparsity.Full.
         """
 
     def isSolverInitialized(self) -> bool:
@@ -2450,3 +2598,9 @@ class MPCLogger:
         Args:
             filename: Output filename (should end with .yaml or .yml).
         """
+
+def hasDAQP() -> bool:
+    """
+    Whether the library was built with DAQP, so that MPC.initializeSolver() accepts
+    DAQPSettings. The wheels on PyPI are built with it.
+    """

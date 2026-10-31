@@ -51,7 +51,9 @@ std::ostream& operator<<(std::ostream& os, const SolveInfo& info)
      << ", objective=" << info.objective
      << ", qp_solve_time=" << info.qp_solve_time
      << ", mpc_solve_time=" << info.mpc_solve_time
-     << ", prepare_time=" << info.prepare_time << ')';
+     << ", prepare_time=" << info.prepare_time
+     << ", primal_residual=" << info.primal_residual
+     << ", dual_residual=" << info.dual_residual << ')';
   return os;
 }
 
