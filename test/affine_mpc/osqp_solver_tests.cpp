@@ -4,6 +4,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
+#include <osqp_api_constants.h>
 #include <sstream>
 
 #include "affine_mpc/detail/qp.hpp"
@@ -531,56 +532,90 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
             std::string::npos);
 }
 
-TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithZeroCostVector)
+namespace {
+
+// The QP of the setup tests below; q dominates P's column norms, so setting
+// OSQP up with it gives a different cost scaling than setting up with P alone
+affine_mpc::detail::QP setupTestQP()
 {
-  // OSQP fixes its cost scaling at setup from P and ||q||_inf, so setting up
-  // with q = 0 and then updating q differs from setting up with q
-  const int n{2}, m{3};
   affine_mpc::detail::QP qp;
-  qp.P.resize(n, n);
+  qp.P.resize(2, 2);
   qp.P << 4, 1, 1, 2;
-  qp.A.resize(m, n);
+  qp.A.resize(3, 2);
   qp.A << 1, 1, 1, 0, 0, 1;
-  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
+  qp.q = Eigen::Vector2d{100.0, 300.0};
   qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
   qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  return qp;
+}
+
+// The q initialize(const detail::QP&, ...) sets OSQP up with: just above the
+// threshold below which OSQP treats ||q||_inf as 1 in its cost scaling
+const Eigen::Vector2d setup_q{Eigen::Vector2d::Constant(2 * OSQP_MIN_SCALING)};
+
+} // namespace
+
+TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithCostScalingFromP)
+{
+  // OSQP fixes its cost scaling at setup from P and ||q||_inf, so setting up
+  // with a negligible q and then updating q differs from setting up with q
+  const int n{2}, m{3};
+  const affine_mpc::detail::QP qp{setupTestQP()};
   OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-8;
 
   affine_mpc::OSQPSolver by_qp{n, m, settings};
   ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
-  affine_mpc::OSQPSolver zero_then_q{n, m, settings};
-  ASSERT_TRUE(zero_then_q.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l,
-                                     qp.u, settings));
-  ASSERT_TRUE(zero_then_q.updateCostVector(qp.q));
+  affine_mpc::OSQPSolver small_then_q{n, m, settings};
+  ASSERT_TRUE(
+      small_then_q.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
+  ASSERT_TRUE(small_then_q.updateCostVector(qp.q));
   affine_mpc::OSQPSolver with_q{n, m, settings};
   ASSERT_TRUE(with_q.initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings));
 
-  Eigen::Vector2d z_qp, z_zero, z_q;
+  Eigen::Vector2d z_qp, z_small, z_q;
   ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
-  ASSERT_EQ(zero_then_q.solve(z_zero), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(small_then_q.solve(z_small), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(with_q.solve(z_q), affine_mpc::SolveStatus::Success);
 
   EXPECT_EQ(by_qp.getSolveInfo().iterations,
-            zero_then_q.getSolveInfo().iterations);
-  EXPECT_EQ(z_qp, z_zero);
+            small_then_q.getSolveInfo().iterations);
+  EXPECT_EQ(z_qp, z_small);
   // the test can tell the two setups apart
   EXPECT_NE(by_qp.getSolveInfo().iterations, with_q.getSolveInfo().iterations);
 }
 
-TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesWithZeroQ)
+TEST(OSQPSolverProtectedTester, givenQPInterface_CostScalingDoesNotDependOnQ)
+{
+  // Two solvers set up through the QP interface with very different q, then
+  // given the same q, solve identically: the cost scaling depends on P alone
+  const int n{2}, m{3};
+  affine_mpc::detail::QP qp{setupTestQP()};
+  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.eps_abs = settings.eps_rel = 1e-8;
+
+  affine_mpc::OSQPSolver large_q{n, m, settings};
+  ASSERT_TRUE(large_q.initialize(qp, affine_mpc::QPBlockLayout{}));
+  const Eigen::Vector2d q{qp.q};
+  qp.q *= 1e-3;
+  affine_mpc::OSQPSolver small_q{n, m, settings};
+  ASSERT_TRUE(small_q.initialize(qp, affine_mpc::QPBlockLayout{}));
+  ASSERT_TRUE(small_q.updateCostVector(q));
+
+  Eigen::Vector2d z_large, z_small;
+  ASSERT_EQ(large_q.solve(z_large), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(small_q.solve(z_small), affine_mpc::SolveStatus::Success);
+  EXPECT_EQ(large_q.getSolveInfo().iterations,
+            small_q.getSolveInfo().iterations);
+  EXPECT_EQ(z_large, z_small);
+}
+
+TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesFromP)
 {
   // A matrix update recomputes OSQP's scaling, the cost scaling from the q it
-  // holds; through the QP interface it must match a fresh setup with q = 0
+  // holds; through the QP interface it must match a fresh setup from P alone
   const int n{2}, m{3};
-  affine_mpc::detail::QP qp;
-  qp.P.resize(n, n);
-  qp.P << 4, 1, 1, 2;
-  qp.A.resize(m, n);
-  qp.A << 1, 1, 1, 0, 0, 1;
-  qp.q = Eigen::Vector2d{100.0, 300.0}; // dominates P's column norms
-  qp.l = Eigen::Vector3d{1.0, 0.0, 0.0};
-  qp.u = Eigen::Vector3d{1.0, 0.7, 0.7};
+  affine_mpc::detail::QP qp{setupTestQP()};
   OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-8;
   Eigen::Matrix2d P_new;
@@ -592,14 +627,13 @@ TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesWithZeroQ)
   ASSERT_TRUE(by_qp.updateMatrices(qp, true, false));
 
   affine_mpc::OSQPSolver fresh{n, m, settings};
-  ASSERT_TRUE(fresh.initialize(qp.P, qp.A, Eigen::Vector2d::Zero(), qp.l, qp.u,
-                               settings));
+  ASSERT_TRUE(fresh.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
   ASSERT_TRUE(fresh.updateCostVector(qp.q));
 
   // the raw update keeps OSQP's behavior: it rescales with the q it holds
   affine_mpc::OSQPSolver raw{n, m, settings};
-  ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A,
-                             Eigen::Vector2d::Zero(), qp.l, qp.u, settings));
+  ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A, setup_q,
+                             qp.l, qp.u, settings));
   ASSERT_TRUE(raw.updateCostVector(qp.q));
   ASSERT_TRUE(raw.updateCostMatrix(P_new));
 

@@ -421,7 +421,8 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     ```
 
 With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A$ change (a model or weight update).
-The library gives OSQP $\mathbf{q} = 0$ at those times, so the cost scaling depends only on $P$, not on any particular $x_0$ or reference.
+At those times the library gives OSQP a cost vector $\mathbf{q}$ too small to affect the cost scaling, so that scaling depends only on $P$, not on any particular $x_0$ or reference.
+(OSQP treats $\mathbf{q} = 0$ as $\|\mathbf{q}\|_\infty = 1$, which would cap the cost scaling at 1 and slow OSQP down when the weights are small.)
 
 #### Choosing the QP solver
 

@@ -174,7 +174,7 @@ The slack is the largest violation of its state over the horizon.
 - The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the limit's Lagrange multiplier, the solution equals the hard-limit solution whenever the limits can be met, and the limits are only violated when they can not.
 - The L2 penalty $\boldsymbol{\rho}_2$ alone always allows a small violation of an active limit (smaller for a larger penalty).
   With the L1 penalty it does not change the solution while the limits can be met.
-- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 4000 iterations, and with an L2 penalty of 100 it took 250, about the same as hard limits.
+- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one condensed example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 1750 iterations, and with an L2 penalty of 100 it took about 500, against about 400 with hard limits.
   A very large L1 penalty also slows OSQP.
 - Polishing (in the solver settings) makes the solution match the hard-limit solution to round-off when the limits can be met.
 

@@ -806,17 +806,21 @@ TEST(ConsistencyTester, givenModelOutsideInitValues_LeavesPatternUnlessFull)
   check(sparse_full, ampc::ModelSparsity::Full);
 
   // with Full, the sparse solution for the coupled model matches a solver
-  // initialized with that model
+  // initialized with that model. The two reach it along different solver
+  // paths, so at the recommended tolerances their control points can differ
+  // by more than 1e-4; compare them at tight tolerances.
+  OSQPSettings tight{ampc::OSQPSolver::getRecommendedSettings()};
+  tight.eps_abs = tight.eps_rel = 1e-8;
   ampc::MPC changed{n, m, param, opts, ampc::Formulation::Sparse},
       fresh{n, m, param, opts, ampc::Formulation::Sparse};
   configureMsd(changed, opts);
   changed.setModelDiscrete(Ad_diag, Bd, wd);
-  ASSERT_TRUE(changed.initializeSolver(ampc::ModelSparsity::Full));
+  ASSERT_TRUE(changed.initializeSolver(tight, ampc::ModelSparsity::Full));
   ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
   setMsdModel(changed);
   changed.resetWarmStart();
   configureMsd(fresh, opts);
-  ASSERT_TRUE(fresh.initializeSolver());
+  ASSERT_TRUE(fresh.initializeSolver(tight));
   ASSERT_EQ(changed.solve(x0), ampc::SolveStatus::Success);
   ASSERT_EQ(fresh.solve(x0), ampc::SolveStatus::Success);
   VectorXd c_changed{m * nc}, c_fresh{m * nc};
