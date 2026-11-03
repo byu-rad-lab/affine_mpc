@@ -132,6 +132,7 @@ This project defines the following CMake options (specified with `-D`):
 | `AFFINE_MPC_BUILD_TESTS`    | Build unit tests and register test entry points          |
 | `AFFINE_MPC_BUILD_BINDINGS` | Build the Python bindings                                |
 | `AFFINE_MPC_PY_ADD_TESTS`   | Register Python binding tests in the Python subproject   |
+| `AFFINE_MPC_WITH_DAQP`      | Build the DAQP solver for the condensed formulation      |
 | `AFFINE_MPC_WARNINGS_AS_ERRORS` | Treat compiler warnings as errors (enabled in CI)    |
 
 `AFFINE_MPC_PY_ADD_TESTS` is mainly set internally by the top-level build when both bindings and tests are enabled.
@@ -153,11 +154,12 @@ cmake --build build --target python_stubgen
 You can also run the helper script directly:
 
 ```sh
-python python/custom_stubgen.py
+python python/custom_stubgen.py --pkg-dir build/python
 ```
 
-The helper imports the built package from the build tree by default.
-It also supports `--pkg-dir=install` if you want to generate stubs from an installed repo-local package.
+Without `--pkg-dir`, the helper imports the installed `affine_mpc` package, as the `check-stubs` CI job does after `pip install ".[dev]"`.
+`--pkg-dir=install` generates stubs from an installed repo-local package.
+Generate stubs in an environment with the `dev` extra: it pins pybind11-stubgen 3 (older versions reorder the whole stub) and includes SciPy, without which the stub loses the `scipy.sparse` types of `QuadraticProgram`.
 
 ## Formatting
 
@@ -196,7 +198,7 @@ This makes diffs and review comments more localized without affecting rendered o
 
 - add or update tests for solver logic, indexing, references, constraints, and API behavior
 - use `test/affine_mpc/utils.hpp` helpers such as `expectEigenNear(...)`
-- it is normal for tests to derive helper classes from production classes to expose protected behavior
+- prefer the public QP getters (`getQP()`, `assembleQP()`, `getQPVariableBlocks()`, `getQPConstraintBlocks()`) in tests, and derive from `MPC` only for internal state they do not expose
 - NPZ output compatibility is validated from Python with `numpy.load(...)` and `zipfile`, not from a C++ archive reader
 
 ## Documentation Expectations

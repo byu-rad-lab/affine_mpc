@@ -2,7 +2,7 @@
 
 This page shows how the finite-horizon MPC problem in `affine_mpc` is converted into quadratic-program form.
 The derivation is written at the level of the mathematical structure used by the library,
-with the same high-level QP objects that OSQP expects.
+with the standard QP form that OSQP and DAQP accept.
 
 --8<-- "concepts/nomenclature.md"
 
@@ -35,13 +35,9 @@ respectively.
 Some of the symbols collide with MPC symbols,
 so we made slight modifications in notation from OSQP's documentation.
 
-`affine_mpc` supports the following constraints:
-
-- model
-- input saturation
-- initial input slew rate
-- control point slew rate
-- state saturation
+The design variable and the constraint rows are stacked from blocks, and only the blocks the options enable are present.
+The design variable holds the control points $\mathbf{c}$, then the predicted states $\mathbf{x}$ (sparse formulation only), then the slacks $\mathbf{s}$ (soft state bounds only).
+The constraint rows are stacked in this order:
 
 $$
 \underbrace{\begin{bmatrix}
@@ -49,7 +45,9 @@ $$
     \boldsymbol{\ell}_{\mathrm{usat}} \\
     \boldsymbol{\ell}_{\mathrm{slew0}} \\
     \boldsymbol{\ell}_{\mathrm{slew}} \\
-    \boldsymbol{\ell}_{\mathrm{xsat}}
+    \boldsymbol{\ell}_{\mathrm{xsat}} \\
+    \boldsymbol{\ell}_{\mathrm{gen}} \\
+    \boldsymbol{\ell}_{\mathrm{term}}
 \end{bmatrix}}_{\boldsymbol{\ell}}
     \leq
 \underbrace{\begin{bmatrix}
@@ -57,7 +55,9 @@ $$
     A_{\mathrm{usat}} \\
     A_{\mathrm{slew0}} \\
     A_{\mathrm{slew}} \\
-    A_{\mathrm{xsat}}
+    A_{\mathrm{xsat}} \\
+    A_{\mathrm{gen}} \\
+    A_{\mathrm{term}}
 \end{bmatrix}}_{A_\mathrm{qp}} \mathbf{z}
     \leq
 \underbrace{\begin{bmatrix}
@@ -65,9 +65,21 @@ $$
     \boldsymbol{\upsilon}_{\mathrm{usat}} \\
     \boldsymbol{\upsilon}_{\mathrm{slew0}} \\
     \boldsymbol{\upsilon}_{\mathrm{slew}} \\
-    \boldsymbol{\upsilon}_{\mathrm{xsat}}
+    \boldsymbol{\upsilon}_{\mathrm{xsat}} \\
+    \boldsymbol{\upsilon}_{\mathrm{gen}} \\
+    \boldsymbol{\upsilon}_{\mathrm{term}}
 \end{bmatrix}}_{\boldsymbol{\upsilon}}
 $$
+
+| Subscript | Constraint | Block in `getQPConstraintBlocks()` | Present when |
+| --- | --- | --- | --- |
+| model | model | `dynamics` | sparse formulation |
+| usat | input saturation | `input_bounds` | always |
+| slew0 | initial input slew rate | `initial_slew` | `slew_initial_input` |
+| slew | control point slew rate | `control_point_slew` | `slew_control_points` |
+| xsat | state saturation | `state_bounds` | `state_bounds` is `Hard` or `Soft` |
+| gen | general constraints | `general_constraints` | `num_general_constraints` $> 0$ |
+| term | terminal constraints | `terminal_constraints` | `num_terminal_constraints` $> 0$ |
 
 The MPC problem has summation terms in the cost function and a list of various constraints,
 which both need to be converted into a matrix multiply.
@@ -82,6 +94,8 @@ $$
     = \mathbf{c} \quad \quad \quad \mathbf{z}_{\mathrm{s}}
     = \begin{bmatrix} \mathbf{c} \\ \mathbf{x} \end{bmatrix}
 $$
+
+With soft state bounds, both append the slacks $\mathbf{s}$ (see [Selected and Soft State Bounds](#selected-and-soft-state-bounds)).
 
 !!! note
 
@@ -101,6 +115,8 @@ J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\m
     + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
     + \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
 $$
+
+This is the cost with the input cost on the control points (`InputCostMode::ControlPoints`); with `Off`, the input cost terms drop out of everything below, and the other cost terms are added in [Optional Terms](#optional-terms).
 
 Since we're optimizing a norm, it doesn't matter which term is being subtracted.
 We will switch to use value minus reference in the QP conversion just to make the value positive,
@@ -317,8 +333,9 @@ $$
 \underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
+For degree $p = 0$ these are the control point rows above, since the control points are the sampled inputs.
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
-A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+A custom basis always uses these constraints, in place of bounding the control points, whatever `input_bounds` is, omitting the samples whose basis row norm is at most $10^{-9}$ times the largest.
 
 **Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
 
@@ -326,13 +343,13 @@ $$
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
-    \begin{bmatrix} \Gamma \otimes I_m & \mathbf{0}_{m\eta_{\mathrm{r}} \times nT} \end{bmatrix}
+    \begin{bmatrix} \Omega \otimes I_m & \mathbf{0}_{m\eta_{\mathrm{r}} \times nT} \end{bmatrix}
 }_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
 \leq
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
 For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
@@ -691,8 +708,9 @@ $$
 \underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
+For degree $p = 0$ these are the control point rows above, since the control points are the sampled inputs.
 For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
-A custom basis always uses these constraints with every row, in place of bounding the control points, whatever `input_bounds` is.
+A custom basis always uses these constraints, in place of bounding the control points, whatever `input_bounds` is, omitting the samples whose basis row norm is at most $10^{-9}$ times the largest.
 
 **Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
 
@@ -700,13 +718,13 @@ $$
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
-    \Gamma \otimes I_m
+    \Omega \otimes I_m
 }_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
 \leq
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
 $$
 
-The $\eta_{\mathrm{r}} \times \eta$ matrix $\Gamma$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
 For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
@@ -804,30 +822,35 @@ $$
     but the best way to find out for your system is to try both!
     Bounding only the states that need limits (below) keeps only their rows of $S$.
 
-## Selected and Soft State Limits
+## Optional Terms
 
-With `bounded_states` listing $n_b$ of the $n$ states, let $H_x \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
-The state saturation rows become $(I_T \otimes H_x)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes H_x)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
+The derivations above use the input cost on the control points and bound every state.
+The following sections show how the other options change the QP of both formulations.
+
+### Selected and Soft State Bounds
+
+With `bounded_states` listing $n_b$ of the $n$ states, let $E_b \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
+The state saturation rows become $(I_T \otimes E_b)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes E_b)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
 In the condensed formulation these are the selected rows of $S$, so no product is needed.
 
-Soft limits add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
+Soft bounds add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
 A row can not hold one slack on both of its sides, so each limit becomes its own one-sided row:
 
 $$
-(I_T \otimes H_x)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} \leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}},
-\qquad
-(I_T \otimes H_x)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} \geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}},
-\qquad
-\mathbf{s} \geq \mathbf{0},
+\begin{aligned}
+(I_T \otimes E_b)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} &\leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}, \\
+(I_T \otimes E_b)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} &\geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}, \\
+\mathbf{s} &\geq \mathbf{0},
+\end{aligned}
 $$
 
 which is $2 n_b T + n_b$ rows.
 The penalty $J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \mathbf{s}^\top \operatorname{diag}(\boldsymbol{\rho}_2) \mathbf{s}$ is scaled by $\frac{1}{2}$ like the rest of the cost, so the slack block of $P$ is $\operatorname{diag}(\boldsymbol{\rho}_2)$ and the slack part of $\mathbf{q}$ is $\frac{1}{2} \boldsymbol{\rho}_1$.
 
-## Input Rate Cost
+### Input Rate Cost
 
 The input rate cost only involves the control points, which come first in both $\mathbf{z}_{\mathrm{s}}$ and $\mathbf{z}_{\mathrm{c}}$, so it adds the same terms to both formulations.
-With the difference matrix $D = (I_T - I_T^{(-1)}) \otimes I_m$, the input changes are
+With the $T \times T$ difference matrix $D_T = I_T - I_T^{(-1)}$, which unlike $D_\eta$ keeps the first row so that $\mathbf{u}_0 - \mathbf{u}_{-1}$ is included, and $D = D_T \otimes I_m$, the input changes are
 
 $$
 \begin{bmatrix} \mathbf{u}_0 - \mathbf{u}_{-1} \\ \vdots \\ \mathbf{u}_{T-1} - \mathbf{u}_{T-2} \end{bmatrix}
@@ -839,19 +862,19 @@ so with $\bar{R}_\Delta = I_T \otimes R_\Delta$,
 $$
 J_{\Delta u}
     =
-    \mathbf{c}^\top (D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) \, \mathbf{c}
-    - 2 \left( \Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) \right)^\top \mathbf{c}
+    \mathbf{c}^\top (D \Psi)^\top \bar{R}_\Delta (D \Psi) \, \mathbf{c}
+    - 2 \left( \Psi^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) \right)^\top \mathbf{c}
     + \text{const},
 $$
 
-using $D^\top (\mathbf{e}_1 \otimes \mathbf{v}) = \mathbf{e}_1 \otimes \mathbf{v}$.
-Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p)$ and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
+using $D^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) = \mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi)^\top \bar{R}_\Delta (D \Psi)$ and the control point part of $\mathbf{q}$ gains $-\Psi^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
 
-With one basis shared by every input, $(D \Psi^p)^\top \bar{R}_\Delta (D \Psi^p) = G \otimes R_\Delta$ with $G = (D_1 \Phi)^\top (D_1 \Phi)$, where $\Phi$ is the $T \times \eta$ basis and $D_1 = I_T - I_T^{(-1)}$.
+Since $\Psi = \Phi \otimes I_m$, $(D \Psi)^\top \bar{R}_\Delta (D \Psi) = G \otimes R_\Delta$ with $G = (D_T \Phi)^\top (D_T \Phi)$.
 $G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
 The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
 
-## Input Cost on the Sampled Inputs
+### Input Cost on the Sampled Inputs
 
 The derivations above use the input cost on the control points (`InputCostMode::ControlPoints`), whose block of $P$ is $\bar{R} = I_\eta \otimes R$.
 With `InputCostMode::Trajectory`, the input cost is evaluated on the sampled inputs $\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}$ instead.
@@ -860,20 +883,20 @@ With $\bar{R}_T = I_T \otimes R$ and the stacked sampled reference $\mathbf{u}_{
 
 $$
 J_u
-    = (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})^\top \bar{R}_T (\Psi^p \mathbf{c} - \mathbf{u}_{\mathrm{ref}})
-    = \mathbf{c}^\top \Psi^{p\top} \bar{R}_T \Psi^p \, \mathbf{c}
-    - 2 \left( \Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}} \right)^\top \mathbf{c}
+    = (\Psi \mathbf{c} - \mathbf{u}_{\mathrm{ref}})^\top \bar{R}_T (\Psi \mathbf{c} - \mathbf{u}_{\mathrm{ref}})
+    = \mathbf{c}^\top \Psi^\top \bar{R}_T \Psi \, \mathbf{c}
+    - 2 \left( \Psi^\top \bar{R}_T \mathbf{u}_{\mathrm{ref}} \right)^\top \mathbf{c}
     + \text{const}.
 $$
 
-Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^{p\top} \bar{R}_T \Psi^p$ in place of $\bar{R}$, and the control point part of $\mathbf{q}$ gains $-\Psi^{p\top} \bar{R}_T \mathbf{u}_{\mathrm{ref}}$ in place of $-\bar{R} \mathbf{c}_{\mathrm{ref}}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^\top \bar{R}_T \Psi$ in place of $\bar{R}$, and the control point part of $\mathbf{q}$ gains $-\Psi^\top \bar{R}_T \mathbf{u}_{\mathrm{ref}}$ in place of $-\bar{R} \mathbf{c}_{\mathrm{ref}}$.
 
-With one basis shared by every input, $\Psi^{p\top} \bar{R}_T \Psi^p = \Phi^\top \Phi \otimes R$, where $\Phi$ is the $T \times \eta$ basis.
+Since $\Psi = \Phi \otimes I_m$, $\Psi^\top \bar{R}_T \Psi = \Phi^\top \Phi \otimes R$.
 $\Phi^\top \Phi$ depends only on the basis, so it is computed once and declared in the sparsity pattern at construction; a weight change only rescales it.
 For a B-spline of degree $p$ it is banded with bandwidth $2p + 1$ (diagonal for degree 0, where its entries are the block lengths of move-blocking), and it is dense for a custom basis.
 A reference change only updates $\mathbf{q}$, accumulated sample by sample from the band of $\Phi$, so it needs no matrix update or refactorization.
 
-## General and Terminal Constraints
+### General and Terminal Constraints
 
 The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
 
@@ -891,19 +914,19 @@ The state part of the rows for $k \geq 1$ is $H_x$ applied to $\mathbf{x}_1, \do
   Row $i$ of $H_x S_k$ is a sum over the nonzero entries of row $i$ of $H_x$, so a sparse $H_x$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
 
 The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $H_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $H_{\mathrm{f}} S_T$ with bounds shifted by $-H_{\mathrm{f}} \mathbf{v}_T$ (condensed).
-State limits on selected states are the special case $H_u = 0$ with $H_x$ holding rows of $I_n$.
+State bounds on selected states are the special case $H_u = 0$ with $H_x = E_b$.
 
 The general rows add $n_h T$ rows and the terminal rows $n_{h,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
-Their bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), so they are updated at every solve.
+The general bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), and so do the condensed terminal bounds (through $\mathbf{v}$), so they are updated at every solve.
 
 ## Accessing the QP
 
 `getQP()` returns the QP as last written by `solve()`, `prepare()`, or `assembleQP()`, and `assembleQP(x0, qp)` assembles it for the current settings and an initial state without solving, before or after `initializeSolver()`.
-Both give a `QuadraticProgram` with $P$ and $A$ as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\mathbf{q}$, $\mathbf{l}$, $\mathbf{u}$.
-The cost omits the constant terms of the MPC cost, equality rows have $l = u$, and unbounded sides are $\pm\infty$.
+Both give a `QuadraticProgram` with $P$ and $A_{\mathrm{qp}}$ (`P` and `A`) as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\mathbf{q}$, $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ (`q`, `l`, `u`).
+The cost omits the constant terms of the MPC cost, equality rows have $\boldsymbol{\ell} = \boldsymbol{\upsilon}$, and unbounded sides are $\pm\infty$.
 Neither function is meant for the control loop: both copy the QP, and `assembleQP()` leaves its changes to be sent again by the next `prepare()` or `solve()`.
 
-`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\mathbf{z}$ and of the rows of $A$, in order, each with its offset and size; only the blocks the options enable are listed.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\mathbf{z}$ and of the rows of $A_{\mathrm{qp}}$, in order, each with its offset and size; only the blocks the options enable are listed.
 
 | Block | Kind | Built from |
 | --- | --- | --- |
@@ -911,7 +934,7 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
 | `state_slacks` | variables | soft state bounds: one slack per bounded state |
 | `dynamics` | rows | sparse formulation only: the model as equality rows |
-| `input_bounds` | rows | input limits on the control points, the sampled inputs, or the refined control points |
+| `input_bounds` | rows | input bounds on the control points, the sampled inputs, or the refined control points |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
 | `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
@@ -940,11 +963,11 @@ For example, to hand the QP to another solver or to count its rows and nonzeros:
       std::cout << block.name << " " << block.offset << " " << block.size << "\n";
     ```
 
-`getDualSolution()` gives the dual solution $\mathbf{y}$ of the last solve, one value per row of $A$ in the order of `getQPConstraintBlocks()`.
-It satisfies $P\mathbf{z} + \mathbf{q} + A^\top\mathbf{y} = 0$ at a solution, so $y_i > 0$ when row $i$ is at its upper bound, $y_i < 0$ at its lower bound, and $y_i = 0$ when it is inactive; for example, the nonzero entries of the `input_bounds` block show where the input saturates.
+`getDualSolution()` gives the dual solution $\mathbf{y}$ of the last solve, one value per row of $A_{\mathrm{qp}}$ in the order of `getQPConstraintBlocks()`.
+It satisfies $P\mathbf{z} + \mathbf{q} + A_{\mathrm{qp}}^\top\mathbf{y} = 0$ at a solution, so $y_i > 0$ when row $i$ is at its upper bound, $y_i < 0$ at its lower bound, and $y_i = 0$ when it is inactive; for example, the nonzero entries of the `input_bounds` block show where the input saturates.
 These are the multipliers of the QP's cost, which is half the MPC cost.
 With OSQP they are approximate, like its primal solution, and `SolveInfo` reports how closely the solution satisfies the optimality conditions:
-`primal_residual` is the largest violation of $\mathbf{l} \le A\mathbf{z} \le \mathbf{u}$, and `dual_residual` the largest entry of $|P\mathbf{z} + \mathbf{q} + A^\top\mathbf{y}|$.
+`primal_residual` is the largest violation of $\boldsymbol{\ell} \le A_{\mathrm{qp}}\mathbf{z} \le \boldsymbol{\upsilon}$, and `dual_residual` the largest entry of $|P\mathbf{z} + \mathbf{q} + A_{\mathrm{qp}}^\top\mathbf{y}|$.
 They are the solver's own values, so they cost nothing to read in the control loop, while computing them from `getQP()` copies the QP.
 They are absolute, so compare them with a tolerance that suits your problem; OSQP accepts a solution once each is below `eps_abs` plus `eps_rel` times a problem-dependent scale.
 DAQP does not report residuals (they are NaN), since its active-set solutions meet its tolerances.

@@ -20,7 +20,7 @@ The most important lifecycle rule in `affine_mpc` is:
 1. solve repeatedly while applying only updates that preserve sparsity structure
 
 The reason is not merely stylistic.
-Calling `initializeSolver()` fixes the QP structure that OSQP will track internally.
+Calling `initializeSolver()` fixes the QP structure that the solver will track internally.
 After that point,
 runtime updates may change values but not the initialized sparsity structure.
 
@@ -52,7 +52,7 @@ It fixes one structural choice at initialization instead: rows of $A_\mathrm{qp}
 The QP matrices $P$ and $A_\mathrm{qp}$ are affected by:
 
 - model matrices: $A$, $B$
-- weights: $Q$, $Q_{\mathrm{f}}$, $R$
+- weights: $Q$, $Q_{\mathrm{f}}$, $R$, $R_\Delta$, $\boldsymbol{\rho}_2$
 - enabled options and constraint structure
 - parameterization structure through the chosen `Parameterization`
 
@@ -138,7 +138,7 @@ the discretization $e^{A_c \Delta t}$ fills in the pattern of $A_c$
 `ModelSparsity::Full` avoids the representative model at the cost of slower solves when the model has structural zeros.
 
 The rest of the pattern does not depend on this choice.
-The sparse formulation tracks every weight position on the diagonal of $P$
+The sparse formulation tracks every weight position of $P$ (its diagonal, and the banded blocks of the input rate and sampled-input costs)
 and every entry of $H_x$, $H_u$, and $H_{\mathrm{f}}$, whatever their values when `initializeSolver()` is called,
 so its weights and constraint matrices may change between zero and nonzero freely.
 In the condensed formulation, the model and the weights enter $P$ and $A_\mathrm{qp}$ through matrix products,
@@ -179,32 +179,34 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\mathbf{c}_{\mathrm{ref}}$ or $\mathbf{u}_{\mathrm{ref}}$   | `setReferenceInput()`, `setReferenceInputControlPoints()`, `setReferenceInputTrajectory()` |
 | $Q$, $Q_{\mathrm{f}}$                                | `setWeights()`, `setStateWeights()`                       |
 | $R$                                                  | `setWeights()`, `setInputWeights()`                       |
+| $R_\Delta$                                           | `setInputRateWeights()`                                   |
+| $\boldsymbol{\rho}_1$, $\boldsymbol{\rho}_2$          | `setStateBoundPenalties()`                                |
 | $\mathbf{x}_\mathrm{min}$, $\mathbf{x}_\mathrm{max}$ | `setStateLimits()`                                        |
 | $\mathbf{u}_\mathrm{min}$, $\mathbf{u}_\mathrm{max}$ | `setInputLimits()`                                        |
 | $\mathbf{u}_{0,\mathrm{slew}}$                       | `setSlewRateInitial()`                                    |
 | $\mathbf{c}_\mathrm{slew}$                           | `setSlewRate()`                                           |
 | $H_x$, $H_u$, $\mathbf{h}_\mathrm{min}$, $\mathbf{h}_\mathrm{max}$ | `setGeneralConstraints()`                       |
 | $H_\mathrm{f}$, $\mathbf{h}_{\mathrm{f},\mathrm{min}}$, $\mathbf{h}_{\mathrm{f},\mathrm{max}}$ | `setTerminalConstraints()`  |
-| $\mathbf{u}_\mathrm{prev}$                           | `setPreviousInput()` (also set by each successful solve)  |
+| $\mathbf{u}_{-1}$                                     | `setPreviousInput()` (also set by each successful solve)  |
 
 ## When Updates Reach the QP
 
 Setters only validate and store their values and mark a change category.
 All QP work happens in `solve()`, once per changed category, no matter how many setters were called since the last solve.
-Updates that OSQP rejects (often from non-finite values) are reported by `solve()` as `UpdateFailed` and stay pending, so the next solve retries them.
+Updates that the solver rejects (often from non-finite values) are reported by `solve()` as `UpdateFailed` and stay pending, so the next solve retries them.
 
 The categories differ in cost:
 
-| Category | Setters | Condensed QP work | Sparse QP work | OSQP refactors |
+| Category | Setters | Condensed QP work | Sparse QP work | Solver refactors |
 | --- | --- | --- | --- | --- |
 | Initial state $\mathbf{x}_0$ | `solve()` | $\mathbf{v}$, $q$, state-limit and constraint bounds | first dynamics-row bounds, general constraint bounds | No |
-| Model offset $\mathbf{w}$ | `setModelOffset*()` | $\mathbf{v}$, $q$, state-limit bounds | dynamics-row bounds | No |
-| Model $A$, $B$ | `setModelDiscrete()`, `setModelContinuous2Discrete()` | $S$, $P$, state rows of $A_\mathrm{qp}$ | dynamics blocks of $A_\mathrm{qp}$ | Yes |
-| Weights | `setWeights()`, `setStateWeights()`, `setInputWeights()` | $P$, $q$ | diagonal of $P$, $q$ | Yes |
+| Model offset $\mathbf{w}$ | `setModelOffset*()` | $\mathbf{v}$, $q$, state-limit and constraint bounds | dynamics-row bounds | No |
+| Model $A$, $B$ | `setModelDiscrete()`, `setModelContinuous2Discrete()` | $S$, $P$, state-bound and constraint rows of $A_\mathrm{qp}$ | dynamics blocks of $A_\mathrm{qp}$ | Yes |
+| Weights | `setWeights()`, `setStateWeights()`, `setInputWeights()`, `setInputRateWeights()`, `setStateBoundPenalties()` | $P$, $q$ | weight blocks of $P$, $q$ | Yes |
 | References | `setReference*()` | $q$ | $q$ | No |
 | Limits and slew rates | `setInputLimits()`, `setStateLimits()`, `setSlewRate()`, `setSlewRateInitial()`, constraint bounds | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ | No |
-| Constraint matrices $H_x$, $H_u$, $H_\mathrm{f}$ | `setGeneralConstraints()`, `setTerminalConstraints()` | constraint rows of $A_\mathrm{qp}$ (with $S$) and their bounds | constraint rows of $A_\mathrm{qp}$ | Yes |
-| Previous input | `setPreviousInput()` | initial-slew bounds | initial-slew bounds | No |
+| Constraint matrices $H_x$, $H_u$, $H_\mathrm{f}$ | `setGeneralConstraints()`, `setTerminalConstraints()` | constraint rows of $A_\mathrm{qp}$ (with $S$) and their bounds | constraint rows of $A_\mathrm{qp}$, general constraint bounds | Yes |
+| Previous input | `setPreviousInput()` | initial-slew bounds, $q$ (rate cost) | initial-slew bounds, $q$ (rate cost) | No |
 
 The model setters also set $\mathbf{w}$, so they mark both model categories.
 The constraint setters mark the constraint matrices only when a value of $H_x$, $H_u$, or $H_\mathrm{f}$ differs from the stored one, so passing the same matrices with new bounds only updates QP vectors.
@@ -247,7 +249,7 @@ so the matrix rebuild and refactorization no longer add to the delay between mea
     ```
 
 Calling `prepare()` is never required, since `solve()` applies anything still pending, and both orders give the same solution.
-It returns `UpdateFailed` like `solve()` if OSQP rejects an update.
+It returns `UpdateFailed` like `solve()` if the solver rejects an update.
 The next `solve()` reports the total time of the `prepare()` calls since the previous solve as `SolveInfo.prepare_time`, so `mpc_solve_time` stays the latency after the measurement.
 For an LTI problem with fixed weights it has nothing to do.
 [Model Update Strategies](model-updates.md) applies this split to a nonlinear model and measures what it saves.
@@ -255,7 +257,7 @@ For an LTI problem with fixed weights it has nothing to do.
 ## MPC to QP Relationship
 
 The following tables summarize how MPC parameter updates affect QP parameters.
-These tables show which OSQP data may change for each MPC update.
+These tables show which QP data may change for each MPC update.
 Updates that touch QP matrices are typically heavier than vector-only updates,
 but the actual cost depends on the formulation and problem structure.
 
@@ -269,23 +271,28 @@ but the actual cost depends on the formulation and problem structure.
 | $\mathbf{w}$          |     |                 |     | ✓                   | ✓                       |
 | $Q$, $Q_{\mathrm{f}}$ | ✓   |                 | ✓   |                     |                         |
 | $R$                   | ✓   |                 | ✓   |                     |                         |
+| $H_x$                 |     | ✓               |     | ✓                   | ✓                       |
+| $H_{\mathrm{f}}$      |     | ✓               |     |                     |                         |
 
 **Condensed:**
 
 | MPC Term              | $P$ | $A_\mathrm{qp}$ | $q$ | $\boldsymbol{\ell}$ | $\boldsymbol{\upsilon}$ |
 | --------------------- | --- | --------------- | --- | ------------------- | ----------------------- |
-| $\mathbf{x}_0$        |     |                 | ✓   | xsat                | xsat                    |
-| $A$                   | ✓   | xsat            | ✓   | xsat                | xsat                    |
-| $B$                   | ✓   | xsat            | ✓   | xsat                | xsat                    |
-| $\mathbf{w}$          |     |                 | ✓   | xsat                | xsat                    |
+| $\mathbf{x}_0$        |     |                 | ✓   | xsat, gen, term     | xsat, gen, term         |
+| $A$                   | ✓   | xsat, gen, term | ✓   | xsat, gen, term     | xsat, gen, term         |
+| $B$                   | ✓   | xsat, gen, term | ✓   | xsat, gen, term     | xsat, gen, term         |
+| $\mathbf{w}$          |     |                 | ✓   | xsat, gen, term     | xsat, gen, term         |
 | $Q$, $Q_{\mathrm{f}}$ | ✓   |                 | ✓   |                     |                         |
 | $R$                   | ✓   |                 | ✓   |                     |                         |
+| $H_x$, $H_{\mathrm{f}}$ |   | ✓               |     | ✓                   | ✓                       |
 
 !!! note
 
     The model and initial state only affect
     $A_\mathrm{qp}$, $\boldsymbol{\ell}$, and $\boldsymbol{\upsilon}$
-    if state saturation constraints are enabled.
+    through the rows that hold predicted states:
+    state saturation (xsat), general constraints (gen), and terminal constraints (term).
+    Without those constraints, they only change $P$ and $q$.
 
 **Shared:**
 
@@ -293,17 +300,24 @@ but the actual cost depends on the formulation and problem structure.
 | ------------------------------ | --- | --------------- | --- | ------------------- | ----------------------- |
 | $\mathbf{x}_{\mathrm{ref}}$    |     |                 | ✓   |                     |                         |
 | $\mathbf{c}_{\mathrm{ref}}$    |     |                 | ✓   |                     |                         |
+| $\mathbf{u}_{\mathrm{ref}}$    |     |                 | ✓   |                     |                         |
+| $R_\Delta$                     | ✓   |                 | ✓   |                     |                         |
+| $\boldsymbol{\rho}_1$          |     |                 | ✓   |                     |                         |
+| $\boldsymbol{\rho}_2$          | ✓   |                 |     |                     |                         |
+| $H_u$                          |     | ✓               |     |                     |                         |
 | $\mathbf{x}_\mathrm{min}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{x}_\mathrm{max}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{u}_\mathrm{min}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{u}_\mathrm{max}$      |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{u}_{0,\mathrm{slew}}$ |     |                 |     | ✓                   | ✓                       |
 | $\mathbf{c}_\mathrm{slew}$     |     |                 |     | ✓                   | ✓                       |
-| $\mathbf{u}_\mathrm{prev}$     |     |                 |     | ✓                   | ✓                       |
+| $\mathbf{h}_\mathrm{min}$, $\mathbf{h}_\mathrm{max}$ | | |     | ✓                   | ✓                       |
+| $\mathbf{h}_{\mathrm{f},\mathrm{min}}$, $\mathbf{h}_{\mathrm{f},\mathrm{max}}$ | | | | ✓          | ✓                       |
+| $\mathbf{u}_{-1}$              |     |                 | ✓   | ✓                   | ✓                       |
 
 ## Related Topics
 
-- [QP Formulation](qp-formulation.md): how MPC data maps into the OSQP problem
+- [QP Formulation](qp-formulation.md): how MPC data maps into the QP
 - [Model Update Strategies](model-updates.md): updating the affine approximation of a nonlinear model with `prepare()` and the offset-only setters
 - [Usage](../usage.md): configuring an MPC object and running repeated solves
 - [Examples](../examples/index.md): complete repeated-solve workflows in context

@@ -139,48 +139,51 @@ See [Input Parameterization](input-parameterization.md) for more details on B-sp
 ### State Saturation Constraint
 
 $$
-\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} \quad k=1,\dots,T
+\begin{gather}
+\underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\text{hard}}
+\quad \text{OR} \quad
+\underbrace{\mathbf{x}_{\min} - \mathbf{s} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} + \mathbf{s}, \quad \mathbf{s} \geq \mathbf{0}}_{\text{soft}}
+\quad k=1,\dots,T \\
+J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \left\lVert \mathbf{s} \right\rVert^2_{\operatorname{diag}(\boldsymbol{\rho}_2)} \quad \text{(soft only)}
+\end{gather}
 $$
 
-Enable this with `state_bounds = StateBoundMode::Hard` (`StateBoundMode.Hard` in Python) and set the limits with `setStateLimits(x_min, x_max)`.
+`state_bounds` chooses whether and how the states are bounded: `StateBoundMode::Off` (the default), `Hard`, or `Soft` (`StateBoundMode.Hard` and so on in Python).
+Set the limits with `setStateLimits(x_min, x_max)`.
+
+Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
+List them in `bounded_states`; the limits then have one entry per listed state.
+Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state bounds at all).
+
+#### Hard
 
 **When you may want to use it:**
 
 - Your system has physical state limits
 - You want to provide extra stability (e.g., setting roll limits for an aircraft)
 
-Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
-List them in `bounded_states`; the limits then have one entry per listed state.
-Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state limits at all).
-
 !!! danger
 
     If your current state starts outside of the state limits,
     perhaps due to a disturbance,
-    then this constraint can cause the solver to immediately fail.
-    Soft state limits avoid this.
+    then hard bounds can cause the solver to immediately fail.
+    Soft bounds avoid this.
 
-### Soft State Limits
+#### Soft
 
-$$
-\mathbf{x}_{\min} - \mathbf{s} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} + \mathbf{s}, \quad \mathbf{s} \geq \mathbf{0},
-\qquad
-J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \left\lVert \mathbf{s} \right\rVert^2_{\operatorname{diag}(\boldsymbol{\rho}_2)}
-$$
-
-With `state_bounds = StateBoundMode::Soft` (`StateBoundMode.Soft` in Python), one slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
+One slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
 The slack is the largest violation of its state over the horizon.
 
-- The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the limit's Lagrange multiplier, the solution equals the hard-limit solution whenever the limits can be met, and the limits are only violated when they can not.
+- The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the bound's Lagrange multiplier, the solution equals the hard-bound solution whenever the limits can be met, and the limits are only violated when they can not.
 - The L2 penalty $\boldsymbol{\rho}_2$ alone always allows a small violation of an active limit (smaller for a larger penalty).
   With the L1 penalty it does not change the solution while the limits can be met.
-- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one condensed example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 1750 iterations, and with an L2 penalty of 100 it took about 500, against about 400 with hard limits.
+- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one condensed example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 1750 iterations, and with an L2 penalty of 100 it took about 500, against about 400 with hard bounds.
   A very large L1 penalty also slows OSQP.
-- Polishing (in the solver settings) makes the solution match the hard-limit solution to round-off when the limits can be met.
+- Polishing (in the solver settings) makes the solution match the hard-bound solution to round-off when the limits can be met.
 
 **When you may want to use it:**
 
-- Disturbances or model error can push the state past a limit, where hard limits would make the problem infeasible
+- Disturbances or model error can push the state past a limit, where hard bounds would make the problem infeasible
 - Some limits are preferences rather than physical boundaries
 
 ### Initial Input Slew Rate Constraint
@@ -239,7 +242,7 @@ With the condensed formulation, as with the model, an entry of these matrices th
 !!! danger
 
     A constraint row without an input part (a zero row of $H_u$) only checks the measured state at $k = 0$,
-    so the problem is infeasible whenever $\mathbf{x}_0$ violates it, as with hard state limits.
+    so the problem is infeasible whenever $\mathbf{x}_0$ violates it, as with hard state bounds.
     OSQP can also need many iterations when more constraints are active than there are control points.
 
 ## From MPC to QP

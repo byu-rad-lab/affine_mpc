@@ -18,26 +18,72 @@ the condensed formulation (the default) optimizes only the control points,
 while the sparse formulation keeps the predicted states in the QP decision vector as well.
 
 The library supports the following cost and constraint structure,
-with several optional terms controlled by `Options` (highlighted in red):
+with several optional terms controlled by `Options` (labeled in $\textcolor{red}{\text{red}}$ below):
 
 $$
+\newcommand{\bm}[1]{\boldsymbol{#1}}
 \begin{align}
 \min
-    &\quad J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
-    + \underbrace{
-        \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
-      }_{\textcolor{red}{\text{input cost}}} \\
+    &\quad J =
+        \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}} % terminal cost
+        + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q \\ % state stracking cost
+    &\qquad\quad + \:
+        \underbrace{
+            \sum_{i=0}^{\eta-1} \lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \rVert^2_R
+        }_{ \textcolor{red}{\text{control point cost}} }
+        \quad \text{OR} \quad
+        \underbrace{
+            \sum_{k=0}^{T-1} \lVert \mathbf{u}_{\mathrm{ref},k} - \mathbf{u}_k \rVert^2_R
+        }_{ \textcolor{red}{\text{input trajectory cost}} } \\
+    &\qquad\quad + \:
+        \underbrace{
+            \sum_{k=0}^{T-1} \lVert \mathbf{u}_k - \mathbf{u}_{k-1} \rVert^2_{R_\Delta}
+        }_{ \textcolor{red}{\text{input rate cost}} } \\
+    &\qquad\quad + \:
+        \underbrace{
+            \bm{\rho}_1^\top \mathbf{s} + \lVert \mathbf{s} \rVert^2_{\operatorname{diag}(\bm{\rho}_2)}
+        }_{ \textcolor{red}{\text{soft state bounds}} } \\
 \text{w.r.t.}
-    &\quad \mathbf{c}_0, \dots ,\mathbf{c}_{\eta-1} \quad \underbrace{\mathbf{x}_1, \dots, \mathbf{x}_T}_{\textcolor{magenta}{\text{sparse only}}}\\
+    &\quad \mathbf{c}_0, \dots ,\mathbf{c}_{\eta-1},
+        \quad
+        \underbrace{
+            \mathbf{x}_1, \dots, \mathbf{x}_T
+        }_{ \textcolor{magenta}{\text{sparse only}} },
+        \quad
+        \underbrace{
+            \mathbf{s}
+        }_{ \textcolor{red}{\text{soft state bounds}} } \\
 \text{s.t.}
     &\quad \mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w} \\
     &\quad \mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1}) \\
-    &\quad \mathbf{u}_{\min} \leq \mathbf{c}_i \leq \mathbf{u}_{\max} \quad \text{OR} \quad
-        \underbrace{\mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}}_{\textcolor{red}{\text{exact input bounds}}} \\
-    &\quad \underbrace{\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}}_{\textcolor{red}{\text{state bounds}}} \\
-    &\quad \underbrace{|\mathbf{u}_0 - \mathbf{u}_{{-}1}| \leq \mathbf{u}_{0,\mathrm{slew}}}_{\textcolor{red}{\text{initial slew rate}}} \\
-    &\quad \underbrace{|\mathbf{c}_i - \mathbf{c}_{i-1}| \leq \mathbf{c}_{\mathrm{slew}}}_{\textcolor{red}{\text{slew control points}}}
+    &\quad \mathbf{u}_{\min} \leq \mathbf{c}_i \leq \mathbf{u}_{\max}
+        \quad \text{OR} \quad
+        \underbrace{
+            \mathbf{u}_{\min} \leq \Omega \mathbf{c} \leq \mathbf{u}_{\max}
+        }_{ \textcolor{red}{\text{refined input bounds}} }
+        \quad \text{OR} \quad
+        \underbrace{
+            \mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}
+        }_{ \textcolor{red}{\text{exact input bounds}} } \\
+    &\quad \underbrace{
+            \mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max}
+        }_{ \textcolor{red}{\text{hard state bounds}} }
+        \quad \text{OR} \quad
+        \underbrace{
+            \mathbf{x}_{\min} - \mathbf{s} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} + \mathbf{s}
+        }_{ \textcolor{red}{\text{soft state bounds}} } \\
+    &\quad \underbrace{
+            |\mathbf{u}_0 - \mathbf{u}_{{-}1}| \leq \mathbf{u}_{0,\mathrm{slew}}
+        }_{ \textcolor{red}{\text{initial slew rate}} } \\
+    &\quad \underbrace{
+            |\mathbf{c}_i - \mathbf{c}_{i-1}| \leq \mathbf{c}_{\mathrm{slew}}
+        }_{ \textcolor{red}{\text{slew control points}} } \\
+    &\quad \underbrace{
+            \mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max}
+        }_{ \textcolor{red}{\text{general constraints}} } \\
+    &\quad \underbrace{
+            \mathbf{h}_{\mathrm{f},\min} \leq H_{\mathrm{f}} \mathbf{x}_T \leq \mathbf{h}_{\mathrm{f},\max}
+        }_{ \textcolor{red}{\text{terminal constraints}} }
 \end{align}
 $$
 

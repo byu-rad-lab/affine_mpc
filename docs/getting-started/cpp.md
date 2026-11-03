@@ -32,7 +32,7 @@ If you prefer to use system libraries, the expected dependencies are listed belo
 
 The project targets:
 
-- C++17
+- C++17 (the examples and tests build as C++20)
 - CMake 3.18+
 
 Required dependencies:
@@ -178,7 +178,7 @@ Here is an example of what to include in your CMake config:
 include(FetchContent)
 FetchContent_Declare(ampc_extern
   GIT_REPOSITORY https://github.com/byu-rad-lab/affine_mpc
-  GIT_TAG        v1.0.0  # (check for latest release)
+  GIT_TAG        v0.5.1  # (check for latest release)
 )
 
 # set options as desired

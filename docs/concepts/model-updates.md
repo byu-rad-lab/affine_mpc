@@ -18,7 +18,7 @@ How accurate each approximation is depends on your plant, its model, and the sam
 
 ## What a Model Update Costs
 
-- Changing $A$ or $B$ (`setModelDiscrete()` or `setModelContinuous2Discrete()`) makes the next `solve()` or `prepare()` rebuild the QP matrices and refactor OSQP.
+- Changing $A$ or $B$ (`setModelDiscrete()` or `setModelContinuous2Discrete()`) makes the next `solve()` or `prepare()` rebuild the QP matrices and refactor the solver.
   `setModelContinuous2Discrete()` also computes a matrix exponential inside the setter.
 - Changing only the offset $\mathbf{w}$ (`setModelOffsetDiscrete()` or `setModelOffsetContinuous2Discrete()`) updates QP vectors only: no matrix exponential, no rebuild, and no refactorization.
 - `prepare()` does any pending rebuild and refactorization before the measurement, so `solve()` does not have to.
@@ -60,7 +60,7 @@ Do the predicted update, then recompute only the offset at the measured state:
 1. measure $\mathbf{x}_{k+1}$ and recompute the offset at the measured state with the prepared $A_{\mathrm{c}}$ and $B_{\mathrm{c}}$, $\mathbf{w}_{\mathrm{c}} = f(\mathbf{x}_{k+1}, \mathbf{u}_k) - A_{\mathrm{c}} \mathbf{x}_{k+1} - B_{\mathrm{c}} \mathbf{u}_k$
 1. call `setModelOffsetContinuous2Discrete(w_c)`, `solve(x_{k+1})`, and apply the input
 
-`setModelOffsetContinuous2Discrete()` discretizes the offset with the stored discretization ($\mathbf{w}_{\mathrm{d}} = G \mathbf{w}_{\mathrm{c}}$, one matrix-vector product), and the model offset only enters QP vectors, so `solve()` does not rebuild the QP matrices and OSQP does not refactor.
+`setModelOffsetContinuous2Discrete()` discretizes the offset with the stored discretization ($\mathbf{w}_{\mathrm{d}} = G \mathbf{w}_{\mathrm{c}}$, one matrix-vector product), and the model offset only enters QP vectors, so `solve()` does not rebuild the QP matrices and the solver does not refactor.
 If you discretize the model yourself and set it with `setModelDiscrete()`, compute the discrete offset $\mathbf{w}_{\mathrm{d}} = f_{\mathrm{d}}(\mathbf{x}_{k+1}, \mathbf{u}_k) - A_{\mathrm{d}} \mathbf{x}_{k+1} - B_{\mathrm{d}} \mathbf{u}_k$ instead and pass it to `setModelOffsetDiscrete()`, where $f_{\mathrm{d}}$ is your one-step model.
 
 With this offset, the model matches $f$ at the measured state, while $A_{\mathrm{c}}$ and $B_{\mathrm{c}}$ are still those computed at the prediction.

@@ -215,7 +215,7 @@ Otherwise the factory throws and suggests a ratio closer to 1 or fewer control p
 - Lower degree gives a more local and less smooth trajectory representation.
 - Higher degree gives smoother trajectories and broader basis support, but can somewhat flatten the input trajectory if
   the control points are saturated by the input limits since splines generally do not pass through control points.
-  This can be remedied by saturating the evaluated input trajectory instead (when $p>1$, or $p=1$ with non-integer knots).
+  This can be remedied by bounding the sampled inputs (`InputBoundMode::Exact`) or the refined control points (`InputBoundMode::Refined`) instead (when $p>1$, or $p=1$ with non-integer knots; see [Input Bounds](#input-bounds)).
 
 ### Knot Placement
 
@@ -228,9 +228,9 @@ Changing the active-knot locations redistributes where the trajectory can vary m
 
 ### Accepted Knot Vectors
 
-The sampled basis $\Psi$ ($T \times \eta$) must have full column rank.
+The sampled basis $\Phi$ ($T \times \eta$) must have full column rank.
 Otherwise some combination of control points has no effect on any sampled input, the cost is flat in that direction, and the QP has no unique solution.
-By the Schoenberg-Whitney theorem, $\Psi$ has full column rank if and only if every control point $j$ can be given its own sample $k_j$, with $k_0 < k_1 < \dots < k_{\eta-1}$, at which its basis function is nonzero, $b_j^p(k_j, \boldsymbol{\tau}) \neq 0$.
+By the Schoenberg-Whitney theorem, $\Phi$ has full column rank if and only if every control point $j$ can be given its own sample $k_j$, with $k_0 < k_1 < \dots < k_{\eta-1}$, at which its basis function is nonzero, $b_j^p(k_j, \boldsymbol{\tau}) \neq 0$.
 Construction checks this condition exactly on the sampled basis and throws `std::invalid_argument` (`ValueError` in Python) otherwise; the message names the first control point without a sample, its support, and the samples it would need.
 
 - Knots do not have to be integers or at least one sample apart.
@@ -269,14 +269,14 @@ The input limits $\mathbf{u}_{\min} \le \mathbf{u}_k \le \mathbf{u}_{\max}$ are 
 ### Refined Bounds
 
 Inserting a knot changes the knot vector and the control points of a B-spline but not the spline itself: the new control points are fixed convex combinations of the old ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
-Per input channel, the refined control points are $\Gamma \mathbf{c}$, where $\Gamma$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
+Per input channel, the refined control points are $\Omega \mathbf{c}$, where $\Omega$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
 The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
 
 `Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
 It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
 If that is not fewer than the $T$ rows of `Exact` (short horizons or a very small $L$), `Refined` uses the `Exact` rows instead, which are exact and fewer; this is decided once at construction.
 For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Exact`.
-$\Gamma$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
+$\Omega$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
 
 A smaller $L$ bounds the sampled inputs more tightly with more rows.
 Very small values approach the row count of `Exact` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
@@ -288,7 +288,7 @@ A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the m
 
 ## Custom Bases
 
-`fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Psi$ with one column per coefficient, so $\mathbf{u}_k = \sum_i \Psi_{k,i} \mathbf{c}_i$, where the coefficients $\mathbf{c}_i$ take the place of the control points.
+`fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Phi$ with one column per coefficient, so $\mathbf{u}_k = \sum_i \Phi_{k,i} \mathbf{c}_i$, where the coefficients $\mathbf{c}_i$ take the place of the control points.
 
 === "Python"
 
@@ -303,7 +303,7 @@ A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the m
     ```
 
 The basis must have finite entries and full column rank, tested by its singular values: the smallest must exceed $10^{-9}$ times the largest.
-Full rank does not make the QP well conditioned, since the condition number of the QP Hessian grows like the square of that of $\Psi$.
+Full rank does not make the QP well conditioned, since the condition number of the QP Hessian grows like the square of that of $\Phi$.
 For example, many Laguerre functions with a pole close to 1 pass the rank test, yet can make the QP so badly conditioned that OSQP fails to converge.
 Orthonormalizing the columns (e.g. `numpy.linalg.qr`) spans the same input trajectories and improves the conditioning by many orders of magnitude.
 That fixes columns that are badly scaled, but not columns that are nearly dependent, such as long Laguerre bases with a slow pole: for those, orthonormalizing turns the dependent direction into a column of round-off.
@@ -397,7 +397,7 @@ for _ in range(100):
 
 Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
 `examples/laguerre.py` runs both forms and compares their closed-loop cost (see [Laguerre Basis](../examples/laguerre.md)).
-It orthonormalizes $\Psi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\mathbf{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
+It orthonormalizes $\Phi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\mathbf{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
 
 ## Next Step
 

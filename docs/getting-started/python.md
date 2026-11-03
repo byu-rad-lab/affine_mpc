@@ -103,6 +103,7 @@ OR install the following manually:
 - `abracatabra`
 - `matplotlib`
 - `PySide6` OR `PyQt6`
+- `tqdm` (optional progress bar for the quadrotor example)
 
 ## Array Conventions
 
