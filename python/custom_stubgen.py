@@ -72,6 +72,10 @@ pybind11_stubgen.main(
         "StateBoundMode$:affine_mpc._bindings",
         "--enum-class-locations",
         "InputBoundMode$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "InputCostMode$:affine_mpc._bindings",
+        "--enum-class-locations",
+        "Formulation$:affine_mpc._bindings",
     ]
 )
 

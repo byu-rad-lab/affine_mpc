@@ -120,7 +120,7 @@ class Options:
     def __init__(
         self,
         *,
-        input_cost: InputCostMode = ...,
+        input_cost: InputCostMode = InputCostMode.Off,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         refined_bound_interval: int = 16,
