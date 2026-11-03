@@ -148,6 +148,7 @@ The logger records configuration metadata such as:
 - B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
 - enabled options (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`), the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`), `opt_saturate_states` (1 unless `off`), and `opt_use_input_cost` (1 unless `off`) are kept for readers of earlier logs
 - limits
+- slew rates (`u0_slew`, `control_point_slew`)
 - weights
 - prediction stride
 - logging mode
