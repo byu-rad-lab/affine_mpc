@@ -256,12 +256,12 @@ The Python wheels contain the library, so ABI changes do not affect Python users
 ### Steps
 
 1. Make sure every change for the release is on `main` and CI passes there.
-1. On a branch from `main`, update the version in `CMakeLists.txt` (`project(... VERSION X.Y.Z)`) and in `CITATION.cff` (`version` and `date-released`).
+1. On a branch from `main`, update the version in `CMakeLists.txt` (`project(... VERSION X.Y.Z)`), in `CITATION.cff` (`version` and `date-released`), and in the FetchContent `GIT_TAG` in `docs/getting-started/cpp.md`.
    The Python package's version comes from the git tag (setuptools_scm), so nothing in Python changes.
 1. If a bundled dependency's version changed (`cmake/extern_*.cmake`), update its row in `licenses/README.md` and replace its license file if the text changed.
 1. If the binding surface changed, make sure the stubs are regenerated (see [Stub Generation](#stub-generation)).
 1. Open a PR into `main` titled exactly `Release X.Y.Z`, with the release notes as its body (see below).
-   The title matters: CI checks it against the versions in `CMakeLists.txt` and `CITATION.cff`, and editing the title later does not rerun that check (push a commit to rerun it).
+   The title matters: CI checks it against the versions in `CMakeLists.txt`, `CITATION.cff`, and the docs `GIT_TAG`, and editing the title later does not rerun that check (push a commit to rerun it).
 1. Wait for CI: the build and test jobs, the stub check, and the wheel build (`Build and publish to PyPI`, which builds and tests every wheel and the sdist on PRs without uploading them).
 1. Merge the PR.
 1. Create a GitHub release with the tag `vX.Y.Z` on `main`, titled `Release X.Y.Z`, with the same notes, and publish it.
