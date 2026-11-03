@@ -130,7 +130,7 @@ enum class InputBoundMode
  *     other than Off). Empty (the default) bounds every state.
  *
  * General constraints:
- * - num_general_constraints: Number p of general linear constraints
+ * - num_general_constraints: Number of general linear constraints
  *     h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
  *     the measured state). Zero (the default) disables them.
  * - num_terminal_constraints: Number of terminal constraints

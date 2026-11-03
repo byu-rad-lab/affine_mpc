@@ -37,11 +37,16 @@ enum class DataChange : std::uint16_t
 {
   ModelOffset = 1 << 0, ///< model offset `wd` (QP vectors only)
   Model = 1 << 1,       ///< model matrices `Ad`, `Bd` (QP matrices)
-  Weights = 1 << 2,     ///< cost weights `Q`, `Q_f`, `R` (cost matrix)
-  References = 1 << 3,  ///< state and input references (cost vector)
-  /// input and state limits, slew rates, general constraint bounds (bounds)
+  /// cost weights `Q`, `Q_f`, `R`, `R_rate`, and the soft state bound
+  /// penalties (cost matrix and vector)
+  Weights = 1 << 2,
+  References = 1 << 3, ///< state and input references (cost vector)
+  /// input and state limits, slew rates, general and terminal constraint
+  /// bounds (bounds)
   Limits = 1 << 4,
-  PreviousInput = 1 << 5, ///< `u_prev` of the initial slew rate (bounds)
+  /// `u_prev` of the initial slew rate (bounds) and the input rate cost (cost
+  /// vector)
+  PreviousInput = 1 << 5,
   /// general and terminal constraint matrices `Hx`, `Hu`, `Hf` (QP matrices)
   ConstraintMatrices = 1 << 6,
   X0 = 1 << 7, ///< initial state (applied by every solve())
