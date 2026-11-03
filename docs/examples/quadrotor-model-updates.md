@@ -5,7 +5,7 @@ A single run uses one of the strategies described in [Model Update Strategies](.
 
 ## What the Example Demonstrates
 
-- Computing an affine model $(A_{\mathrm{c}}, B_{\mathrm{c}}, \mathbf{w}_{\mathrm{c}})$ of nonlinear dynamics from analytic Jacobians (checked against central differences at startup)
+- Computing an affine model $(A_{\mathrm{c}}, B_{\mathrm{c}}, \bm{w}_{\mathrm{c}})$ of nonlinear dynamics from analytic Jacobians (checked against central differences at startup)
 - Updating the model every step with `setModelContinuous2Discrete()`
 - Moving the QP rebuild and refactorization before the measurement with `prepare()`
 - Updating only the model offset with `setModelOffsetContinuous2Discrete()`

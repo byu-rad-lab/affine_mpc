@@ -27,15 +27,15 @@ Other bases, such as Laguerre functions, can be used through a sampled basis mat
 
 ## B-Splines
 
-B-splines are continuous in nature, but the MPC input trajectory $\{\mathbf{u}_k\}_{k=0}^{T-1}$ is discrete.
+B-splines are continuous in nature, but the MPC input trajectory $\{\bm{u}_k\}_{k=0}^{T-1}$ is discrete.
 We therefore define a spline over the interval $t \in [0, T-1]$ and evaluate it at the integer horizon indices.
 The parameterized input trajectory is given by
 
 $$
-\mathbf{u}_k = \sum_{i=0}^{\eta-1}  \mathbf{c}_i \, b_i^p(k, \boldsymbol{\tau}),
+\bm{u}_k = \sum_{i=0}^{\eta-1}  \bm{c}_i \, b_i^p(k, \bm{\tau}),
 $$
 
-where $\boldsymbol{\tau}$ is a non-decreasing knot vector.
+where $\bm{\tau}$ is a non-decreasing knot vector.
 The spline is valid on the active interval $[\tau_p, \tau_{\mu-p-1}]$.
 These two knots are called the boundary knots,
 while the knots between them (excluding the boundary knots) are called interior knots.
@@ -53,7 +53,7 @@ The basis functions are defined by the Cox-de Boor recursion formula.
 For $p=0$
 
 $$
-b_i^0(k, \boldsymbol{\tau}) =
+b_i^0(k, \bm{\tau}) =
 \begin{cases}
 1 & \tau_i \le k < \tau_{i+1}, \\
 0 & \text{otherwise},
@@ -63,9 +63,9 @@ $$
 and for $p>0$
 
 $$
-b_i^p(k, \boldsymbol{\tau}) =
-\frac{k - \tau_i}{\tau_{i+p} - \tau_i} b_i^{p-1}(k, \boldsymbol{\tau})
-+ \frac{\tau_{i+p+1} - k}{\tau_{i+p+1} - \tau_{i+1}} b_{i+1}^{p-1}(k, \boldsymbol{\tau}),
+b_i^p(k, \bm{\tau}) =
+\frac{k - \tau_i}{\tau_{i+p} - \tau_i} b_i^{p-1}(k, \bm{\tau})
++ \frac{\tau_{i+p+1} - k}{\tau_{i+p+1} - \tau_{i+1}} b_{i+1}^{p-1}(k, \bm{\tau}),
 $$
 
 with the convention that terms with zero denominators are treated as zero.
@@ -76,7 +76,7 @@ The B-spline basis functions can be represented as a matrix $\Psi$ to convenient
 control points to a stacked input trajectory:
 
 $$
-\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}.
+\bm{u} = \Psi^p(\bm{\tau}) \, \bm{c}.
 $$
 
 What is especially convenient about the matrix representation is that the matrix is constant for a given degree and knot vector.
@@ -230,7 +230,7 @@ Changing the active-knot locations redistributes where the trajectory can vary m
 
 The sampled basis $\Phi$ ($T \times \eta$) must have full column rank.
 Otherwise some combination of control points has no effect on any sampled input, the cost is flat in that direction, and the QP has no unique solution.
-By the Schoenberg-Whitney theorem, $\Phi$ has full column rank if and only if every control point $j$ can be given its own sample $k_j$, with $k_0 < k_1 < \dots < k_{\eta-1}$, at which its basis function is nonzero, $b_j^p(k_j, \boldsymbol{\tau}) \neq 0$.
+By the Schoenberg-Whitney theorem, $\Phi$ has full column rank if and only if every control point $j$ can be given its own sample $k_j$, with $k_0 < k_1 < \dots < k_{\eta-1}$, at which its basis function is nonzero, $b_j^p(k_j, \bm{\tau}) \neq 0$.
 Construction checks this condition exactly on the sampled basis and throws `std::invalid_argument` (`ValueError` in Python) otherwise; the message names the first control point without a sample, its support, and the samples it would need.
 
 - Knots do not have to be integers or at least one sample apart.
@@ -256,7 +256,7 @@ Parameterization is therefore both a dimensionality-reduction tool and a way to 
 
 ## Input Bounds
 
-The input limits $\mathbf{u}_{\min} \le \mathbf{u}_k \le \mathbf{u}_{\max}$ are always enforced, and `Options::input_bounds` (`Options.input_bounds` in Python) chooses the constraint rows that enforce them (see [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint)).
+The input limits $\bm{u}_{\min} \le \bm{u}_k \le \bm{u}_{\max}$ are always enforced, and `Options::input_bounds` (`Options.input_bounds` in Python) chooses the constraint rows that enforce them (see [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint)).
 
 - `InputBoundMode::ControlPoints` (the default) bounds the control points, one row per control point.
   B-spline basis functions are non-negative and sum to one, so every sampled input is a convex combination of control points and stays inside the limits (the convex hull property).
@@ -269,7 +269,7 @@ The input limits $\mathbf{u}_{\min} \le \mathbf{u}_k \le \mathbf{u}_{\max}$ are 
 ### Refined Bounds
 
 Inserting a knot changes the knot vector and the control points of a B-spline but not the spline itself: the new control points are fixed convex combinations of the old ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
-Per input channel, the refined control points are $\Omega \mathbf{c}$, where $\Omega$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
+Per input channel, the refined control points are $\Omega \bm{c}$, where $\Omega$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
 The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
 
 `Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
@@ -288,7 +288,7 @@ A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the m
 
 ## Custom Bases
 
-`fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Phi$ with one column per coefficient, so $\mathbf{u}_k = \sum_i \Phi_{k,i} \mathbf{c}_i$, where the coefficients $\mathbf{c}_i$ take the place of the control points.
+`fromBasis()` takes any basis sampled at $k = 0, \dots, T-1$ as a $T \times \eta$ matrix $\Phi$ with one column per coefficient, so $\bm{u}_k = \sum_i \Phi_{k,i} \bm{c}_i$, where the coefficients $\bm{c}_i$ take the place of the control points.
 
 === "Python"
 
@@ -326,8 +326,8 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
   It omits the rows of samples whose basis row norm is at most $10^{-9}$ times the largest, e.g. where a Laguerre basis has decayed late in a long horizon: such a sample can only leave the limits if the coefficients exceed them by about $10^9$, and rows many orders of magnitude below the others hurt OSQP's scaling.
   This is a numerical threshold on the basis, not a constraint horizon chosen from the plant, so the feasible set is that of all $T$ samples to within that tolerance.
 - **Input cost.**
-  With `InputCostMode::ControlPoints`, `R` weights the coefficients, $\sum_i (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})^\top R \, (\mathbf{c}_i - \mathbf{c}_{\mathrm{ref},i})$, not the sampled inputs.
-  With orthonormal columns and a zero reference, $\lVert \Psi \mathbf{c} \rVert = \lVert \mathbf{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
+  With `InputCostMode::ControlPoints`, `R` weights the coefficients, $\sum_i (\bm{c}_i - \bm{c}_{\mathrm{ref},i})^\T R \, (\bm{c}_i - \bm{c}_{\mathrm{ref},i})$, not the sampled inputs.
+  With orthonormal columns and a zero reference, $\lVert \Psi \bm{c} \rVert = \lVert \bm{c} \rVert$ for each channel, so this equals `R` on the sampled inputs summed over the horizon.
   No coefficients represent a constant input in general, so in this mode `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
   `InputCostMode::Trajectory` weights the sampled inputs for any basis, and accepts a constant reference (`setReferenceInput()`) or a sampled one (`setReferenceInputTrajectory()`); see [Input Cost](problem-formulation.md#input-cost).
 - **Slew rates.**
@@ -341,9 +341,9 @@ The logger records the basis (`meta_basis`, row by row) instead of the degree an
 ### Example: Laguerre Functions
 
 Discrete Laguerre functions decay like $a^k$ for a pole $0 \le a < 1$, so a few of them can describe a long input transient.
-Used directly, $\mathbf{u} = \Psi \mathbf{c}$, the predicted input decays to zero and can not hold the steady input that keeps a plant at a nonzero reference, so the direct form is not suited to setpoint tracking on its own.
+Used directly, $\bm{u} = \Psi \bm{c}$, the predicted input decays to zero and can not hold the steady input that keeps a plant at a nonzero reference, so the direct form is not suited to setpoint tracking on its own.
 
-The deviation form $\mathbf{u} = \mathbf{u}_{\mathrm{ss}} + \Psi \mathbf{c}$ plans the deviation from the steady-state input $\mathbf{u}_{\mathrm{ss}}$ that holds the reference, which enters through the model offset $\mathbf{w}$ (see [Deviation Form for Other Bases](modeling-patterns.md#deviation-form-for-other-bases) for the full recipe).
+The deviation form $\bm{u} = \bm{u}_{\mathrm{ss}} + \Psi \bm{c}$ plans the deviation from the steady-state input $\bm{u}_{\mathrm{ss}}$ that holds the reference, which enters through the model offset $\bm{w}$ (see [Deviation Form for Other Bases](modeling-patterns.md#deviation-form-for-other-bases) for the full recipe).
 For the [mass-spring-damper example](../examples/mass-spring-damper.md), with the limits $0 \le u \le 4$:
 
 ```python
@@ -395,9 +395,9 @@ for _ in range(100):
     xk = mpc.propagateModel(xk, u_tilde)  # the model includes B u_ss
 ```
 
-Without $\mathbf{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
+Without $\bm{u}_{\mathrm{ss}}$ (the direct form), the same controller settles at a position of about 0.87 instead of 1.
 `examples/laguerre.py` runs both forms and compares their closed-loop cost (see [Laguerre Basis](../examples/laguerre.md)).
-It orthonormalizes $\Phi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\mathbf{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
+It orthonormalizes $\Phi$ with a QR decomposition; the samples where the basis has decayed (frozen at $\bm{u}_{\mathrm{ss}}$, many orders of magnitude below round-off for long horizons) need no special handling, since the MPC omits their input bound rows.
 
 ## Next Step
 

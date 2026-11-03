@@ -347,7 +347,7 @@ State step reference:
     ```
 
 State trajectory reference:
-In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\mathbf{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
+In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\bm{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
 In C++, they are matrices with one column per step, e.g. `x_traj.col(k)` in a `state_dim x horizon_steps` matrix.
 Both also accept the stacked layout (`horizon_steps * state_dim` values, step after step), which has the same memory as either one, so a whole matrix or array is copied in one pass.
 
@@ -425,8 +425,8 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     ```
 
 With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A_{\mathrm{qp}}$ change (a model, weight, or constraint matrix update).
-At those times the library gives OSQP a cost vector $\mathbf{q}$ too small to affect the cost scaling, so that scaling depends only on $P$, not on any particular $x_0$ or reference.
-(OSQP treats $\mathbf{q} = 0$ as $\|\mathbf{q}\|_\infty = 1$, which would cap the cost scaling at 1 and slow OSQP down when the weights are small.)
+At those times the library gives OSQP a cost vector $\bm{q}$ too small to affect the cost scaling, so that scaling depends only on $P$, not on any particular $x_0$ or reference.
+(OSQP treats $\bm{q} = 0$ as $\|\bm{q}\|_\infty = 1$, which would cap the cost scaling at 1 and slow OSQP down when the weights are small.)
 
 #### Choosing the QP solver
 

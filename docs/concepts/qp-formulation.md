@@ -10,10 +10,10 @@ From [Input Parameterization](input-parameterization.md),
 the control points can be mapped to the input trajectory by
 
 $$
-\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}.
+\bm{u} = \Psi^p(\bm{\tau}) \, \bm{c}.
 $$
 
-A [custom basis](input-parameterization.md#custom-bases) takes the place of $\Psi^p(\boldsymbol{\tau})$ in everything below, with the coefficients in place of the control points; it is dense, so the band of every sample holds every coefficient.
+A [custom basis](input-parameterization.md#custom-bases) takes the place of $\Psi^p(\bm{\tau})$ in everything below, with the coefficients in place of the control points; it is dense, so the band of every sample holds every coefficient.
 
 ## Quadratic Program (QP)
 
@@ -21,34 +21,34 @@ The form of a QP is
 
 $$
 \begin{align}
-    \min_{\mathbf{z}} &\quad \frac{1}{2} \mathbf{z}^\top P \mathbf{z} + \mathbf{q}^\top \mathbf{z} \\
-    s.t. &\quad \boldsymbol{\ell} \leq A_{\mathrm{qp}} \, \mathbf{z} \leq \boldsymbol{\upsilon}
+    \min_{\bm{z}} &\quad \frac{1}{2} \bm{z}^\T P \bm{z} + \bm{q}^\T \bm{z} \\
+    s.t. &\quad \bm{\ell} \leq A_{\mathrm{qp}} \, \bm{z} \leq \bm{\upsilon}
 \end{align}
 $$
 
-where $\mathbf{z}$ is the design variable,
+where $\bm{z}$ is the design variable,
 $P$ is the cost matrix,
-$\mathbf{q}$ is the cost vector,
+$\bm{q}$ is the cost vector,
 $A_\mathrm{qp}$ is the constraint matrix,
-and $\boldsymbol{\ell}$ and $\boldsymbol{\upsilon}$ are the lower and upper bounds on the constraints,
+and $\bm{\ell}$ and $\bm{\upsilon}$ are the lower and upper bounds on the constraints,
 respectively.
 Some of the symbols collide with MPC symbols,
 so we made slight modifications in notation from OSQP's documentation.
 
 The design variable and the constraint rows are stacked from blocks, and only the blocks the options enable are present.
-The design variable holds the control points $\mathbf{c}$, then the predicted states $\mathbf{x}$ (sparse formulation only), then the slacks $\mathbf{s}$ (soft state bounds only).
+The design variable holds the control points $\bm{c}$, then the predicted states $\bm{x}$ (sparse formulation only), then the slacks $\bm{s}$ (soft state bounds only).
 The constraint rows are stacked in this order:
 
 $$
 \underbrace{\begin{bmatrix}
-    \boldsymbol{\ell}_{\mathrm{model}} \\
-    \boldsymbol{\ell}_{\mathrm{usat}} \\
-    \boldsymbol{\ell}_{\mathrm{slew0}} \\
-    \boldsymbol{\ell}_{\mathrm{slew}} \\
-    \boldsymbol{\ell}_{\mathrm{xsat}} \\
-    \boldsymbol{\ell}_{\mathrm{gen}} \\
-    \boldsymbol{\ell}_{\mathrm{term}}
-\end{bmatrix}}_{\boldsymbol{\ell}}
+    \bm{\ell}_{\mathrm{model}} \\
+    \bm{\ell}_{\mathrm{usat}} \\
+    \bm{\ell}_{\mathrm{slew0}} \\
+    \bm{\ell}_{\mathrm{slew}} \\
+    \bm{\ell}_{\mathrm{xsat}} \\
+    \bm{\ell}_{\mathrm{gen}} \\
+    \bm{\ell}_{\mathrm{term}}
+\end{bmatrix}}_{\bm{\ell}}
     \leq
 \underbrace{\begin{bmatrix}
     A_{\mathrm{model}} \\
@@ -58,17 +58,17 @@ $$
     A_{\mathrm{xsat}} \\
     A_{\mathrm{gen}} \\
     A_{\mathrm{term}}
-\end{bmatrix}}_{A_\mathrm{qp}} \mathbf{z}
+\end{bmatrix}}_{A_\mathrm{qp}} \bm{z}
     \leq
 \underbrace{\begin{bmatrix}
-    \boldsymbol{\upsilon}_{\mathrm{model}} \\
-    \boldsymbol{\upsilon}_{\mathrm{usat}} \\
-    \boldsymbol{\upsilon}_{\mathrm{slew0}} \\
-    \boldsymbol{\upsilon}_{\mathrm{slew}} \\
-    \boldsymbol{\upsilon}_{\mathrm{xsat}} \\
-    \boldsymbol{\upsilon}_{\mathrm{gen}} \\
-    \boldsymbol{\upsilon}_{\mathrm{term}}
-\end{bmatrix}}_{\boldsymbol{\upsilon}}
+    \bm{\upsilon}_{\mathrm{model}} \\
+    \bm{\upsilon}_{\mathrm{usat}} \\
+    \bm{\upsilon}_{\mathrm{slew0}} \\
+    \bm{\upsilon}_{\mathrm{slew}} \\
+    \bm{\upsilon}_{\mathrm{xsat}} \\
+    \bm{\upsilon}_{\mathrm{gen}} \\
+    \bm{\upsilon}_{\mathrm{term}}
+\end{bmatrix}}_{\bm{\upsilon}}
 $$
 
 | Subscript | Constraint | Block in `getQPConstraintBlocks()` | Present when |
@@ -86,20 +86,20 @@ which both need to be converted into a matrix multiply.
 
 ### Sparse vs Condensed Design Variable
 
-The main difference between two formulations is the choice of design vector $\mathbf{z}$ used in the optimization.
+The main difference between two formulations is the choice of design vector $\bm{z}$ used in the optimization.
 Sparse uses the control points and state trajectory while condensed only uses the control points:
 
 $$
-\mathbf{z}_{\mathrm{c}}
-    = \mathbf{c} \quad \quad \quad \mathbf{z}_{\mathrm{s}}
-    = \begin{bmatrix} \mathbf{c} \\ \mathbf{x} \end{bmatrix}
+\bm{z}_{\mathrm{c}}
+    = \bm{c} \quad \quad \quad \bm{z}_{\mathrm{s}}
+    = \begin{bmatrix} \bm{c} \\ \bm{x} \end{bmatrix}
 $$
 
-With soft state bounds, both append the slacks $\mathbf{s}$ (see [Selected and Soft State Bounds](#selected-and-soft-state-bounds)).
+With soft state bounds, both append the slacks $\bm{s}$ (see [Selected and Soft State Bounds](#selected-and-soft-state-bounds)).
 
 !!! note
 
-    The current (initial) state $\mathbf{x}_0$ is often included in the design vector,
+    The current (initial) state $\bm{x}_0$ is often included in the design vector,
     constrained to equal itself.
     Since it is fixed and not optimized, we remove it from the design vector entirely.
     This causes some slight adjustments in the QP formulation.
@@ -111,9 +111,9 @@ The rest of this page describes how to convert the MPC optimization problem into
 The MPC cost is
 
 $$
-J = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
-    + \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
+J = \left\lVert \bm{x}_{\mathrm{ref},T} - \bm{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \bm{x}_{\mathrm{ref},k} - \bm{x}_k \right\rVert^2_Q
+    + \sum_{i=0}^{\eta-1} \left\lVert \bm{c}_{\mathrm{ref},i} - \bm{c}_i \right\rVert^2_R
 $$
 
 This is the cost with the input cost on the control points (`InputCostMode::ControlPoints`); with `Off`, the input cost terms drop out of everything below, and the other cost terms are added in [Optional Terms](#optional-terms).
@@ -132,8 +132,8 @@ $$
 Now the cost function can be written as
 
 $$
-J = (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
-    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})
+J = (\bm{x} - \bm{x}_{\mathrm{ref}})^\T \bar{Q} (\bm{x} - \bm{x}_{\mathrm{ref}})
+    + (\bm{c} - \bm{c}_{\mathrm{ref}})^\T \bar{R} (\bm{c} - \bm{c}_{\mathrm{ref}})
 $$
 
 We will use this form of the cost function as the starting point for both the sparse and condensed formulations,
@@ -143,7 +143,7 @@ but the way we substitute in the model and convert to QP form will differ betwee
 
 We'll start with the sparse formulation since it is perhaps a bit more intuitive.
 The dynamics remain as explicit linear equality constraints.
-The cost is then assembled directly in terms of $\mathbf{x}$ and $\mathbf{c}$,
+The cost is then assembled directly in terms of $\bm{x}$ and $\bm{c}$,
 giving a larger but more structured QP.
 
 The sparse may be preferable when:
@@ -157,23 +157,23 @@ The sparse may be preferable when:
 Starting with the model
 
 $$
-\mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w},
+\bm{x}_{k+1} = A \bm{x}_k + B \bm{u}_k + \bm{w},
 $$
 
 we need to rearrange it slightly to fit into a QP form.
-The design variable $\mathbf{z}_{\mathrm{s}}$ has states and inputs
-(excluding $\mathbf{x}_0$ since it is fixed and not optimized),
+The design variable $\bm{z}_{\mathrm{s}}$ has states and inputs
+(excluding $\bm{x}_0$ since it is fixed and not optimized),
 so we group all of those on one side of the equation:
 
 $$
--\mathbf{w} = -\mathbf{x}_{k+1} + A \mathbf{x}_k + B \mathbf{u}_k
+-\bm{w} = -\bm{x}_{k+1} + A \bm{x}_k + B \bm{u}_k
 $$
 
 Now we'll convert to matrix form:
 
 $$
--\begin{bmatrix} \mathbf{w} \\ \vdots \\ \mathbf{w} \end{bmatrix}
--\begin{bmatrix} A \mathbf{x}_0 \\ 0 \\ \vdots \end{bmatrix}
+-\begin{bmatrix} \bm{w} \\ \vdots \\ \bm{w} \end{bmatrix}
+-\begin{bmatrix} A \bm{x}_0 \\ 0 \\ \vdots \end{bmatrix}
     =
     \begin{bmatrix}
         -I         & 0      & \dots  & \mathbf{0}  \\
@@ -182,7 +182,7 @@ $$
         \mathbf{0} &        & A      & -I
     \end{bmatrix}
     \begin{bmatrix}
-        \mathbf{x}_1 \\ \vdots \\ \mathbf{x}_T
+        \bm{x}_1 \\ \vdots \\ \bm{x}_T
     \end{bmatrix}
     +
     \begin{bmatrix}
@@ -191,7 +191,7 @@ $$
         \mathbf{0} &        & B
     \end{bmatrix}
     \begin{bmatrix}
-        \mathbf{u}_0 \\ \vdots \\ \mathbf{u}_{T-1}
+        \bm{u}_0 \\ \vdots \\ \bm{u}_{T-1}
     \end{bmatrix},
 $$
 
@@ -199,43 +199,43 @@ $$\Downarrow$$
 
 $$
 -\underbrace{
-    (\mathbf{1}_T \otimes \mathbf{w} + \mathbf{e}_1 \otimes A \mathbf{x}_0)
-}_{\mathbf{s}_w}
+    (\mathbf{1}_T \otimes \bm{w} + \bm{e}_1 \otimes A \bm{x}_0)
+}_{\bm{s}_w}
     =
     \underbrace{
         ( I_T^{(-1)} \otimes A - I_{nT} )
     }_{S_x}
-    \mathbf{x}
+    \bm{x}
     +
     \underbrace{
         ( I_T \otimes B )
     }_{S_u}
-    \mathbf{u}.
+    \bm{u}.
 $$
 
 $$\Downarrow$$
 
 $$
--\mathbf{s}_w = S_x \mathbf{x} + S_u \mathbf{u}
+-\bm{s}_w = S_x \bm{x} + S_u \bm{u}
 $$
 
 Substituting in the input parameterization gives
 
 $$
--\mathbf{s}_w = S_x \mathbf{x} + S_u \Psi^p(\boldsymbol{\tau}) \mathbf{c}.
+-\bm{s}_w = S_x \bm{x} + S_u \Psi^p(\bm{\tau}) \bm{c}.
 $$
 
 Finally, we can substitute in the design variable and get the model constraint:
 
 $$
-\underbrace{-\mathbf{s}_w}_{\boldsymbol{\ell}_{\mathrm{model}}}
+\underbrace{-\bm{s}_w}_{\bm{\ell}_{\mathrm{model}}}
     =
     \underbrace{
-        \begin{bmatrix} S_u \Psi^p(\boldsymbol{\tau}) & S_x \end{bmatrix}
+        \begin{bmatrix} S_u \Psi^p(\bm{\tau}) & S_x \end{bmatrix}
     }_{A_{\mathrm{model}}}
-    \mathbf{z}_{\mathrm{s}}
+    \bm{z}_{\mathrm{s}}
     =
-    \underbrace{-\mathbf{s}_w}_{\boldsymbol{\upsilon}_{\mathrm{model}}}
+    \underbrace{-\bm{s}_w}_{\bm{\upsilon}_{\mathrm{model}}}
 $$
 
 ### Cost Terms
@@ -244,16 +244,16 @@ Starting with the cost function we derived above:
 
 $$
 \begin{align}
-J &= (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
-    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
-  &=(\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}})^\top
+J &= (\bm{x} - \bm{x}_{\mathrm{ref}})^\T \bar{Q} (\bm{x} - \bm{x}_{\mathrm{ref}})
+    + (\bm{c} - \bm{c}_{\mathrm{ref}})^\T \bar{R} (\bm{c} - \bm{c}_{\mathrm{ref}}) \\
+  &=(\bm{z}_{\mathrm{s}} - \bm{z}_{\mathrm{s},\mathrm{ref}})^\T
         \underbrace{
             \begin{bmatrix} \bar{R} & \mathbf{0} \\ \mathbf{0} & \bar{Q} \end{bmatrix}
         }_{P}
-    (\mathbf{z}_{\mathrm{s}} - \mathbf{z}_{\mathrm{s},\mathrm{ref}}) \\
-  &= \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
-    -2 \mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s}}
-    + \underbrace{\mathbf{z}_{\mathrm{s},\mathrm{ref}}^\top P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\text{drop}}
+    (\bm{z}_{\mathrm{s}} - \bm{z}_{\mathrm{s},\mathrm{ref}}) \\
+  &= \bm{z}_{\mathrm{s}}^\T P \bm{z}_{\mathrm{s}}
+    -2 \bm{z}_{\mathrm{s},\mathrm{ref}}^\T P \bm{z}_{\mathrm{s}}
+    + \underbrace{\bm{z}_{\mathrm{s},\mathrm{ref}}^\T P \bm{z}_{\mathrm{s},\mathrm{ref}}}_{\text{drop}}
 \end{align}
 $$
 
@@ -263,8 +263,8 @@ Scaling the cost by $\frac{1}{2}$ also leaves the argmin unchanged and matches t
 
 $$
 \frac{1}{2} J
-    = \frac{1}{2} \mathbf{z}_{\mathrm{s}}^\top P \mathbf{z}_{\mathrm{s}}
-    + (\, \underbrace{-P \mathbf{z}_{\mathrm{s},\mathrm{ref}}}_{\mathbf{q}} \,)^\top \mathbf{z}_{\mathrm{s}}
+    = \frac{1}{2} \bm{z}_{\mathrm{s}}^\T P \bm{z}_{\mathrm{s}}
+    + (\, \underbrace{-P \bm{z}_{\mathrm{s},\mathrm{ref}}}_{\bm{q}} \,)^\T \bm{z}_{\mathrm{s}}
     + \text{const}
 $$
 
@@ -272,7 +272,7 @@ Now we have the definition of the QP cost terms:
 
 $$
 P = \mathrm{blkdiag}(\bar{R}, \bar{Q})
-    \quad \quad \quad \mathbf{q} = -P \mathbf{z}_{\mathrm{s},\mathrm{ref}}
+    \quad \quad \quad \bm{q} = -P \bm{z}_{\mathrm{s},\mathrm{ref}}
 $$
 
 ### Input Saturation
@@ -281,13 +281,13 @@ $$
 
 $$
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{min}} \\ \vdots \\ \mathbf{u}_{\mathrm{min}}
+    \bm{u}_{\mathrm{min}} \\ \vdots \\ \bm{u}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{c}
+\bm{c}
 \leq
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{max}} \\ \vdots \\ \mathbf{u}_{\mathrm{max}}
+    \bm{u}_{\mathrm{max}} \\ \vdots \\ \bm{u}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -296,26 +296,26 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
     \begin{bmatrix} I_{m\eta} & \mathbf{0}_{m\eta \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
+}_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 **Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{min}} \\ \vdots \\ \mathbf{u}_{\mathrm{min}}
+    \bm{u}_{\mathrm{min}} \\ \vdots \\ \bm{u}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{u}
+\bm{u}
 \leq
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{max}} \\ \vdots \\ \mathbf{u}_{\mathrm{max}}
+    \bm{u}_{\mathrm{max}} \\ \vdots \\ \bm{u}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -324,29 +324,29 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
-    \begin{bmatrix} \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{mT \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
+    \begin{bmatrix} \Psi^p(\bm{\tau}) & \mathbf{0}_{mT \times nT} \end{bmatrix}
+}_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 For degree $p = 0$ these are the control point rows above, since the control points are the sampled inputs.
-For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+For degree $p = 1$, only the rows of $\Psi^1(\bm{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints, in place of bounding the control points, whatever `input_bounds` is, omitting the samples whose basis row norm is at most $10^{-9}$ times the largest.
 
 **Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
 
 $$
-\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
     \begin{bmatrix} \Omega \otimes I_m & \mathbf{0}_{m\eta_{\mathrm{r}} \times nT} \end{bmatrix}
-}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{s}}
+}_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
@@ -358,7 +358,7 @@ See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajec
 ### Slew Initial Input
 
 $$
-| \mathbf{u}_0 - \mathbf{u}_{-1} | \leq \mathbf{u}_{0,\mathrm{slew}}
+| \bm{u}_0 - \bm{u}_{-1} | \leq \bm{u}_{0,\mathrm{slew}}
 $$
 
 $$
@@ -366,21 +366,21 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{-1} - \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
+\underbrace{\bm{u}_{-1} - \bm{u}_{0,\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew0}}}
 \leq
 \underbrace{
     \begin{bmatrix}
-        (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau}) & \mathbf{0}_{m \times nT}
+        (\bm{e}_1^\T \otimes I_m) \Psi^p(\bm{\tau}) & \mathbf{0}_{m \times nT}
     \end{bmatrix}
-}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{s}}
+}_{A_{\mathrm{slew0}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
+\underbrace{\bm{u}_{-1} + \bm{u}_{0,\mathrm{slew}}}_{\bm{\upsilon}_{\mathrm{slew0}}}
 $$
 
 ### Slew Control Points
 
 $$
-| \mathbf{c}_i - \mathbf{c}_{i-1} | \leq \mathbf{c}_{\mathrm{slew}} \quad i=1, \dots, \eta-1
+| \bm{c}_i - \bm{c}_{i-1} | \leq \bm{c}_{\mathrm{slew}} \quad i=1, \dots, \eta-1
 $$
 
 $$
@@ -388,15 +388,15 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
+\underbrace{-\mathbf{1}_{\eta-1} \otimes \bm{c}_{\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew}}}
 \leq
 \underbrace{
     \begin{bmatrix}
         D_\eta \otimes I_m & \mathbf{0}_{m(\eta-1) \times nT} \\
     \end{bmatrix}
-}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{s}}
+}_{A_{\mathrm{slew}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
+\underbrace{\mathbf{1}_{\eta-1} \otimes \bm{c}_{\mathrm{slew}}}_{\bm{\upsilon}_{\mathrm{slew}}}
 $$
 
 where
@@ -410,22 +410,22 @@ D_\eta
                & \ddots & \ddots &    \\
                &        & -1     & 1
     \end{bmatrix}
-    \in \mathbb{R}^{(\eta-1) \times \eta}
+    \in \R^{(\eta-1) \times \eta}
 $$
 
-is the first-difference matrix, so the row blocks of $(D_\eta \otimes I_m) \mathbf{c}$ are $\mathbf{c}_i - \mathbf{c}_{i-1}$ for $i = 1, \dots, \eta-1$.
+is the first-difference matrix, so the row blocks of $(D_\eta \otimes I_m) \bm{c}$ are $\bm{c}_i - \bm{c}_{i-1}$ for $i = 1, \dots, \eta-1$.
 
 ### State Saturation
 
 $$
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{min}} \\ \vdots \\ \mathbf{x}_{\mathrm{min}}
+    \bm{x}_{\mathrm{min}} \\ \vdots \\ \bm{x}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{x}
+\bm{x}
 \leq
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{max}} \\ \vdots \\ \mathbf{x}_{\mathrm{max}}
+    \bm{x}_{\mathrm{max}} \\ \vdots \\ \bm{x}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -434,13 +434,13 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{x}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{xsat}}}
 \leq
 \underbrace{
     \begin{bmatrix} \mathbf{0}_{nT \times m\eta} & I_{nT} \end{bmatrix}
-}_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{s}}
+}_{A_{\mathrm{xsat}}} \bm{z}_{\mathrm{s}}
 \leq
-\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{x}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{xsat}}}
 $$
 
 ## Condensed Formulation
@@ -466,22 +466,22 @@ To convert the model prediction into a single matrix multiply, we'll start writi
 
 $$
 \begin{align}
-    \mathbf{x}_1 &= A \mathbf{x}_0 + B \mathbf{u}_0 + \mathbf{w} \\
-    \mathbf{x}_2 &= A \mathbf{x}_1 + B \mathbf{u}_1 + \mathbf{w} \\
-        &= A (A \mathbf{x}_0 + B \mathbf{u}_0 + \mathbf{w}) + B \mathbf{u}_1 + \mathbf{w} \\
-        &= A^2 \mathbf{x}_0 + A (B \mathbf{u}_0 + \mathbf{w}) + (B \mathbf{u}_1 + \mathbf{w}) \\
+    \bm{x}_1 &= A \bm{x}_0 + B \bm{u}_0 + \bm{w} \\
+    \bm{x}_2 &= A \bm{x}_1 + B \bm{u}_1 + \bm{w} \\
+        &= A (A \bm{x}_0 + B \bm{u}_0 + \bm{w}) + B \bm{u}_1 + \bm{w} \\
+        &= A^2 \bm{x}_0 + A (B \bm{u}_0 + \bm{w}) + (B \bm{u}_1 + \bm{w}) \\
         &\;\; \vdots \\
-    \mathbf{x}_k &= A^k \mathbf{x}_0 + \sum_{i=1}^k A^{i-1} ( B \mathbf{u}_{k-i} + \mathbf{w} ) \\
+    \bm{x}_k &= A^k \bm{x}_0 + \sum_{i=1}^k A^{i-1} ( B \bm{u}_{k-i} + \bm{w} ) \\
 \end{align}
 $$
 
 Writing this in matrix form yields
 
 $$
-\mathbf{x}
+\bm{x}
     =
     \begin{bmatrix}
-        A \mathbf{x}_0 \\ A^2 \mathbf{x}_0 \\ \vdots \\ A^T \mathbf{x}_0
+        A \bm{x}_0 \\ A^2 \bm{x}_0 \\ \vdots \\ A^T \bm{x}_0
     \end{bmatrix}
     +
     \begin{bmatrix}
@@ -496,10 +496,10 @@ $$
                    & \ddots &            \\
         \mathbf{0} &        & B
     \end{bmatrix}
-    \mathbf{u}
+    \bm{u}
     +
     \begin{bmatrix}
-        \mathbf{w} \\ \vdots \\ \mathbf{w}
+        \bm{w} \\ \vdots \\ \bm{w}
     \end{bmatrix}
     \right)
 $$
@@ -507,28 +507,28 @@ $$
 $$\Downarrow$$
 
 $$
-\mathbf{x}
+\bm{x}
     =
-    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \mathbf{x}_0)
-    \sum_{i=1}^{T}(\mathbf{e}_i \otimes A^i \mathbf{x}_0)
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \bm{x}_0)
+    \sum_{i=1}^{T}(\bm{e}_i \otimes A^i \bm{x}_0)
     +
     \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right)
-    \left( (I_T \otimes B) \mathbf{u} + \mathbf{1}_T \otimes \mathbf{w} \right)
+    \left( (I_T \otimes B) \bm{u} + \mathbf{1}_T \otimes \bm{w} \right)
 $$
 
 Now if we let
 
 $$
-S = \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (I_T \otimes B) \Psi^p(\boldsymbol{\tau})
+S = \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (I_T \otimes B) \Psi^p(\bm{\tau})
 $$
 
 $$
-\mathbf{v}
+\bm{v}
     =
-    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \mathbf{x}_0)
-    \sum_{i=1}^{T}(\mathbf{e}_i \otimes A^i \mathbf{x}_0)
+    % \mathrm{blkdiag}(A, A^2, \dots, A^T) (\mathbf{1}_T \otimes \bm{x}_0)
+    \sum_{i=1}^{T}(\bm{e}_i \otimes A^i \bm{x}_0)
     +
-    \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (\mathbf{1}_T \otimes \mathbf{w})
+    \left( \sum_{i=0}^{T-1} I_T^{(-i)} \otimes A^i \right) (\mathbf{1}_T \otimes \bm{w})
 $$
 
 ??? info "Alternate Expanded Visual Form"
@@ -541,30 +541,30 @@ $$
             \vdots   & \ddots     & \ddots & \mathbf{0} \\
             A^{T-1}B & A^{T-2}B   & \cdots & B
         \end{bmatrix}
-        \Psi^p(\boldsymbol{\tau})
+        \Psi^p(\bm{\tau})
     $$
 
     $$
-    \mathbf{v} =
+    \bm{v} =
         \begin{bmatrix}
-            A \mathbf{x}_0   + \mathbf{w} \\
-            A^2 \mathbf{x}_0 + A \mathbf{w} + \mathbf{w} \\
+            A \bm{x}_0   + \bm{w} \\
+            A^2 \bm{x}_0 + A \bm{w} + \bm{w} \\
             \vdots \\
-            A^T \mathbf{x}_0 + \sum_{i=0}^{T-1} A^i \mathbf{w}
+            A^T \bm{x}_0 + \sum_{i=0}^{T-1} A^i \bm{w}
         \end{bmatrix}
     $$
 
 then the final condensed form is
 
 $$
-\mathbf{x} = S \mathbf{z}_{\mathrm{c}} + \mathbf{v}.
+\bm{x} = S \bm{z}_{\mathrm{c}} + \bm{v}.
 $$
 
 This gives us a model function we can use to substitute out predicted states from the cost function.
 The condensed formulation does not have an explicit model constraint, so
 $A_{\mathrm{model}}$,
-$\boldsymbol{\ell}_{\mathrm{model}}$,
-and $\boldsymbol{\upsilon}_{\mathrm{model}}$ are all empty.
+$\bm{\ell}_{\mathrm{model}}$,
+and $\bm{\upsilon}_{\mathrm{model}}$ are all empty.
 
 ### Cost Terms
 
@@ -574,20 +574,20 @@ $$
 \begin{align}
 J
     &=
-    (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})^\top \bar{Q} (\mathbf{x} - \mathbf{x}_{\mathrm{ref}})
-    + (\mathbf{c} - \mathbf{c}_{\mathrm{ref}})^\top \bar{R} (\mathbf{c} - \mathbf{c}_{\mathrm{ref}}) \\
+    (\bm{x} - \bm{x}_{\mathrm{ref}})^\T \bar{Q} (\bm{x} - \bm{x}_{\mathrm{ref}})
+    + (\bm{c} - \bm{c}_{\mathrm{ref}})^\T \bar{R} (\bm{c} - \bm{c}_{\mathrm{ref}}) \\
     &=
-    \mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}
-    + \underbrace{\mathbf{x}_{\mathrm{ref}}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}}
-    + \mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \mathbf{c}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}
-    + \underbrace{\mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}_{\mathrm{ref}}}_{\text{drop}} \\
+    \bm{x}^\T \bar{Q} \bm{x}
+    - 2 \bm{x}^\T \bar{Q} \bm{x}_{\mathrm{ref}}
+    + \underbrace{\bm{x}_{\mathrm{ref}}^\T \bar{Q} \bm{x}_{\mathrm{ref}}}_{\text{drop}}
+    + \bm{c}^\T \bar{R} \bm{c}
+    - 2 \bm{c}^\T \bar{R} \bm{c}_{\mathrm{ref}}
+    + \underbrace{\bm{c}_{\mathrm{ref}}^\T \bar{R} \bm{c}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
-    \underbrace{\mathbf{x}^\top \bar{Q} \mathbf{x}
-    - 2 \mathbf{x}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{J_x}
-    + \underbrace{\mathbf{c}^\top \bar{R} \mathbf{c}
-    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{c}}_{J_c}
+    \underbrace{\bm{x}^\T \bar{Q} \bm{x}
+    - 2 \bm{x}^\T \bar{Q} \bm{x}_{\mathrm{ref}}}_{J_x}
+    + \underbrace{\bm{c}^\T \bar{R} \bm{c}
+    - 2 \bm{c}_{\mathrm{ref}}^\T \bar{R} \bm{c}}_{J_c}
 \end{align}
 $$
 
@@ -597,17 +597,17 @@ $$
 \begin{align}
 J_x
     &=
-    (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})
-    - 2 (S \mathbf{z}_{\mathrm{c}} + \mathbf{v})^\top \bar{Q} \mathbf{x}_{\mathrm{ref}} \\
+    (S \bm{z}_{\mathrm{c}} + \bm{v})^\T \bar{Q} (S \bm{z}_{\mathrm{c}} + \bm{v})
+    - 2 (S \bm{z}_{\mathrm{c}} + \bm{v})^\T \bar{Q} \bm{x}_{\mathrm{ref}} \\
     &=
-    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
-    + 2 \mathbf{v}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
-    + \underbrace{\mathbf{v}^\top \bar{Q} \mathbf{v}}_{\text{drop}}
-    - 2 \mathbf{x}_{\mathrm{ref}}^\top \bar{Q} S \mathbf{z}_{\mathrm{c}}
-    - \underbrace{2 \mathbf{v}^\top \bar{Q} \mathbf{x}_{\mathrm{ref}}}_{\text{drop}} \\
+    \bm{z}_{\mathrm{c}}^\T (S^\T \bar{Q} S) \bm{z}_{\mathrm{c}}
+    + 2 \bm{v}^\T \bar{Q} S \bm{z}_{\mathrm{c}}
+    + \underbrace{\bm{v}^\T \bar{Q} \bm{v}}_{\text{drop}}
+    - 2 \bm{x}_{\mathrm{ref}}^\T \bar{Q} S \bm{z}_{\mathrm{c}}
+    - \underbrace{2 \bm{v}^\T \bar{Q} \bm{x}_{\mathrm{ref}}}_{\text{drop}} \\
     &=
-    \mathbf{z}_{\mathrm{c}}^\top (S^\top \bar{Q} S) \mathbf{z}_{\mathrm{c}}
-    + 2 (S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}))^\top \mathbf{z}_{\mathrm{c}}
+    \bm{z}_{\mathrm{c}}^\T (S^\T \bar{Q} S) \bm{z}_{\mathrm{c}}
+    + 2 (S^\T \bar{Q} (\bm{v} - \bm{x}_{\mathrm{ref}}))^\T \bm{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
 $$
@@ -618,11 +618,11 @@ $$
 \begin{align}
 J_c
     &=
-    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
-    - 2 \mathbf{c}_{\mathrm{ref}}^\top \bar{R} \mathbf{z}_{\mathrm{c}} \\
+    \bm{z}_{\mathrm{c}}^\T \bar{R} \bm{z}_{\mathrm{c}}
+    - 2 \bm{c}_{\mathrm{ref}}^\T \bar{R} \bm{z}_{\mathrm{c}} \\
     &=
-    \mathbf{z}_{\mathrm{c}}^\top \bar{R} \mathbf{z}_{\mathrm{c}}
-    - 2 (\bar{R} \mathbf{c}_{\mathrm{ref}})^\top \mathbf{z}_{\mathrm{c}} \\
+    \bm{z}_{\mathrm{c}}^\T \bar{R} \bm{z}_{\mathrm{c}}
+    - 2 (\bar{R} \bm{c}_{\mathrm{ref}})^\T \bm{z}_{\mathrm{c}} \\
 \end{align}
 $$
 
@@ -633,13 +633,13 @@ $$
 \begin{align}
 \frac{1}{2} J
     &=
-    \frac{1}{2} \mathbf{z}_{\mathrm{c}}^\top
-    \underbrace{(S^\top \bar{Q} S + \bar{R})}_{P}
-    \mathbf{z}_{\mathrm{c}}
+    \frac{1}{2} \bm{z}_{\mathrm{c}}^\T
+    \underbrace{(S^\T \bar{Q} S + \bar{R})}_{P}
+    \bm{z}_{\mathrm{c}}
     +
     (\underbrace{
-        S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
-    }_{\mathbf{q}})^\top \mathbf{z}_{\mathrm{c}}
+        S^\T \bar{Q} (\bm{v} - \bm{x}_{\mathrm{ref}}) - \bar{R} \bm{c}_{\mathrm{ref}}
+    }_{\bm{q}})^\T \bm{z}_{\mathrm{c}}
     + \text{const}
 \end{align}
 $$
@@ -647,11 +647,11 @@ $$
 where we see that
 
 $$
-P = (S^\top \bar{Q} S + \bar{R})
+P = (S^\T \bar{Q} S + \bar{R})
 $$
 
 $$
-\mathbf{q} =  S^\top \bar{Q} (\mathbf{v} - \mathbf{x}_{\mathrm{ref}}) - \bar{R} \mathbf{c}_{\mathrm{ref}}
+\bm{q} =  S^\T \bar{Q} (\bm{v} - \bm{x}_{\mathrm{ref}}) - \bar{R} \bm{c}_{\mathrm{ref}}
 $$
 
 ### Input Saturation
@@ -660,13 +660,13 @@ $$
 
 $$
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{min}} \\ \vdots \\ \mathbf{u}_{\mathrm{min}}
+    \bm{u}_{\mathrm{min}} \\ \vdots \\ \bm{u}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{c}
+\bm{c}
 \leq
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{max}} \\ \vdots \\ \mathbf{u}_{\mathrm{max}}
+    \bm{u}_{\mathrm{max}} \\ \vdots \\ \bm{u}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -675,24 +675,24 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
+\underbrace{I_{m\eta}}_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{1}_\eta \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 **Bound the sampled inputs** (`InputBoundMode::Exact`):
 
 $$
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{min}} \\ \vdots \\ \mathbf{u}_{\mathrm{min}}
+    \bm{u}_{\mathrm{min}} \\ \vdots \\ \bm{u}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{u}
+\bm{u}
 \leq
 \begin{bmatrix}
-    \mathbf{u}_{\mathrm{max}} \\ \vdots \\ \mathbf{u}_{\mathrm{max}}
+    \bm{u}_{\mathrm{max}} \\ \vdots \\ \bm{u}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -701,27 +701,27 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
-\underbrace{ \Psi^p(\boldsymbol{\tau}) }_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
+\underbrace{ \Psi^p(\bm{\tau}) }_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{1}_T \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 For degree $p = 0$ these are the control point rows above, since the control points are the sampled inputs.
-For degree $p = 1$, only the rows of $\Psi^1(\boldsymbol{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
+For degree $p = 1$, only the rows of $\Psi^1(\bm{\tau})$ (and bounds) for the samples adjacent to each active knot are kept, which is exactly equivalent since the spline is linear between knots.
 A custom basis always uses these constraints, in place of bounding the control points, whatever `input_bounds` is, omitting the samples whose basis row norm is at most $10^{-9}$ times the largest.
 
 **Bound the refined control points** (`InputBoundMode::Refined`, degree $p \ge 2$):
 
 $$
-\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{min}}}_{\boldsymbol{\ell}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{min}}}_{\bm{\ell}_{\mathrm{usat}}}
 \leq
 \underbrace{
     \Omega \otimes I_m
-}_{A_{\mathrm{usat}}} \mathbf{z}_{\mathrm{c}}
+}_{A_{\mathrm{usat}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \mathbf{u}_{\mathrm{max}}}_{\boldsymbol{\upsilon}_{\mathrm{usat}}}
+\underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
@@ -733,7 +733,7 @@ See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajec
 ### Slew Initial Input
 
 $$
-| \mathbf{u}_0 - \mathbf{u}_{-1} | \leq \mathbf{u}_{0,\mathrm{slew}}
+| \bm{u}_0 - \bm{u}_{-1} | \leq \bm{u}_{0,\mathrm{slew}}
 $$
 
 $$
@@ -741,19 +741,19 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{u}_{-1} - \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew0}}}
+\underbrace{\bm{u}_{-1} - \bm{u}_{0,\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew0}}}
 \leq
 \underbrace{
-        (\mathbf{e}_1^\top \otimes I_m) \Psi^p(\boldsymbol{\tau})
-}_{A_{\mathrm{slew0}}} \mathbf{z}_{\mathrm{c}}
+        (\bm{e}_1^\T \otimes I_m) \Psi^p(\bm{\tau})
+}_{A_{\mathrm{slew0}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{u}_{-1} + \mathbf{u}_{0,\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew0}}}
+\underbrace{\bm{u}_{-1} + \bm{u}_{0,\mathrm{slew}}}_{\bm{\upsilon}_{\mathrm{slew0}}}
 $$
 
 ### Slew Control Points
 
 $$
-| \mathbf{c}_i - \mathbf{c}_{i-1} | \leq \mathbf{c}_{\mathrm{slew}} \quad i=1, \dots, \eta-1
+| \bm{c}_i - \bm{c}_{i-1} | \leq \bm{c}_{\mathrm{slew}} \quad i=1, \dots, \eta-1
 $$
 
 $$
@@ -761,13 +761,13 @@ $$
 $$
 
 $$
-\underbrace{-\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\ell}_{\mathrm{slew}}}
+\underbrace{-\mathbf{1}_{\eta-1} \otimes \bm{c}_{\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew}}}
 \leq
 \underbrace{
     (D_\eta \otimes I_m)
-}_{A_{\mathrm{slew}}} \mathbf{z}_{\mathrm{c}}
+}_{A_{\mathrm{slew}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{1}_{\eta-1} \otimes \mathbf{c}_{\mathrm{slew}}}_{\boldsymbol{\upsilon}_{\mathrm{slew}}}
+\underbrace{\mathbf{1}_{\eta-1} \otimes \bm{c}_{\mathrm{slew}}}_{\bm{\upsilon}_{\mathrm{slew}}}
 $$
 
 where $D_\eta$ is the first-difference matrix defined in the [sparse formulation](#slew-control-points).
@@ -776,13 +776,13 @@ where $D_\eta$ is the first-difference matrix defined in the [sparse formulation
 
 $$
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{min}} \\ \vdots \\ \mathbf{x}_{\mathrm{min}}
+    \bm{x}_{\mathrm{min}} \\ \vdots \\ \bm{x}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-\mathbf{x}
+\bm{x}
 \leq
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{max}} \\ \vdots \\ \mathbf{x}_{\mathrm{max}}
+    \bm{x}_{\mathrm{max}} \\ \vdots \\ \bm{x}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -792,13 +792,13 @@ $$
 
 $$
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{min}} \\ \vdots \\ \mathbf{x}_{\mathrm{min}}
+    \bm{x}_{\mathrm{min}} \\ \vdots \\ \bm{x}_{\mathrm{min}}
 \end{bmatrix}
 \leq
-S \mathbf{z}_{\mathrm{c}} + \mathbf{v}
+S \bm{z}_{\mathrm{c}} + \bm{v}
 \leq
 \begin{bmatrix}
-    \mathbf{x}_{\mathrm{max}} \\ \vdots \\ \mathbf{x}_{\mathrm{max}}
+    \bm{x}_{\mathrm{max}} \\ \vdots \\ \bm{x}_{\mathrm{max}}
 \end{bmatrix}
 $$
 
@@ -807,11 +807,11 @@ $$
 $$
 
 $$
-\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}} - \mathbf{v}}_{\boldsymbol{\ell}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{x}_{\mathrm{min}} - \bm{v}}_{\bm{\ell}_{\mathrm{xsat}}}
 \leq
-\underbrace{ S }_{A_{\mathrm{xsat}}} \mathbf{z}_{\mathrm{c}}
+\underbrace{ S }_{A_{\mathrm{xsat}}} \bm{z}_{\mathrm{c}}
 \leq
-\underbrace{\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}} - \mathbf{v}}_{\boldsymbol{\upsilon}_{\mathrm{xsat}}}
+\underbrace{\mathbf{1}_T \otimes \bm{x}_{\mathrm{max}} - \bm{v}}_{\bm{\upsilon}_{\mathrm{xsat}}}
 $$
 
 !!! note
@@ -829,32 +829,32 @@ The following sections show how the other options change the QP of both formulat
 
 ### Selected and Soft State Bounds
 
-With `bounded_states` listing $n_b$ of the $n$ states, let $E_b \in \mathbb{R}^{n_b \times n}$ hold the matching rows of $I_n$.
-The state saturation rows become $(I_T \otimes E_b)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes E_b)\mathbf{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
+With `bounded_states` listing $n_b$ of the $n$ states, let $E_b \in \R^{n_b \times n}$ hold the matching rows of $I_n$.
+The state saturation rows become $(I_T \otimes E_b)$ times the state rows above, with bounds $\mathbf{1}_T \otimes \bm{x}_{\mathrm{min}}$ and $\mathbf{1}_T \otimes \bm{x}_{\mathrm{max}}$ of size $n_b$ (and $-(I_T \otimes E_b)\bm{v}$ in the condensed formulation): $n_b T$ rows instead of $nT$.
 In the condensed formulation these are the selected rows of $S$, so no product is needed.
 
-Soft bounds add one slack per bounded state, $\mathbf{s} \in \mathbb{R}^{n_b}$, after the formulation's variables.
+Soft bounds add one slack per bounded state, $\bm{s} \in \R^{n_b}$, after the formulation's variables.
 A row can not hold one slack on both of its sides, so each limit becomes its own one-sided row:
 
 $$
 \begin{aligned}
-(I_T \otimes E_b)\, \mathbf{x} - \mathbf{1}_T \otimes \mathbf{s} &\leq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{max}}, \\
-(I_T \otimes E_b)\, \mathbf{x} + \mathbf{1}_T \otimes \mathbf{s} &\geq \mathbf{1}_T \otimes \mathbf{x}_{\mathrm{min}}, \\
-\mathbf{s} &\geq \mathbf{0},
+(I_T \otimes E_b)\, \bm{x} - \mathbf{1}_T \otimes \bm{s} &\leq \mathbf{1}_T \otimes \bm{x}_{\mathrm{max}}, \\
+(I_T \otimes E_b)\, \bm{x} + \mathbf{1}_T \otimes \bm{s} &\geq \mathbf{1}_T \otimes \bm{x}_{\mathrm{min}}, \\
+\bm{s} &\geq \mathbf{0},
 \end{aligned}
 $$
 
 which is $2 n_b T + n_b$ rows.
-The penalty $J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \mathbf{s}^\top \operatorname{diag}(\boldsymbol{\rho}_2) \mathbf{s}$ is scaled by $\frac{1}{2}$ like the rest of the cost, so the slack block of $P$ is $\operatorname{diag}(\boldsymbol{\rho}_2)$ and the slack part of $\mathbf{q}$ is $\frac{1}{2} \boldsymbol{\rho}_1$.
+The penalty $J_s = \bm{\rho}_1^\T \bm{s} + \bm{s}^\T \diag(\bm{\rho}_2) \bm{s}$ is scaled by $\frac{1}{2}$ like the rest of the cost, so the slack block of $P$ is $\diag(\bm{\rho}_2)$ and the slack part of $\bm{q}$ is $\frac{1}{2} \bm{\rho}_1$.
 
 ### Input Rate Cost
 
-The input rate cost only involves the control points, which come first in both $\mathbf{z}_{\mathrm{s}}$ and $\mathbf{z}_{\mathrm{c}}$, so it adds the same terms to both formulations.
-With the $T \times T$ difference matrix $D_T = I_T - I_T^{(-1)}$, which unlike $D_\eta$ keeps the first row so that $\mathbf{u}_0 - \mathbf{u}_{-1}$ is included, and $D = D_T \otimes I_m$, the input changes are
+The input rate cost only involves the control points, which come first in both $\bm{z}_{\mathrm{s}}$ and $\bm{z}_{\mathrm{c}}$, so it adds the same terms to both formulations.
+With the $T \times T$ difference matrix $D_T = I_T - I_T^{(-1)}$, which unlike $D_\eta$ keeps the first row so that $\bm{u}_0 - \bm{u}_{-1}$ is included, and $D = D_T \otimes I_m$, the input changes are
 
 $$
-\begin{bmatrix} \mathbf{u}_0 - \mathbf{u}_{-1} \\ \vdots \\ \mathbf{u}_{T-1} - \mathbf{u}_{T-2} \end{bmatrix}
-= D \Psi^p(\boldsymbol{\tau}) \, \mathbf{c} - \mathbf{e}_1 \otimes \mathbf{u}_{-1},
+\begin{bmatrix} \bm{u}_0 - \bm{u}_{-1} \\ \vdots \\ \bm{u}_{T-1} - \bm{u}_{T-2} \end{bmatrix}
+= D \Psi^p(\bm{\tau}) \, \bm{c} - \bm{e}_1 \otimes \bm{u}_{-1},
 $$
 
 so with $\bar{R}_\Delta = I_T \otimes R_\Delta$,
@@ -862,84 +862,84 @@ so with $\bar{R}_\Delta = I_T \otimes R_\Delta$,
 $$
 J_{\Delta u}
     =
-    \mathbf{c}^\top (D \Psi)^\top \bar{R}_\Delta (D \Psi) \, \mathbf{c}
-    - 2 \left( \Psi^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) \right)^\top \mathbf{c}
+    \bm{c}^\T (D \Psi)^\T \bar{R}_\Delta (D \Psi) \, \bm{c}
+    - 2 \left( \Psi^\T (\bm{e}_1 \otimes R_\Delta \bm{u}_{-1}) \right)^\T \bm{c}
     + \text{const},
 $$
 
-using $D^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}) = \mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1}$.
-Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi)^\top \bar{R}_\Delta (D \Psi)$ and the control point part of $\mathbf{q}$ gains $-\Psi^\top (\mathbf{e}_1 \otimes R_\Delta \mathbf{u}_{-1})$, which only involves the control points that shape $\mathbf{u}_0$.
+using $D^\T (\bm{e}_1 \otimes R_\Delta \bm{u}_{-1}) = \bm{e}_1 \otimes R_\Delta \bm{u}_{-1}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $(D \Psi)^\T \bar{R}_\Delta (D \Psi)$ and the control point part of $\bm{q}$ gains $-\Psi^\T (\bm{e}_1 \otimes R_\Delta \bm{u}_{-1})$, which only involves the control points that shape $\bm{u}_0$.
 
-Since $\Psi = \Phi \otimes I_m$, $(D \Psi)^\top \bar{R}_\Delta (D \Psi) = G \otimes R_\Delta$ with $G = (D_T \Phi)^\top (D_T \Phi)$.
+Since $\Psi = \Phi \otimes I_m$, $(D \Psi)^\T \bar{R}_\Delta (D \Psi) = G \otimes R_\Delta$ with $G = (D_T \Phi)^\T (D_T \Phi)$.
 $G$ depends only on the basis (banded for B-splines, dense for a custom basis), so it is computed once; a weight change only rescales it.
-The previous input $\mathbf{u}_{-1}$ changes after every solve, so $\mathbf{q}$ is updated at every solve when this cost is enabled.
+The previous input $\bm{u}_{-1}$ changes after every solve, so $\bm{q}$ is updated at every solve when this cost is enabled.
 
 ### Input Cost on the Sampled Inputs
 
 The derivations above use the input cost on the control points (`InputCostMode::ControlPoints`), whose block of $P$ is $\bar{R} = I_\eta \otimes R$.
-With `InputCostMode::Trajectory`, the input cost is evaluated on the sampled inputs $\mathbf{u} = \Psi^p(\boldsymbol{\tau}) \, \mathbf{c}$ instead.
+With `InputCostMode::Trajectory`, the input cost is evaluated on the sampled inputs $\bm{u} = \Psi^p(\bm{\tau}) \, \bm{c}$ instead.
 Like the rate cost, it only involves the control points, so it adds the same terms to both formulations.
-With $\bar{R}_T = I_T \otimes R$ and the stacked sampled reference $\mathbf{u}_{\mathrm{ref}}$,
+With $\bar{R}_T = I_T \otimes R$ and the stacked sampled reference $\bm{u}_{\mathrm{ref}}$,
 
 $$
 J_u
-    = (\Psi \mathbf{c} - \mathbf{u}_{\mathrm{ref}})^\top \bar{R}_T (\Psi \mathbf{c} - \mathbf{u}_{\mathrm{ref}})
-    = \mathbf{c}^\top \Psi^\top \bar{R}_T \Psi \, \mathbf{c}
-    - 2 \left( \Psi^\top \bar{R}_T \mathbf{u}_{\mathrm{ref}} \right)^\top \mathbf{c}
+    = (\Psi \bm{c} - \bm{u}_{\mathrm{ref}})^\T \bar{R}_T (\Psi \bm{c} - \bm{u}_{\mathrm{ref}})
+    = \bm{c}^\T \Psi^\T \bar{R}_T \Psi \, \bm{c}
+    - 2 \left( \Psi^\T \bar{R}_T \bm{u}_{\mathrm{ref}} \right)^\T \bm{c}
     + \text{const}.
 $$
 
-Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^\top \bar{R}_T \Psi$ in place of $\bar{R}$, and the control point part of $\mathbf{q}$ gains $-\Psi^\top \bar{R}_T \mathbf{u}_{\mathrm{ref}}$ in place of $-\bar{R} \mathbf{c}_{\mathrm{ref}}$.
+Scaling by $\frac{1}{2}$ as before, the control point block of $P$ gains $\Psi^\T \bar{R}_T \Psi$ in place of $\bar{R}$, and the control point part of $\bm{q}$ gains $-\Psi^\T \bar{R}_T \bm{u}_{\mathrm{ref}}$ in place of $-\bar{R} \bm{c}_{\mathrm{ref}}$.
 
-Since $\Psi = \Phi \otimes I_m$, $\Psi^\top \bar{R}_T \Psi = \Phi^\top \Phi \otimes R$.
-$\Phi^\top \Phi$ depends only on the basis, so it is computed once and declared in the sparsity pattern at construction; a weight change only rescales it.
+Since $\Psi = \Phi \otimes I_m$, $\Psi^\T \bar{R}_T \Psi = \Phi^\T \Phi \otimes R$.
+$\Phi^\T \Phi$ depends only on the basis, so it is computed once and declared in the sparsity pattern at construction; a weight change only rescales it.
 For a B-spline of degree $p$ it is banded with bandwidth $2p + 1$ (diagonal for degree 0, where its entries are the block lengths of move-blocking), and it is dense for a custom basis.
-A reference change only updates $\mathbf{q}$, accumulated sample by sample from the band of $\Phi$, so it needs no matrix update or refactorization.
+A reference change only updates $\bm{q}$, accumulated sample by sample from the band of $\Phi$, so it needs no matrix update or refactorization.
 
 ### General and Terminal Constraints
 
-The general constraints pair $\mathbf{x}_k$ with $\mathbf{u}_k$, while the stacked state $\mathbf{x}$ starts at $\mathbf{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
+The general constraints pair $\bm{x}_k$ with $\bm{u}_k$, while the stacked state $\bm{x}$ starts at $\bm{x}_1$, so the $k = 0$ rows only hold the input part, with the measured state moved into the bounds:
 
 $$
-\mathbf{h}_{\min} - H_x \mathbf{x}_0 \leq H_u \mathbf{u}_0 \leq \mathbf{h}_{\max} - H_x \mathbf{x}_0,
+\bm{h}_{\min} - H_x \bm{x}_0 \leq H_u \bm{u}_0 \leq \bm{h}_{\max} - H_x \bm{x}_0,
 \qquad
-\mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max} \quad k = 1, \dots, T-1.
+\bm{h}_{\min} \leq H_x \bm{x}_k + H_u \bm{u}_k \leq \bm{h}_{\max} \quad k = 1, \dots, T-1.
 $$
 
-With $\mathbf{u} = \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$, the input part of all $n_h T$ rows is $(I_T \otimes H_u)\, \Psi^p(\boldsymbol{\tau})\, \mathbf{c}$: row block $k$ holds $H_u$ times the basis weights of $\mathbf{u}_k$ on the control points of its band.
-The state part of the rows for $k \geq 1$ is $H_x$ applied to $\mathbf{x}_1, \dots, \mathbf{x}_{T-1}$, which each formulation writes as it writes state rows:
+With $\bm{u} = \Psi^p(\bm{\tau})\, \bm{c}$, the input part of all $n_h T$ rows is $(I_T \otimes H_u)\, \Psi^p(\bm{\tau})\, \bm{c}$: row block $k$ holds $H_u$ times the basis weights of $\bm{u}_k$ on the control points of its band.
+The state part of the rows for $k \geq 1$ is $H_x$ applied to $\bm{x}_1, \dots, \bm{x}_{T-1}$, which each formulation writes as it writes state rows:
 
-- Sparse: $H_x$ on the columns of $\mathbf{x}_k$ in $\mathbf{z}_{\mathrm{s}}$, with bounds $\mathbf{h}_{\min}$ and $\mathbf{h}_{\max}$.
-- Condensed: $H_x S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\mathbf{x}_k$, with bounds $\mathbf{h}_{\min} - H_x \mathbf{v}_k$ and $\mathbf{h}_{\max} - H_x \mathbf{v}_k$.
+- Sparse: $H_x$ on the columns of $\bm{x}_k$ in $\bm{z}_{\mathrm{s}}$, with bounds $\bm{h}_{\min}$ and $\bm{h}_{\max}$.
+- Condensed: $H_x S_k$ on the control point columns, where $S_k$ holds the rows of $S$ for $\bm{x}_k$, with bounds $\bm{h}_{\min} - H_x \bm{v}_k$ and $\bm{h}_{\max} - H_x \bm{v}_k$.
   Row $i$ of $H_x S_k$ is a sum over the nonzero entries of row $i$ of $H_x$, so a sparse $H_x$ costs little, and only the columns of the control points up to the band of step $k-1$ are nonzero.
 
-The terminal rows are the same state rows for $\mathbf{x}_T$ alone: $H_{\mathrm{f}}$ on the columns of $\mathbf{x}_T$ (sparse), or $H_{\mathrm{f}} S_T$ with bounds shifted by $-H_{\mathrm{f}} \mathbf{v}_T$ (condensed).
+The terminal rows are the same state rows for $\bm{x}_T$ alone: $H_{\mathrm{f}}$ on the columns of $\bm{x}_T$ (sparse), or $H_{\mathrm{f}} S_T$ with bounds shifted by $-H_{\mathrm{f}} \bm{v}_T$ (condensed).
 State bounds on selected states are the special case $H_u = 0$ with $H_x = E_b$.
 
 The general rows add $n_h T$ rows and the terminal rows $n_{h,\mathrm{f}}$, after every other block of $A_{\mathrm{qp}}$.
-The general bounds depend on $\mathbf{x}_0$ (through the $k = 0$ rows in both formulations, and through $\mathbf{v}$ in the condensed one), and so do the condensed terminal bounds (through $\mathbf{v}$), so they are updated at every solve.
+The general bounds depend on $\bm{x}_0$ (through the $k = 0$ rows in both formulations, and through $\bm{v}$ in the condensed one), and so do the condensed terminal bounds (through $\bm{v}$), so they are updated at every solve.
 
 ## Accessing the QP
 
 `getQP()` returns the QP as last written by `solve()`, `prepare()`, or `assembleQP()`, and `assembleQP(x0, qp)` assembles it for the current settings and an initial state without solving, before or after `initializeSolver()`.
-Both give a `QuadraticProgram` with $P$ and $A_{\mathrm{qp}}$ (`P` and `A`) as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\mathbf{q}$, $\boldsymbol{\ell}$, $\boldsymbol{\upsilon}$ (`q`, `l`, `u`).
-The cost omits the constant terms of the MPC cost, equality rows have $\boldsymbol{\ell} = \boldsymbol{\upsilon}$, and unbounded sides are $\pm\infty$.
+Both give a `QuadraticProgram` with $P$ and $A_{\mathrm{qp}}$ (`P` and `A`) as compressed sparse column matrices in the same form for both formulations (`scipy.sparse.csc_matrix` in Python, which needs `pip install "affine-mpc[sparse]"`), $P$ full symmetric, and the vectors $\bm{q}$, $\bm{\ell}$, $\bm{\upsilon}$ (`q`, `l`, `u`).
+The cost omits the constant terms of the MPC cost, equality rows have $\bm{\ell} = \bm{\upsilon}$, and unbounded sides are $\pm\infty$.
 Neither function is meant for the control loop: both copy the QP, and `assembleQP()` leaves its changes to be sent again by the next `prepare()` or `solve()`.
 
-`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\mathbf{z}$ and of the rows of $A_{\mathrm{qp}}$, in order, each with its offset and size; only the blocks the options enable are listed.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` name the blocks of $\bm{z}$ and of the rows of $A_{\mathrm{qp}}$, in order, each with its offset and size; only the blocks the options enable are listed.
 
 | Block | Kind | Built from |
 | --- | --- | --- |
-| `control_points` | variables | the input coefficients $\mathbf{c}$ |
-| `states` | variables | sparse formulation only: $\mathbf{x}_1, \dots, \mathbf{x}_T$ |
+| `control_points` | variables | the input coefficients $\bm{c}$ |
+| `states` | variables | sparse formulation only: $\bm{x}_1, \dots, \bm{x}_T$ |
 | `state_slacks` | variables | soft state bounds: one slack per bounded state |
 | `dynamics` | rows | sparse formulation only: the model as equality rows |
 | `input_bounds` | rows | input bounds on the control points, the sampled inputs, or the refined control points |
 | `initial_slew` | rows | `slew_initial_input` |
 | `control_point_slew` | rows | `slew_control_points` |
-| `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\mathbf{s} \ge 0$) |
+| `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\bm{s} \ge 0$) |
 | `general_constraints` | rows | `num_general_constraints` rows per step, steps in order |
-| `terminal_constraints` | rows | `num_terminal_constraints` rows on $\mathbf{x}_T$ |
+| `terminal_constraints` | rows | `num_terminal_constraints` rows on $\bm{x}_T$ |
 
 For example, to hand the QP to another solver or to count its rows and nonzeros:
 
@@ -963,11 +963,11 @@ For example, to hand the QP to another solver or to count its rows and nonzeros:
       std::cout << block.name << " " << block.offset << " " << block.size << "\n";
     ```
 
-`getDualSolution()` gives the dual solution $\mathbf{y}$ of the last solve, one value per row of $A_{\mathrm{qp}}$ in the order of `getQPConstraintBlocks()`.
-It satisfies $P\mathbf{z} + \mathbf{q} + A_{\mathrm{qp}}^\top\mathbf{y} = 0$ at a solution, so $y_i > 0$ when row $i$ is at its upper bound, $y_i < 0$ at its lower bound, and $y_i = 0$ when it is inactive; for example, the nonzero entries of the `input_bounds` block show where the input saturates.
+`getDualSolution()` gives the dual solution $\bm{y}$ of the last solve, one value per row of $A_{\mathrm{qp}}$ in the order of `getQPConstraintBlocks()`.
+It satisfies $P\bm{z} + \bm{q} + A_{\mathrm{qp}}^\T\bm{y} = 0$ at a solution, so $y_i > 0$ when row $i$ is at its upper bound, $y_i < 0$ at its lower bound, and $y_i = 0$ when it is inactive; for example, the nonzero entries of the `input_bounds` block show where the input saturates.
 These are the multipliers of the QP's cost, which is half the MPC cost.
 With OSQP they are approximate, like its primal solution, and `SolveInfo` reports how closely the solution satisfies the optimality conditions:
-`primal_residual` is the largest violation of $\boldsymbol{\ell} \le A_{\mathrm{qp}}\mathbf{z} \le \boldsymbol{\upsilon}$, and `dual_residual` the largest entry of $|P\mathbf{z} + \mathbf{q} + A_{\mathrm{qp}}^\top\mathbf{y}|$.
+`primal_residual` is the largest violation of $\bm{\ell} \le A_{\mathrm{qp}}\bm{z} \le \bm{\upsilon}$, and `dual_residual` the largest entry of $|P\bm{z} + \bm{q} + A_{\mathrm{qp}}^\T\bm{y}|$.
 They are the solver's own values, so they cost nothing to read in the control loop, while computing them from `getQP()` copies the QP.
 They are absolute, so compare them with a tolerance that suits your problem; OSQP accepts a solution once each is below `eps_abs` plus `eps_rel` times a problem-dependent scale.
 DAQP does not report residuals (they are NaN), since its active-set solutions meet its tolerances.
@@ -977,9 +977,9 @@ DAQP does not report residuals (they are NaN), since its active-set solutions me
 At a high level,
 the derivation maps to the implementation as follows:
 
-- `Parameterization` defines the evaluation map $\Psi^p(\boldsymbol{\tau})$
-- `Formulation::Condensed` (`Formulation.Condensed` in Python) uses the condensed relation between $\mathbf{c}$ and $\mathbf{x}$
-- `Formulation::Sparse` keeps $\mathbf{x}$ directly in the QP decision vector
+- `Parameterization` defines the evaluation map $\Psi^p(\bm{\tau})$
+- `Formulation::Condensed` (`Formulation.Condensed` in Python) uses the condensed relation between $\bm{c}$ and $\bm{x}$
+- `Formulation::Sparse` keeps $\bm{x}$ directly in the QP decision vector
 - `MPC` manages the model, references, weights, constraints, and solver lifecycle the same way for both
 
 The final mathematical ingredient needed for robust usage is understanding what may be updated after initialization and why OSQP imposes fixed sparsity constraints.
