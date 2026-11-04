@@ -253,6 +253,8 @@ void MPCLogger::captureMPCSnapshot()
     addMetadata("R_diag", mpc_->getInputWeights());
   if (mpc_->getOptions().use_input_rate_cost)
     addMetadata("R_rate_diag", mpc_->getInputRateWeights());
+  if (mpc_->getOptions().slew_initial_input)
+    addMetadata("u0_slew", mpc_->getSlewRateInitial());
   if (mpc_->getOptions().slew_control_points)
     addMetadata("control_point_slew", mpc_->getSlewRate());
   if (mpc_->getOptions().state_bounds != StateBoundMode::Off) {

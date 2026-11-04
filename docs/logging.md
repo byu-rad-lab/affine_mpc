@@ -42,7 +42,7 @@ The logger is useful for:
 === "C++"
 
     ```cpp
-    affine_mpc::MPCLogger logger{mpc, "/tmp/ampc_example", dt, 1, false,
+    affine_mpc::MPCLogger logger{&mpc, "/tmp/ampc_example", dt, 1, false,
                                  "log",
                                  affine_mpc::MPCLogger::Mode::NpzCompressed};
 
@@ -65,7 +65,7 @@ An explicit `finalize()` throws `std::runtime_error` (`RuntimeError` in Python) 
 
 ## Main Constructor Arguments
 
-- `mpc`: the MPC object bound to the logger for its lifetime
+- `mpc`: the MPC object bound to the logger for its lifetime (a pointer in C++)
 - `save_dir`: output directory
 - `ts`: simulation time step used to align predicted trajectories
 - `prediction_stride`: downsampling factor for predicted trajectories
@@ -119,15 +119,15 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `inputs`: `(N, K, m)`, `(N, nc, m)`, or `(N, m)` depending on mode
 - `ref_inputs`: logged with an input cost; the reference control points, `(N, nc, m)`, for `InputCostMode::ControlPoints` with `log_control_points`, and otherwise the reference at the logged steps like `ref_states`, `(N, K, m)` or `(N, m)`: the reference control points evaluated there (`ControlPoints`) or the sampled reference (`Trajectory`, also with `log_control_points`, since a sampled reference has no control point form)
 - `mpc_solve_time`: `(N,)` duration of each whole `solve()` call (`SolveInfo.mpc_solve_time`)
-- `qp_solve_time`: `(N,)` time OSQP spent solving (`SolveInfo.qp_solve_time`, zero if OSQP is built without profiling)
+- `qp_solve_time`: `(N,)` time the QP solver spent solving (`SolveInfo.qp_solve_time`; for OSQP, zero if it is built without profiling)
 - `prepare_time`: `(N,)` total time of the `prepare()` calls before each solve (`SolveInfo.prepare_time`, zero when `prepare()` is not used)
 - `loop_time`: `(N,)` optional user-measured time passed to `logStep()`, e.g. of the whole control loop on hardware (`-1` when not provided)
 - `meta_*`: metadata arrays copied into the NPZ container
 
 The logged `states` start at the current state `x0` passed to `logStep()` (prediction step $k = 0$), followed by the predicted states.
+This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
 
 The timing arrays nest: `qp_solve_time` is part of `mpc_solve_time`, which is the MPC's latency after the measurement; `prepare_time` is separate work done before the measurement, so `prepare_time + mpc_solve_time` is the MPC's work per step; and `loop_time`, if you pass it, covers your whole loop, including model computation and discretization.
-This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
 `meta_t_pred` holds the prediction times of the logged samples relative to the time of each step.
 
 Here:
@@ -148,7 +148,10 @@ The logger records configuration metadata such as:
 - B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
 - enabled options (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`), the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`), `opt_saturate_states` (1 unless `off`), and `opt_use_input_cost` (1 unless `off`) are kept for readers of earlier logs
 - limits
+- slew rates (`u0_slew`, `control_point_slew`)
 - weights
+- bounded states and soft-bound penalties (`bounded_states`, `x_soft_l1`, `x_soft_l2`)
+- general and terminal constraints (`Hx`, `Hu`, `h_min`, `h_max`, `Hf`, `hf_min`, `hf_max`), with the matrices flattened row by row
 - prediction stride
 - logging mode
 
@@ -174,7 +177,7 @@ time = data["time"]
 states = data["states"]
 ```
 
-The helper script `examples/plot_sim.py` loads the `.npz` file written by the default `NpzCompressed` mode and the top-level `params.yaml` file.
+The helper script `examples/plot_sim.py` loads the `.npz` file written by the default `NpzCompressed` mode and reads the metadata from its `meta_*` arrays.
 
 ## Striding Behavior
 

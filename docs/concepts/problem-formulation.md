@@ -7,24 +7,24 @@ This page defines the finite-horizon MPC problem solved by `affine_mpc`.
 The system model is assumed to be discrete-time, affine, and time-invariant:
 
 $$
-\mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w},
+\bm{x}_{k+1} = A \bm{x}_k + B \bm{u}_k + \bm{w},
 $$
 
-where $\mathbf{w}$ is the model offset.
+where $\bm{w}$ is the model offset.
 It holds everything that does not depend on the state or input, such as gravity, the operating point of an affine approximation, or a disturbance estimate (see [Modeling Patterns](modeling-patterns.md)).
 
 ## Base Problem
 
 $$
 \begin{align}
-\min_{\mathbf{c}}
-    &\quad J_x = \left\lVert \mathbf{x}_{\mathrm{ref},T} - \mathbf{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
-    + \sum_{k=1}^{T-1} \left\lVert \mathbf{x}_{\mathrm{ref},k} - \mathbf{x}_k \right\rVert^2_Q
+\min_{\bm{c}}
+    &\quad J_x = \left\lVert \bm{x}_{\mathrm{ref},T} - \bm{x}_T \right\rVert^2_{Q_{\mathrm{f}}}
+    + \sum_{k=1}^{T-1} \left\lVert \bm{x}_{\mathrm{ref},k} - \bm{x}_k \right\rVert^2_Q
     \\
 \text{s.t.}
-    &\quad \mathbf{x}_{k+1} = A \mathbf{x}_k + B \mathbf{u}_k + \mathbf{w} \\
-    &\quad \mathbf{u}_k = g_k(\mathbf{c}_0, \dots, \mathbf{c}_{\eta-1}) \\
-    &\quad \mathbf{u}_{\min} \leq \mathbf{c}_i \leq \mathbf{u}_{\max} \quad \\
+    &\quad \bm{x}_{k+1} = A \bm{x}_k + B \bm{u}_k + \bm{w} \\
+    &\quad \bm{u}_k = g_k(\bm{c}_0, \dots, \bm{c}_{\eta-1}) \\
+    &\quad \bm{u}_{\min} \leq \bm{c}_i \leq \bm{u}_{\max} \quad \\
 \end{align}
 $$
 
@@ -48,13 +48,13 @@ Both modes use the same diagonal weight $R$, set with `setInputWeights()` (it de
 `InputCostMode::ControlPoints` weights the control points:
 
 $$
-J_u = \sum_{i=0}^{\eta-1} \left\lVert \mathbf{c}_{\mathrm{ref},i} - \mathbf{c}_i \right\rVert^2_R
+J_u = \sum_{i=0}^{\eta-1} \left\lVert \bm{c}_{\mathrm{ref},i} - \bm{c}_i \right\rVert^2_R
 $$
 
-`InputCostMode::Trajectory` weights the sampled inputs $\mathbf{u}_k$ over the horizon:
+`InputCostMode::Trajectory` weights the sampled inputs $\bm{u}_k$ over the horizon:
 
 $$
-J_u = \sum_{k=0}^{T-1} \left\lVert \mathbf{u}_{\mathrm{ref},k} - \mathbf{u}_k \right\rVert^2_R
+J_u = \sum_{k=0}^{T-1} \left\lVert \bm{u}_{\mathrm{ref},k} - \bm{u}_k \right\rVert^2_R
 $$
 
 In unconstrained LQR-style formulations,
@@ -64,7 +64,7 @@ whereas MPC can also enforce hard input limits directly without an input regular
 **When you may want to use it:**
 
 - You specifically want to minimize control effort or energy (a zero reference, the default)
-- You want to stay near an equilibrium value $\mathbf{u}_e$ (`setReferenceInput()`)
+- You want to stay near an equilibrium value $\bm{u}_e$ (`setReferenceInput()`)
 - You have a reference input trajectory, perhaps from using differential flatness (`setReferenceInputTrajectory()` with `Trajectory`)
 
 **Which mode to choose:**
@@ -79,15 +79,15 @@ They differ when control points influence different numbers of samples: move-blo
   It adds a banded block to the cost matrix (dense for a custom basis), which costs a little more per solve.
 
 Each mode keeps its own reference form, so the reference setter of the other mode throws `std::logic_error` (`RuntimeError` in Python).
-Changing a reference only updates the QP vector $\mathbf{q}$; changing $R$ updates the cost matrix.
+Changing a reference only updates the QP vector $\bm{q}$; changing $R$ updates the cost matrix.
 
 ### Input Rate Cost
 
 $$
-J_{\Delta u} = \sum_{k=0}^{T-1} \left\lVert \mathbf{u}_k - \mathbf{u}_{k-1} \right\rVert^2_{R_\Delta}
+J_{\Delta u} = \sum_{k=0}^{T-1} \left\lVert \bm{u}_k - \bm{u}_{k-1} \right\rVert^2_{R_\Delta}
 $$
 
-This penalizes changes of the sampled inputs, starting from the previous input $\mathbf{u}_{-1}$.
+This penalizes changes of the sampled inputs, starting from the previous input $\bm{u}_{-1}$.
 Enable it with `use_input_rate_cost` and set $R_\Delta$ with `setInputRateWeights()` (it defaults to ones).
 The previous input is stored after every solve that returns `Success` or `SolvedInaccurate`; call `setPreviousInput()` before the first solve, or after a failed solve if you applied a different input.
 
@@ -99,7 +99,7 @@ The previous input is stored after every solve that returns `Success` or `Solved
 ### Input Trajectory Saturation Constraint
 
 $$
-\mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max} \quad k=0,\dots,T-1
+\bm{u}_{\min} \leq \bm{u}_k \leq \bm{u}_{\max} \quad k=0,\dots,T-1
 $$
 
 The input limits are always enforced, and `input_bounds` chooses how.
@@ -139,57 +139,60 @@ See [Input Parameterization](input-parameterization.md) for more details on B-sp
 ### State Saturation Constraint
 
 $$
-\mathbf{x}_{\min} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} \quad k=1,\dots,T
+\begin{gather}
+\underbrace{\bm{x}_{\min} \leq \bm{x}_k \leq \bm{x}_{\max}}_{\text{hard}}
+\quad \text{OR} \quad
+\underbrace{\bm{x}_{\min} - \bm{s} \leq \bm{x}_k \leq \bm{x}_{\max} + \bm{s}, \quad \bm{s} \geq \mathbf{0}}_{\text{soft}}
+\quad k=1,\dots,T \\
+J_s = \bm{\rho}_1^\T \bm{s} + \left\lVert \bm{s} \right\rVert^2_{\diag(\bm{\rho}_2)} \quad \text{(soft only)}
+\end{gather}
 $$
 
-Enable this with `state_bounds = StateBoundMode::Hard` (`StateBoundMode.Hard` in Python) and set the limits with `setStateLimits(x_min, x_max)`.
+`state_bounds` chooses whether and how the states are bounded: `StateBoundMode::Off` (the default), `Hard`, or `Soft` (`StateBoundMode.Hard` and so on in Python).
+Set the limits with `setStateLimits(x_min, x_max)`.
+
+Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
+List them in `bounded_states`; the limits then have one entry per listed state.
+Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state bounds at all).
+
+#### Hard
 
 **When you may want to use it:**
 
 - Your system has physical state limits
 - You want to provide extra stability (e.g., setting roll limits for an aircraft)
 
-Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
-List them in `bounded_states`; the limits then have one entry per listed state.
-Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state limits at all).
-
 !!! danger
 
     If your current state starts outside of the state limits,
     perhaps due to a disturbance,
-    then this constraint can cause the solver to immediately fail.
-    Soft state limits avoid this.
+    then hard bounds can cause the solver to immediately fail.
+    Soft bounds avoid this.
 
-### Soft State Limits
+#### Soft
 
-$$
-\mathbf{x}_{\min} - \mathbf{s} \leq \mathbf{x}_k \leq \mathbf{x}_{\max} + \mathbf{s}, \quad \mathbf{s} \geq \mathbf{0},
-\qquad
-J_s = \boldsymbol{\rho}_1^\top \mathbf{s} + \left\lVert \mathbf{s} \right\rVert^2_{\operatorname{diag}(\boldsymbol{\rho}_2)}
-$$
-
-With `state_bounds = StateBoundMode::Soft` (`StateBoundMode.Soft` in Python), one slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
+One slack per bounded state, shared over the horizon, may widen both of its limits at the cost $J_s$, set with `setStateBoundPenalties(l1, l2)` (there is no default).
 The slack is the largest violation of its state over the horizon.
 
-- The L1 penalty $\boldsymbol{\rho}_1$ is exact: when it exceeds the limit's Lagrange multiplier, the solution equals the hard-limit solution whenever the limits can be met, and the limits are only violated when they can not.
-- The L2 penalty $\boldsymbol{\rho}_2$ alone always allows a small violation of an active limit (smaller for a larger penalty).
+- The L1 penalty $\bm{\rho}_1$ is exact: when it exceeds the bound's Lagrange multiplier, the solution equals the hard-bound solution whenever the limits can be met, and the limits are only violated when they can not.
+- The L2 penalty $\bm{\rho}_2$ alone always allows a small violation of an active limit (smaller for a larger penalty).
   With the L1 penalty it does not change the solution while the limits can be met.
-- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 4000 iterations, and with an L2 penalty of 100 it took 250, about the same as hard limits.
+- OSQP converges much faster with an L2 penalty on the scale of the state weights or larger: in one condensed example, an L1 penalty of 10 with an L2 penalty of 0.01 took about 1750 iterations, and with an L2 penalty of 100 it took about 500, against about 400 with hard bounds.
   A very large L1 penalty also slows OSQP.
-- Polishing (in the solver settings) makes the solution match the hard-limit solution to round-off when the limits can be met.
+- Polishing (in the solver settings) makes the solution match the hard-bound solution to round-off when the limits can be met.
 
 **When you may want to use it:**
 
-- Disturbances or model error can push the state past a limit, where hard limits would make the problem infeasible
+- Disturbances or model error can push the state past a limit, where hard bounds would make the problem infeasible
 - Some limits are preferences rather than physical boundaries
 
 ### Initial Input Slew Rate Constraint
 
 $$
-|\mathbf{u}_0 - \mathbf{u}_{{-}1}| \leq \mathbf{u}_{0,\mathrm{slew}}
+|\bm{u}_0 - \bm{u}_{{-}1}| \leq \bm{u}_{0,\mathrm{slew}}
 $$
 
-This constrains the difference between the previous input and the first input in the horizon $\mathbf{u}_0$
+This constrains the difference between the previous input and the first input in the horizon $\bm{u}_0$
 (which is the next to apply).
 
 **When you may want to use it:**
@@ -199,7 +202,7 @@ This constrains the difference between the previous input and the first input in
 ### Control Point Slew Rate Constraint
 
 $$
-|\mathbf{c}_i - \mathbf{c}_{i-1}| \leq \mathbf{c}_{\mathrm{slew}} \quad i=1,\dots,\eta-1
+|\bm{c}_i - \bm{c}_{i-1}| \leq \bm{c}_{\mathrm{slew}} \quad i=1,\dots,\eta-1
 $$
 
 This constrains the difference between consecutive control points.
@@ -217,13 +220,13 @@ It requires a B-spline parameterization: with a [custom basis](input-parameteriz
 ### General Linear Constraints
 
 $$
-\mathbf{h}_{\min} \leq H_x \mathbf{x}_k + H_u \mathbf{u}_k \leq \mathbf{h}_{\max} \quad k=0,\dots,T-1,
+\bm{h}_{\min} \leq H_x \bm{x}_k + H_u \bm{u}_k \leq \bm{h}_{\max} \quad k=0,\dots,T-1,
 \qquad
-\mathbf{h}_{\mathrm{f},\min} \leq H_{\mathrm{f}} \mathbf{x}_T \leq \mathbf{h}_{\mathrm{f},\max}
+\bm{h}_{\mathrm{f},\min} \leq H_{\mathrm{f}} \bm{x}_T \leq \bm{h}_{\mathrm{f},\max}
 $$
 
 Set `num_general_constraints` ($n_h$) to constrain linear combinations of the state and input at every step, with `setGeneralConstraints(Hx, Hu, h_min, h_max)`, and `num_terminal_constraints` ($n_{h,\mathrm{f}}$) to constrain the final predicted state, with `setTerminalConstraints(Hf, hf_min, hf_max)`.
-This is the usual stage and terminal split: $\mathbf{x}_0$ is the measured state passed to `solve()`, so the $k = 0$ constraints limit $\mathbf{u}_0$ given $\mathbf{x}_0$, each predicted state $\mathbf{x}_k$ with $k \geq 1$ is paired with $\mathbf{u}_k$, and $\mathbf{x}_T$ (which has no input) is covered by the terminal constraints.
+This is the usual stage and terminal split: $\bm{x}_0$ is the measured state passed to `solve()`, so the $k = 0$ constraints limit $\bm{u}_0$ given $\bm{x}_0$, each predicted state $\bm{x}_k$ with $k \geq 1$ is paired with $\bm{u}_k$, and $\bm{x}_T$ (which has no input) is covered by the terminal constraints.
 Pass `-inf` or `inf` for a side without a bound.
 Rows of the identity in $H_x$ with $H_u = 0$ (plus the same terminal rows) give state limits, and $H_x = 0$, $H_u = I$ limits every sampled input.
 
@@ -232,19 +235,19 @@ With the condensed formulation, as with the model, an entry of these matrices th
 
 **When you may want to use it:**
 
-- Limits on outputs or combinations of states, e.g. $y = C\mathbf{x}$ within bounds
+- Limits on outputs or combinations of states, e.g. $y = C\bm{x}$ within bounds
 - Constraints that couple states and inputs, e.g. a power or friction-cone limit linearized at the operating point
 - Terminal constraints, e.g. reaching a target set at the end of the horizon
 
 !!! danger
 
     A constraint row without an input part (a zero row of $H_u$) only checks the measured state at $k = 0$,
-    so the problem is infeasible whenever $\mathbf{x}_0$ violates it, as with hard state limits.
+    so the problem is infeasible whenever $\bm{x}_0$ violates it, as with hard state bounds.
     OSQP can also need many iterations when more constraints are active than there are control points.
 
 ## From MPC to QP
 
 The next two pages provide the missing steps:
 
-1. [Input Parameterization](input-parameterization.md) derives the parameterization basis matrix $\Psi^p(\boldsymbol{\tau})$.
+1. [Input Parameterization](input-parameterization.md) derives the parameterization basis matrix $\Psi^p(\bm{\tau})$.
 1. [QP Formulation](qp-formulation.md) stacks the prediction model and converts the full MPC problem into quadratic-program form.

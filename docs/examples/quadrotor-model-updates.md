@@ -5,7 +5,7 @@ A single run uses one of the strategies described in [Model Update Strategies](.
 
 ## What the Example Demonstrates
 
-- Computing an affine model $(A_{\mathrm{c}}, B_{\mathrm{c}}, \mathbf{w}_{\mathrm{c}})$ of nonlinear dynamics from analytic Jacobians (checked against central differences at startup)
+- Computing an affine model $(A_{\mathrm{c}}, B_{\mathrm{c}}, \bm{w}_{\mathrm{c}})$ of nonlinear dynamics from analytic Jacobians (checked against central differences at startup)
 - Updating the model every step with `setModelContinuous2Discrete()`
 - Moving the QP rebuild and refactorization before the measurement with `prepare()`
 - Updating only the model offset with `setModelOffsetContinuous2Discrete()`
@@ -61,7 +61,7 @@ If you installed the package with `pip`, `affine-mpc-example-quadrotor` runs the
 
 ## Results
 
-One run of `python examples/quadrotor_model_updates.py --compare --delay-scale 1` (12 s, 100 and 500 Hz, seed 0) with `affine_mpc` built from source at `23ba500` (after v0.3.0), NumPy 2.5.3, and Python 3.14.8 on Linux with an AMD Ryzen 9 5900.
+One run of `python examples/quadrotor_model_updates.py --compare --delay-scale 1` (12 s, 100 and 500 Hz, seed 0) with `affine_mpc` built from source at `6626e8a` (after v0.5.1), NumPy 2.5.4, and Python 3.14.8 on Linux with an AMD Ryzen 9 5900.
 The tracking errors are deterministic for a given seed.
 The timings vary between machines and between runs (repeated runs on this machine moved the medians by up to about 10%) and include Python overhead, so compare ratios between strategies rather than absolute values.
 
@@ -73,23 +73,23 @@ Tracking error:
 | 100 Hz | predicted |                 0.57 |               11.20 |            85.17 |
 | 100 Hz | hybrid    |                 0.57 |               11.20 |            85.17 |
 | 100 Hz | hover     |                87.17 |              151.69 |           123.46 |
-| 500 Hz | measured  |                 0.61 |                7.18 |            74.90 |
-| 500 Hz | predicted |                 0.61 |                7.21 |            74.90 |
-| 500 Hz | hybrid    |                 0.61 |                7.19 |            74.90 |
-| 500 Hz | hover     |                78.25 |              127.13 |           109.09 |
+| 500 Hz | measured  |                 0.61 |                7.19 |            74.90 |
+| 500 Hz | predicted |                 0.61 |                7.18 |            74.90 |
+| 500 Hz | hybrid    |                 0.61 |                7.18 |            74.90 |
+| 500 Hz | hover     |                78.25 |              127.12 |           109.09 |
 
 Timing, medians per step from the runs without delay:
 
 |   Rate | Strategy  | Latency (ms) | mpc_solve_time (ms) | prepare_time (ms) |
 | -----: | --------- | -----------: | ------------------: | ----------------: |
-| 100 Hz | measured  |        0.303 |               0.244 |             0.000 |
-| 100 Hz | predicted |        0.034 |               0.032 |             0.183 |
-| 100 Hz | hybrid    |        0.059 |               0.036 |             0.208 |
-| 100 Hz | hover     |        0.036 |               0.033 |             0.000 |
-| 500 Hz | measured  |        1.054 |               0.996 |             0.000 |
-| 500 Hz | predicted |        0.057 |               0.054 |             0.830 |
-| 500 Hz | hybrid    |        0.084 |               0.061 |             0.941 |
-| 500 Hz | hover     |        0.063 |               0.060 |             0.000 |
+| 100 Hz | measured  |        0.236 |               0.177 |             0.000 |
+| 100 Hz | predicted |        0.034 |               0.032 |             0.130 |
+| 100 Hz | hybrid    |        0.051 |               0.032 |             0.130 |
+| 100 Hz | hover     |        0.034 |               0.032 |             0.000 |
+| 500 Hz | measured  |        0.632 |               0.582 |             0.000 |
+| 500 Hz | predicted |        0.056 |               0.054 |             0.531 |
+| 500 Hz | hybrid    |        0.074 |               0.054 |             0.533 |
+| 500 Hz | hover     |        0.056 |               0.054 |             0.000 |
 
 ## Observations
 
@@ -99,12 +99,12 @@ These hold for this run; they show where the library's work goes in each loop, n
    At these rates the prediction was close to the measurement, so computing the model about the measured or the predicted state made no measurable difference, even right after the kick.
    The hover model, which is never updated, had more than 100 times their error before the kick.
    Most of the remaining error is from the wind, which is not in the model (see [Offset-Free Tracking](../concepts/modeling-patterns.md#offset-free-tracking) for one way to handle constant disturbances).
-1. The measured strategy's latency was about 9 times the predicted strategy's at 100 Hz and 18 times at 500 Hz.
-   Almost all of it is `mpc_solve_time`, i.e. the QP rebuild and refactorization inside `solve()`; computing the model and calling `setModelContinuous2Discrete()` took the remaining 0.06 ms or so.
-   The rebuild grows with the number of horizon steps (80 at 100 Hz, 400 at 500 Hz), so at 500 Hz the measured strategy spent about half of the 2 ms sample period between measurement and input.
+1. The measured strategy's latency was about 7 times the predicted strategy's at 100 Hz and 11 times at 500 Hz.
+   Almost all of it is `mpc_solve_time`, i.e. the QP rebuild and refactorization inside `solve()`; computing the model and calling `setModelContinuous2Discrete()` took the remaining 0.05 to 0.06 ms.
+   The rebuild grows with the number of horizon steps (80 at 100 Hz, 400 at 500 Hz), so at 500 Hz the measured strategy spent about a third of the 2 ms sample period between measurement and input.
 1. Predicted and hybrid spent a comparable time in `prepare()` before the measurement, so the total work per step was about the same as for measured; only its place in the loop changed.
 1. Hybrid's `mpc_solve_time` stayed close to predicted's and the hover baseline's, far below measured's: the offset-only setter caused no rebuild and no refactorization.
-   Its extra latency over predicted, computing the offset in Python, was 0.02 to 0.03 ms.
+   Its extra latency over predicted, computing the offset in Python, was about 0.02 ms.
 1. Applying each input only after its measured latency changed the errors by less than 0.01 mm, and 10 times that latency (`--compare --delay-scale 10`, which reaches the one-sample cap for measured at 500 Hz) by at most 0.01 mm.
    For this vehicle at these rates, the latency mattered for the time budget (what else must run within a sample period, or a slower computer where the measured strategy no longer fits), not for tracking accuracy.
 1. No solve failed, and the QP matrices stayed within the initialized sparsity pattern.

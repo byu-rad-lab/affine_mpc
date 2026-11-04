@@ -60,10 +60,11 @@ enum class Formulation
  * construction and does not change the interface.
  *
  * Setters only validate and store their values and mark a change category
- * (model offset, model matrices, weights, references, limits, previous input).
- * All QP work happens in solve(), or earlier in the optional prepare(), once
- * per changed category. Changes of the model matrices or the weights rebuild QP
- * matrices and make OSQP refactor; the other categories only update vectors.
+ * (model offset, model matrices, weights, references, limits, previous input,
+ * constraint matrices). All QP work happens in solve(), or earlier in the
+ * optional prepare(), once per changed category. Changes of the model
+ * matrices, the weights, or the constraint matrices rebuild QP matrices and
+ * make the solver refactor; the other categories only update vectors.
  *
  * Internally, the QP is built by one QP term per feature (cost or constraint
  * rows) on top of the formulation, which maps the costs and constraints on the
@@ -232,13 +233,13 @@ public:
    * @throws std::invalid_argument if x0 does not have size state_dim.
    * @return SolveStatus Result indication. Generally expected to be `Success`
    *   unless the solver has not been initialized, then `NotInitialized`.
-   *   `UpdateFailed` means OSQP rejected a data update (often from non-finite
-   *   model or weight values), so the QP was not solved and the getters still
-   *   return the previous solution. The update is retried at the next solve,
-   *   which usually recovers once the values are valid again (infinite weights
-   *   can leave OSQP unable to recover).
-   *   Verify your problem setup and consult OSQP documentation for any other
-   *   value.
+   *   `UpdateFailed` means the solver rejected a data update (often from
+   *   non-finite model or weight values), so the QP was not solved and the
+   *   getters still return the previous solution. The update is retried at the
+   *   next solve, which usually recovers once the values are valid again
+   *   (infinite weights can leave OSQP unable to recover).
+   *   Verify your problem setup and consult the solver's documentation for any
+   *   other value.
    */
   [[nodiscard]] SolveStatus solve(const Eigen::Ref<const Eigen::VectorXd>& x0);
 
@@ -261,8 +262,8 @@ public:
    *   Its duration is added to the `prepare_time` that the next solve()
    *   reports in getSolveInfo().
    * @return `Success` if the pending changes were applied, `NotInitialized`
-   *   before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
-   *   update (the update stays pending, so the next solve() retries it and
+   *   before initializeSolver(), or `UpdateFailed` if the solver rejected a
+   *   data update (the update stays pending, so the next solve() retries it and
    *   reports `UpdateFailed` again while the data is invalid).
    */
   [[nodiscard]] SolveStatus prepare();
@@ -606,7 +607,7 @@ public:
    * @brief Set the general linear constraints
    *   h_min <= Hx x_k + Hu u_k <= h_max, applied at every step k = 0, ..., T-1.
    *
-   *   This function can only be called if `num_general_constraints` (p) is
+   *   This function can only be called if `num_general_constraints` is
    *   positive. Must be called prior to `initializeSolver()`, but can also be
    *   called after if the constraints change between solves. x_0 is the
    *   measured state passed to solve(), so the k = 0 rows constrain u_0 given
@@ -616,17 +617,17 @@ public:
    *   constrain the final state x_T with setTerminalConstraints(). Pass `-inf`
    *   or `inf` for a side without a bound.
    *
-   *   Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a
-   *   model change), while changing only the bounds updates QP vectors: Hx and
-   *   Hu count as changed only when a value differs from the stored one.
+   *   Changing Hx or Hu rebuilds QP matrices and makes the solver refactor
+   * (like a model change), while changing only the bounds updates QP vectors:
+   * Hx and Hu count as changed only when a value differs from the stored one.
    *   With the condensed formulation, as with the model, an entry of Hx or Hu
    *   that may become nonzero later must be nonzero when initializeSolver() is
    *   called, since that fixes the solver's sparsity pattern; the sparse
    *   formulation keeps every entry of Hx and Hu in its pattern.
-   * @param Hx State matrix (p x state_dim).
-   * @param Hu Input matrix (p x input_dim).
-   * @param h_min Lower bounds (size p).
-   * @param h_max Upper bounds (size p).
+   * @param Hx State matrix (num_general_constraints x state_dim).
+   * @param Hu Input matrix (num_general_constraints x input_dim).
+   * @param h_min Lower bounds (size num_general_constraints).
+   * @param h_max Upper bounds (size num_general_constraints).
    * @throws std::logic_error if `num_general_constraints` is zero.
    * @throws std::invalid_argument if a shape is wrong or h_min > h_max.
    * @note The QP is updated in the next prepare() or solve(), which report
@@ -641,18 +642,18 @@ public:
    * @brief Set the terminal constraints hf_min <= Hf x_T <= hf_max on the
    *   final predicted state.
    *
-   *   This function can only be called if `num_terminal_constraints` (p_T) is
+   *   This function can only be called if `num_terminal_constraints` is
    *   positive. Must be called prior to `initializeSolver()`, but can also be
    *   called after if the constraints change between solves. Pass `-inf` or
    *   `inf` for a side without a bound. As with setGeneralConstraints(),
-   *   changing Hf rebuilds QP matrices and makes OSQP refactor, changing only
-   *   the bounds updates QP vectors, and with the condensed formulation an
+   *   changing Hf rebuilds QP matrices and makes the solver refactor, changing
+   * only the bounds updates QP vectors, and with the condensed formulation an
    *   entry of Hf that may become nonzero later must be nonzero when
    *   initializeSolver() is called (the sparse formulation keeps every entry
    *   of Hf in its pattern).
-   * @param Hf State matrix (p_T x state_dim).
-   * @param hf_min Lower bounds (size p_T).
-   * @param hf_max Upper bounds (size p_T).
+   * @param Hf State matrix (num_terminal_constraints x state_dim).
+   * @param hf_min Lower bounds (size num_terminal_constraints).
+   * @param hf_max Upper bounds (size num_terminal_constraints).
    * @throws std::logic_error if `num_terminal_constraints` is zero.
    * @throws std::invalid_argument if a shape is wrong or hf_min > hf_max.
    * @note The QP is updated in the next prepare() or solve(), which report

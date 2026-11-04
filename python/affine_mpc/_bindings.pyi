@@ -103,7 +103,7 @@ class Options:
             other than Off). Empty (the default) bounds every state.
 
     General constraints:
-        num_general_constraints: Number p of general linear constraints
+        num_general_constraints: Number of general linear constraints
             h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
             the measured state). Zero (the default) disables them.
         num_terminal_constraints: Number of terminal constraints
@@ -120,7 +120,7 @@ class Options:
     def __init__(
         self,
         *,
-        input_cost: InputCostMode = ...,
+        input_cost: InputCostMode = InputCostMode.Off,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         refined_bound_interval: int = 16,
@@ -154,7 +154,7 @@ class Options:
             state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
             bounded_states: Indices of the states with limits (requires state_bounds
                 other than Off). Empty (the default) bounds every state.
-            num_general_constraints: Number p of general linear constraints
+            num_general_constraints: Number of general linear constraints
                 h_min <= Hx x_k + Hu u_k <= h_max at every step k = 0, ..., T-1 (x_0 is
                 the measured state). Zero (the default) disables them.
             num_terminal_constraints: Number of terminal constraints
@@ -1821,8 +1821,8 @@ class MPC:
 
         Returns:
             status: `Success` if the pending changes were applied, `NotInitialized`
-                before initializeSolver(), or `UpdateFailed` if OSQP rejected a data
-                update (the update stays pending, so the next solve() retries it and
+                before initializeSolver(), or `UpdateFailed` if the solver rejected a
+                data update (the update stays pending, so the next solve() retries it and
                 reports `UpdateFailed` again while the data is invalid).
         """
 
@@ -1896,7 +1896,7 @@ class MPC:
         Set the general linear constraints h_min <= Hx x_k + Hu u_k <= h_max, applied at
         every step k = 0, ..., T-1.
 
-        This function can only be called if `num_general_constraints` (p) is positive.
+        This function can only be called if `num_general_constraints` is positive.
         Must be called prior to `initializeSolver()`, but can also be called after if
         the constraints change between solves. x_0 is the measured state passed to
         solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
@@ -1905,19 +1905,19 @@ class MPC:
         u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
         Pass `-inf` or `inf` for a side without a bound.
 
-        Changing Hx or Hu rebuilds QP matrices and makes OSQP refactor (like a model
-        change), while changing only the bounds updates QP vectors: Hx and Hu count as
-        changed only when a value differs from the stored one. With the condensed
-        formulation, as with the model, an entry of Hx or Hu that may become nonzero
-        later must be nonzero when initializeSolver() is called, since that fixes the
-        solver's sparsity pattern; the sparse formulation keeps every entry of Hx and Hu
-        in its pattern.
+        Changing Hx or Hu rebuilds QP matrices and makes the solver refactor (like a
+        model change), while changing only the bounds updates QP vectors: Hx and Hu
+        count as changed only when a value differs from the stored one. With the
+        condensed formulation, as with the model, an entry of Hx or Hu that may become
+        nonzero later must be nonzero when initializeSolver() is called, since that
+        fixes the solver's sparsity pattern; the sparse formulation keeps every entry of
+        Hx and Hu in its pattern.
 
         Args:
-            Hx: State matrix (p x state_dim).
-            Hu: Input matrix (p x input_dim).
-            h_min: Lower bounds (size p).
-            h_max: Upper bounds (size p).
+            Hx: State matrix (num_general_constraints x state_dim).
+            Hu: Input matrix (num_general_constraints x input_dim).
+            h_min: Lower bounds (size num_general_constraints).
+            h_max: Upper bounds (size num_general_constraints).
 
         Raises:
             RuntimeError: If `num_general_constraints` is zero.
@@ -2358,19 +2358,19 @@ class MPC:
         Set the terminal constraints hf_min <= Hf x_T <= hf_max on the final predicted
         state.
 
-        This function can only be called if `num_terminal_constraints` (p_T) is
-        positive. Must be called prior to `initializeSolver()`, but can also be called
-        after if the constraints change between solves. Pass `-inf` or `inf` for a side
-        without a bound. As with setGeneralConstraints(), changing Hf rebuilds QP
-        matrices and makes OSQP refactor, changing only the bounds updates QP vectors,
-        and with the condensed formulation an entry of Hf that may become nonzero later
-        must be nonzero when initializeSolver() is called (the sparse formulation keeps
-        every entry of Hf in its pattern).
+        This function can only be called if `num_terminal_constraints` is positive. Must
+        be called prior to `initializeSolver()`, but can also be called after if the
+        constraints change between solves. Pass `-inf` or `inf` for a side without a
+        bound. As with setGeneralConstraints(), changing Hf rebuilds QP matrices and
+        makes the solver refactor, changing only the bounds updates QP vectors, and with
+        the condensed formulation an entry of Hf that may become nonzero later must be
+        nonzero when initializeSolver() is called (the sparse formulation keeps every
+        entry of Hf in its pattern).
 
         Args:
-            Hf: State matrix (p_T x state_dim).
-            hf_min: Lower bounds (size p_T).
-            hf_max: Upper bounds (size p_T).
+            Hf: State matrix (num_terminal_constraints x state_dim).
+            hf_min: Lower bounds (size num_terminal_constraints).
+            hf_max: Upper bounds (size num_terminal_constraints).
 
         Raises:
             RuntimeError: If `num_terminal_constraints` is zero.
@@ -2436,12 +2436,13 @@ class MPC:
         Returns:
             solve_status: Result indication. Generally expected to be `Success` unless
                 the solver has not been initialized, then `NotInitialized`.
-                `UpdateFailed` means OSQP rejected a data update (often from
+                `UpdateFailed` means the solver rejected a data update (often from
                 non-finite model or weight values), so the QP was not solved and the
                 getters still return the previous solution. The update is retried at
                 the next solve, which usually recovers once the values are valid again
                 (infinite weights can leave OSQP unable to recover). Verify your
-                problem setup and consult OSQP documentation for any other value.
+                problem setup and consult the solver's documentation for any other
+                value.
 
         The GIL is released while solving, so other Python threads can run (e.g.
         solving several independent MPC objects in parallel threads). Do not modify x0

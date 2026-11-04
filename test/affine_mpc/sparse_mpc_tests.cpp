@@ -604,3 +604,21 @@ TEST(SparseMPCProtectedTester,
 
   ASSERT_LT(u_second(0), u_first(0) - 1e-3);
 }
+
+TEST(SparseMPCProtectedTester, givenSmallWeights_ScalesCostUpForOSQP)
+{
+  // With R = 0 and small state weights, P is small next to the dynamics rows
+  // of A. OSQP's cost scaling must come from P (scaling the cost up), not be
+  // capped at 1 as it is when OSQP is set up with q = 0 (175 iterations here).
+  const int T{50};
+  ampc::MPC mpc{2, 1, T, {}, ampc::Formulation::Sparse};
+  Matrix2d A;
+  A << 0, 1, -0.6, -0.1;
+  mpc.setModelContinuous2Discrete(A, Vector2d{0, 0.2}, Vector2d::Zero(), 0.1);
+  mpc.setStateWeights(Vector2d::Constant(0.1));
+  mpc.setReferenceState(Vector2d{1, 0});
+  mpc.setInputLimits(Matrix<double, 1, 1>{-1}, Matrix<double, 1, 1>{1});
+  ASSERT_TRUE(mpc.initializeSolver());
+  ASSERT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  EXPECT_LE(mpc.getSolveInfo().iterations, 100);
+}

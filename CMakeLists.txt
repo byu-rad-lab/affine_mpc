@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 project(affine_mpc
   LANGUAGES CXX C
-  VERSION 0.5.1
+  VERSION 0.5.2
 )
 
 # Default to an optimized build. Single-config generators (Makefiles, Ninja)
@@ -234,6 +234,16 @@ if(AFFINE_MPC_BUILD_TESTS)
     # the library is C++17; the tests use C++20 designated initializers
     target_compile_features(${TEST_NAME} PRIVATE cxx_std_20)
     affine_mpc_enable_warnings(${TEST_NAME})
+    # With AVX, GCC 15 reports out-of-bounds reads in Eigen 3.4's vectorized
+    # loops for the tests' small fixed-size vectors (e.g. VectorXd = Vector3d),
+    # in loop iterations that never run, so these stay warnings in the tests
+    # (Eigen 5 does not trigger them)
+    if(AFFINE_MPC_WARNINGS_AS_ERRORS AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+       AND DEFINED Eigen3_VERSION AND Eigen3_VERSION VERSION_LESS 5)
+      target_compile_options(${TEST_NAME} PRIVATE
+        -Wno-error=array-bounds -Wno-error=stringop-overread
+      )
+    endif()
     target_link_libraries(${TEST_NAME} PRIVATE
       GTest::gtest_main
       ${PROJECT_NAME}::${PROJECT_NAME}
@@ -257,6 +267,22 @@ set(affine_mpc_install_targets ${PROJECT_NAME})
 if(AFFINE_MPC_WITH_DAQP AND NOT AFFINE_MPC_DAQP_FOUND_PACKAGE
    AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
   list(APPEND affine_mpc_install_targets affine_mpc_daqp)
+endif()
+# Likewise the fetched OSQP, under this project's name (see extern_osqp.cmake)
+if(TARGET affine_mpc_osqp)
+  list(APPEND affine_mpc_install_targets affine_mpc_osqp)
+  install(FILES $<TARGET_FILE:osqpstatic>
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RENAME ${affine_mpc_osqp_file}
+    COMPONENT core
+  )
+  install(DIRECTORY
+      "${osqp_extern_SOURCE_DIR}/include/public/"
+      "${osqp_extern_BINARY_DIR}/include/public/"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/affine_mpc/third_party/osqp
+    COMPONENT core
+    FILES_MATCHING PATTERN "*.h"
+  )
 endif()
 install(TARGETS ${affine_mpc_install_targets}
   EXPORT ${PROJECT_NAME}Targets
@@ -305,6 +331,13 @@ if(AFFINE_MPC_WITH_DAQP AND AFFINE_MPC_DAQP_FOUND_PACKAGE
   set(AFFINE_MPC_CONFIG_NEEDS_DAQP TRUE)
 else()
   set(AFFINE_MPC_CONFIG_NEEDS_DAQP FALSE)
+endif()
+# A bundled OSQP is installed with this package, so only an external one is
+# looked up
+if(TARGET affine_mpc_osqp)
+  set(AFFINE_MPC_CONFIG_NEEDS_OSQP FALSE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_OSQP TRUE)
 endif()
 
 configure_package_config_file(

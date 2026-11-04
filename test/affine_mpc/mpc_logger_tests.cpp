@@ -310,6 +310,33 @@ TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsModeAndReleasedKey)
   fs::remove_all(test_dir);
 }
 
+TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsSlewRates)
+{
+  const fs::path test_dir{uniqueTempDir("mpc_logger_slew")};
+  const auto param{ampc::Parameterization::linearInterp(5, 3)};
+  for (const bool enabled : {false, true}) {
+    SCOPED_TRACE(enabled ? "enabled" : "disabled");
+    fs::remove_all(test_dir);
+    ampc::MPC mpc{2, 1, param,
+                  ampc::Options{.slew_initial_input = enabled,
+                                .slew_control_points = enabled}};
+    if (enabled) {
+      mpc.setSlewRateInitial(Eigen::VectorXd::Constant(1, 0.25));
+      mpc.setSlewRate(Eigen::VectorXd::Constant(1, 0.5));
+    }
+    {
+      ampc::MPCLogger logger{&mpc, test_dir, 0.1};
+      logger.finalize();
+    }
+    std::ifstream file{test_dir / "params.yaml"};
+    const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_EQ(params.find("u0_slew:") != std::string::npos, enabled) << params;
+    EXPECT_EQ(params.find("control_point_slew:") != std::string::npos, enabled)
+        << params;
+  }
+  fs::remove_all(test_dir);
+}
+
 TEST(MPCLoggerOptionsTest, givenTrajectoryInputCost_LogsSampledReferenceOnly)
 {
   // the sampled reference is logged with the sampled inputs, and not with

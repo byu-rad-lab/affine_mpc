@@ -132,6 +132,7 @@ This project defines the following CMake options (specified with `-D`):
 | `AFFINE_MPC_BUILD_TESTS`    | Build unit tests and register test entry points          |
 | `AFFINE_MPC_BUILD_BINDINGS` | Build the Python bindings                                |
 | `AFFINE_MPC_PY_ADD_TESTS`   | Register Python binding tests in the Python subproject   |
+| `AFFINE_MPC_WITH_DAQP`      | Build the DAQP solver for the condensed formulation      |
 | `AFFINE_MPC_WARNINGS_AS_ERRORS` | Treat compiler warnings as errors (enabled in CI)    |
 
 `AFFINE_MPC_PY_ADD_TESTS` is mainly set internally by the top-level build when both bindings and tests are enabled.
@@ -153,11 +154,12 @@ cmake --build build --target python_stubgen
 You can also run the helper script directly:
 
 ```sh
-python python/custom_stubgen.py
+python python/custom_stubgen.py --pkg-dir build/python
 ```
 
-The helper imports the built package from the build tree by default.
-It also supports `--pkg-dir=install` if you want to generate stubs from an installed repo-local package.
+Without `--pkg-dir`, the helper imports the installed `affine_mpc` package, as the `check-stubs` CI job does after `pip install ".[dev]"`.
+`--pkg-dir=install` generates stubs from an installed repo-local package.
+Generate stubs in an environment with the `dev` extra: it pins pybind11-stubgen 3 (older versions reorder the whole stub) and includes SciPy, without which the stub loses the `scipy.sparse` types of `QuadraticProgram`.
 
 ## Formatting
 
@@ -196,7 +198,7 @@ This makes diffs and review comments more localized without affecting rendered o
 
 - add or update tests for solver logic, indexing, references, constraints, and API behavior
 - use `test/affine_mpc/utils.hpp` helpers such as `expectEigenNear(...)`
-- it is normal for tests to derive helper classes from production classes to expose protected behavior
+- prefer the public QP getters (`getQP()`, `assembleQP()`, `getQPVariableBlocks()`, `getQPConstraintBlocks()`) in tests, and derive from `MPC` only for internal state they do not expose
 - NPZ output compatibility is validated from Python with `numpy.load(...)` and `zipfile`, not from a C++ archive reader
 
 ## Documentation Expectations
@@ -254,12 +256,12 @@ The Python wheels contain the library, so ABI changes do not affect Python users
 ### Steps
 
 1. Make sure every change for the release is on `main` and CI passes there.
-1. On a branch from `main`, update the version in `CMakeLists.txt` (`project(... VERSION X.Y.Z)`) and in `CITATION.cff` (`version` and `date-released`).
+1. On a branch from `main`, update the version in `CMakeLists.txt` (`project(... VERSION X.Y.Z)`), in `CITATION.cff` (`version` and `date-released`), and in the FetchContent `GIT_TAG` in `docs/getting-started/cpp.md`.
    The Python package's version comes from the git tag (setuptools_scm), so nothing in Python changes.
 1. If a bundled dependency's version changed (`cmake/extern_*.cmake`), update its row in `licenses/README.md` and replace its license file if the text changed.
 1. If the binding surface changed, make sure the stubs are regenerated (see [Stub Generation](#stub-generation)).
 1. Open a PR into `main` titled exactly `Release X.Y.Z`, with the release notes as its body (see below).
-   The title matters: CI checks it against the versions in `CMakeLists.txt` and `CITATION.cff`, and editing the title later does not rerun that check (push a commit to rerun it).
+   The title matters: CI checks it against the versions in `CMakeLists.txt`, `CITATION.cff`, and the docs `GIT_TAG`, and editing the title later does not rerun that check (push a commit to rerun it).
 1. Wait for CI: the build and test jobs, the stub check, and the wheel build (`Build and publish to PyPI`, which builds and tests every wheel and the sdist on PRs without uploading them).
 1. Merge the PR.
 1. Create a GitHub release with the tag `vX.Y.Z` on `main`, titled `Release X.Y.Z`, with the same notes, and publish it.

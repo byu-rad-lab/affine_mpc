@@ -2,12 +2,13 @@
 # affine_mpc_daqp_link (the target affine_mpc links privately) and
 # AFFINE_MPC_DAQP_FOUND_PACKAGE (whether it is an installed DAQP package).
 #
-# An installed DAQP (find_package(daqp), version 0.10.3 or newer) is used if
-# found; otherwise DAQP's sources are fetched and built into a static,
+# An installed DAQP (find_package(daqp)) is used if found; DAQP installs no
+# CMake version file, so its version can not be checked, and 0.10.3 or newer
+# is expected. Otherwise DAQP's sources are fetched and built into a static,
 # position-independent library of this project (affine_mpc_daqp), which a
 # shared affine_mpc absorbs and a static one installs next to itself.
 
-set(affine_mpc_daqp_version "0.10.3")
+set(affine_mpc_daqp_version "0.11.0")
 
 find_package(daqp CONFIG QUIET)
 if(daqp_FOUND AND TARGET daqp)
@@ -41,7 +42,7 @@ FetchContent_MakeAvailable(daqp_extern)
 
 set(affine_mpc_daqp_sources)
 foreach(file IN ITEMS api avi auxiliary bnb daqp daqp_prox eq_elim
-                      factorization hierarchical utils)
+                      factorization hierarchical presolve utils)
   list(APPEND affine_mpc_daqp_sources "${daqp_extern_SOURCE_DIR}/src/${file}.c")
 endforeach()
 

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <memory>
+#include <osqp_api_constants.h>
 #include <osqp_api_functions.h>
 #include <osqp_api_types.h>
 #include <ostream>
@@ -57,7 +58,13 @@ OSQPSolver::OSQPSolver(int num_variables,
     A_is_set_{false},
     l_buf_{num_constraints},
     u_buf_{num_constraints},
-    zero_q_{VectorXF::Zero(num_variables)},
+    // OSQP's cost scaling is 1 / max(mean column norm of P, ||q||_inf) after
+    // equilibration, but it treats ||q||_inf below OSQP_MIN_SCALING as 1, so
+    // q = 0 caps the scaling at 1 and a weak P (small weights) stays poorly
+    // scaled. Just above that threshold, q is too small to set the scaling,
+    // so it comes from P alone. If equilibration shrinks q below the
+    // threshold, OSQP treats it as q = 0 again.
+    setup_q_{VectorXF::Constant(num_variables, 2 * OSQP_MIN_SCALING)},
     settings_{settings},
     n_{num_variables},
     m_{num_constraints},
@@ -605,12 +612,12 @@ void OSQPSolver::initializeConstraintMatrix(const SparseMatrixXF& A)
 bool OSQPSolver::initialize(const detail::QP& qp, const QPBlockLayout&)
 {
   // OSQP fixes its cost scaling at setup, from P and ||q||_inf. Set up with
-  // q = 0 so it depends on P alone, not on the x0 the QP was assembled with
-  // (MPC::initializeSolver() uses a placeholder), then pass the actual q.
+  // setup_q_ so it depends on P alone, not on the x0 the QP was assembled
+  // with (MPC::initializeSolver() uses a placeholder), then pass the actual q.
   const bool ok{
       qp.storage == detail::QPStorage::Sparse
-          ? initialize(qp.P_csc, qp.A_csc, zero_q_, qp.l, qp.u, settings_)
-          : initialize(qp.P, qp.A, zero_q_, qp.l, qp.u, settings_)};
+          ? initialize(qp.P_csc, qp.A_csc, setup_q_, qp.l, qp.u, settings_)
+          : initialize(qp.P, qp.A, setup_q_, qp.l, qp.u, settings_)};
   return ok && updateCostVector(qp.q);
 }
 
@@ -621,10 +628,10 @@ bool OSQPSolver::updateMatrices(const detail::QP& qp,
   if (!cost_matrix && !constraint_matrix)
     return true;
   // With scaling, a matrix update recomputes OSQP's scaling, the cost scaling
-  // from the q it holds, so hold q = 0 during the update (as at setup) and
+  // from the q it holds, so hold setup_q_ during the update (as at setup) and
   // pass the actual q again after it
   const bool rescales{initialized_ && settings_.scaling != 0};
-  if (rescales && !updateCostVector(zero_q_))
+  if (rescales && !updateCostVector(setup_q_))
     return false;
   bool ok;
   if (qp.storage == detail::QPStorage::Sparse) {

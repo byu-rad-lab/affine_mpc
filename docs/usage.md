@@ -18,7 +18,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
-    - `OSQPSettings`
+    - `OSQPSettings` and `DAQPSettings`
     - `MPC` and `Formulation`
     - `MPCLogger`
     - `SolveStatus`
@@ -33,6 +33,7 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
+    - `DAQPSettings`
     - `MPC` and `Formulation` (`affine_mpc/mpc.hpp`)
     - `MPCLogger`
     - `SolveStatus`
@@ -222,6 +223,7 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     ```python
     if opts.slew_initial_input:
         mpc.setSlewRateInitial(u0_slew)
+    if opts.slew_initial_input or opts.use_input_rate_cost:
         mpc.setPreviousInput(u_prev)  # defaults to zeros
     if opts.slew_control_points:
         mpc.setSlewRate(u_slew)
@@ -240,6 +242,8 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     ```cpp
     if (opts.slew_initial_input) {
       mpc.setSlewRateInitial(u0_slew);
+    }
+    if (opts.slew_initial_input || opts.use_input_rate_cost) {
       mpc.setPreviousInput(u_prev); // defaults to zeros
     }
     if (opts.slew_control_points) {
@@ -308,7 +312,7 @@ With input cost:
     mpc.setInputWeights(R_diag);
     ```
 
-The input weight `R` weights the control points, not the sampled inputs.
+With `InputCostMode::ControlPoints`, the input weight `R` weights the control points, not the sampled inputs (`InputCostMode::Trajectory` weights the sampled inputs).
 With non-uniform knots, a control point on a short early interval is weighted the same as one on a long late interval, even though it affects fewer samples.
 Keep this in mind when comparing input penalties across parameterizations.
 
@@ -343,7 +347,7 @@ State step reference:
     ```
 
 State trajectory reference:
-In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\mathbf{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
+In Python, trajectories are arrays with one row per step, e.g. `x_traj[k]` is the reference for $\bm{x}_{k+1}$ in a `(horizon_steps, state_dim)` array.
 In C++, they are matrices with one column per step, e.g. `x_traj.col(k)` in a `state_dim x horizon_steps` matrix.
 Both also accept the stacked layout (`horizon_steps * state_dim` values, step after step), which has the same memory as either one, so a whole matrix or array is copied in one pass.
 
@@ -420,8 +424,9 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```
 
-With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A$ change (a model or weight update).
-The library gives OSQP $\mathbf{q} = 0$ at those times, so the cost scaling depends only on $P$, not on any particular $x_0$ or reference.
+With `scaling` on (the default), OSQP computes its problem scaling in `initializeSolver()` and again whenever $P$ or $A_{\mathrm{qp}}$ change (a model, weight, or constraint matrix update).
+At those times the library gives OSQP a cost vector $\bm{q}$ too small to affect the cost scaling, so that scaling depends only on $P$, not on any particular $x_0$ or reference.
+(OSQP treats $\bm{q} = 0$ as $\|\bm{q}\|_\infty = 1$, which would cap the cost scaling at 1 and slow OSQP down when the weights are small.)
 
 #### Choosing the QP solver
 
@@ -459,7 +464,7 @@ In our measurements on this library's mass-spring-damper example (`examples/sim.
 DAQP's work grows with the cube of the number of QP variables (control points and slacks) and with the number of active constraints, so OSQP, or the sparse formulation, remains the choice for long horizons with many control points.
 
 DAQP needs a positive definite cost matrix `P` for its standard iterations.
-When `P` is only positive semidefinite (for example with `InputCostMode::Off` and some states unweighted, or soft state limits with only an L1 penalty), DAQP detects this while factorizing `P` and switches to proximal-point iterations, which still find a minimizer.
+When `P` is only positive semidefinite (for example with `InputCostMode::Off` and some states unweighted, or soft state bounds with only an L1 penalty), DAQP detects this while factorizing `P` and switches to proximal-point iterations, which still find a minimizer.
 `DAQPSettings::eps_prox` controls this: negative (the default) uses them only when needed, positive always, and zero never, in which case a singular `P` makes `initializeSolver()` return false (or `solve()` return `UpdateFailed` after a weight or model change).
 
 `resetWarmStart()` empties DAQP's working set (the constraints it starts from), and `SolveInfo::qp_solve_time` is DAQP's own solve time, which excludes factorizing `P` after a weight or model change.
@@ -476,16 +481,16 @@ is in the main runtime loop. Common cases include:
 
 How to respond to a failed solve depends on the application.
 For example, you could reuse the previously applied input or have a fallback control law like LQR.
-After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return OSQP's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
-The previous input used by `slew_initial_input` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
-The failed solve's iterates may also have diverged, which would slow down the next solve since OSQP warm starts from them,
+After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return the solver's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
+The previous input used by `slew_initial_input` and `use_input_rate_cost` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
+The failed solve's iterates may also have diverged, which would slow down the next solve since the solver warm starts from them,
 so call `resetWarmStart()` to start the next solve from zero.
 
 `MaxIterReached` is a partial exception.
 With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
 Applying `getNextInput()` (clamped to the input limits) can then be a reasonable fallback, but check it for your problem, and still call `setPreviousInput()` with the applied input.
 
-`SolvedInaccurate` means OSQP stopped at `max_iter` or its time limit with residuals within 10 times `eps_abs` and `eps_rel`, so treat it as a solve with looser tolerances; `SolveInfo`'s residuals say how loose.
+With OSQP, `SolvedInaccurate` means it stopped at `max_iter` or its time limit with residuals within 10 times `eps_abs` and `eps_rel`, so treat it as a solve with looser tolerances; `SolveInfo`'s residuals say how loose.
 
 OSQP's first-order iterations are also less accurate when $P$ is badly conditioned (its largest eigenvalue many orders of magnitude above its smallest), for example with nearly dependent custom basis functions, no input weight, or slow dynamics over a long horizon.
 Directions in which the cost barely changes are then weakly determined, so OSQP can stop with a first input that is noticeably off even when it reports `Success`, and warm starting can carry that error from step to step, which shows up in closed loop as input chatter or a small limit cycle.
@@ -500,7 +505,7 @@ To check, compute the condition number of $P$ from `getQP()` (e.g. `np.linalg.co
         uk = mpc.getNextInput()
     else:
         uk = u_fallback
-        mpc.setPreviousInput(uk)  # if slew_initial_input is enabled
+        mpc.setPreviousInput(uk)  # if slew_initial_input or use_input_rate_cost is enabled
         mpc.resetWarmStart()
     ```
 
@@ -512,7 +517,7 @@ To check, compute the condition number of $P$ from `getQP()` (e.g. `np.linalg.co
       mpc.getNextInput(uk);
     } else {
       uk = u_fallback;
-      mpc.setPreviousInput(uk); // if slew_initial_input is enabled
+      mpc.setPreviousInput(uk); // if slew_initial_input or use_input_rate_cost is enabled
       mpc.resetWarmStart();
     }
     ```
@@ -713,4 +718,4 @@ You can propagate the internal model one step with:
 - If a model coefficient may become nonzero later, initialize with that structure already present, e.g. with a representative model set before `initializeSolver()`; with the sparse formulation you can instead pass `ModelSparsity::Full` (see [Model Entries](concepts/runtime-updates.md#model-entries-initial-nonzeros-or-full)).
 - With the condensed formulation, the same holds for cost weights and constraint matrix entries (the sparse formulation tracks every one of them).
 - To debug a suspected sparsity problem, call `isWithinSparsityPattern()` after `solve()` or `prepare()`.
-- If you enable `slew_initial_input`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.
+- If you enable `slew_initial_input` or `use_input_rate_cost`, provide the previous input before solving; after each successful solve, it is automatically set to the next input.
