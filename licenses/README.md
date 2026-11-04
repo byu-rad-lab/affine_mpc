@@ -9,7 +9,7 @@ The source distribution contains only affine_mpc's own source; these projects ar
 | OSQP | 1.0.0 | Apache-2.0 | `OSQP-LICENSE`, `OSQP-NOTICE` | <https://github.com/osqp/osqp> |
 | QDLDL (part of OSQP) | 0.1.8 | Apache-2.0 | `QDLDL-LICENSE` | <https://github.com/osqp/qdldl> |
 | AMD (SuiteSparse, part of OSQP) | as bundled with OSQP 1.0.0 | BSD-3-Clause | `AMD-LICENSE` | <https://github.com/DrTimothyAldenDavis/SuiteSparse> |
-| DAQP | 0.10.3 | MIT | `DAQP-LICENSE` | <https://github.com/darnstrom/daqp> |
+| DAQP | 0.11.0 | MIT | `DAQP-LICENSE` | <https://github.com/darnstrom/daqp> |
 | Eigen (header-only, compiled into the wheel) | 3.4 or 5.0 | MPL-2.0 (some files BSD-3-Clause or Apache-2.0) | `EIGEN-COPYING.*` | <https://gitlab.com/libeigen/eigen> |
 | pybind11 (headers compiled into the wheel) | 3.x | BSD-3-Clause | `PYBIND11-LICENSE` | <https://github.com/pybind/pybind11> |
 | zlib (statically linked into the Windows wheels only) | from vcpkg | Zlib | `ZLIB-LICENSE` | <https://zlib.net> |
