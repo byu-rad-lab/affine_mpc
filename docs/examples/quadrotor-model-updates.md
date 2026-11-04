@@ -29,7 +29,7 @@ python examples/quadrotor_model_updates.py --compare
 python examples/quadrotor_model_updates.py --compare --load --plot
 ```
 
-Each run writes its own log to `ampc_example/quadrotor/<rate>hz_<strategy>/` in the system temp directory (`log.npz` and `params.yaml`, see [Logging](../logging.md)), with a `_delay<scale>` suffix for delayed runs; `--log-dir` changes the location.
+Each run writes its own log to `ampc_example/quadrotor/<rate>hz_<strategy>/` in the system temp directory (`log.npz` and `log_params.yaml`, see [Logging](../logging.md)), with a `_delay<scale>` suffix for delayed runs; `--log-dir` changes the location.
 `--load` reads those logs instead of simulating; it stops if a requested run has no log, or if the logs were made with different durations or seeds.
 `--quick` flies 3 s instead of 12 s; see `--help` for the other options.
 If you installed the package with `pip`, `affine-mpc-example-quadrotor` runs the same script with the same options, e.g. `affine-mpc-example-quadrotor --compare --plot`.

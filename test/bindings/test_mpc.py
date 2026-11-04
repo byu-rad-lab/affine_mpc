@@ -581,7 +581,7 @@ def test_mpc_logger_records_formulation(tmp_path):
         mpc = ampc.MPC(2, 1, param, formulation=formulation)
         logger = ampc.MPCLogger(mpc, tmp_path / formulation.name, 0.1)
         logger.finalize()
-        params = (tmp_path / formulation.name / "params.yaml").read_text()
+        params = (tmp_path / formulation.name / "log_params.yaml").read_text()
         assert f"formulation: {formulation.name.lower()}\n" in params
 
 

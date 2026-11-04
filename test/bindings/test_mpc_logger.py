@@ -57,7 +57,7 @@ def _log_single_step(
     logger.logStep(t=0.0, x0=x0, loop_time=0.001)
     logger.finalize()
 
-    return save_dir / f"{save_name}.npz", save_dir / "params.yaml", save_dir / f"{save_name}_raw", save_dir / f"{save_name}_npy"
+    return save_dir / f"{save_name}.npz", save_dir / f"{save_name}_params.yaml", save_dir / f"{save_name}_raw", save_dir / f"{save_name}_npy"
 
 
 def test_mpc_logger_interface():
@@ -290,11 +290,9 @@ def test_mpc_logger_trajectory_input_cost(log_control_points):
         assert mpc.solve(x0) == ampc.SolveStatus.Success
         logger.logStep(t=0.0, x0=x0)
         logger.finalize()
-        params = (Path(tmpdir) / "params.yaml").read_text()
+        params = (Path(tmpdir) / "log_params.yaml").read_text()
         assert "opt_input_cost: trajectory\n" in params
-        assert "opt_use_input_cost: 1\n" in params
         with np.load(Path(tmpdir) / "log.npz", allow_pickle=False) as data:
-            assert data["meta_opt_use_input_cost"].item() == 1
             # the sampled reference is logged at the strided steps like
             # ref_states, also with log_control_points: k = 0, ..., T, the last
             # input repeated at k = T

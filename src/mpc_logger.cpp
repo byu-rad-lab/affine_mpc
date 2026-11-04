@@ -1,12 +1,19 @@
 #include "affine_mpc/mpc_logger.hpp"
 
 #include <Eigen/Core>
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cctype>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 #include "npy_writer.hpp"
@@ -15,6 +22,66 @@
 namespace affine_mpc {
 
 namespace {
+
+// 1: scalar metadata with shape (), string metadata in the NPZ, meta.npz in
+// the NPY and raw directories, and <save_name>_params.yaml
+constexpr int kLogFormatVersion{1};
+
+// Every key the logger writes itself, whether or not the options log it.
+// addMetadata() rejects them, so load_log() can tell built-in values from user
+// metadata.
+constexpr std::array<std::string_view, 44> kBuiltinKeys{
+    "log_format_version",
+    "t_pred",
+    "ts",
+    "prediction_stride",
+    "log_control_points",
+    "logging_mode",
+    "state_dim",
+    "input_dim",
+    "horizon_steps",
+    "formulation",
+    "parameterization_type",
+    "spline_degree",
+    "num_control_points",
+    "knots",
+    "basis",
+    "opt_slew_initial_input",
+    "opt_slew_control_points",
+    "opt_use_input_rate_cost",
+    "opt_input_cost",
+    "opt_input_bounds",
+    "opt_refined_bound_interval",
+    "opt_state_bounds",
+    "opt_num_general_constraints",
+    "opt_num_terminal_constraints",
+    "u_min",
+    "u_max",
+    "Q_diag",
+    "Qf_diag",
+    "R_diag",
+    "R_rate_diag",
+    "u0_slew",
+    "control_point_slew",
+    "bounded_states",
+    "x_min",
+    "x_max",
+    "x_soft_l1",
+    "x_soft_l2",
+    "Hx",
+    "Hu",
+    "h_min",
+    "h_max",
+    "Hf",
+    "hf_min",
+    "hf_max",
+};
+
+bool isBuiltinKey(const std::string& key)
+{
+  return std::find(kBuiltinKeys.begin(), kBuiltinKeys.end(), key)
+         != kBuiltinKeys.end();
+}
 
 const Eigen::IOFormat kVectorFormat(
     Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ", "", "", "[", "]");
@@ -28,6 +95,57 @@ std::string vec2Str(const Eigen::VectorXd& vec, int precision)
     ss << std::fixed << std::setprecision(precision);
   ss << vec.format(kVectorFormat);
   return ss.str();
+}
+
+// Strings are written bare unless a reader could take them for a number or a
+// vector, or YAML would change them; those are double-quoted with JSON escapes.
+std::string formatString(const std::string& str)
+{
+  bool quote{
+      str.empty() || std::isspace(static_cast<unsigned char>(str.front()))
+      || std::isspace(static_cast<unsigned char>(str.back()))
+      || std::string{"[]{}\"'#&*!|>%@`,"}.find(str.front()) != std::string::npos
+      || str.find(": ") != std::string::npos
+      || str.find(" #") != std::string::npos};
+  if (!quote) {
+    char* end{nullptr};
+    std::strtod(str.c_str(), &end);
+    quote = *end == '\0';
+  }
+  for (const char c : str)
+    quote = quote || static_cast<unsigned char>(c) < 0x20;
+  if (!quote)
+    return str;
+
+  std::string out{"\""};
+  for (const char c : str) {
+    switch (c) {
+    case '"':
+      out += "\\\"";
+      break;
+    case '\\':
+      out += "\\\\";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    default:
+      if (static_cast<unsigned char>(c) < 0x20) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+        out += buf;
+      } else {
+        out += c;
+      }
+    }
+  }
+  return out + "\"";
 }
 
 void writeBinary(std::ofstream& fout,
@@ -164,17 +282,19 @@ MPCLogger::MPCLogger(const MPC* const mpc,
   ref_states_out_buf_.resize(logged_x_dim_);
   ref_inputs_out_buf_.resize(logged_ref_u_dim_);
 
+  // read by load_log() to tell log layouts apart
+  setBuiltinMetadata("log_format_version", kLogFormatVersion);
   captureMPCSnapshot();
 
   std::vector<double> t_pred(strided_k_.size());
   for (size_t i = 0; i < strided_k_.size(); ++i)
     t_pred[i] = strided_k_[i] * ts_;
 
-  addMetadata("t_pred", t_pred);
-  addMetadata("ts", ts_);
-  addMetadata("prediction_stride", prediction_stride_);
-  addMetadata("log_control_points", int{log_control_points_});
-  addMetadata("logging_mode", loggingModeToString(logging_mode_));
+  setBuiltinMetadata("t_pred", t_pred);
+  setBuiltinMetadata("ts", ts_);
+  setBuiltinMetadata("prediction_stride", prediction_stride_);
+  setBuiltinMetadata("log_control_points", int{log_control_points_});
+  setBuiltinMetadata("logging_mode", loggingModeToString(logging_mode_));
 
   initRawFiles();
 }
@@ -191,83 +311,74 @@ MPCLogger::~MPCLogger()
 
 void MPCLogger::captureMPCSnapshot()
 {
-  addMetadata("state_dim", mpc_->getStateDim());
-  addMetadata("input_dim", mpc_->getInputDim());
-  addMetadata("horizon_steps", mpc_->getHorizonSteps());
-  addMetadata("formulation",
-              std::string{mpc_->getFormulation() == Formulation::Sparse
-                              ? "sparse"
-                              : "condensed"});
+  setBuiltinMetadata("state_dim", mpc_->getStateDim());
+  setBuiltinMetadata("input_dim", mpc_->getInputDim());
+  setBuiltinMetadata("horizon_steps", mpc_->getHorizonSteps());
+  setBuiltinMetadata("formulation",
+                     std::string{mpc_->getFormulation() == Formulation::Sparse
+                                     ? "sparse"
+                                     : "condensed"});
   const Parameterization& param{mpc_->getParameterization()};
   const bool bspline{param.type == Parameterization::Type::BSpline};
-  addMetadata("parameterization_type",
-              std::string{bspline ? "bspline" : "custom"});
+  setBuiltinMetadata("parameterization_type",
+                     std::string{bspline ? "bspline" : "custom"});
   if (bspline)
-    addMetadata("spline_degree", param.degree);
-  addMetadata("num_control_points", mpc_->getNumControlPoints());
+    setBuiltinMetadata("spline_degree", param.degree);
+  setBuiltinMetadata("num_control_points", mpc_->getNumControlPoints());
 
   if (bspline) {
-    addMetadata("knots", param.knots);
+    setBuiltinMetadata("knots", param.knots);
   } else {
     // the basis row by row (horizon_steps x num_control_points), so control
     // points can be evaluated offline
-    addMetadata("basis",
-                Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
-                    param.band_weights.data(), param.band_weights.size()}});
+    setBuiltinMetadata(
+        "basis", Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
+                     param.band_weights.data(), param.band_weights.size()}});
   }
 
-  // released key, derived from the mode (also logged as opt_input_cost)
-  addMetadata("opt_use_input_cost",
-              int{mpc_->getOptions().input_cost != InputCostMode::Off});
-  addMetadata("opt_slew_initial_input",
-              static_cast<int>(mpc_->getOptions().slew_initial_input));
-  addMetadata("opt_slew_control_points",
-              static_cast<int>(mpc_->getOptions().slew_control_points));
-  // released key, derived from the mode (also logged as opt_state_bounds)
-  addMetadata("opt_saturate_states",
-              int{mpc_->getOptions().state_bounds != StateBoundMode::Off});
-  // released key, derived from the mode (also logged as opt_input_bounds)
-  addMetadata("opt_saturate_input_trajectory",
-              int{mpc_->getOptions().input_bounds == InputBoundMode::Exact});
-  addMetadata("opt_use_input_rate_cost",
-              static_cast<int>(mpc_->getOptions().use_input_rate_cost));
-  addMetadata("opt_input_cost",
-              inputCostModeToString(mpc_->getOptions().input_cost));
-  addMetadata("opt_input_bounds",
-              inputBoundModeToString(mpc_->getOptions().input_bounds));
-  addMetadata("opt_refined_bound_interval",
-              mpc_->getOptions().refined_bound_interval);
-  addMetadata("opt_state_bounds",
-              stateBoundModeToString(mpc_->getOptions().state_bounds));
-  addMetadata("opt_num_general_constraints",
-              mpc_->getOptions().num_general_constraints);
-  addMetadata("opt_num_terminal_constraints",
-              mpc_->getOptions().num_terminal_constraints);
+  setBuiltinMetadata("opt_slew_initial_input",
+                     static_cast<int>(mpc_->getOptions().slew_initial_input));
+  setBuiltinMetadata("opt_slew_control_points",
+                     static_cast<int>(mpc_->getOptions().slew_control_points));
+  setBuiltinMetadata("opt_use_input_rate_cost",
+                     static_cast<int>(mpc_->getOptions().use_input_rate_cost));
+  setBuiltinMetadata("opt_input_cost",
+                     inputCostModeToString(mpc_->getOptions().input_cost));
+  setBuiltinMetadata("opt_input_bounds",
+                     inputBoundModeToString(mpc_->getOptions().input_bounds));
+  setBuiltinMetadata("opt_refined_bound_interval",
+                     mpc_->getOptions().refined_bound_interval);
+  setBuiltinMetadata("opt_state_bounds",
+                     stateBoundModeToString(mpc_->getOptions().state_bounds));
+  setBuiltinMetadata("opt_num_general_constraints",
+                     mpc_->getOptions().num_general_constraints);
+  setBuiltinMetadata("opt_num_terminal_constraints",
+                     mpc_->getOptions().num_terminal_constraints);
 
-  addMetadata("u_min", mpc_->getInputMin());
-  addMetadata("u_max", mpc_->getInputMax());
-  addMetadata("Q_diag", mpc_->getStateWeights());
-  addMetadata("Qf_diag", mpc_->getTerminalStateWeights());
+  setBuiltinMetadata("u_min", mpc_->getInputMin());
+  setBuiltinMetadata("u_max", mpc_->getInputMax());
+  setBuiltinMetadata("Q_diag", mpc_->getStateWeights());
+  setBuiltinMetadata("Qf_diag", mpc_->getTerminalStateWeights());
 
   if (mpc_->getOptions().input_cost != InputCostMode::Off)
-    addMetadata("R_diag", mpc_->getInputWeights());
+    setBuiltinMetadata("R_diag", mpc_->getInputWeights());
   if (mpc_->getOptions().use_input_rate_cost)
-    addMetadata("R_rate_diag", mpc_->getInputRateWeights());
+    setBuiltinMetadata("R_rate_diag", mpc_->getInputRateWeights());
   if (mpc_->getOptions().slew_initial_input)
-    addMetadata("u0_slew", mpc_->getSlewRateInitial());
+    setBuiltinMetadata("u0_slew", mpc_->getSlewRateInitial());
   if (mpc_->getOptions().slew_control_points)
-    addMetadata("control_point_slew", mpc_->getSlewRate());
+    setBuiltinMetadata("control_point_slew", mpc_->getSlewRate());
   if (mpc_->getOptions().state_bounds != StateBoundMode::Off) {
     // x_min and x_max have one entry per bounded state
     const std::vector<int>& bounded{mpc_->getBoundedStates()};
-    addMetadata("bounded_states",
-                std::vector<double>(bounded.begin(), bounded.end()));
-    addMetadata("x_min", mpc_->getStateMin());
-    addMetadata("x_max", mpc_->getStateMax());
+    setBuiltinMetadata("bounded_states",
+                       std::vector<double>(bounded.begin(), bounded.end()));
+    setBuiltinMetadata("x_min", mpc_->getStateMin());
+    setBuiltinMetadata("x_max", mpc_->getStateMax());
   }
   if (mpc_->getOptions().state_bounds == StateBoundMode::Soft) {
-    addMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
-    addMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
+    setBuiltinMetadata("x_soft_l1", mpc_->getStateBoundL1Penalties());
+    setBuiltinMetadata("x_soft_l2", mpc_->getStateBoundL2Penalties());
   }
   // constraint matrices are stored row-major (reshape to rows x state_dim or
   // rows x input_dim)
@@ -280,19 +391,37 @@ void MPCLogger::captureMPCSnapshot()
     return values;
   };
   if (mpc_->getOptions().num_general_constraints > 0) {
-    addMetadata("Hx", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
-    addMetadata("Hu", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
-    addMetadata("h_min", mpc_->getGeneralConstraintMin());
-    addMetadata("h_max", mpc_->getGeneralConstraintMax());
+    setBuiltinMetadata("Hx", rowMajor(mpc_->getGeneralConstraintStateMatrix()));
+    setBuiltinMetadata("Hu", rowMajor(mpc_->getGeneralConstraintInputMatrix()));
+    setBuiltinMetadata("h_min", mpc_->getGeneralConstraintMin());
+    setBuiltinMetadata("h_max", mpc_->getGeneralConstraintMax());
   }
   if (mpc_->getOptions().num_terminal_constraints > 0) {
-    addMetadata("Hf", rowMajor(mpc_->getTerminalConstraintMatrix()));
-    addMetadata("hf_min", mpc_->getTerminalConstraintMin());
-    addMetadata("hf_max", mpc_->getTerminalConstraintMax());
+    setBuiltinMetadata("Hf", rowMajor(mpc_->getTerminalConstraintMatrix()));
+    setBuiltinMetadata("hf_min", mpc_->getTerminalConstraintMin());
+    setBuiltinMetadata("hf_max", mpc_->getTerminalConstraintMax());
   }
 }
 
 void MPCLogger::addMetadata(const std::string& key,
+                            const MetadataValue& value,
+                            int precision)
+{
+  if (isBuiltinKey(key))
+    throw std::invalid_argument("[MPCLogger::addMetadata] '" + key
+                                + "' is logged by MPCLogger itself; choose "
+                                  "another key.");
+  setMetadata(key, value, precision);
+}
+
+void MPCLogger::setBuiltinMetadata(const std::string& key,
+                                   const MetadataValue& value)
+{
+  assert(isBuiltinKey(key) && "add the key to kBuiltinKeys");
+  setMetadata(key, value, -1);
+}
+
+void MPCLogger::setMetadata(const std::string& key,
                             const MetadataValue& value,
                             int precision)
 {
@@ -418,6 +547,12 @@ void MPCLogger::initRawFiles()
   open_bin(ref_states_bin_, "ref_states");
   if (log_ref_inputs_)
     open_bin(ref_inputs_bin_, "ref_inputs");
+
+  // written up front so the payloads can still be loaded if the process ends
+  // before finalize()
+  writeParamFileToPath(raw_dir / "params.yaml");
+  writeMetaNpzFile(raw_dir / "meta.npz");
+  writeStagingInfoFile(buildPayloadEntries(), raw_dir / "staging_info.yaml");
 }
 
 void MPCLogger::closeRawFiles()
@@ -495,7 +630,9 @@ void MPCLogger::finalizeRawRecoverable(
     NpyWriter::writeDoubleHeader(payload.header_path, payload.shape);
 
   writeParamFileToPath(raw_dir / "params.yaml");
+  writeMetaNpzFile(raw_dir / "meta.npz");
   writeDataInfoFile(payloads, raw_dir / "data_info.yaml");
+  std::filesystem::remove(raw_dir / "staging_info.yaml");
   is_finalized_ = true;
 }
 
@@ -504,7 +641,8 @@ void MPCLogger::finalizeNpy(const std::vector<PayloadEntry>& payloads)
   const std::filesystem::path npy_dir = npyDirPath();
   try {
     writeNpyOutputs(payloads, npy_dir);
-    writeParamFileToPath(save_dir_ / "params.yaml");
+    writeMetaNpzFile(npy_dir / "meta.npz");
+    writeParamFileToPath(paramFilePath());
     cleanupRawDirectory();
     is_finalized_ = true;
   } catch (...) {
@@ -522,7 +660,7 @@ void MPCLogger::finalizeNpz(const std::vector<PayloadEntry>& payloads,
 
   try {
     writeNpzFromPayloads(payloads, archive_path, compress);
-    writeParamFileToPath(save_dir_ / "params.yaml");
+    writeParamFileToPath(paramFilePath());
     cleanupRawDirectory();
     is_finalized_ = true;
     return;
@@ -532,7 +670,8 @@ void MPCLogger::finalizeNpz(const std::vector<PayloadEntry>& payloads,
 
     try {
       writeNpyOutputs(payloads, npy_dir);
-      writeParamFileToPath(save_dir_ / "params.yaml");
+      writeMetaNpzFile(npy_dir / "meta.npz");
+      writeParamFileToPath(paramFilePath());
       cleanupRawDirectory();
       is_finalized_ = true;
     } catch (...) {
@@ -562,7 +701,19 @@ void MPCLogger::writeNpzFromPayloads(const std::vector<PayloadEntry>& payloads,
   for (const auto& payload : payloads)
     writer.addDoubleArrayFromFile(payload.name, payload.data_path,
                                   payload.shape);
+  addMetadataEntries(writer);
+  writer.finalize();
+}
 
+void MPCLogger::writeMetaNpzFile(const std::filesystem::path& path) const
+{
+  NpzWriter writer(path, NpzWriter::CompressionMode::Stored);
+  addMetadataEntries(writer);
+  writer.finalize();
+}
+
+void MPCLogger::addMetadataEntries(NpzWriter& writer) const
+{
   for (const auto& key : metadata_keys_) {
     const auto& entry = metadata_registry_.at(key);
     std::visit(
@@ -577,12 +728,12 @@ void MPCLogger::writeNpzFromPayloads(const std::vector<PayloadEntry>& payloads,
                             {static_cast<size_t>(arg.size())});
           } else if constexpr (std::is_same_v<T, std::vector<double>>) {
             writer.addArray("meta_" + key, arg.data(), {arg.size()});
+          } else if constexpr (std::is_same_v<T, std::string>) {
+            writer.addString("meta_" + key, arg);
           }
         },
         entry.value);
   }
-
-  writer.finalize();
 }
 
 void MPCLogger::writeNpyOutputs(const std::vector<PayloadEntry>& payloads,
@@ -636,9 +787,39 @@ void MPCLogger::writeDataInfoFile(
   std::filesystem::rename(tmp_path, data_info_path);
 }
 
+void MPCLogger::writeStagingInfoFile(
+    const std::vector<PayloadEntry>& payloads,
+    const std::filesystem::path& staging_info_path) const
+{
+  std::ofstream fout{staging_info_path};
+  if (!fout.is_open()) {
+    throw std::runtime_error("[MPCLogger] Failed to open staging info file: "
+                             + staging_info_path.string());
+  }
+
+  // each `<name>.bin` holds float64 rows of row_shape, one per logged step
+  fout << "format_version: 1\n";
+  fout << "mode: " << loggingModeToString(logging_mode_) << "\n";
+  fout << "save_name: " << formatString(save_name_) << "\n";
+  fout << "row_shapes:\n";
+  for (const auto& payload : payloads) {
+    fout << "  " << payload.name << ": "
+         << makeShapeString({payload.shape.begin() + 1, payload.shape.end()})
+         << "\n";
+  }
+
+  fout.close();
+  if (!fout) {
+    throw std::runtime_error(
+        "[MPCLogger] Failed while writing staging info file: "
+        + staging_info_path.string());
+  }
+}
+
 void MPCLogger::writeParamFile(const std::filesystem::path& filename)
 {
-  writeParamFileToPath(save_dir_ / filename);
+  writeParamFileToPath(filename.empty() ? paramFilePath()
+                                        : save_dir_ / filename);
 }
 
 void MPCLogger::writeParamFileToPath(const std::filesystem::path& path) const
@@ -654,11 +835,16 @@ void MPCLogger::writeParamFileToPath(const std::filesystem::path& path) const
     std::visit(
         [&](auto&& arg) {
           using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double>
-                        || std::is_same_v<T, std::string>) {
+          if constexpr (std::is_same_v<T, std::string>) {
+            fout << formatString(arg) << "\n";
+          } else if constexpr (std::is_same_v<T, int>
+                               || std::is_same_v<T, double>) {
             if (entry.precision >= 0 && std::is_same_v<T, double>) {
-              fout << std::fixed << std::setprecision(entry.precision) << arg
-                   << "\n";
+              // a separate stream, so the precision does not carry over to
+              // later entries
+              std::ostringstream oss;
+              oss << std::fixed << std::setprecision(entry.precision) << arg;
+              fout << oss.str() << "\n";
             } else {
               fout << arg << "\n";
             }
@@ -691,6 +877,11 @@ void MPCLogger::writeStep(double t)
   if (log_ref_inputs_)
     writeBinary(ref_inputs_bin_, ref_inputs_out_buf_);
   ++num_logged_steps_;
+}
+
+std::filesystem::path MPCLogger::paramFilePath() const
+{
+  return save_dir_ / (save_name_ + "_params.yaml");
 }
 
 std::filesystem::path MPCLogger::rawDirPath() const

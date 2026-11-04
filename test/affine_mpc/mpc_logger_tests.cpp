@@ -69,6 +69,15 @@ TEST_F(MPCLoggerTest, ConstructorCreatesDirectoryAndTempFiles)
   EXPECT_TRUE(fs::exists(raw_dir / "mpc_solve_time.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "qp_solve_time.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "prepare_time.bin"));
+
+  // written at construction so a log that is never finalized can be loaded
+  EXPECT_TRUE(fs::exists(raw_dir / "params.yaml"));
+  EXPECT_TRUE(fs::exists(raw_dir / "meta.npz"));
+  std::ifstream file{raw_dir / "staging_info.yaml"};
+  const std::string info{std::istreambuf_iterator<char>{file}, {}};
+  EXPECT_NE(info.find("row_shapes:\n  time: []\n"), std::string::npos) << info;
+  EXPECT_NE(info.find("  states: [6, 2]\n"), std::string::npos) << info;
+  EXPECT_NE(info.find("  inputs: [6, 1]\n"), std::string::npos) << info;
 }
 
 TEST_F(MPCLoggerTest, ConvenienceLogStepWorks)
@@ -98,8 +107,76 @@ TEST_F(MPCLoggerTest, RawRecoverableModeWritesRecoverableOutputs)
   EXPECT_TRUE(fs::exists(raw_dir / "states.bin"));
   EXPECT_TRUE(fs::exists(raw_dir / "states.npyh"));
   EXPECT_TRUE(fs::exists(raw_dir / "params.yaml"));
+  EXPECT_TRUE(fs::exists(raw_dir / "meta.npz"));
   EXPECT_TRUE(fs::exists(raw_dir / "data_info.yaml"));
+  EXPECT_FALSE(fs::exists(raw_dir / "staging_info.yaml"));
   EXPECT_FALSE(fs::exists(test_dir_ / "raw_log.npz"));
+}
+
+TEST_F(MPCLoggerTest, ParamFileQuotesAmbiguousStrings)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "log",
+                         ampc::MPCLogger::Mode::Npy);
+  logger.addMetadata("sum", 0.1 + 0.2);
+  logger.addMetadata("whole", 2.0);
+  logger.addMetadata("rounded", 0.123456, 2);
+  logger.addMetadata("count", 3);
+  logger.addMetadata("vec", Eigen::Vector3d{0.1 + 0.2, 1.0, -1e-300});
+  logger.addMetadata("plain", std::string{"mass spring damper"});
+  logger.addMetadata("numeric", std::string{"1.5"});
+  logger.addMetadata("bracket", std::string{"[1, 2]"});
+  logger.addMetadata("escaped", std::string{"a \"b\"\n"});
+  logger.finalize();
+
+  std::ifstream file{test_dir_ / "log_params.yaml"};
+  const std::string params{std::istreambuf_iterator<char>{file}, {}};
+  for (const char* line :
+       {"sum: 0.3\n", "whole: 2\n", "rounded: 0.12\n", "count: 3\n",
+        "vec: [0.3, 1, -1e-300]\n", "plain: mass spring damper\n",
+        "numeric: \"1.5\"\n", "bracket: \"[1, 2]\"\n",
+        "escaped: \"a \\\"b\\\"\\n\"\n", "formulation: condensed\n",
+        "ts: 0.1\n"}) {
+    EXPECT_NE(params.find(line), std::string::npos) << line << params;
+  }
+}
+
+TEST_F(MPCLoggerTest, ParamFilePrecisionAppliesToItsEntryOnly)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "log",
+                         ampc::MPCLogger::Mode::Npy);
+  logger.addMetadata("rounded", 0.123456, 2);
+  logger.addMetadata("after", 0.123456);
+  logger.addMetadata("vec_after", Eigen::Vector2d{0.123456, 2.5});
+  logger.finalize();
+
+  std::ifstream file{test_dir_ / "log_params.yaml"};
+  const std::string params{std::istreambuf_iterator<char>{file}, {}};
+  for (const char* line : {"rounded: 0.12\n", "after: 0.123456\n",
+                           "vec_after: [0.123456, 2.5]\n"}) {
+    EXPECT_NE(params.find(line), std::string::npos) << line << params;
+  }
+}
+
+TEST_F(MPCLoggerTest, AddMetadataRejectsBuiltinKeys)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1);
+  // reserved whether or not the options log them
+  for (const char* key : {"ts", "u_max", "opt_input_cost", "x_min", "Hf"}) {
+    SCOPED_TRACE(key);
+    EXPECT_THROW(logger.addMetadata(key, 1.0), std::invalid_argument);
+  }
+  EXPECT_NO_THROW(logger.addMetadata("my_ts", 1.0));
+  logger.finalize();
+}
+
+TEST_F(MPCLoggerTest, WriteParamFileDefaultsToThePerLogName)
+{
+  ampc::MPCLogger logger(mpc_.get(), test_dir_, 0.1, 1, false, "run_a");
+  logger.writeParamFile();
+  logger.writeParamFile("custom.yaml");
+  EXPECT_TRUE(fs::exists(test_dir_ / "run_a_params.yaml"));
+  EXPECT_TRUE(fs::exists(test_dir_ / "custom.yaml"));
+  logger.finalize();
 }
 
 TEST_F(MPCLoggerTest, NpyModeWritesNpyDirectory)
@@ -113,7 +190,9 @@ TEST_F(MPCLoggerTest, NpyModeWritesNpyDirectory)
   logger.finalize();
 
   EXPECT_TRUE(fs::exists(test_dir_ / "npy_log_npy" / "states.npy"));
-  EXPECT_TRUE(fs::exists(test_dir_ / "params.yaml"));
+  EXPECT_TRUE(fs::exists(test_dir_ / "npy_log_npy" / "meta.npz"));
+  EXPECT_TRUE(fs::exists(test_dir_ / "npy_log_params.yaml"));
+  EXPECT_FALSE(fs::exists(test_dir_ / "params.yaml"));
   EXPECT_FALSE(fs::exists(test_dir_ / "npy_log_raw"));
 }
 
@@ -210,7 +289,7 @@ TEST(MPCLoggerFormulationTest, givenEachFormulation_RecordsItInParams)
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
     }
-    std::ifstream file{test_dir / "params.yaml"};
+    std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
     EXPECT_NE(params.find(std::string{"formulation: "} + name + "\n"),
               std::string::npos)
@@ -219,14 +298,14 @@ TEST(MPCLoggerFormulationTest, givenEachFormulation_RecordsItInParams)
   fs::remove_all(test_dir);
 }
 
-TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsModeAndReleasedKey)
+TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsMode)
 {
   const fs::path test_dir{uniqueTempDir("mpc_logger_state_bounds")};
   const auto param{ampc::Parameterization::linearInterp(5, 2)};
-  for (const auto& [mode, name, saturate] :
-       {std::tuple{ampc::StateBoundMode::Off, "off", 0},
-        std::tuple{ampc::StateBoundMode::Hard, "hard", 1},
-        std::tuple{ampc::StateBoundMode::Soft, "soft", 1}}) {
+  for (const auto& [mode, name] :
+       {std::pair{ampc::StateBoundMode::Off, "off"},
+        std::pair{ampc::StateBoundMode::Hard, "hard"},
+        std::pair{ampc::StateBoundMode::Soft, "soft"}}) {
     SCOPED_TRACE(name);
     fs::remove_all(test_dir);
     ampc::MPC mpc{2, 1, param, ampc::Options{.state_bounds = mode}};
@@ -234,28 +313,24 @@ TEST(MPCLoggerOptionsTest, givenStateBoundMode_RecordsModeAndReleasedKey)
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
     }
-    std::ifstream file{test_dir / "params.yaml"};
+    std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
     EXPECT_NE(params.find(std::string{"opt_state_bounds: "} + name + "\n"),
               std::string::npos)
         << params;
-    EXPECT_NE(
-        params.find("opt_saturate_states: " + std::to_string(saturate) + "\n"),
-        std::string::npos)
-        << params;
-    EXPECT_EQ(params.find("opt_soft_state_bounds"), std::string::npos);
+    EXPECT_EQ(params.find("opt_saturate_states"), std::string::npos);
   }
   fs::remove_all(test_dir);
 }
 
-TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
+TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsMode)
 {
   const fs::path test_dir{uniqueTempDir("mpc_logger_input_bounds")};
   const auto param{ampc::Parameterization::bspline(5, 2, 3)};
-  for (const auto& [mode, name, saturate] :
-       {std::tuple{ampc::InputBoundMode::ControlPoints, "control_points", 0},
-        std::tuple{ampc::InputBoundMode::Exact, "exact", 1},
-        std::tuple{ampc::InputBoundMode::Refined, "refined", 0}}) {
+  for (const auto& [mode, name] :
+       {std::pair{ampc::InputBoundMode::ControlPoints, "control_points"},
+        std::pair{ampc::InputBoundMode::Exact, "exact"},
+        std::pair{ampc::InputBoundMode::Refined, "refined"}}) {
     SCOPED_TRACE(name);
     fs::remove_all(test_dir);
     ampc::MPC mpc{
@@ -265,22 +340,19 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsModeAndReleasedKey)
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
     }
-    std::ifstream file{test_dir / "params.yaml"};
+    std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
     EXPECT_NE(params.find(std::string{"opt_input_bounds: "} + name + "\n"),
               std::string::npos)
         << params;
-    EXPECT_NE(params.find("opt_saturate_input_trajectory: "
-                          + std::to_string(saturate) + "\n"),
-              std::string::npos)
-        << params;
+    EXPECT_EQ(params.find("opt_saturate_input_trajectory"), std::string::npos);
     EXPECT_NE(params.find("opt_refined_bound_interval: 3\n"), std::string::npos)
         << params;
   }
   fs::remove_all(test_dir);
 }
 
-TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsModeAndReleasedKey)
+TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsMode)
 {
   const fs::path test_dir{uniqueTempDir("mpc_logger_input_cost")};
   const auto param{ampc::Parameterization::bspline(5, 2, 3)};
@@ -295,15 +367,12 @@ TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsModeAndReleasedKey)
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
     }
-    std::ifstream file{test_dir / "params.yaml"};
+    std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
     EXPECT_NE(params.find(std::string{"opt_input_cost: "} + name + "\n"),
               std::string::npos)
         << params;
-    EXPECT_NE(params.find("opt_use_input_cost: "
-                          + std::to_string(use_input_cost) + "\n"),
-              std::string::npos)
-        << params;
+    EXPECT_EQ(params.find("opt_use_input_cost"), std::string::npos);
     EXPECT_EQ(params.find("R_diag") != std::string::npos, use_input_cost == 1)
         << params;
   }
@@ -328,7 +397,7 @@ TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsSlewRates)
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
     }
-    std::ifstream file{test_dir / "params.yaml"};
+    std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
     EXPECT_EQ(params.find("u0_slew:") != std::string::npos, enabled) << params;
     EXPECT_EQ(params.find("control_point_slew:") != std::string::npos, enabled)
