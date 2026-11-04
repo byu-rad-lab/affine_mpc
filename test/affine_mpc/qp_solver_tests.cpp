@@ -111,14 +111,14 @@ TEST(QPSolverInterfaceTester, givenInitializedSolver_ThrowsInvalidArgument)
   setupMassSpringDamper(second);
   auto solver{std::make_unique<ampc::OSQPSolver>(first.getNumQPVariables(),
                                                  first.getNumQPConstraints())};
-  const auto P{
-      MatrixXd::Identity(first.getNumQPVariables(), first.getNumQPVariables())};
-  const auto A{MatrixXd::Identity(first.getNumQPConstraints(),
-                                  first.getNumQPVariables())};
-  const VectorXd q{VectorXd::Zero(first.getNumQPVariables())};
-  const VectorXd b{VectorXd::Ones(first.getNumQPConstraints())};
-  ASSERT_TRUE(solver->initialize(P, A, q, -b, b,
-                                 ampc::OSQPSolver::getDefaultSettings()));
+  const int nv{first.getNumQPVariables()}, nc{first.getNumQPConstraints()};
+  ampc::detail::QP qp;
+  qp.P = MatrixXd::Identity(nv, nv);
+  qp.A = MatrixXd::Identity(nc, nv);
+  qp.q = VectorXd::Zero(nv);
+  qp.u = VectorXd::Ones(nc);
+  qp.l = -qp.u;
+  ASSERT_TRUE(solver->initialize(qp, ampc::QPBlockLayout{}));
   EXPECT_THROW((void)second.initializeSolver(std::move(solver)),
                std::invalid_argument);
 }

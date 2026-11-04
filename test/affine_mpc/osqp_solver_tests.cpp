@@ -13,10 +13,10 @@
 #include "osqp_solver_impl.hpp"
 #include "utils.hpp"
 
-class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver
+class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver::Impl
 {
 public:
-  OSQPSolverProtectedTester(const int n, const int m) : OSQPSolver(n, m) {}
+  OSQPSolverProtectedTester(const int n, const int m) : Impl(n, m) {}
   ~OSQPSolverProtectedTester() {}
 
   bool testInitializeP(const Eigen::Ref<const MatrixXF>& P)
@@ -564,6 +564,15 @@ affine_mpc::detail::QP setupTestQP()
 // threshold below which OSQP treats ||q||_inf as 1 in its cost scaling
 const Eigen::Vector2d setup_q{Eigen::Vector2d::Constant(2 * OSQP_MIN_SCALING)};
 
+// Solve through the QP interface and copy the solution into z
+affine_mpc::SolveStatus solveQP(affine_mpc::QPSolver& solver,
+                                Eigen::Vector2d& z)
+{
+  const affine_mpc::SolveStatus status{solver.solve()};
+  z = solver.getSolutionMap();
+  return status;
+}
+
 } // namespace
 
 TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithCostScalingFromP)
@@ -578,15 +587,15 @@ TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithCostScalingFromP)
 
   affine_mpc::OSQPSolver by_qp{n, m, settings};
   ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
-  affine_mpc::OSQPSolver small_then_q{n, m, settings};
+  affine_mpc::OSQPSolver::Impl small_then_q{n, m};
   ASSERT_TRUE(
       small_then_q.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
   ASSERT_TRUE(small_then_q.updateCostVector(qp.q));
-  affine_mpc::OSQPSolver with_q{n, m, settings};
+  affine_mpc::OSQPSolver::Impl with_q{n, m};
   ASSERT_TRUE(with_q.initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings));
 
   Eigen::Vector2d z_qp, z_small, z_q;
-  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(by_qp, z_qp), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(small_then_q.solve(z_small), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(with_q.solve(z_q), affine_mpc::SolveStatus::Success);
 
@@ -613,11 +622,12 @@ TEST(OSQPSolverProtectedTester, givenQPInterface_CostScalingDoesNotDependOnQ)
   qp.q *= 1e-3;
   affine_mpc::OSQPSolver small_q{n, m, settings};
   ASSERT_TRUE(small_q.initialize(qp, affine_mpc::QPBlockLayout{}));
-  ASSERT_TRUE(small_q.updateCostVector(q));
+  qp.q = q;
+  ASSERT_TRUE(small_q.updateCostVector(qp));
 
   Eigen::Vector2d z_large, z_small;
-  ASSERT_EQ(large_q.solve(z_large), affine_mpc::SolveStatus::Success);
-  ASSERT_EQ(small_q.solve(z_small), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(large_q, z_large), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(small_q, z_small), affine_mpc::SolveStatus::Success);
   EXPECT_EQ(large_q.getSolveInfo().iterations,
             small_q.getSolveInfo().iterations);
   EXPECT_EQ(z_large, z_small);
@@ -640,19 +650,19 @@ TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesFromP)
   qp.P = P_new;
   ASSERT_TRUE(by_qp.updateMatrices(qp, true, false));
 
-  affine_mpc::OSQPSolver fresh{n, m, settings};
+  affine_mpc::OSQPSolver::Impl fresh{n, m};
   ASSERT_TRUE(fresh.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
   ASSERT_TRUE(fresh.updateCostVector(qp.q));
 
   // the raw update keeps OSQP's behavior: it rescales with the q it holds
-  affine_mpc::OSQPSolver raw{n, m, settings};
+  affine_mpc::OSQPSolver::Impl raw{n, m};
   ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A, setup_q,
                              qp.l, qp.u, settings));
   ASSERT_TRUE(raw.updateCostVector(qp.q));
   ASSERT_TRUE(raw.updateCostMatrix(P_new));
 
   Eigen::Vector2d z_qp, z_fresh, z_raw;
-  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(by_qp, z_qp), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(fresh.solve(z_fresh), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(raw.solve(z_raw), affine_mpc::SolveStatus::Success);
   EXPECT_EQ(by_qp.getSolveInfo().iterations, fresh.getSolveInfo().iterations);
@@ -844,8 +854,8 @@ TEST(OSQPSolverProtectedTester, givenInfiniteBounds_ConvergesToUnconstrainedMin)
 
 namespace {
 
-using SparseMatrixXF = affine_mpc::OSQPSolver::SparseMatrixXF;
-using MatrixXF = affine_mpc::OSQPSolver::MatrixXF;
+using SparseMatrixXF = affine_mpc::OSQPSolver::Impl::SparseMatrixXF;
+using MatrixXF = affine_mpc::OSQPSolver::Impl::MatrixXF;
 using Mask = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>;
 
 // M's values on the entries of a mask, stored even where they are zero

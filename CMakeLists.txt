@@ -182,6 +182,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/qp_pattern_tests.cpp
     test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
+    test/affine_mpc/public_headers_tests.cpp
   )
   if(AFFINE_MPC_WITH_DAQP)
     list(APPEND TEST_SOURCES test/affine_mpc/daqp_solver_tests.cpp)
