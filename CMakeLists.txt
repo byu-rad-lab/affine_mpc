@@ -113,8 +113,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link dependencies
 target_link_libraries(${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
-  PUBLIC osqp::osqp
+  # private: no public header includes OSQP's (see extern_osqp.cmake)
+  PRIVATE ${affine_mpc_osqp_link}
 )
+# As for DAQP: an installed shared OSQP outside the default search paths is
+# not linked by consumers, so the installed library keeps the path to it
+if(AFFINE_MPC_OSQP_FOUND_PACKAGE)
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+  )
+endif()
 # Fail to compile if any Eigen code under a license other than MPL-2.0 (or a
 # compatible one) is used, so the compiled library stays as licenses/ describes
 target_compile_definitions(${PROJECT_NAME} PRIVATE EIGEN_MPL2_ONLY)
@@ -255,6 +263,12 @@ if(AFFINE_MPC_BUILD_TESTS)
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )
     endif()
+    # tests of the internal OSQP header (src/osqp_solver_impl.hpp), which need
+    # OSQP's headers, and its functions (a shared affine_mpc hides those of a
+    # fetched OSQP)
+    if(TEST_NAME MATCHES "^(osqp_solver|qp_pattern)_tests$")
+      target_link_libraries(${TEST_NAME} PRIVATE ${affine_mpc_osqp_target})
+    endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
 endif()
@@ -276,13 +290,6 @@ if(TARGET affine_mpc_osqp)
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RENAME ${affine_mpc_osqp_file}
     COMPONENT core
-  )
-  install(DIRECTORY
-      "${osqp_extern_SOURCE_DIR}/include/public/"
-      "${osqp_extern_BINARY_DIR}/include/public/"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/affine_mpc/third_party/osqp
-    COMPONENT core
-    FILES_MATCHING PATTERN "*.h"
   )
 endif()
 install(TARGETS ${affine_mpc_install_targets}
@@ -333,12 +340,14 @@ if(AFFINE_MPC_WITH_DAQP AND AFFINE_MPC_DAQP_FOUND_PACKAGE
 else()
   set(AFFINE_MPC_CONFIG_NEEDS_DAQP FALSE)
 endif()
-# A bundled OSQP is installed with this package, so only an external one is
-# looked up
-if(TARGET affine_mpc_osqp)
-  set(AFFINE_MPC_CONFIG_NEEDS_OSQP FALSE)
-else()
+# Likewise its private link to an OSQP target it did not fetch (only when a
+# parent project defines osqp::osqp: static builds otherwise fetch OSQP, and
+# install it with this package)
+if(AFFINE_MPC_OSQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
   set(AFFINE_MPC_CONFIG_NEEDS_OSQP TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_OSQP FALSE)
 endif()
 
 configure_package_config_file(
