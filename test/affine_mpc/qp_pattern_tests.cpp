@@ -461,7 +461,7 @@ TEST(QPPatternTester, givenSparseInitialNonzeros_PatternIsMaskedAndSolvesMatch)
     EXPECT_EQ(full.qpData().A_csc.nonZeros() - masked.qpData().A_csc.nonZeros(),
               T * band * out_B + (T - 1) * out_A);
     EXPECT_EQ(full.qpData().P_csc.nonZeros(), masked.qpData().P_csc.nonZeros());
-    const OSQPInt nnz_A{static_cast<OSQPInt>(masked.qpData().A_csc.nonZeros())};
+    const Index nnz_A{masked.qpData().A_csc.nonZeros()};
     for (int change{0}; change < 4; ++change) {
       SCOPED_TRACE("change " + std::to_string(change));
       setAll(masked, c, draw, &Ad_mask, &Bd_mask);

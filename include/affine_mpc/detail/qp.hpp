@@ -11,9 +11,18 @@
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
-#include <osqp.h>
 
 namespace affine_mpc::detail {
+
+/**
+ * @brief Index type of the CSC matrices of the QP (QP::SparseMatrix).
+ *
+ * `long long`, OSQP's index type in its default build (`OSQP_USE_LONG`).
+ * OSQPSolver copies the indices into OSQP's `OSQPInt` once, at
+ * initialization, so the two may differ. Not `std::int64_t`, which is `long`
+ * on some platforms, a different type.
+ */
+using QPIndex = long long;
 
 /// How the QP stores P and A, chosen by the formulation.
 enum class QPStorage
@@ -37,8 +46,8 @@ enum class QPStorage
  */
 struct QP
 {
-  /// Compressed sparse column matrix in OSQP's layout.
-  using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor, OSQPInt>;
+  /// Compressed sparse column matrix (OSQP's layout).
+  using SparseMatrix = Eigen::SparseMatrix<double, Eigen::ColMajor, QPIndex>;
 
   QPStorage storage{QPStorage::Dense};
   Eigen::MatrixXd P;  ///< dense: cost matrix (full symmetric)

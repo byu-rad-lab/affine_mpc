@@ -64,7 +64,7 @@ void allocatePattern(QP::SparseMatrix& M,
   std::fill(outer, outer + cols + 1, 0);
   for (std::size_t k{0}; k < keys.size(); ++k) {
     ++outer[keys[k] / rows + 1];
-    inner[k] = static_cast<OSQPInt>(keys[k] % rows);
+    inner[k] = static_cast<detail::QPIndex>(keys[k] % rows);
   }
   for (Index j{0}; j < cols; ++j)
     outer[j + 1] += outer[j];
