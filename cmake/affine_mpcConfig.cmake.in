@@ -3,7 +3,10 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(Eigen3 REQUIRED)
-find_dependency(osqp REQUIRED)
+# A static affine_mpc installs the OSQP it was built with as affine_mpc_osqp
+if(@AFFINE_MPC_CONFIG_NEEDS_OSQP@)
+  find_dependency(osqp REQUIRED)
+endif()
 # A static library carries its private ZLIB link to consumers
 if(@AFFINE_MPC_CONFIG_NEEDS_ZLIB@)
   find_dependency(ZLIB)
