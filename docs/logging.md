@@ -78,30 +78,24 @@ In Python, the constructor can be called with keyword arguments, which is often 
 ## Output Files
 
 The logger always stages raw payloads under `<save_name>_raw/` while logging.
+At construction it also writes `params.yaml`, `meta.npz`, and `staging_info.yaml` (the shape of one row of each payload) there, so the payloads of a run that never reaches `finalize()`, for example after a crash, can still be loaded (see [Loading Logs in Python](#loading-logs-in-python)).
 
 Final outputs by mode:
 
-- `RawRecoverable`: keep `<save_name>_raw/` with `*.bin`, `*.npyh`, `data_info.yaml`, and `params.yaml`
-- `Npy`: write `<save_name>_npy/*.npy` plus `params.yaml`
-- `NpzUncompressed`: write `<save_name>.npz` plus `params.yaml` using stored ZIP entries
-- `NpzCompressed`: write `<save_name>.npz` plus `params.yaml` using deflate compression when zlib is available
+- `RawRecoverable`: keep `<save_name>_raw/` with `*.bin`, `*.npyh`, `data_info.yaml`, `meta.npz`, and `params.yaml`
+- `Npy`: write `<save_name>_npy/` with `*.npy` and `meta.npz`, plus `<save_name>_params.yaml`
+- `NpzUncompressed`: write `<save_name>.npz` plus `<save_name>_params.yaml` using stored ZIP entries
+- `NpzCompressed`: write `<save_name>.npz` plus `<save_name>_params.yaml` using deflate compression when zlib is available
+
+The metadata is stored twice: in binary, exactly and with its types (the `meta_*` arrays of the `.npz`, or `meta.npz` in the `_npy` and `_raw` directories), and in the YAML file for reading.
+Since the YAML file is named after `save_name`, several logs can share a `save_dir`.
 
 `RawRecoverable` is the safest mode for crash recovery and C++-side loading.
-Its `data_info.yaml` file is written last and acts as the completion marker for a finalized raw log.
+Its `data_info.yaml` file is written last and acts as the completion marker for a finalized raw log; finalizing also removes `staging_info.yaml`, since the `.npyh` headers then hold the full shapes.
 
 Large logs may exceed the current ZIP32 limits of the built-in NPZ writer.
-In that case, the logger removes the partial archive file and writes a fallback directory `<save_name>_npy/` containing standalone NPY files, plus the usual metadata YAML file.
-The fallback arrays can be loaded directly in Python:
-
-```python
-import numpy as np
-
-states = np.load("my_log_npy/states.npy")
-inputs = np.load("my_log_npy/inputs.npy")
-t = np.load("my_log_npy/time.npy")
-```
-
-If needed, these arrays can be repackaged into a custom archive from Python afterward.
+In that case, the logger removes the partial archive file and writes a fallback directory `<save_name>_npy/` containing standalone NPY files, with `meta.npz`, plus the usual metadata YAML file.
+`load_log()` reads the fallback directory like any other log.
 
 ## Lifetime Model
 
@@ -122,7 +116,7 @@ Common arrays in the `.npy` or `.npz` outputs include:
 - `qp_solve_time`: `(N,)` time the QP solver spent solving (`SolveInfo.qp_solve_time`; for OSQP, zero if it is built without profiling)
 - `prepare_time`: `(N,)` total time of the `prepare()` calls before each solve (`SolveInfo.prepare_time`, zero when `prepare()` is not used)
 - `loop_time`: `(N,)` optional user-measured time passed to `logStep()`, e.g. of the whole control loop on hardware (`-1` when not provided)
-- `meta_*`: metadata arrays copied into the NPZ container
+- `meta_*`: the metadata, with ints, doubles, and strings as 0-d arrays (read them with `.item()`) and vectors as 1-d float64 arrays; `meta.npz` holds the same arrays for the `.npy` and raw outputs
 
 The logged `states` start at the current state `x0` passed to `logStep()` (prediction step $k = 0$), followed by the predicted states.
 This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
@@ -146,7 +140,7 @@ The logger records configuration metadata such as:
 - formulation (`formulation`: `condensed` or `sparse`)
 - parameterization type (`bspline` or `custom`)
 - B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
-- enabled options (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`), the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`); `opt_saturate_input_trajectory` (1 for `exact`), `opt_saturate_states` (1 unless `off`), and `opt_use_input_cost` (1 unless `off`) are kept for readers of earlier logs
+- the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`)
 - limits
 - slew rates (`u0_slew`, `control_point_slew`)
 - weights
@@ -155,7 +149,11 @@ The logger records configuration metadata such as:
 - prediction stride
 - logging mode
 
-You can also append custom metadata:
+The YAML file (`<save_name>_params.yaml`, or `params.yaml` inside `<save_name>_raw/`) holds every entry, one `key: value` per line.
+It is meant for reading, so doubles have 6 significant digits unless `addMetadata()` is given a precision, while the binary metadata keeps the exact values.
+Strings are written as is, unless they could be read as a number or a vector, or YAML would change them; those are double-quoted with JSON escapes.
+
+You can also append custom metadata, under any key the logger does not write itself (`addMetadata()` throws `std::invalid_argument`, `ValueError` in Python, for those, such as `ts` or `u_max`, whether or not the options log them):
 
 ```python
 logger.addMetadata("example_name", "mass_spring_damper")
@@ -167,17 +165,55 @@ or in C++:
 logger.addMetadata("example_name", std::string{"mass_spring_damper"});
 ```
 
-## Python Loading Example
+## Loading Logs in Python
+
+`load_log()` reads a log written in any mode, by either interface, and returns an `MPCLog`.
+It is the supported way to read logs: the data arrays keep their names and shapes, but the metadata layout can change between releases (recorded as `log_format_version`).
 
 ```python
-import numpy as np
+import affine_mpc as ampc
 
-data = np.load("/tmp/ampc_example/log.npz")
-time = data["time"]
-states = data["states"]
+log = ampc.load_log("/tmp/ampc_example")  # the logger's save_dir
+
+# per-step data, as stored
+log.time        # (N,)
+log.states      # (N, K, n), or (N, n) with prediction_stride 0
+log.inputs      # (N, K, m), (N, m), or (N, nc, m) with log_control_points
+
+# the same data in fixed shapes
+log.x           # (N, n) state passed to logStep() at each step
+log.x_pred      # (N, K, n) logged states, with K = 1 for prediction_stride 0
+log.pred_times  # (N, K) time of each logged prediction sample
+
+# what the logger recorded about itself and the MPC
+log.ts, log.t_pred, log.state_dim, log.u_max
+log.formulation            # ampc.Formulation.Condensed
+log.options.input_cost     # ampc.InputCostMode.ControlPoints
+log.R_diag                 # None without an input cost
+
+# metadata added with addMetadata()
+log.meta["example_name"]
 ```
 
-The helper script `examples/plot_sim.py` loads the `.npz` file written by the default `NpzCompressed` mode and reads the metadata from its `meta_*` arrays.
+Given `save_dir`, it reads `<save_name>.npz`, `<save_name>_npy/`, or `<save_name>_raw/`, whichever exists (pass `name=` for a `save_name` other than `log`); it raises `ValueError` if more than one does, and you can pass the artifact itself instead.
+The array fields (`time`, `loop_time`, `mpc_solve_time`, `qp_solve_time`, `prepare_time`, `states`, `ref_states`, `inputs`, `ref_inputs`) have the names and shapes listed above, with `ref_inputs` set to `None` without an input cost.
+
+Every built-in metadata value is an attribute of the same name, read exactly from the binary metadata:
+
+- the logger settings `ts`, `t_pred`, `prediction_stride`, `log_control_points`, and `logging_mode` (an `MPCLogger.Mode`)
+- the dimensions, `formulation` (a `Formulation`), and `parameterization_type` (a `Parameterization.Type`), with `spline_degree` and `knots` for a B-spline or `basis`, reshaped to `(horizon_steps, num_control_points)`, for a custom basis
+- `options`, an `Options` rebuilt from the `opt_*` values and `bounded_states`
+- the limits, weights, slew rates, soft-bound penalties, and constraints, with the constraint matrices reshaped to one row per constraint; those that depend on an option, such as `R_diag` or `Hx`, are `None` when the option leaves them out
+
+`meta` holds only the metadata added with `addMetadata()`: keys have no `meta_` prefix, scalars are Python `int`, `float`, or `str`, and vectors are float64 arrays.
+`load_log()` reads the `log_format_version` of this affine_mpc only and raises `ValueError` for others, including logs from earlier releases, which have none; read those with `numpy.load()`.
+`mmap=True` memory-maps `.npy` and raw payloads instead of reading them, which helps with logs too large for memory.
+
+A `<save_name>_raw/` directory without `data_info.yaml` is the staged payload of a logger that was never finalized.
+`load_log()` reads it with `finalized` set to `False`, takes the number of steps from the payload file sizes, and drops a partly written last step.
+Its metadata is what the logger knew at construction (its `meta.npz`), so entries added later with `addMetadata()` are missing.
+
+The helper script `examples/plot_sim.py` and the quadrotor example load their logs this way.
 
 ## Striding Behavior
 
@@ -206,4 +242,4 @@ When `log_control_points` is `true`, the logger stores parameterized control poi
 - Use `prediction_stride > 1` for long simulations if file size becomes large
 - Use `RawRecoverable` for the strongest crash-recovery guarantees
 - Use `NpzUncompressed` when faster finalization matters more than archive size
-- Use the plotting scripts in `examples/` as reference consumers of the logged format
+- Use `load_log()` rather than reading the files directly; it handles the shape rules and metadata types, and keeps reading older logs when the layout changes

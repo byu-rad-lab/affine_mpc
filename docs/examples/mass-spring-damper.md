@@ -13,7 +13,7 @@ The same problem is implemented in both C++ and Python, so you can learn one wor
 The log file is saved to the same location, so running `plot_sim.py` works after running either the C++ or Python versions of the sim.
 
 The C++ version of `affine_mpc` does not come with plotting capabilities.
-It is designed to log `.npz` files that can be loaded in Python with `numpy.load()`.
+It is designed to log `.npz` files that can be loaded in Python with `affine_mpc.load_log()`.
 Since Python can natively plot the logged results, the only difference between the two sim versions is that `sim.py` can also plot the results (`python examples/sim.py --plot`, or `affine-mpc-example-msd --plot` when installed with `pip`).
 
 ## What the Example Demonstrates
@@ -53,7 +53,7 @@ The example writes output into the system temp directory under `ampc_example`, r
 The two outputs are:
 
 - `log.npz`
-- `params.yaml`
+- `log_params.yaml`
 
 The controller tracks a constant position target for the mass-spring-damper system.
 The logger records both the realized trajectory and selected predictions.

@@ -293,7 +293,7 @@ def run_dir(log_dir, rate, strategy, delay_scale):
 
 def simulate(strategy, rate, duration, delay_scale, seed, save_dir, progress=None):
     """Closed-loop run of one strategy at one rate, logged with MPCLogger to
-    save_dir/log.npz and save_dir/params.yaml.
+    save_dir/log.npz and save_dir/log_params.yaml.
 
     With delay_scale > 0, each new input reaches the plant delay_scale times
     its measured latency after the measurement (at most one sample later), and
@@ -386,21 +386,18 @@ def simulate(strategy, rate, duration, delay_scale, seed, save_dir, progress=Non
 def load_run(save_dir):
     """Read one run's log; the position error is computed against the
     reference at each logged time."""
-    path = save_dir / "log.npz"
-    if not path.exists():
-        raise FileNotFoundError(path)
-    with np.load(path) as data:
-        run = {
-            key: data[f"meta_{key}"].item()
-            for key in ("strategy_index", "rate", "duration", "seed", "delay_scale")
-        }
-        run["failed_solves"] = data["meta_failed_solves"].item()
-        run["within_sparsity_pattern"] = bool(data["meta_within_sparsity_pattern"])
-        run["time"] = data["time"]
-        run["pos"] = data["states"][:, 0:3]
-        run["latency"] = data["loop_time"]
-        run["mpc_solve"] = data["mpc_solve_time"]
-        run["prepare"] = data["prepare_time"]
+    log = ampc.load_log(save_dir / "log.npz")
+    run = {
+        key: log.meta[key]
+        for key in ("strategy_index", "rate", "duration", "seed", "delay_scale")
+    }
+    run["failed_solves"] = log.meta["failed_solves"]
+    run["within_sparsity_pattern"] = bool(log.meta["within_sparsity_pattern"])
+    run["time"] = log.time
+    run["pos"] = log.x[:, 0:3]
+    run["latency"] = log.loop_time
+    run["mpc_solve"] = log.mpc_solve_time
+    run["prepare"] = log.prepare_time
     run["strategy"] = STRATEGIES[run["strategy_index"]]
     run["pos_ref"] = reference(run["time"])[0][:, 0:3]
     run["pos_err"] = np.linalg.norm(run["pos"] - run["pos_ref"], axis=1)

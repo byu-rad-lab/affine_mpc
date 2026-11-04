@@ -30,6 +30,7 @@ from ._bindings import (
     MPC,
     MPCLogger,
 )
+from .log import MPCLog, load_log
 
 __all__ = [
     "Options",
@@ -49,4 +50,6 @@ __all__ = [
     "Formulation",
     "MPC",
     "MPCLogger",
+    "MPCLog",
+    "load_log",
 ]
