@@ -151,7 +151,7 @@ def test_mpc_logger_control_points_mode():
 
         with np.load(npz_path, allow_pickle=False) as data:
             np.testing.assert_equal(data["states"].shape[1], 6)
-            np.testing.assert_equal(data["inputs"].shape[1], int(data["meta_num_control_points"][0]))
+            np.testing.assert_equal(data["inputs"].shape[1], data["meta_num_control_points"].item())
 
 
 def test_mpc_logger_zero_stride_squeezes_arrays():

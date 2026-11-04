@@ -43,6 +43,10 @@ def test_npz_writer_basic_roundtrip():
                 "int64_data",
                 "scalar_double",
                 "scalar_int",
+                "string_ascii",
+                "string_empty",
+                "string_utf8",
+                "string_invalid",
             }
 
             np.testing.assert_equal(data["float_data"].shape, (3,))
@@ -64,13 +68,24 @@ def test_npz_writer_basic_roundtrip():
             np.testing.assert_equal(data["int64_data"].dtype, np.dtype(np.int64))
             np.testing.assert_array_equal(data["int64_data"], np.array([9, 8, 7], dtype=np.int64))
 
-            np.testing.assert_equal(data["scalar_double"].shape, (1,))
+            np.testing.assert_equal(data["scalar_double"].shape, ())
             np.testing.assert_equal(data["scalar_double"].dtype, np.dtype(np.float64))
-            np.testing.assert_allclose(data["scalar_double"], np.array([4.5], dtype=np.float64))
+            assert data["scalar_double"].item() == 4.5
 
-            np.testing.assert_equal(data["scalar_int"].shape, (1,))
+            np.testing.assert_equal(data["scalar_int"].shape, ())
             np.testing.assert_equal(data["scalar_int"].dtype, np.dtype(np.int32))
-            np.testing.assert_array_equal(data["scalar_int"], np.array([6], dtype=np.int32))
+            assert data["scalar_int"].item() == 6
+
+            expected_strings = {
+                "string_ascii": "condensed",
+                "string_empty": "",
+                "string_utf8": "\u00b5 \u2713 \U0001d465",
+                "string_invalid": "a\ufffdb\ufffd\ufffd",
+            }
+            for key, expected in expected_strings.items():
+                assert data[key].shape == (), key
+                assert data[key].dtype.kind == "U", key
+                assert data[key].item() == expected, key
 
 
 def test_npz_writer_compression_mode():

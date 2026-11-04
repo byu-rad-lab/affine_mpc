@@ -36,6 +36,12 @@ int main(int argc, char** argv)
       writer.addArray("int64_data", int64_data.data(), {3});
       writer.addScalar("scalar_double", 4.5);
       writer.addScalar("scalar_int", static_cast<std::int32_t>(6));
+      writer.addString("string_ascii", "condensed");
+      writer.addString("string_empty", "");
+      // 2-, 3-, and 4-byte UTF-8 sequences
+      writer.addString("string_utf8", "\u00b5 \u2713 \U0001d465");
+      // a stray continuation byte and a truncated sequence become U+FFFD
+      writer.addString("string_invalid", "a\x80" "b\xe2\x9c");
       writer.finalize();
     } else if (case_name == "npz_empty") {
       ampc::NpzWriter writer(output_path);

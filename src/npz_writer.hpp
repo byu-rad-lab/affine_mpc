@@ -51,6 +51,8 @@ public:
   void addScalar(const std::string& name, double value);
   void addScalar(const std::string& name, std::int32_t value);
   void addScalar(const std::string& name, std::int64_t value);
+  /// Adds a 0-d NumPy string array ('<U'); invalid UTF-8 becomes U+FFFD.
+  void addString(const std::string& name, const std::string& value);
 
   void finalize();
 
@@ -61,6 +63,8 @@ private:
   void addArrayImpl(const std::string& name,
                     const T* data,
                     const std::vector<size_t>& shape);
+  void addNpyBytes(const std::string& name,
+                   const std::vector<std::uint8_t>& npy_bytes);
   std::unique_ptr<Impl> impl_;
 };
 
