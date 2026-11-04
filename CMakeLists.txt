@@ -249,7 +249,7 @@ if(AFFINE_MPC_BUILD_TESTS)
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
     # tests of internal headers (src/)
-    if(TEST_NAME MATCHES "^(npz_writer|mpc|condensed_mpc|general_constraints|qp_pattern|model_sparsity)_tests$")
+    if(TEST_NAME MATCHES "^(npz_writer|mpc|condensed_mpc|general_constraints|qp_pattern|model_sparsity|osqp_solver)_tests$")
       target_include_directories(${TEST_NAME}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )

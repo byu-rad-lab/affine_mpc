@@ -198,7 +198,7 @@ def test_reset_warm_start_repeats_solve_from_zero(formulation):
     mpc.setReferenceState(np.array([1.0, 0.0]))
 
     settings = ampc.OSQPSettings()
-    settings.adaptive_rho = False  # deterministic iteration counts
+    settings.adaptive_rho = ampc.OSQPSettings.AdaptiveRhoType.Disabled  # deterministic iteration counts
     settings.check_termination = 1
     assert mpc.initializeSolver(settings)
 

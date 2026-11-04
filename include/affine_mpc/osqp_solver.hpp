@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "affine_mpc/detail/qp.hpp"
+#include "affine_mpc/osqp_settings.hpp"
 #include "affine_mpc/qp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
 
@@ -398,14 +399,6 @@ protected:          // Not private for unit tests
   /// copy (P_x_ and A_x_ then hold the values of initialize() only).
   bool P_direct_{false}, A_direct_{false};
 };
-
-/**
- * @brief Stream a detailed multiline summary of OSQP solver settings.
- * @param os Output stream.
- * @param settings OSQP settings to print.
- * @return Reference to the output stream.
- */
-std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings);
 
 } // namespace affine_mpc
 

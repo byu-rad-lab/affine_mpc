@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "affine_mpc/solve_status.hpp"
+#include "osqp_solver_impl.hpp"
 
 namespace affine_mpc {
 
@@ -43,6 +44,66 @@ SolveStatus osqpStatusToSolveStatus(const OSQPInt osqp_status)
 
 } // namespace
 
+// The enum values are OSQP's, so the conversion is a cast
+static_assert(static_cast<int>(OSQPSettings::LinsysSolverType::UnknownSolver)
+              == OSQP_UNKNOWN_SOLVER);
+static_assert(static_cast<int>(OSQPSettings::LinsysSolverType::DirectSolver)
+              == OSQP_DIRECT_SOLVER);
+static_assert(static_cast<int>(OSQPSettings::LinsysSolverType::IndirectSolver)
+              == OSQP_INDIRECT_SOLVER);
+static_assert(
+    static_cast<int>(OSQPSettings::PreconditionerType::NoPreconditioner)
+    == OSQP_NO_PRECONDITIONER);
+static_assert(
+    static_cast<int>(OSQPSettings::PreconditionerType::DiagonalPreconditioner)
+    == OSQP_DIAGONAL_PRECONDITIONER);
+static_assert(static_cast<int>(OSQPSettings::AdaptiveRhoType::Disabled)
+              == OSQP_ADAPTIVE_RHO_UPDATE_DISABLED);
+static_assert(static_cast<int>(OSQPSettings::AdaptiveRhoType::Iterations)
+              == OSQP_ADAPTIVE_RHO_UPDATE_ITERATIONS);
+static_assert(static_cast<int>(OSQPSettings::AdaptiveRhoType::Time)
+              == OSQP_ADAPTIVE_RHO_UPDATE_TIME);
+static_assert(static_cast<int>(OSQPSettings::AdaptiveRhoType::KKTError)
+              == OSQP_ADAPTIVE_RHO_UPDATE_KKT_ERROR);
+
+::OSQPSettings toOSQP(const OSQPSettings& settings) noexcept
+{
+  ::OSQPSettings s;
+  s.device = settings.device;
+  s.linsys_solver =
+      static_cast<osqp_linsys_solver_type>(settings.linsys_solver);
+  s.allocate_solution = settings.allocate_solution;
+  s.verbose = settings.verbose;
+  s.profiler_level = settings.profiler_level;
+  s.warm_starting = settings.warm_starting;
+  s.scaling = settings.scaling;
+  s.polishing = settings.polishing;
+  s.rho = settings.rho;
+  s.rho_is_vec = settings.rho_is_vec;
+  s.sigma = settings.sigma;
+  s.alpha = settings.alpha;
+  s.cg_max_iter = settings.cg_max_iter;
+  s.cg_tol_reduction = settings.cg_tol_reduction;
+  s.cg_tol_fraction = settings.cg_tol_fraction;
+  s.cg_precond = static_cast<osqp_precond_type>(settings.cg_precond);
+  s.adaptive_rho = static_cast<OSQPInt>(settings.adaptive_rho);
+  s.adaptive_rho_interval = settings.adaptive_rho_interval;
+  s.adaptive_rho_fraction = settings.adaptive_rho_fraction;
+  s.adaptive_rho_tolerance = settings.adaptive_rho_tolerance;
+  s.max_iter = settings.max_iter;
+  s.eps_abs = settings.eps_abs;
+  s.eps_rel = settings.eps_rel;
+  s.eps_prim_inf = settings.eps_prim_inf;
+  s.eps_dual_inf = settings.eps_dual_inf;
+  s.scaled_termination = settings.scaled_termination;
+  s.check_termination = settings.check_termination;
+  s.check_dualgap = settings.check_dualgap;
+  s.time_limit = settings.time_limit;
+  s.delta = settings.delta;
+  s.polish_refine_iter = settings.polish_refine_iter;
+  return s;
+}
+
 OSQPSolver::OSQPSolver(int num_variables, int num_constraints) :
     OSQPSolver(num_variables, num_constraints, getRecommendedSettings())
 {}
@@ -74,19 +135,13 @@ OSQPSolver::OSQPSolver(int num_variables,
   assert(num_variables > 0 && num_constraints > 0);
 }
 
-OSQPSettings OSQPSolver::getDefaultSettings() noexcept
-{
-  OSQPSettings settings;
-  osqp_set_default_settings(&settings);
-  return settings;
-}
+OSQPSettings OSQPSolver::getDefaultSettings() noexcept { return {}; }
 
 OSQPSettings
 OSQPSolver::getRecommendedSettings(bool polish_near_boundaries) noexcept
 {
   OSQPSettings settings;
-  osqp_set_default_settings(&settings);
-  settings.warm_starting = true; // default is false
+  settings.warm_starting = true; // OSQP's default too
 
   // Over-relaxation parameter.
   //   - alpha = 1.0 -> standard ADMM
@@ -110,7 +165,7 @@ OSQPSolver::getRecommendedSettings(bool polish_near_boundaries) noexcept
   // constraints. This can be helpful for MPC when the solution saturates inputs
   // or states, but it does add some extra solve time.
   if (polish_near_boundaries)
-    settings.polishing = 1;
+    settings.polishing = true;
   return settings;
 }
 
@@ -211,11 +266,16 @@ bool OSQPSolver::setup(const Eigen::Ref<const VectorXF>& q,
                        const Eigen::Ref<const VectorXF>& u,
                        const OSQPSettings& settings)
 {
+  // the solution is read from the buffers OSQP allocates
+  if (!settings.allocate_solution)
+    return false;
   clampBounds(l, u);
 
+  const ::OSQPSettings osqp_settings{toOSQP(settings)};
   ::OSQPSolver* raw_solver = nullptr;
   OSQPInt exitflag{osqp_setup(&raw_solver, P_.get(), q.data(), A_.get(),
-                              l_buf_.data(), u_buf_.data(), m_, n_, &settings)};
+                              l_buf_.data(), u_buf_.data(), m_, n_,
+                              &osqp_settings)};
   solver_.reset(raw_solver);
   if (exitflag == 0)
     initialized_ = true;
@@ -675,36 +735,51 @@ std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings)
   const auto flags{os.flags()};
   os << std::boolalpha;
 
-  auto linsysSolverStr = [](const osqp_linsys_solver_type solver) {
+  using Linsys = OSQPSettings::LinsysSolverType;
+  auto linsysSolverStr = [](const Linsys solver) {
     switch (solver) {
-    case OSQP_DIRECT_SOLVER:
+    case Linsys::DirectSolver:
       return "DirectSolver";
-    case OSQP_INDIRECT_SOLVER:
+    case Linsys::IndirectSolver:
       return "IndirectSolver";
     default:
       return "UnknownSolver";
     }
   };
-  auto precondStr = [](const osqp_precond_type precond) {
+  auto precondStr = [](const OSQPSettings::PreconditionerType precond) {
     switch (precond) {
-    case OSQP_NO_PRECONDITIONER:
+    case OSQPSettings::PreconditionerType::NoPreconditioner:
       return "NoPreconditioner";
     default:
       return "DiagonalPreconditioner";
     }
   };
+  using AdaptiveRho = OSQPSettings::AdaptiveRhoType;
+  auto adaptiveRhoStr = [](const AdaptiveRho type) {
+    switch (type) {
+    case AdaptiveRho::Disabled:
+      return "Disabled";
+    case AdaptiveRho::Time:
+      return "Time";
+    case AdaptiveRho::KKTError:
+      return "KKTError";
+    default:
+      return "Iterations";
+    }
+  };
 
   os << "OSQP Solver Settings:\n"
-     << "  adaptive_rho = " << bool(settings.adaptive_rho) << "\n"
+     << "  adaptive_rho = " << adaptiveRhoStr(settings.adaptive_rho) << "\n"
      << "  adaptive_rho_fraction = " << settings.adaptive_rho_fraction << "\n"
      << "  adaptive_rho_interval = " << settings.adaptive_rho_interval << "\n"
      << "  adaptive_rho_tolerance = " << settings.adaptive_rho_tolerance << "\n"
+     << "  allocate_solution = " << settings.allocate_solution << "\n"
      << "  alpha = " << settings.alpha << "\n"
      << "  cg_max_iter = " << settings.cg_max_iter << "\n"
      << "  cg_precond = " << precondStr(settings.cg_precond) << "\n"
      << "  cg_tol_fraction = " << settings.cg_tol_fraction << "\n"
      << "  cg_tol_reduction = " << settings.cg_tol_reduction << "\n"
-     << "  check_dualgap = " << bool(settings.check_dualgap) << "\n"
+     << "  check_dualgap = " << settings.check_dualgap << "\n"
      << "  check_termination = " << settings.check_termination << "\n"
      << "  delta = " << settings.delta << "\n"
      << "  device = " << settings.device << "\n"
@@ -714,17 +789,17 @@ std::ostream& operator<<(std::ostream& os, const OSQPSettings& settings)
      << "  eps_rel = " << settings.eps_rel << "\n"
      << "  linsys_solver = " << linsysSolverStr(settings.linsys_solver) << "\n"
      << "  max_iter = " << settings.max_iter << "\n"
-     << "  polishing = " << bool(settings.polishing) << "\n"
+     << "  polishing = " << settings.polishing << "\n"
      << "  polish_refine_iter = " << settings.polish_refine_iter << "\n"
      << "  profiler_level = " << settings.profiler_level << "\n"
      << "  rho = " << settings.rho << "\n"
-     << "  rho_is_vec = " << bool(settings.rho_is_vec) << "\n"
-     << "  scaled_termination = " << bool(settings.scaled_termination) << "\n"
+     << "  rho_is_vec = " << settings.rho_is_vec << "\n"
+     << "  scaled_termination = " << settings.scaled_termination << "\n"
      << "  scaling = " << settings.scaling << "\n"
      << "  sigma = " << settings.sigma << "\n"
      << "  time_limit = " << settings.time_limit << "\n"
-     << "  verbose = " << bool(settings.verbose) << "\n"
-     << "  warm_starting = " << bool(settings.warm_starting);
+     << "  verbose = " << settings.verbose << "\n"
+     << "  warm_starting = " << settings.warm_starting;
   os.flags(flags);
   return os;
 }

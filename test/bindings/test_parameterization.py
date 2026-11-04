@@ -180,7 +180,7 @@ def _custom_basis_mpc(formulation, param, opts):
     mpc.setWeights(np.array([1.0, 0.1]), np.array([1e-3]))
     mpc.setReferenceState(np.array([1.0, 0.0]))
     settings = ampc.OSQPSettings()
-    settings.polishing = 1
+    settings.polishing = True
     settings.max_iter = 20000
     assert mpc.initializeSolver(settings)
     return mpc

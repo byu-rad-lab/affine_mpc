@@ -233,7 +233,7 @@ Args:
            py::arg("formulation") = ampc::Formulation::Condensed);
 
   base.def("initializeSolver",
-           static_cast<bool (ampc::MPC::*)(const OSQPSettings&,
+           static_cast<bool (ampc::MPC::*)(const ampc::OSQPSettings&,
                                            ampc::ModelSparsity)>(
                &ampc::MPC::initializeSolver),
            R"doc(

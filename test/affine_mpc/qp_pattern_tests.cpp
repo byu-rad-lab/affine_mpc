@@ -368,7 +368,7 @@ TEST(QPPatternTester, givenSparseMPC_CscPatternIsTheDeclaredEntries)
 // initialized with the same values
 TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
 {
-  const OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  const ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   int initialized{0}, compared{0};
   for (unsigned seed{0}; seed < 200; ++seed) {
     Draw draw{seed};

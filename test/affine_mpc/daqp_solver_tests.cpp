@@ -56,9 +56,9 @@ void configure(ampc::MPC& mpc, const ampc::Options& opts)
                                VectorXd::Constant(1, 0.95));
 }
 
-OSQPSettings referenceSettings()
+ampc::OSQPSettings referenceSettings()
 {
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-10;
   settings.max_iter = 1000000;
   settings.warm_starting = false;

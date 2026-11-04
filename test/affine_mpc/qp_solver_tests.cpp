@@ -63,7 +63,7 @@ TEST_P(QPSolverInterfaceTester,
   setupMassSpringDamper(by_settings);
   setupMassSpringDamper(by_object);
 
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-7;
   ASSERT_TRUE(by_settings.initializeSolver(settings));
   ASSERT_TRUE(by_object.initializeSolver(std::make_unique<ampc::OSQPSolver>(
@@ -151,7 +151,7 @@ TEST_P(QPSolverInterfaceTester, givenSolve_DualSolutionAndResidualsMatchTheQP)
   const auto param{ampc::Parameterization::linearInterp(10, 3)};
   ampc::MPC mpc{2, 1, param, msd_opts, GetParam()};
   setupMassSpringDamper(mpc);
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-9;
   auto solver{std::make_unique<ampc::OSQPSolver>(
       mpc.getNumQPVariables(), mpc.getNumQPConstraints(), settings)};
@@ -223,7 +223,7 @@ TEST(QPSolverInterfaceTester, givenDAQPSettings_UsesDAQPWhenBuiltWithIt)
                std::invalid_argument);
 
   ASSERT_TRUE(daqp.initializeSolver(ampc::DAQPSettings{}));
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-10;
   settings.max_iter = 100000;
   ASSERT_TRUE(ref.initializeSolver(settings));

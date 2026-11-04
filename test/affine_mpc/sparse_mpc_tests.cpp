@@ -526,7 +526,8 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
   mpc.setReferenceInput(u_goal);
   mpc.setSlewRate(ctrls_slew);
 
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings(true)};
   ASSERT_TRUE(mpc.initializeSolver(settings));
 
   Vector2d x0{0.0, 0.0};

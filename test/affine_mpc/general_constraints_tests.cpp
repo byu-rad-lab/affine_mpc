@@ -51,9 +51,9 @@ void configure(ampc::MPC& mpc, double u_limit = 3.0)
 }
 
 // Polishing makes the solutions of equivalent QPs agree to round-off
-OSQPSettings polishedSettings()
+ampc::OSQPSettings polishedSettings()
 {
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   settings.polishing = true;
   settings.max_iter = 20000;
   return settings;

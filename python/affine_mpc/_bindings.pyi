@@ -685,10 +685,17 @@ class OSQPSettings:
     convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
 
     Attributes:
-        adaptive_rho: Enable adaptive ADMM step size.
-        adaptive_rho_fraction: Fraction of primal and dual residuals to trigger rho update.
-        adaptive_rho_interval: Minimum number of iterations between rho updates.
-        adaptive_rho_tolerance: Absolute residual tolerance for adaptive rho updates.
+        adaptive_rho: When rho is adapted (AdaptiveRhoType): Disabled, every
+            adaptive_rho_interval iterations (Iterations), after a fraction of
+            the setup time (Time, needs OSQP built with profiling), or when the
+            KKT error has decreased to adaptive_rho_fraction of its value at the
+            last adaptation (KKTError).
+        adaptive_rho_fraction: Fraction of the setup time (Time) or of the KKT
+            error at the last adaptation (KKTError) at which rho is adapted.
+        adaptive_rho_interval: Iterations between rho adaptations (Iterations);
+            zero chooses it from check_termination.
+        adaptive_rho_tolerance: Minimum ratio between a new rho and the current
+            one to change it.
         alpha: Relaxation parameter. Default for QP solvers is 1.6.
             =1: no relaxation (standard ADMM).
             >1: over-relaxation (can improve convergence in some cases).
@@ -748,8 +755,25 @@ class OSQPSettings:
         DiagonalPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
         NoPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
 
+    class AdaptiveRhoType(enum.Enum):
+        """
+        When OSQP adapts rho.
+        """
+
+        Disabled: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        Iterations: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        KKTError: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        Time: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+
+    adaptive_rho: OSQPSettings.AdaptiveRhoType
     cg_precond: OSQPSettings.PreconditionerType
+    check_dualgap: bool
     linsys_solver: OSQPSettings.LinsysSolverType
+    polishing: bool
+    rho_is_vec: bool
+    scaled_termination: bool
+    verbose: bool
+    warm_starting: bool
     @staticmethod
     def fromOSQPDefaults() -> OSQPSettings:
         """
@@ -763,10 +787,6 @@ class OSQPSettings:
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
-    @property
-    def adaptive_rho(self) -> int: ...
-    @adaptive_rho.setter
-    def adaptive_rho(self, arg0: int) -> None: ...
     @property
     def adaptive_rho_fraction(self) -> float: ...
     @adaptive_rho_fraction.setter
@@ -795,10 +815,6 @@ class OSQPSettings:
     def cg_tol_reduction(self) -> int: ...
     @cg_tol_reduction.setter
     def cg_tol_reduction(self, arg0: int) -> None: ...
-    @property
-    def check_dualgap(self) -> int: ...
-    @check_dualgap.setter
-    def check_dualgap(self, arg0: int) -> None: ...
     @property
     def check_termination(self) -> int: ...
     @check_termination.setter
@@ -832,10 +848,6 @@ class OSQPSettings:
     @polish_refine_iter.setter
     def polish_refine_iter(self, arg0: int) -> None: ...
     @property
-    def polishing(self) -> int: ...
-    @polishing.setter
-    def polishing(self, arg0: int) -> None: ...
-    @property
     def profiler_level(self) -> int: ...
     @profiler_level.setter
     def profiler_level(self, arg0: int) -> None: ...
@@ -843,14 +855,6 @@ class OSQPSettings:
     def rho(self) -> float: ...
     @rho.setter
     def rho(self, arg0: float) -> None: ...
-    @property
-    def rho_is_vec(self) -> int: ...
-    @rho_is_vec.setter
-    def rho_is_vec(self, arg0: int) -> None: ...
-    @property
-    def scaled_termination(self) -> int: ...
-    @scaled_termination.setter
-    def scaled_termination(self, arg0: int) -> None: ...
     @property
     def scaling(self) -> int: ...
     @scaling.setter
@@ -863,14 +867,6 @@ class OSQPSettings:
     def time_limit(self) -> float: ...
     @time_limit.setter
     def time_limit(self, arg0: float) -> None: ...
-    @property
-    def verbose(self) -> int: ...
-    @verbose.setter
-    def verbose(self, arg0: int) -> None: ...
-    @property
-    def warm_starting(self) -> int: ...
-    @warm_starting.setter
-    def warm_starting(self, arg0: int) -> None: ...
 
 class DAQPSettings:
     """

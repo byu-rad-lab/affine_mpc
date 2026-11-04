@@ -809,7 +809,7 @@ TEST(ConsistencyTester, givenModelOutsideInitValues_LeavesPatternUnlessFull)
   // initialized with that model. The two reach it along different solver
   // paths, so at the recommended tolerances their control points can differ
   // by more than 1e-4; compare them at tight tolerances.
-  OSQPSettings tight{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings tight{ampc::OSQPSolver::getRecommendedSettings()};
   tight.eps_abs = tight.eps_rel = 1e-8;
   ampc::MPC changed{n, m, param, opts, ampc::Formulation::Sparse},
       fresh{n, m, param, opts, ampc::Formulation::Sparse};
@@ -989,9 +989,9 @@ TEST(ConsistencyTester, askedToResetWarmStart_NextSolveStartsFromZero)
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints};
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   // deterministic iteration counts: fixed rho, check termination every step
-  settings.adaptive_rho = false;
+  settings.adaptive_rho = ampc::OSQPSettings::AdaptiveRhoType::Disabled;
   settings.check_termination = 1;
   const Vector2d x0{0.5, -0.2};
 
@@ -1034,9 +1034,9 @@ TEST(ConsistencyTester,
 {
   const int n{2}, m{1}, T{10}, nc{5};
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   // deterministic iteration counts: fixed rho, check termination every step
-  settings.adaptive_rho = false;
+  settings.adaptive_rho = ampc::OSQPSettings::AdaptiveRhoType::Disabled;
   settings.check_termination = 1;
   const Vector2d x0{0.5, -0.2};
   const double nan{std::numeric_limits<double>::quiet_NaN()};
