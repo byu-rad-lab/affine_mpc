@@ -141,6 +141,24 @@ GCC and Clang builds always enable `-Wall -Wextra` for the targets in this repos
 CI also sets `AFFINE_MPC_WARNINGS_AS_ERRORS=ON`, so new warnings fail the build.
 It is off by default so that other compilers or newer compiler versions do not break user and packaging builds.
 
+## Dependencies
+
+Eigen is the only public dependency: the public headers use it, and the package config looks it up.
+OSQP and DAQP are private dependencies, which no installed header includes.
+
+- `affine_mpc::OSQPSettings` (`include/affine_mpc/osqp_settings.hpp`) mirrors OSQP's settings struct, and `toOSQP()` in `src/osqp_solver.cpp` converts it.
+- Everything that uses OSQP's types is in `OSQPSolver::Impl` (`src/osqp_solver_impl.hpp`), which tests may include; the tests that do link OSQP's own target (see `CMakeLists.txt`).
+- A fetched OSQP is built static, position-independent, and with hidden symbols: a shared `affine_mpc` absorbs it, and a static one installs it as `affine_mpc_osqp` (without OSQP's headers).
+- A system OSQP (only looked up for shared builds) is linked privately.
+- `test/affine_mpc/public_headers_tests.cpp` fails to compile if a public header includes an OSQP header, and the `install-consumer` CI job builds a project against an installed `affine_mpc` without OSQP.
+
+### Updating OSQP
+
+1. Change the version in `cmake/extern_osqp.cmake` and update its row in `licenses/README.md`.
+1. Compare OSQP's `OSQPSettings` struct (`osqp_api_types.h`) with `affine_mpc::OSQPSettings`: add or remove fields in the struct, `toOSQP()`, `operator<<`, the Python binding (`python/bindings/py_osqp_settings.cpp`), and `expectSameOSQPSettings()` in `test/affine_mpc/osqp_solver_tests.cpp`.
+1. Run `OSQPSettingsTester.givenDefaultSettings_MatchOSQPDefaults`, which compares the defaults with `osqp_set_default_settings()` field by field, and update the default member initializers if OSQP's defaults changed.
+1. Run the full test suite, including a shared build with the system OSQP if one is installed.
+
 ## Stub Generation
 
 If you change the Python binding surface, regenerate `python/affine_mpc/_bindings.pyi` and commit the updated file.

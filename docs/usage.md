@@ -33,13 +33,13 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
-    - `DAQPSettings`
+    - `OSQPSettings` (`affine_mpc/osqp_settings.hpp`) and `DAQPSettings`
     - `MPC` and `Formulation` (`affine_mpc/mpc.hpp`)
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
 
-    For users wanting to modify default solver settings, `OSQPSettings` is defined in the global namespace from OSQP.
+    `affine_mpc::OSQPSettings` mirrors OSQP's own settings struct, with the same field names and OSQP's defaults, so the public headers do not include OSQP's.
 
 ## Typical Workflow
 
@@ -405,6 +405,8 @@ If input cost is enabled, input references can also be configured.
     ```
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+It has the fields of OSQP's settings (see [OSQP's documentation](https://osqp.org/docs/interfaces/solver_settings.html)).
+In Python, `OSQPSettings()` gives the recommended settings and `OSQPSettings.fromOSQPDefaults()` OSQP's defaults; in C++, `OSQPSolver::getRecommendedSettings()` gives the recommended settings and `OSQPSettings{}` (or `OSQPSolver::getDefaultSettings()`) OSQP's defaults.
 `getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
 Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached`:
 
@@ -419,7 +421,8 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
 === "C++"
 
     ```cpp
-    OSQPSettings settings = affine_mpc::OSQPSolver::getRecommendedSettings();
+    affine_mpc::OSQPSettings settings =
+        affine_mpc::OSQPSolver::getRecommendedSettings();
     settings.max_iter = 20000;
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```

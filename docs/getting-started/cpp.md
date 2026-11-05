@@ -38,7 +38,7 @@ The project targets:
 Required dependencies:
 
 - [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) 3.4+ (fetched if not on system)
-- [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system)
+- [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system; static builds always fetch it)
 
 All of these can be installed from source (see their docs), but here are installation instructions for some common operating systems:
 
@@ -149,12 +149,14 @@ This is useful if you want to reuse `affine_mpc` in multiple projects.
 
 !!! tip
 
-    If you install to your system, you should probably have OSQP and Eigen installed on your
-    system and use their shared libraries:
+    If you install to your system, you should probably build shared libraries, with Eigen installed on your system (and OSQP too, if you want `affine_mpc` to use the system's OSQP):
 
     ```sh
     cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
     ```
+
+    Projects that use the installed `affine_mpc` need Eigen, but not OSQP's headers or CMake package.
+    A static `affine_mpc` includes its own OSQP, so a program that also links another OSQP should use a shared `affine_mpc`.
 
 You can install `affine_mpc` to your system after it has been built (likely need admin privileges):
 
