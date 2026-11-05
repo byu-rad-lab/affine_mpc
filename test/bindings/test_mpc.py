@@ -612,7 +612,7 @@ def test_refined_input_bounds(formulation):
     # 4 intervals of 14.75 samples, each split into 3: 12 + degree rows
     assert rows[ampc.InputBoundMode.ControlPoints] == nc
     assert rows[ampc.InputBoundMode.Refined] == 12 + deg
-    assert rows[ampc.InputBoundMode.Exact] == T
+    assert rows[ampc.InputBoundMode.Trajectory] == T
 
 
 def test_refined_bound_interval_must_be_positive():
@@ -655,7 +655,7 @@ def test_slew_bounds_limit_every_sampled_change(formulation):
         ampc.Parameterization.fromBasis(T, basis),
     ]
     for param in params:
-        modes = [ampc.SlewBoundMode.Exact]
+        modes = [ampc.SlewBoundMode.Trajectory]
         if param.type == ampc.Parameterization.Type.BSpline:
             modes.append(ampc.SlewBoundMode.ControlPoints)
         for mode in modes:
@@ -663,7 +663,7 @@ def test_slew_bounds_limit_every_sampled_change(formulation):
             assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success
             du = np.abs(np.diff(mpc.getInputTrajectory()[:, 0]))
             assert du.max() <= slew + 1e-6
-            if mode == ampc.SlewBoundMode.Exact:
+            if mode == ampc.SlewBoundMode.Trajectory:
                 np.testing.assert_allclose(du.max(), slew, atol=1e-5)
             names = [b.name for b in mpc.getQPConstraintBlocks()]
             assert "slew_bounds" in names

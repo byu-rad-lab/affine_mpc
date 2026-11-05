@@ -73,24 +73,24 @@ enum class InputBoundMode
   /// Bound the control points (the default): one row per control point, and
   /// the sampled inputs stay inside the limits.
   ControlPoints,
-  /// Bound the sampled inputs exactly, which lets the control points leave the
-  /// limits. Degree 0: the same as ControlPoints (the control points are the
-  /// sampled inputs). Degree 1: only the samples adjacent to each knot (at
-  /// most 2*num_control_points-2 rows), which is exact. Degree > 1: every
-  /// sample (T rows per input), which can make OSQP slower on long
-  /// horizons.
-  Exact,
+  /// Bound the sampled inputs u_k (the input trajectory) exactly, which lets
+  /// the control points leave the limits. Degree 0: the same as ControlPoints
+  /// (the control points are the sampled inputs). Degree 1: only the samples
+  /// adjacent to each knot (at most 2*num_control_points-2 rows), which is
+  /// exact. Degree > 1: every sample (T rows per input), which can make OSQP
+  /// slower on long horizons.
+  Trajectory,
   /// Bound the control points of the same spline after knot insertion: every
   /// knot interval of length l is split into max(2, ceil(l / L)) equal parts,
   /// with L = Options::refined_bound_interval samples, and the refined control
   /// points that some sample depends on are bounded. By the convex hull
   /// property of the refined control points, every sampled input stays inside
   /// the limits, with less of the range lost than with ControlPoints and far
-  /// fewer rows than Exact on long horizons (about
+  /// fewer rows than Trajectory on long horizons (about
   /// max(T / L, 2 (num_control_points - degree)) + degree rows per input).
-  /// If that is not fewer than the rows of Exact (T per input), the rows of
-  /// Exact are used instead. Degree 0: the same as ControlPoints; degree 1:
-  /// the same as Exact (both are already exact and cheap).
+  /// If that is not fewer than the rows of Trajectory (T per input), the rows
+  /// of Trajectory are used instead. Degree 0: the same as ControlPoints;
+  /// degree 1: the same as Trajectory (both are already exact and cheap).
   Refined,
 };
 
@@ -118,12 +118,13 @@ enum class SlewBoundMode
   /// sampled changes stay inside the limits, but may not reach them).
   /// Requires a B-spline parameterization.
   ControlPoints,
-  /// Bound the sampled changes u_k - u_{k-1} exactly. Degree 0, and degree 1
-  /// when ControlPoints is exact: the rows of ControlPoints. Otherwise one row
-  /// per sampled change (T-1 rows per input; banded for B-splines, dense for
-  /// a custom basis), omitting changes whose basis row has a norm of at most
-  /// 1e-9 times the largest. The only mode for a custom basis.
-  Exact,
+  /// Bound the changes u_k - u_{k-1} of the input trajectory exactly. Degree 0,
+  /// and degree 1 when ControlPoints is exact: the rows of ControlPoints.
+  /// Otherwise one row per sampled change (T-1 rows per input; banded for
+  /// B-splines, dense for a custom basis), omitting changes whose basis row has
+  /// a norm of at most 1e-9 times the largest. The only mode for a custom
+  /// basis.
+  Trajectory,
 };
 
 /**
@@ -144,7 +145,7 @@ enum class SlewBoundMode
  *
  * Input constraints (the input limits are always enforced):
  * - input_bounds: Bound the control points (ControlPoints, the default), the
- *     sampled inputs (Exact), or the control points after knot insertion
+ *     sampled inputs (Trajectory), or the control points after knot insertion
  *     (Refined) (see InputBoundMode).
  * - refined_bound_interval: Longest knot interval, in samples, after the knot
  *     insertion of InputBoundMode::Refined, which splits every interval at
@@ -153,7 +154,7 @@ enum class SlewBoundMode
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_bounds: Off (the default), or slew-rate bounds
  *     |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
- *     points (ControlPoints) or the sampled inputs (Exact) (see
+ *     points (ControlPoints) or the sampled inputs (Trajectory) (see
  *     SlewBoundMode).
  *
  * State constraints:
@@ -279,7 +280,7 @@ std::ostream& operator<<(std::ostream& os, InputCostMode mode);
 /// @brief Stream the name of a state bound mode (e.g. `Hard`).
 std::ostream& operator<<(std::ostream& os, StateBoundMode mode);
 
-/// @brief Stream the name of an input bound mode (e.g. `Exact`).
+/// @brief Stream the name of an input bound mode (e.g. `Trajectory`).
 std::ostream& operator<<(std::ostream& os, InputBoundMode mode);
 
 /// @brief Stream the name of a slew bound mode (e.g. `ControlPoints`).

@@ -135,16 +135,16 @@ Case drawCase(Draw& draw)
   o.input_cost = cost_modes[draw.integer(0, 2)];
   o.use_input_rate_cost = draw.coin();
   const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
-                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Trajectory,
                                            ampc::InputBoundMode::Refined};
   o.input_bounds = input_modes[draw.integer(0, 2)];
   o.refined_bound_interval = draw.integer(1, 4);
   o.slew_initial_input = draw.coin();
-  // ControlPoints needs a B-spline; Exact works for any basis
+  // ControlPoints needs a B-spline; Trajectory works for any basis
   if (draw.coin() && c.param.num_control_points > 1)
     o.slew_bounds = c.param.type == P::Type::BSpline && draw.coin()
                         ? ampc::SlewBoundMode::ControlPoints
-                        : ampc::SlewBoundMode::Exact;
+                        : ampc::SlewBoundMode::Trajectory;
   o.state_bounds = draw.coin() ? (draw.coin() ? ampc::StateBoundMode::Soft
                                               : ampc::StateBoundMode::Hard)
                                : ampc::StateBoundMode::Off;
@@ -579,7 +579,7 @@ template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
     expected.push_back({"initial_slew", c.m});
   if (o.slew_bounds == ampc::SlewBoundMode::ControlPoints)
     expected.push_back({"slew_bounds", c.m * (c.param.num_control_points - 1)});
-  else if (o.slew_bounds == ampc::SlewBoundMode::Exact)
+  else if (o.slew_bounds == ampc::SlewBoundMode::Trajectory)
     expected.push_back({"slew_bounds", 0}); // depends on the basis
   if (o.state_bounds != ampc::StateBoundMode::Off)
     expected.push_back(

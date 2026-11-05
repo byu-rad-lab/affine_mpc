@@ -63,7 +63,7 @@ $$
         \quad \text{OR} \quad
         \underbrace{
             \bm{u}_{\min} \leq \bm{u}_k \leq \bm{u}_{\max}
-        }_{ \textcolor{red}{\text{exact input bounds}} } \\
+        }_{ \textcolor{red}{\text{trajectory input bounds}} } \\
     &\quad \underbrace{
             \bm{x}_{\min} \leq \bm{x}_k \leq \bm{x}_{\max}
         }_{ \textcolor{red}{\text{hard state bounds}} }
@@ -80,7 +80,7 @@ $$
         \quad \text{OR} \quad
         \underbrace{
             |\bm{u}_k - \bm{u}_{k-1}| \leq \bm{u}_{\mathrm{slew}}
-        }_{ \textcolor{red}{\text{exact slew bounds}} } \\
+        }_{ \textcolor{red}{\text{trajectory slew bounds}} } \\
     &\quad \underbrace{
             \bm{h}_{\min} \leq H_x \bm{x}_k + H_u \bm{u}_k \leq \bm{h}_{\max}
         }_{ \textcolor{red}{\text{general constraints}} } \\

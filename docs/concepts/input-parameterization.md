@@ -215,7 +215,7 @@ Otherwise the factory throws and suggests a ratio closer to 1 or fewer control p
 - Lower degree gives a more local and less smooth trajectory representation.
 - Higher degree gives smoother trajectories and broader basis support, but can somewhat flatten the input trajectory if
   the control points are saturated by the input limits since splines generally do not pass through control points.
-  This can be remedied by bounding the sampled inputs (`InputBoundMode::Exact`) or the refined control points (`InputBoundMode::Refined`) instead (when $p>1$, or $p=1$ with non-integer knots; see [Input Bounds](#input-bounds)).
+  This can be remedied by bounding the sampled inputs (`InputBoundMode::Trajectory`) or the refined control points (`InputBoundMode::Refined`) instead (when $p>1$, or $p=1$ with non-integer knots; see [Input Bounds](#input-bounds)).
 
 ### Knot Placement
 
@@ -238,7 +238,7 @@ Construction checks this condition exactly on the sampled basis and throws `std:
 - Repeated knots are allowed.
   Each repeat lowers the continuity of the input at that knot by one, so a double knot in a quadratic spline gives a kink and multiplicity $p+1$ gives a jump, which can be what you want (e.g., a planned step in the input).
   For example, `linearInterp(5, [0, 2, 2, 4])` is piecewise linear with a jump at $k = 2$.
-  With `InputBoundMode::Exact` and $p = 1$, the samples on both sides of a repeated knot are bounded.
+  With `InputBoundMode::Trajectory` and $p = 1$, the samples on both sides of a repeated knot are bounded.
 - A basis function that is zero at every sample is rejected.
   For example, in `bspline(10, 1, [0, 3.2, 3.21, 3.22, 9])` control point 2 is only nonzero on $(3.2, 3.22)$, a knot multiplicity above $p+1$ leaves a basis function supported on a single point, and with move blocking every block $[\tau_i, \tau_{i+1})$ must contain an integer.
 - Basis functions that are each nonzero somewhere but share too few samples are rejected too.
@@ -261,10 +261,10 @@ The input limits $\bm{u}_{\min} \le \bm{u}_k \le \bm{u}_{\max}$ are always enfor
 - `InputBoundMode::ControlPoints` (the default) bounds the control points, one row per control point.
   B-spline basis functions are non-negative and sum to one, so every sampled input is a convex combination of control points and stays inside the limits (the convex hull property).
   For $p \ge 2$, and for $p = 1$ with non-integer knots, the spline does not pass through its control points, so whenever the input changes the bound keeps the sampled inputs away from the limits and part of the input range is unusable.
-- `InputBoundMode::Exact` bounds the sampled inputs.
+- `InputBoundMode::Trajectory` bounds the sampled inputs.
   For $p = 1$ only the samples next to each knot are needed (at most $2\eta - 2$ rows per input), but for $p \ge 2$ every sample is bounded ($T$ rows per input), which can make OSQP slower and less reliable on long horizons.
 - `InputBoundMode::Refined` bounds the control points of the same spline after knot insertion, described below.
-  It uses much of the range that `ControlPoints` loses, with far fewer rows than `Exact`.
+  It uses much of the range that `ControlPoints` loses, with far fewer rows than `Trajectory`.
 
 ### Refined Bounds
 
@@ -274,16 +274,16 @@ The refined control points lie closer to the spline and converge to it as the kn
 
 `Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
 It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
-If that is not fewer than the $T$ rows of `Exact` (short horizons or a very small $L$), `Refined` uses the `Exact` rows instead, which are exact and fewer; this is decided once at construction.
-For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Exact`.
+If that is not fewer than the $T$ rows of `Trajectory` (short horizons or a very small $L$), `Refined` uses the `Trajectory` rows instead, which are exact and fewer; this is decided once at construction.
+For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Trajectory`.
 $\Omega$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
 
 A smaller $L$ bounds the sampled inputs more tightly with more rows.
-Very small values approach the row count of `Exact` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Exact`.
+Very small values approach the row count of `Trajectory` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Trajectory`.
 Because every interval is split at least once, `Refined` is tighter than `ControlPoints` even on short horizons whose knot intervals are all at most $L$ samples long.
-The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Exact`.
+The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Trajectory`.
 
-Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Exact` (the samples next to each knot).
+Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Trajectory` (the samples next to each knot).
 A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the mode (omitting samples where the basis has decayed).
 
 ## Custom Bases
@@ -321,7 +321,7 @@ A custom basis has `type` `Custom`, `degree` $-1$, and empty `knots`, and it is 
 B-spline properties that the MPC relies on do not hold, which changes three features:
 
 - **Input limits.**
-  B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Exact` is optional.
+  B-spline basis functions are non-negative and sum to one, so bounding the control points bounds every sampled input (the convex hull property), and `InputBoundMode::Trajectory` is optional.
   A custom basis has no such property, so the MPC bounds every sampled input (up to $T$ constraint rows per input channel), whatever `input_bounds` is.
   It omits the rows of samples whose basis row norm is at most $10^{-9}$ times the largest, e.g. where a Laguerre basis has decayed late in a long horizon: such a sample can only leave the limits if the coefficients exceed them by about $10^9$, and rows many orders of magnitude below the others hurt OSQP's scaling.
   This is a numerical threshold on the basis, not a constraint horizon chosen from the plant, so the feasible set is that of all $T$ samples to within that tolerance.
@@ -332,7 +332,7 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
   `InputCostMode::Trajectory` weights the sampled inputs for any basis, and accepts a constant reference (`setReferenceInput()`) or a sampled one (`setReferenceInputTrajectory()`); see [Input Cost](problem-formulation.md#input-cost).
 - **Slew rates.**
   Differences of coefficients do not bound input changes, so `SlewBoundMode::ControlPoints` throws `std::invalid_argument` (`ValueError` in Python) at construction.
-  `SlewBoundMode::Exact` bounds the sampled changes $\bm{u}_k - \bm{u}_{k-1}$ directly (up to $T-1$ dense rows per input channel, omitting changes whose basis row norm is at most $10^{-9}$ times the largest), and `slew_initial_input` still works, since it bounds the first sampled input.
+  `SlewBoundMode::Trajectory` bounds the sampled changes $\bm{u}_k - \bm{u}_{k-1}$ directly (up to $T-1$ dense rows per input channel, omitting changes whose basis row norm is at most $10^{-9}$ times the largest), and `slew_initial_input` still works, since it bounds the first sampled input.
 
 The input rate cost (`use_input_rate_cost`) and the general constraints act on the sampled inputs, so they mean the same for a custom basis as for a B-spline.
 

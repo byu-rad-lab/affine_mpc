@@ -106,7 +106,7 @@ The input limits are always enforced, and `input_bounds` chooses how.
 The default, `InputBoundMode::ControlPoints` (`InputBoundMode.ControlPoints` in Python), saturates the control points only, which saturates the entire input trajectory due to the convex hull property of B-splines.
 However, when the spline does not pass through its control points at the sample times, it becomes harder for the parameterization to utilize the full input range (it essentially becomes flattened).
 This happens for any degree higher than 1, and for degree 1 when an active knot is not an integer.
-`InputBoundMode::Exact` saturates the evaluated inputs instead, which adds more optimization constraints, but it lets the control points leave the input saturation range while the evaluated inputs remain saturated.
+`InputBoundMode::Trajectory` saturates the evaluated inputs instead, which adds more optimization constraints, but it lets the control points leave the input saturation range while the evaluated inputs remain saturated.
 `InputBoundMode::Refined` lies between the two: it saturates the control points of the same spline after knot insertion, which still saturates the entire input trajectory but stays much closer to the limits than the original control points.
 
 ![Cubic spline with the same shape scaled to fit input limits [0, 1] two ways. When the control points are saturated the sampled inputs stay well inside the limits, and when every sample is saturated the control points leave the limits while the samples reach them.](../assets/input-parameterization/degree3-saturation.svg)
@@ -115,15 +115,15 @@ Only the samples are constrained, so the continuous spline may cross a limit bet
 
 How many constraints are added depends on the degree $p$:
 
-- $p = 0$: `Exact` is the same as `ControlPoints`, since the control points are the evaluated inputs.
+- $p = 0$: `Trajectory` is the same as `ControlPoints`, since the control points are the evaluated inputs.
 - $p = 1$: the spline is linear between knots, so only the samples $\lfloor t \rfloor$ and $\lceil t \rceil$ adjacent to each active knot $t$ are constrained (duplicates removed).
   This is exactly equivalent to constraining every sample and adds at most $\min(T, 2\eta - 2)$ constraints per input.
   With integer knots it is the same as saturating the control points.
 - $p > 1$: every sample $k = 0, \dots, T-1$ is constrained.
 - A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whatever `input_bounds` is.
 
-With $p > 1$, `Exact` adds a row for every sample, so it can make OSQP slower on long horizons.
-`Refined` adds about $\max(T / L, 2(\eta - p)) + p$ rows per input instead, where $L$ is `refined_bound_interval`, the longest knot interval after the insertion (in samples), and it uses the `Exact` rows whenever those are not more; for $p \le 1$ it is the same as `Exact`, and a custom basis constrains every sample.
+With $p > 1$, `Trajectory` adds a row for every sample, so it can make OSQP slower on long horizons.
+`Refined` adds about $\max(T / L, 2(\eta - p)) + p$ rows per input instead, where $L$ is `refined_bound_interval`, the longest knot interval after the insertion (in samples), and it uses the `Trajectory` rows whenever those are not more; for $p \le 1$ it is the same as `Trajectory`, and a custom basis constrains every sample.
 See [Input Bounds](input-parameterization.md#input-bounds) for how the refined control points are built and how to choose $L$.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
@@ -209,7 +209,7 @@ This limits how much each input may change from one sample step to the next over
 The limit $\bm{u}_{\mathrm{slew}}$ (`setSlewRate()`) is in units of the input per sample step, not per second, so multiply a rate per second by the sample time.
 The change from the previous input, $\bm{u}_0 - \bm{u}_{-1}$, has its own limit (see [above](#initial-input-slew-rate-constraint)); enable both for a limit on every change.
 
-`slew_bounds` chooses whether and how the limit is enforced: `SlewBoundMode::Off` (the default), `ControlPoints`, or `Exact` (`SlewBoundMode.ControlPoints` and so on in Python).
+`slew_bounds` chooses whether and how the limit is enforced: `SlewBoundMode::Off` (the default), `ControlPoints`, or `Trajectory` (`SlewBoundMode.ControlPoints` and so on in Python).
 The limit means the same in both modes, as the input limits do with `input_bounds`.
 
 - `ControlPoints` bounds the differences of consecutive control points, one row per difference, as
@@ -227,10 +227,10 @@ The limit means the same in both modes, as the input limits do with `input_bound
     Where $p + 1$ knots coincide (a jump, e.g. a double knot for $p = 1$), $\lambda_i = 0$, which forbids the jump; fewer repeated knots (a kink for $p \geq 2$) keep $\lambda_i > 0$.
     It requires a B-spline parameterization: with a [custom basis](input-parameterization.md#custom-bases), differences of the coefficients do not bound input changes, so the MPC rejects it at construction.
 
-- `Exact` bounds every sampled change $\bm{u}_k - \bm{u}_{k-1}$, $T-1$ rows per input, banded for B-splines and dense for a custom basis.
+- `Trajectory` bounds every sampled change $\bm{u}_k - \bm{u}_{k-1}$, $T-1$ rows per input, banded for B-splines and dense for a custom basis.
   Where the `ControlPoints` rows are already exact ($p = 0$, and $p = 1$ with a whole sample step in every knot interval), it uses them instead.
   It is the only mode for a custom basis, and it omits the changes whose basis row norm is at most $10^{-9}$ times the largest.
-  As with exact input bounds, its many rows can make OSQP slower on long horizons.
+  As with `Trajectory` input bounds, its many rows can make OSQP slower on long horizons.
 
 **When you may want to use it:**
 

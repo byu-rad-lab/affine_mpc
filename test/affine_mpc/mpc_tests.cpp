@@ -1073,7 +1073,7 @@ TEST(MPCTester,
   auto test = [&](bool sat_u_traj) {
     const int n{2}, m{1}, T{4}, nc{3}, deg{0};
     const ampc::Options opts{
-        .input_bounds = sat_u_traj ? ampc::InputBoundMode::Exact
+        .input_bounds = sat_u_traj ? ampc::InputBoundMode::Trajectory
                                    : ampc::InputBoundMode::ControlPoints};
     MPCTester base{n, m, {T, deg, nc}, opts};
 
@@ -1121,7 +1121,7 @@ TEST(MPCTester,
   // uniform active knots {0, 3, 6, 9}: every knot is a sample, one row per knot
   const int n{2}, m{1}, T{10}, nc{4}, deg{1};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -1166,8 +1166,10 @@ TEST(MPCTester,
   const int n{2}, m{2}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -1194,8 +1196,10 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{7};
   knots << 0, 0, 2.3, 2.7, 3.5, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 2, 3, 4, 9};
   const MatrixXd A = base.getASatU();
@@ -1210,8 +1214,10 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 3 + 1e-12, 6 - 1e-12, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 3, 6, 9};
   const MatrixXd A = base.getASatU();
@@ -1229,7 +1235,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1RepeatedKnots_BoundsBothSides)
   VectorXd knots{8};
   knots << 0, 0, 4, 4, 6.5, 6.5, 9, 9;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 3, 4, 6, 7, 9};
   const int num_rows{static_cast<int>(samples.size())};
@@ -1257,7 +1264,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
   VectorXd knots{8};
   knots << 0, 0, 1.5, 4.2, 4.8, 11, 19, 19;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 1, 2, 4, 5, 11, 19};
   const int num_rows{static_cast<int>(samples.size())};
@@ -1296,7 +1304,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_AllowsControlPointsOutsideLimits)
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 12, 12;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{0}, u_max{1};
   base.setInputLimits(u_min, u_max);
@@ -1324,7 +1333,7 @@ TEST(MPCTester,
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -1354,7 +1363,7 @@ TEST(MPCTester,
 {
   const int n{4}, m{2}, T{10}, nc{5}, deg{2};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);

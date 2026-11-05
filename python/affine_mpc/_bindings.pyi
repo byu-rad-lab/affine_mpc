@@ -68,8 +68,8 @@ class InputBoundMode(enum.Enum):
     """
 
     ControlPoints: typing.ClassVar[InputBoundMode]
-    Exact: typing.ClassVar[InputBoundMode]
     Refined: typing.ClassVar[InputBoundMode]
+    Trajectory: typing.ClassVar[InputBoundMode]
 
 class SlewBoundMode(enum.Enum):
     """
@@ -83,8 +83,8 @@ class SlewBoundMode(enum.Enum):
     """
 
     ControlPoints: typing.ClassVar[SlewBoundMode]
-    Exact: typing.ClassVar[SlewBoundMode]
     Off: typing.ClassVar[SlewBoundMode]
+    Trajectory: typing.ClassVar[SlewBoundMode]
 
 class Options:
     """
@@ -102,7 +102,7 @@ class Options:
 
     Input constraints (the input limits are always enforced):
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-            default), the sampled inputs (InputBoundMode.Exact), or the control
+            default), the sampled inputs (InputBoundMode.Trajectory), or the control
             points after knot insertion (InputBoundMode.Refined).
         refined_bound_interval: Longest knot interval, in samples, after the knot
             insertion of InputBoundMode.Refined, which splits every interval at
@@ -111,7 +111,7 @@ class Options:
             (|u0 - u_prev| <= u0_slew).
         slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
             |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
-            points (ControlPoints) or the sampled inputs (Exact).
+            points (ControlPoints) or the sampled inputs (Trajectory).
 
     State constraints:
         state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
@@ -157,7 +157,7 @@ class Options:
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-                default), the sampled inputs (InputBoundMode.Exact), or the control
+                default), the sampled inputs (InputBoundMode.Trajectory), or the control
                 points after knot insertion (InputBoundMode.Refined).
             refined_bound_interval: Longest knot interval, in samples, after the knot
                 insertion of InputBoundMode.Refined, which splits every interval at
@@ -166,7 +166,7 @@ class Options:
                 (|u0 - u_prev| <= u0_slew).
             slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
                 |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
-                points (ControlPoints) or the sampled inputs (Exact).
+                points (ControlPoints) or the sampled inputs (Trajectory).
             state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
             bounded_states: Indices of the states with limits (requires state_bounds
                 other than Off). Empty (the default) bounds every state.
@@ -310,7 +310,7 @@ class Parameterization:
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
         bounds every sampled input (whatever Options.input_bounds is) and rejects
-        SlewBoundMode.ControlPoints (SlewBoundMode.Exact bounds the sampled changes).
+        SlewBoundMode.ControlPoints (SlewBoundMode.Trajectory bounds the sampled changes).
         It omits the bounds of samples whose basis row has a norm of at most 1e-9 times
         the largest row norm (e.g. where a Laguerre basis has
         decayed): such a sample can only leave the limits if the coefficients exceed

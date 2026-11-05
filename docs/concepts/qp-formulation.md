@@ -76,7 +76,7 @@ $$
 | model | model | `dynamics` | sparse formulation |
 | usat | input saturation | `input_bounds` | always |
 | slew0 | initial input slew rate | `initial_slew` | `slew_initial_input` |
-| slew | slew rate | `slew_bounds` | `slew_bounds` is `ControlPoints` or `Exact` |
+| slew | slew rate | `slew_bounds` | `slew_bounds` is `ControlPoints` or `Trajectory` |
 | xsat | state saturation | `state_bounds` | `state_bounds` is `Hard` or `Soft` |
 | gen | general constraints | `general_constraints` | `num_general_constraints` $> 0$ |
 | term | terminal constraints | `terminal_constraints` | `num_terminal_constraints` $> 0$ |
@@ -305,7 +305,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Bound the sampled inputs** (`InputBoundMode::Exact`):
+**Bound the sampled inputs** (`InputBoundMode::Trajectory`):
 
 $$
 \begin{bmatrix}
@@ -351,7 +351,7 @@ $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
-For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Trajectory` ($p = 1$) rows, and for $p \ge 2$ it uses the `Trajectory` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
@@ -414,7 +414,7 @@ $$
 is the first-difference matrix, so the row blocks of $(D_\eta \otimes I_m) \bm{c}$ are $\bm{c}_i - \bm{c}_{i-1}$ for $i = 1, \dots, \eta-1$.
 The factors depend only on the knots, so they are computed once at construction, and a limit change only updates the bounds; an infinite limit stays infinite, also where $\lambda_i = 0$.
 
-**Bound the sampled changes** (`SlewBoundMode::Exact`):
+**Bound the sampled changes** (`SlewBoundMode::Trajectory`):
 
 $$
 \underbrace{-\mathbf{1}_{T-1} \otimes \bm{u}_{\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew}}}
@@ -430,7 +430,7 @@ $$
 
 Here $\bar{D}_T \in \R^{(T-1) \times T}$ is the first-difference matrix $D_\eta$ with $T$ in place of $\eta$, so the row blocks are $\bm{u}_k - \bm{u}_{k-1}$ for $k = 1, \dots, T-1$.
 $\bar{D}_T \Phi^p(\bm{\tau})$ is banded for a B-spline (each row spans the bands of two consecutive samples) and dense for a custom basis, whose rows of norm at most $10^{-9}$ times the largest are omitted.
-For $p = 0$, and for $p = 1$ when every knot interval contains a whole sample step, `Exact` uses the `ControlPoints` rows, which are then exact.
+For $p = 0$, and for $p = 1$ when every knot interval contains a whole sample step, `Trajectory` uses the `ControlPoints` rows, which are then exact.
 
 ### State Saturation
 
@@ -699,7 +699,7 @@ $$
 \underbrace{\mathbf{1}_\eta \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
-**Bound the sampled inputs** (`InputBoundMode::Exact`):
+**Bound the sampled inputs** (`InputBoundMode::Trajectory`):
 
 $$
 \begin{bmatrix}
@@ -743,7 +743,7 @@ $$
 
 The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
-For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Exact` ($p = 1$) rows, and for $p \ge 2$ it uses the `Exact` rows when $\eta_{\mathrm{r}} \ge T$.
+For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Trajectory` ($p = 1$) rows, and for $p \ge 2$ it uses the `Trajectory` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
 See [Input Trajectory Saturation Constraint](problem-formulation.md#input-trajectory-saturation-constraint).
 
@@ -785,7 +785,7 @@ $$
 \underbrace{\bm{\lambda} \otimes \bm{u}_{\mathrm{slew}}}_{\bm{\upsilon}_{\mathrm{slew}}}
 $$
 
-**Bound the sampled changes** (`SlewBoundMode::Exact`):
+**Bound the sampled changes** (`SlewBoundMode::Trajectory`):
 
 $$
 \underbrace{-\mathbf{1}_{T-1} \otimes \bm{u}_{\mathrm{slew}}}_{\bm{\ell}_{\mathrm{slew}}}
@@ -963,7 +963,7 @@ Neither function is meant for the control loop: both copy the QP, and `assembleQ
 | `dynamics` | rows | sparse formulation only: the model as equality rows |
 | `input_bounds` | rows | input bounds on the control points, the sampled inputs, or the refined control points |
 | `initial_slew` | rows | `slew_initial_input` |
-| `slew_bounds` | rows | `slew_bounds` `ControlPoints` (control point differences) or `Exact` (sampled changes) |
+| `slew_bounds` | rows | `slew_bounds` `ControlPoints` (control point differences) or `Trajectory` (sampled changes) |
 | `state_bounds` | rows | `state_bounds` `Hard` or `Soft` (soft: upper rows, lower rows, then $\bm{s} \ge 0$) |
 | `general_constraints` | rows | `num_general_constraints` rows per step, steps in order |
 | `terminal_constraints` | rows | `num_terminal_constraints` rows on $\bm{x}_T$ |

@@ -76,7 +76,7 @@ const Options& validateOptions(const Options& opts,
     throw std::invalid_argument(
         "[MPC::validateOptions] SlewBoundMode::ControlPoints requires a "
         "B-spline parameterization: differences of custom basis coefficients "
-        "do not bound input changes (use SlewBoundMode::Exact).");
+        "do not bound input changes (use SlewBoundMode::Trajectory).");
   return opts;
 }
 
@@ -368,7 +368,7 @@ void MPC::checkSetup(const char* caller, const char* action) const
   if (!u_lims_set_)
     missing("Input limits", "");
   if (opts_.slew_bounds != SlewBoundMode::Off && !slew_rate_set_)
-    missing("Slew rate", " (slew_bounds is ControlPoints or Exact)");
+    missing("Slew rate", " (slew_bounds is ControlPoints or Trajectory)");
   if (opts_.slew_initial_input && !slew0_rate_set_)
     missing("Initial slew rate", " (slew_initial_input is enabled)");
   if (opts_.state_bounds != StateBoundMode::Off && !x_lims_set_)

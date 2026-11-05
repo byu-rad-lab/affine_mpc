@@ -70,8 +70,8 @@ std::ostream& operator<<(std::ostream& os, const InputBoundMode mode)
   switch (mode) {
   case InputBoundMode::ControlPoints:
     return os << "ControlPoints";
-  case InputBoundMode::Exact:
-    return os << "Exact";
+  case InputBoundMode::Trajectory:
+    return os << "Trajectory";
   case InputBoundMode::Refined:
     return os << "Refined";
   }
@@ -85,8 +85,8 @@ std::ostream& operator<<(std::ostream& os, const SlewBoundMode mode)
     return os << "Off";
   case SlewBoundMode::ControlPoints:
     return os << "ControlPoints";
-  case SlewBoundMode::Exact:
-    return os << "Exact";
+  case SlewBoundMode::Trajectory:
+    return os << "Trajectory";
   }
   return os << "SlewBoundMode(" << static_cast<int>(mode) << ')';
 }

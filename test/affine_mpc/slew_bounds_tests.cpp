@@ -157,7 +157,7 @@ TEST(SlewBoundsTester, givenMoveBlocking_BoundsControlPointDifferences)
     A_expected.diagonal().setConstant(-1.0);
     A_expected.diagonal(m).setConstant(1.0);
     const VectorXd u_expected{slew.replicate(nc - 1, 1)};
-    for (const SBM mode : {SBM::ControlPoints, SBM::Exact}) {
+    for (const SBM mode : {SBM::ControlPoints, SBM::Trajectory}) {
       SCOPED_TRACE(::testing::Message() << label << " " << mode);
       ampc::MPC mpc{n, m, param, {.slew_bounds = mode}};
       configureMsd(mpc, slew);
@@ -202,10 +202,10 @@ TEST(SlewBoundsTester, givenBspline_ControlPointBoundsFollowTheKnots)
   }
 }
 
-// Exact on degree 1 uses the control point rows when every knot interval holds
-// a whole sample step, and the sampled differences otherwise (here intervals
-// of 9/7 samples, some of which hold no whole step)
-TEST(SlewBoundsTester, givenDegree1_ExactUsesControlPointRowsOnlyWhenExact)
+// Trajectory on degree 1 uses the control point rows when every knot interval
+// holds a whole sample step, and the sampled differences otherwise (here
+// intervals of 9/7 samples, some of which hold no whole step)
+TEST(SlewBoundsTester, givenDegree1_TrajectoryUsesControlPointRowsOnlyWhenExact)
 {
   const int m{1};
   const VectorXd slew{VectorXd::Constant(m, 0.4)};
@@ -213,7 +213,7 @@ TEST(SlewBoundsTester, givenDegree1_ExactUsesControlPointRowsOnlyWhenExact)
   const auto short_intervals{ampc::Parameterization::linearInterp(10, 8)};
   {
     ampc::MPC cp{2, m, exact_cp, {.slew_bounds = SBM::ControlPoints}},
-        exact{2, m, exact_cp, {.slew_bounds = SBM::Exact}};
+        exact{2, m, exact_cp, {.slew_bounds = SBM::Trajectory}};
     configureMsd(cp, slew);
     configureMsd(exact, slew);
     const SlewRows a{assembledSlewRows(cp)}, b{assembledSlewRows(exact)};
@@ -222,7 +222,7 @@ TEST(SlewBoundsTester, givenDegree1_ExactUsesControlPointRowsOnlyWhenExact)
     EXPECT_TRUE(expectEigenNear(a.u, VectorXd::Constant(4, 3 * 0.4), 1e-15));
   }
   {
-    ampc::MPC exact{2, m, short_intervals, {.slew_bounds = SBM::Exact}};
+    ampc::MPC exact{2, m, short_intervals, {.slew_bounds = SBM::Trajectory}};
     configureMsd(exact, slew);
     const SlewRows rows{assembledSlewRows(exact)};
     // D Phi, one row per sampled change
@@ -233,9 +233,9 @@ TEST(SlewBoundsTester, givenDegree1_ExactUsesControlPointRowsOnlyWhenExact)
   }
 }
 
-// Exact on degree >= 2 and on a custom basis: the sampled differences D Phi,
-// every input with its own limit
-TEST(SlewBoundsTester, givenExactMode_RowsAreSampledDifferences)
+// Trajectory on degree >= 2 and on a custom basis: the sampled differences D
+// Phi, every input with its own limit
+TEST(SlewBoundsTester, givenTrajectoryMode_RowsAreSampledDifferences)
 {
   const int m{2};
   const Vector2d slew{0.3, 0.7};
@@ -245,7 +245,7 @@ TEST(SlewBoundsTester, givenExactMode_RowsAreSampledDifferences)
         ampc::Parameterization::fromBasis(12, laguerreBasis(12, 4, 0.5))}) {
     SCOPED_TRACE(::testing::Message() << param);
     const int T{param.horizon_steps}, nc{param.num_control_points};
-    ampc::MPC mpc{2, m, param, {.slew_bounds = SBM::Exact}};
+    ampc::MPC mpc{2, m, param, {.slew_bounds = SBM::Trajectory}};
     configureMsd(mpc, slew);
     const SlewRows rows{assembledSlewRows(mpc)};
     const MatrixXd Phi{denseBasis(param)};
@@ -333,7 +333,7 @@ TEST(SlewBoundsTester, givenControlPointsAtTheirBounds_SampledChangesStayWithin)
 
 // ---- options and setters ----------------------------------------------------
 
-TEST(SlewBoundsTester, givenCustomBasis_ControlPointsThrowsAndExactWorks)
+TEST(SlewBoundsTester, givenCustomBasis_ControlPointsThrowsAndTrajectoryWorks)
 {
   const auto param{
       ampc::Parameterization::fromBasis(10, laguerreBasis(10, 3, 0.5))};
@@ -342,7 +342,8 @@ TEST(SlewBoundsTester, givenCustomBasis_ControlPointsThrowsAndExactWorks)
     expectInvalidArgumentWithMessage(
         [&] { ampc::MPC(2, 1, param, {.slew_bounds = SBM::ControlPoints}, f); },
         "SlewBoundMode::ControlPoints requires a B-spline parameterization");
-    EXPECT_NO_THROW(ampc::MPC(2, 1, param, {.slew_bounds = SBM::Exact}, f));
+    EXPECT_NO_THROW(
+        ampc::MPC(2, 1, param, {.slew_bounds = SBM::Trajectory}, f));
   }
 }
 
@@ -359,9 +360,9 @@ TEST(SlewBoundsTester, givenSlewBoundsOff_SetAndGetSlewRateThrow)
 // ---- solutions --------------------------------------------------------------
 
 // Degree 1 with uniform, non-uniform, and geometric knots whose intervals all
-// hold a whole sample step: ControlPoints and Exact give the solution of the
-// sampled rows (the same basis as a custom basis, whose Exact rows bound
-// every sampled change), and the limit is active
+// hold a whole sample step: ControlPoints and Trajectory give the solution of
+// the sampled rows (the same basis as a custom basis, whose Trajectory rows
+// bound every sampled change), and the limit is active
 TEST(SlewBoundsTester, givenDegree1_ControlPointsMatchesSampledBounds)
 {
   const int n{2}, m{2};
@@ -385,13 +386,14 @@ TEST(SlewBoundsTester, givenDegree1_ControlPointsMatchesSampledBounds)
           exact{n,
                 m,
                 param,
-                {.input_cost = IC::Trajectory, .slew_bounds = SBM::Exact},
+                {.input_cost = IC::Trajectory, .slew_bounds = SBM::Trajectory},
                 f},
-          reference{n,
-                    m,
-                    sampled,
-                    {.input_cost = IC::Trajectory, .slew_bounds = SBM::Exact},
-                    f};
+          reference{
+              n,
+              m,
+              sampled,
+              {.input_cost = IC::Trajectory, .slew_bounds = SBM::Trajectory},
+              f};
       const VectorXd c_cp{solveMsd(cp, slew)};
       const VectorXd c_exact{solveMsd(exact, slew)};
       const VectorXd c_ref{solveMsd(reference, slew)};
@@ -403,9 +405,10 @@ TEST(SlewBoundsTester, givenDegree1_ControlPointsMatchesSampledBounds)
 }
 
 // Degree 2 and 3 (and degree 1 with intervals shorter than a step):
-// ControlPoints never exceeds the limit (sufficient), and Exact reaches it.
-// Condensed and sparse give the same solutions.
-TEST(SlewBoundsTester, givenHigherDegree_ControlPointsIsSafeAndExactIsActive)
+// ControlPoints never exceeds the limit (sufficient), and Trajectory reaches
+// it. Condensed and sparse give the same solutions.
+TEST(SlewBoundsTester,
+     givenHigherDegree_ControlPointsIsSafeAndTrajectoryIsActive)
 {
   const int n{2}, m{2};
   const Vector2d slew{0.1, 0.15};
@@ -426,7 +429,7 @@ TEST(SlewBoundsTester, givenHigherDegree_ControlPointsIsSafeAndExactIsActive)
           exact{n,
                 m,
                 param,
-                {.input_cost = IC::Trajectory, .slew_bounds = SBM::Exact},
+                {.input_cost = IC::Trajectory, .slew_bounds = SBM::Trajectory},
                 f};
       c_cp[i] = solveMsd(cp, slew);
       c_exact[i] = solveMsd(exact, slew);
@@ -438,11 +441,11 @@ TEST(SlewBoundsTester, givenHigherDegree_ControlPointsIsSafeAndExactIsActive)
   }
 }
 
-// A custom basis with Exact matches the augmented-state workaround: the state
-// holds the previous input, x~ = [x; u_{k-1}], and general constraints
-// Hx = [0, -I], Hu = I bound u_k - u_{k-1} at every step (k = 0 against the
+// A custom basis with Trajectory matches the augmented-state workaround: the
+// state holds the previous input, x~ = [x; u_{k-1}], and general constraints Hx
+// = [0, -I], Hu = I bound u_k - u_{k-1} at every step (k = 0 against the
 // previous input, as slew_initial_input does)
-TEST(SlewBoundsTester, givenCustomBasis_ExactMatchesAugmentedState)
+TEST(SlewBoundsTester, givenCustomBasis_TrajectoryMatchesAugmentedState)
 {
   const int n{2}, m{1}, T{15};
   const auto param{
@@ -487,7 +490,7 @@ TEST(SlewBoundsTester, givenCustomBasis_ExactMatchesAugmentedState)
                     param,
                     {.input_cost = ampc::InputCostMode::Trajectory,
                      .slew_initial_input = true,
-                     .slew_bounds = SBM::Exact},
+                     .slew_bounds = SBM::Trajectory},
                     f};
     configureMsd(exact, slew);
     exact.setPreviousInput(u_prev);
@@ -506,7 +509,7 @@ TEST(SlewBoundsTester, givenSlewRateUpdate_NextSolveUsesNewLimit)
 {
   const int n{2}, m{1};
   for (const auto& [param, mode] :
-       {std::pair{ampc::Parameterization::bspline(25, 2, 6), SBM::Exact},
+       {std::pair{ampc::Parameterization::bspline(25, 2, 6), SBM::Trajectory},
         std::pair{ampc::Parameterization::linearInterp(21, 6),
                   SBM::ControlPoints}}) {
     for (const ampc::Formulation f : formulations) {

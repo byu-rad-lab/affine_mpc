@@ -98,7 +98,7 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
 
 The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_bounds`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
 In Python they are keyword arguments; in C++20, designated initializers must follow this order.
-`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Exact`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
+`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Trajectory`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object

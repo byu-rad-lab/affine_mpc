@@ -269,9 +269,9 @@ const ampc::Options soft_velocity{.input_cost =
                                   .state_bounds = ampc::StateBoundMode::Soft,
                                   .bounded_states = {1}};
 
-const ampc::Options sampled_bounds{.input_cost =
-                                       ampc::InputCostMode::ControlPoints,
-                                   .input_bounds = ampc::InputBoundMode::Exact};
+const ampc::Options sampled_bounds{
+    .input_cost = ampc::InputCostMode::ControlPoints,
+    .input_bounds = ampc::InputBoundMode::Trajectory};
 
 // general and terminal constraints (with state bounds on the position)
 const ampc::Options constraints{.input_cost =

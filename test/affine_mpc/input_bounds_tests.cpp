@@ -277,7 +277,7 @@ TEST(RefinedInputBoundsTest, givenDegree2OrMore_BoundsSampledRefinedPoints)
         if (num_rows >= param.horizon_steps) {
           // no fewer rows than the samples: the sampled rows are used
           ampc::MPC exact{
-              n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+              n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
           setupMSD(exact, m, VectorXd::Constant(m, -1.0),
                    VectorXd::Constant(m, 2.0), Vector2d{1.0, 0.0});
           EXPECT_TRUE(expectEigenNear(inputBoundMatrix(mpc, n),
@@ -319,7 +319,7 @@ TEST(RefinedInputBoundsTest, givenDegree0Or1_UsesTheExactCheapRows)
     SCOPED_TRACE(::testing::Message() << param);
     const ampc::InputBoundMode same{param.degree == 0
                                         ? ampc::InputBoundMode::ControlPoints
-                                        : ampc::InputBoundMode::Exact};
+                                        : ampc::InputBoundMode::Trajectory};
     ampc::MPC refined{n,
                       m,
                       param,
@@ -360,7 +360,7 @@ TEST(RefinedInputBoundsTest, givenLongHorizon_RowCountsLieBetweenModes)
       return inputBoundRows(mpc);
     };
     EXPECT_EQ(rows(ampc::InputBoundMode::ControlPoints, 8), nc);
-    EXPECT_EQ(rows(ampc::InputBoundMode::Exact, 8), T);
+    EXPECT_EQ(rows(ampc::InputBoundMode::Trajectory, 8), T);
     for (const int L : {4, 8, 16, 32, 64, 1000}) {
       SCOPED_TRACE("degree " + std::to_string(deg) + " L=" + std::to_string(L));
       const int got{rows(ampc::InputBoundMode::Refined, L)};
@@ -374,7 +374,7 @@ TEST(RefinedInputBoundsTest, givenLongHorizon_RowCountsLieBetweenModes)
   }
 }
 
-TEST(RefinedInputBoundsTest, givenTooManyRefinedRows_UsesExactRows)
+TEST(RefinedInputBoundsTest, givenTooManyRefinedRows_UsesTrajectoryRows)
 {
   // T = 10, 5 cubic control points: 2 intervals of 4.5 samples; L = 2 splits
   // each into 3, giving 6 + 3 = 9 refined rows (fewer than T), and L = 1
@@ -392,7 +392,7 @@ TEST(RefinedInputBoundsTest, givenTooManyRefinedRows_UsesExactRows)
   ASSERT_EQ(refine(param, 1).sampled.size(), 13u);
   EXPECT_EQ(make(ampc::InputBoundMode::Refined, 2).rows(), m * 9);
   EXPECT_TRUE(expectEigenNear(make(ampc::InputBoundMode::Refined, 1),
-                              make(ampc::InputBoundMode::Exact, 1), 0.0));
+                              make(ampc::InputBoundMode::Trajectory, 1), 0.0));
 }
 
 TEST(RefinedInputBoundsTest, givenShortHorizon_IsTighterThanControlPoints)
@@ -420,7 +420,7 @@ TEST(RefinedInputBoundsTest, givenShortHorizon_IsTighterThanControlPoints)
   };
   const double control_points{cost(ampc::InputBoundMode::ControlPoints, 6)};
   const double refined{cost(ampc::InputBoundMode::Refined, 8 + 2)};
-  const double exact{cost(ampc::InputBoundMode::Exact, T)};
+  const double exact{cost(ampc::InputBoundMode::Trajectory, T)};
   const double tol{1e-6 * std::abs(control_points)};
   EXPECT_LT(refined, control_points - 100 * tol);
   EXPECT_LE(exact, refined + tol);
@@ -521,7 +521,7 @@ TEST(RefinedInputBoundsTest, givenActiveLimit_FeasibleSetsAreNested)
   // points within them, a finer nested refinement keeps them within, and
   // refined control points within the limits give sampled inputs within them.
   // So the optimal cost can only decrease from ControlPoints to Refined with
-  // L = 8, 4, 2 (nested knots here: intervals of 14.75 samples) to Exact.
+  // L = 8, 4, 2 (nested knots here: intervals of 14.75 samples) to Trajectory.
   const int n{2}, m{1}, T{60};
   const auto param{ampc::Parameterization::bspline(T, 2, 6)};
   const VectorXd u_min{VectorXd::Zero(1)}, u_max{VectorXd::Constant(1, 3.0)};
@@ -554,7 +554,7 @@ TEST(RefinedInputBoundsTest, givenActiveLimit_FeasibleSetsAreNested)
   const double coarse{cost(ampc::InputBoundMode::Refined, 8)};
   const double medium{cost(ampc::InputBoundMode::Refined, 4)};
   const double fine{cost(ampc::InputBoundMode::Refined, 2)};
-  const double exact{cost(ampc::InputBoundMode::Exact, 8)};
+  const double exact{cost(ampc::InputBoundMode::Trajectory, 8)};
   const double tol{1e-6 * std::abs(control_points)};
   EXPECT_LT(coarse, control_points - 100 * tol);
   EXPECT_LE(medium, coarse + tol);

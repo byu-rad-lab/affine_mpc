@@ -23,28 +23,28 @@ def test_options_bound_modes():
     opts = ampc.Options(state_bounds=ampc.StateBoundMode.Soft, bounded_states=[1])
     assert opts.state_bounds == ampc.StateBoundMode.Soft
     assert repr(opts) == "Options(state_bounds=StateBoundMode.Soft, bounded_states=[1])"
-    opts.input_bounds = ampc.InputBoundMode.Exact
-    assert opts.input_bounds == ampc.InputBoundMode.Exact
+    opts.input_bounds = ampc.InputBoundMode.Trajectory
+    assert opts.input_bounds == ampc.InputBoundMode.Trajectory
     assert repr(opts) == (
-        "Options(input_bounds=InputBoundMode.Exact, state_bounds=StateBoundMode.Soft, "
+        "Options(input_bounds=InputBoundMode.Trajectory, state_bounds=StateBoundMode.Soft, "
         "bounded_states=[1])"
     )
-    assert "input_bounds=Exact" in str(opts)
+    assert "input_bounds=Trajectory" in str(opts)
     assert "state_bounds=Soft" in str(opts)
     opts.state_bounds = ampc.StateBoundMode.Hard
     assert opts.state_bounds == ampc.StateBoundMode.Hard
     assert list(ampc.InputBoundMode) == [
         ampc.InputBoundMode.ControlPoints,
-        ampc.InputBoundMode.Exact,
+        ampc.InputBoundMode.Trajectory,
         ampc.InputBoundMode.Refined,
     ]
 
 
 def test_options_slew_bounds():
-    opts = ampc.Options(slew_bounds=ampc.SlewBoundMode.Exact)
-    assert opts.slew_bounds == ampc.SlewBoundMode.Exact
-    assert repr(opts) == "Options(slew_bounds=SlewBoundMode.Exact)"
-    assert "slew_bounds=Exact" in str(opts)
+    opts = ampc.Options(slew_bounds=ampc.SlewBoundMode.Trajectory)
+    assert opts.slew_bounds == ampc.SlewBoundMode.Trajectory
+    assert repr(opts) == "Options(slew_bounds=SlewBoundMode.Trajectory)"
+    assert "slew_bounds=Trajectory" in str(opts)
     opts.slew_bounds = ampc.SlewBoundMode.ControlPoints
     assert repr(opts) == "Options(slew_bounds=SlewBoundMode.ControlPoints)"
     assert ampc.Options().slew_bounds == ampc.SlewBoundMode.Off
@@ -52,7 +52,7 @@ def test_options_slew_bounds():
     assert list(ampc.SlewBoundMode) == [
         ampc.SlewBoundMode.Off,
         ampc.SlewBoundMode.ControlPoints,
-        ampc.SlewBoundMode.Exact,
+        ampc.SlewBoundMode.Trajectory,
     ]
     with pytest.raises(TypeError):
         ampc.Options(slew_control_points=True)

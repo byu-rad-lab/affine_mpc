@@ -552,7 +552,7 @@ TEST(ConsistencyTester,
 {
   const int n{2}, m{1}, T{10}, nc{5}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Trajectory};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -615,7 +615,7 @@ TEST(ConsistencyTester,
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 9, 9;
   const ampc::Parameterization param{T, 1, knots};
-  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Trajectory};
   ConsistencyTester tester{n, m, param, opts};
   tester.setup(); // input limits are [0, 3]
 
@@ -655,7 +655,7 @@ TEST(ConsistencyTester,
   ConsistencyTester tester{n,
                            m,
                            param,
-                           {.input_bounds = ampc::InputBoundMode::Exact,
+                           {.input_bounds = ampc::InputBoundMode::Trajectory,
                             .slew_initial_input = true}};
   tester.setup(); // input limits are [0, 3]
   for (ampc::MPC* mpc : {static_cast<ampc::MPC*>(&tester.condensed),
@@ -1204,11 +1204,11 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
                                          ampc::InputCostMode::ControlPoints,
                                          ampc::InputCostMode::Trajectory};
   const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
-                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Trajectory,
                                            ampc::InputBoundMode::Refined};
   const ampc::SlewBoundMode slew_modes[]{ampc::SlewBoundMode::Off,
                                          ampc::SlewBoundMode::ControlPoints,
-                                         ampc::SlewBoundMode::Exact};
+                                         ampc::SlewBoundMode::Trajectory};
   for (int mask{0}; mask < 108; ++mask) {
     ampc::Options opts;
     opts.input_cost = cost_modes[mask % 3];
@@ -1550,7 +1550,7 @@ TEST(ConsistencyTester, givenRepeatedKnots_CondensedAndSparseMPCAgree)
     VectorXd active{3 + mult};
     active << 0, 2.5, VectorXd::Constant(mult, 5.0), T - 1.0;
     const auto param{ampc::Parameterization::bspline(T, 2, active)};
-    const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
+    const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Trajectory};
     ConsistencyTester tester{n, m, param, opts};
     tester.setup(); // input limits are [0, 3]
 
@@ -1601,7 +1601,7 @@ void setupCustomBasisMsd(ampc::MPC& mpc, const ampc::Options& opts)
 TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
 {
   // The custom basis bounds every sample, as the B-spline does with
-  // InputBoundMode::Exact for degree > 1, and the input cost weights the
+  // InputBoundMode::Trajectory for degree > 1, and the input cost weights the
   // coefficients in both (reference zero).
   const int n{2}, m{1}, T{15}, nc{6};
   const auto bspline{ampc::Parameterization::bspline(T, 2, nc, 1.3)};
@@ -1609,7 +1609,7 @@ TEST(CustomBasisTester, givenBsplineBasis_ReproducesBsplineSolution)
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true};
   ampc::Options bspline_opts{opts};
-  bspline_opts.input_bounds = ampc::InputBoundMode::Exact;
+  bspline_opts.input_bounds = ampc::InputBoundMode::Trajectory;
 
   ampc::MPC condensed_b{n, m, bspline, bspline_opts};
   ampc::MPC condensed_c{n, m, custom, opts};

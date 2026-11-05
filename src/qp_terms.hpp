@@ -222,7 +222,7 @@ private:
 /// u_min <= M c <= u_max on each input channel's control points c, where the
 /// rows of M are chosen by the InputBoundMode so that bounding M c bounds
 /// every sampled input: the identity (ControlPoints), the sampled basis rows
-/// that make it exact (Exact, or any mode with a custom basis), or the map
+/// that make it exact (Trajectory, or any mode with a custom basis), or the map
 /// from the control points to the refined control points after knot
 /// insertion (Refined, or the sampled rows when those are fewer). M is banded
 /// and depends only on the basis, so it is computed once.
@@ -299,7 +299,7 @@ private:
 /// Either the control point differences c_i - c_{i-1}, with the factors of a
 /// degree-p B-spline's derivative control points, (t_{i+p} - t_i) / p (1 for
 /// degree 0), or the sampled differences (phi_k - phi_{k-1})^T c with factor
-/// 1 (SlewBoundMode::Exact when the control point rows are not exact). The
+/// 1 (SlewBoundMode::Trajectory when the control point rows are not exact). The
 /// rows and factors depend only on the basis, so they are computed once and a
 /// limit change only rewrites the bounds.
 class SlewBounds final : public QPTerm

@@ -68,9 +68,10 @@ in rows and accuracy.
       .value("ControlPoints", ampc::InputBoundMode::ControlPoints,
              "Bound the control points (the default): one row per control "
              "point, and the sampled inputs stay inside the limits.")
-      .value("Exact", ampc::InputBoundMode::Exact,
-             "Bound the sampled inputs exactly, which lets the control points "
-             "leave the limits. Degree 0: the same as ControlPoints (the "
+      .value("Trajectory", ampc::InputBoundMode::Trajectory,
+             "Bound the sampled inputs u_k (the input trajectory) exactly, "
+             "which lets the control points leave the limits. Degree 0: the "
+             "same as ControlPoints (the "
              "control points are the sampled inputs). Degree 1: only the "
              "samples adjacent to each knot (at most 2*num_control_points-2 "
              "rows), which is exact. Degree > 1: every sample (T rows per "
@@ -83,11 +84,13 @@ in rows and accuracy.
              "points that some sample depends on are bounded. By the convex "
              "hull property of the refined control points, every sampled "
              "input stays inside the limits, with less of the range lost than "
-             "with ControlPoints and far fewer rows than Exact on long "
+             "with ControlPoints and far fewer rows than Trajectory on long "
              "horizons (about max(T / L, 2 (num_control_points - degree)) + "
              "degree rows per input). If that is not fewer than the rows of "
-             "Exact (T per input), the rows of Exact are used instead. Degree "
-             "0: the same as ControlPoints; degree 1: the same as Exact (both "
+             "Trajectory (T per input), the rows of Trajectory are used "
+             "instead. Degree "
+             "0: the same as ControlPoints; degree 1: the same as Trajectory "
+             "(both "
              "are already exact and cheap).")
       .finalize();
 
@@ -114,8 +117,9 @@ The change from the previous input, u_0 - u_prev, has its own limit
              "apart); otherwise sufficient (the sampled changes stay inside "
              "the limits, but may not reach them). Requires a B-spline "
              "parameterization.")
-      .value("Exact", ampc::SlewBoundMode::Exact,
-             "Bound the sampled changes u_k - u_{k-1} exactly. Degree 0, and "
+      .value("Trajectory", ampc::SlewBoundMode::Trajectory,
+             "Bound the changes u_k - u_{k-1} of the input trajectory exactly. "
+             "Degree 0, and "
              "degree 1 when ControlPoints is exact: the rows of ControlPoints. "
              "Otherwise one row per sampled change (T-1 rows per input; "
              "banded for B-splines, dense for a custom basis), omitting "
@@ -138,7 +142,7 @@ Costs:
 
 Input constraints (the input limits are always enforced):
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-        default), the sampled inputs (InputBoundMode.Exact), or the control
+        default), the sampled inputs (InputBoundMode.Trajectory), or the control
         points after knot insertion (InputBoundMode.Refined).
     refined_bound_interval: Longest knot interval, in samples, after the knot
         insertion of InputBoundMode.Refined, which splits every interval at
@@ -147,7 +151,7 @@ Input constraints (the input limits are always enforced):
         (|u0 - u_prev| <= u0_slew).
     slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
         |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
-        points (ControlPoints) or the sampled inputs (Exact).
+        points (ControlPoints) or the sampled inputs (Trajectory).
 
 State constraints:
     state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
@@ -195,7 +199,7 @@ Args:
     use_input_rate_cost: Enables a cost on the change of the sampled inputs
         ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-        default), the sampled inputs (InputBoundMode.Exact), or the control
+        default), the sampled inputs (InputBoundMode.Trajectory), or the control
         points after knot insertion (InputBoundMode.Refined).
     refined_bound_interval: Longest knot interval, in samples, after the knot
         insertion of InputBoundMode.Refined, which splits every interval at
@@ -204,7 +208,7 @@ Args:
         (|u0 - u_prev| <= u0_slew).
     slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
         |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
-        points (ControlPoints) or the sampled inputs (Exact).
+        points (ControlPoints) or the sampled inputs (Trajectory).
     state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
     bounded_states: Indices of the states with limits (requires state_bounds
         other than Off). Empty (the default) bounds every state.

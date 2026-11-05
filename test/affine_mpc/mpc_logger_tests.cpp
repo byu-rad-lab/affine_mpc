@@ -329,7 +329,7 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsMode)
   const auto param{ampc::Parameterization::bspline(5, 2, 3)};
   for (const auto& [mode, name] :
        {std::pair{ampc::InputBoundMode::ControlPoints, "control_points"},
-        std::pair{ampc::InputBoundMode::Exact, "exact"},
+        std::pair{ampc::InputBoundMode::Trajectory, "trajectory"},
         std::pair{ampc::InputBoundMode::Refined, "refined"}}) {
     SCOPED_TRACE(name);
     fs::remove_all(test_dir);
@@ -386,7 +386,7 @@ TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsModeAndSlewRates)
   for (const auto& [mode, name] :
        {std::pair{ampc::SlewBoundMode::Off, "off"},
         std::pair{ampc::SlewBoundMode::ControlPoints, "control_points"},
-        std::pair{ampc::SlewBoundMode::Exact, "exact"}}) {
+        std::pair{ampc::SlewBoundMode::Trajectory, "trajectory"}}) {
     SCOPED_TRACE(name);
     const bool enabled{mode != ampc::SlewBoundMode::Off};
     fs::remove_all(test_dir);

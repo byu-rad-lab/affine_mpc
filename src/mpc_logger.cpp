@@ -203,8 +203,8 @@ std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
   switch (mode) {
   case InputBoundMode::ControlPoints:
     return "control_points";
-  case InputBoundMode::Exact:
-    return "exact";
+  case InputBoundMode::Trajectory:
+    return "trajectory";
   case InputBoundMode::Refined:
     return "refined";
   }
@@ -218,8 +218,8 @@ std::string slewBoundModeToString(affine_mpc::SlewBoundMode mode)
     return "off";
   case SlewBoundMode::ControlPoints:
     return "control_points";
-  case SlewBoundMode::Exact:
-    return "exact";
+  case SlewBoundMode::Trajectory:
+    return "trajectory";
   }
   return "unknown";
 }

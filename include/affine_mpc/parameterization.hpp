@@ -161,7 +161,7 @@ public:
    *   knots. Since the B-spline convex hull property does not hold, an MPC
    *   with a custom basis bounds every sampled input (whatever
    *   Options::input_bounds is) and rejects SlewBoundMode::ControlPoints
-   *   (SlewBoundMode::Exact bounds the sampled changes). It omits the bounds
+   *   (SlewBoundMode::Trajectory bounds the sampled changes). It omits the bounds
    *   of samples whose basis row has a norm of at most 1e-9 times the largest
    *   row norm (e.g. where a Laguerre basis has decayed): such a
    *   sample can only leave the limits if the coefficients exceed them by
