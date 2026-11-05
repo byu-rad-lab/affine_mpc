@@ -90,11 +90,22 @@ $$
 \end{align}
 $$
 
-The weighted norm used above is:
+The weighted norm used above is defined as $\: \left\lVert \bm{y} \right\rVert^2_M = \bm{y}^\T M \bm{y}$.
 
-$$
-\left\lVert \bm{y} \right\rVert^2_M = \bm{y}^\T M \bm{y}
-$$
+??? info "How to enable each labeled term in code"
+
+    Unlabeled terms are always present; each labeled term is enabled at construction by a field of `Options` (values are enum members in both interfaces, e.g. `InputCostMode::Trajectory` in C++ and `InputCostMode.Trajectory` in Python).
+
+    | `Options` field            | Type             | Choices                                                                                                                                                     |
+    | -------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `input_cost`               | `InputCostMode`  | `Off` (default)<br>`ControlPoints` → $\textcolor{red}{\text{control point cost}}$<br>`Trajectory` → $\textcolor{red}{\text{input trajectory cost}}$         |
+    | `use_input_rate_cost`      | `bool`           | `false` (default)<br>`true` → $\textcolor{red}{\text{input rate cost}}$                                                                                     |
+    | `input_bounds`             | `InputBoundMode` | `ControlPoints` (default)<br>`Refined` → $\textcolor{red}{\text{refined input bounds}}$<br>`Trajectory` → $\textcolor{red}{\text{trajectory input bounds}}$ |
+    | `slew_initial_input`       | `bool`           | `false` (default)<br>`true` → $\textcolor{red}{\text{initial slew rate}}$                                                                                   |
+    | `slew_bounds`              | `SlewBoundMode`  | `Off` (default)<br>`ControlPoints` → $\textcolor{red}{\text{control point slew bounds}}$<br>`Trajectory` → $\textcolor{red}{\text{trajectory slew bounds}}$ |
+    | `state_bounds`             | `StateBoundMode` | `Off` (default)<br>`Hard` → $\textcolor{red}{\text{hard state bounds}}$<br>`Soft` → $\textcolor{red}{\text{soft state bounds}}$                             |
+    | `num_general_constraints`  | `int`            | `0` (default)<br>`> 0` → $\textcolor{red}{\text{general constraints}}$                                                                                      |
+    | `num_terminal_constraints` | `int`            | `0` (default)<br>`> 0` → $\textcolor{red}{\text{terminal constraints}}$                                                                                     |
 
 --8<-- "concepts/nomenclature.md:mpc-terms"
 
