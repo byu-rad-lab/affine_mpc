@@ -88,8 +88,8 @@ def test_mpc_logger_npz_contents_default_stride():
         with np.load(npz_path, allow_pickle=False) as data:
             np.testing.assert_equal(data["states"].shape, (1, 6, 2))
             np.testing.assert_equal(data["inputs"].shape, (1, 6, 1))
-            np.testing.assert_equal(data["meta_t_pred"].shape, (6,))
-            np.testing.assert_allclose(data["meta_t_pred"][-1], 0.5)
+            np.testing.assert_equal(data["meta_t_pred_offsets"].shape, (6,))
+            np.testing.assert_allclose(data["meta_t_pred_offsets"][-1], 0.5)
 
 
 def test_mpc_logger_logs_timing():
@@ -137,7 +137,7 @@ def test_mpc_logger_stride_behavior():
         with np.load(npz_path, allow_pickle=False) as data:
             np.testing.assert_equal(data["states"].shape[1], 4)
             np.testing.assert_equal(data["inputs"].shape[1], 4)
-            np.testing.assert_allclose(data["meta_t_pred"], np.array([0.0, 0.2, 0.4, 0.5]))
+            np.testing.assert_allclose(data["meta_t_pred_offsets"], np.array([0.0, 0.2, 0.4, 0.5]))
 
 
 def test_mpc_logger_control_points_mode():

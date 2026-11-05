@@ -60,15 +60,15 @@ class MPCLog:
     ref_states: ArrayF
     """same shape as states"""
     inputs: ArrayF
-    """(N, nc, m) with log_control_points, else (N, K, m) or (N, m)"""
+    """(N, nc, m) with log_control_points, else (N, K, m) or (N, m); u_pred
+    gives the sampled inputs in either case"""
     ref_inputs: ArrayF | None = None
-    """logged with an input cost (see the logging docs for its shape)"""
+    """logged with an input cost (see the logging docs for its shape); u_ref_pred
+    gives the sampled reference in every case"""
 
     # logger settings
     ts: float
     """time step used to align the predicted samples"""
-    t_pred: ArrayF
-    """(K,) time of each logged prediction sample relative to its step"""
     prediction_stride: int
     log_control_points: bool
     """whether inputs holds control points rather than sampled inputs"""
@@ -86,8 +86,9 @@ class MPCLog:
     """B-spline parameterizations only"""
     knots: ArrayF | None = None
     """B-spline parameterizations only"""
-    basis: ArrayF | None = None
-    """(horizon_steps, num_control_points), custom bases only"""
+    basis: ArrayF
+    """(horizon_steps, num_control_points) sampled basis: the input at step k is
+    basis[k] @ control_points"""
     u_min: ArrayF
     u_max: ArrayF
     Q_diag: ArrayF
@@ -137,32 +138,80 @@ class MPCLog:
         """Number of logged steps N."""
         return len(self.time)
 
+    def _pred_steps(self) -> NDArray[np.int64]:
+        # the prediction step k of each logged sample, as the logger strides them
+        if self.prediction_stride <= 0:
+            return np.zeros(1, dtype=np.int64)
+        steps = np.arange(0, self.horizon_steps + 1, self.prediction_stride)
+        if steps[-1] != self.horizon_steps:
+            steps = np.append(steps, self.horizon_steps)
+        return steps
+
+    @property
+    def t_pred(self) -> ArrayF:
+        """(N, K) time of each logged prediction sample, aligned with x_pred and u_pred."""
+        return self.time[:, None] + self._pred_steps() * self.ts
+
     @property
     def x(self) -> ArrayF:
-        """(N, n) state passed to logStep() at each step."""
+        """(N, n) state passed to logStep() at each step (a view of states)."""
         return self.x_pred[:, 0]
 
     @property
     def x_ref(self) -> ArrayF:
-        """(N, n) reference state at each step."""
+        """(N, n) reference state at each step (a view of ref_states)."""
         return self.x_ref_pred[:, 0]
 
     @property
     def x_pred(self) -> ArrayF:
-        """(N, K, n) logged states, starting at x0; K is 1 with prediction_stride 0."""
-        return self.states if self.states.ndim == 3 else self.states[:, None]
+        """(N, K, n) logged states, starting at x0 (a view of states)."""
+        return _with_k_axis(self.states)
 
     @property
     def x_ref_pred(self) -> ArrayF:
-        """(N, K, n) reference states at the logged prediction steps."""
-        return (
-            self.ref_states if self.ref_states.ndim == 3 else self.ref_states[:, None]
-        )
+        """(N, K, n) reference states at the logged prediction steps (a view of ref_states)."""
+        return _with_k_axis(self.ref_states)
 
     @property
-    def pred_times(self) -> ArrayF:
-        """(N, K) time of each logged prediction sample: time[:, None] + t_pred."""
-        return self.time[:, None] + self.t_pred
+    def u(self) -> ArrayF:
+        """(N, m) input applied at each step: the first sample of u_pred."""
+        return self.u_pred[:, 0]
+
+    @property
+    def u_ref(self) -> ArrayF | None:
+        """(N, m) reference input at each step, or None without an input cost."""
+        u_ref_pred = self.u_ref_pred
+        return None if u_ref_pred is None else u_ref_pred[:, 0]
+
+    @property
+    def u_pred(self) -> ArrayF:
+        """(N, K, m) sampled inputs at the logged prediction steps, evaluated from
+        the control points with log_control_points (the terminal step repeats the
+        last input, since the horizon has one input fewer than states)."""
+        if self.log_control_points:
+            return self._evaluate(self.inputs)
+        return _with_k_axis(self.inputs)
+
+    @property
+    def u_ref_pred(self) -> ArrayF | None:
+        """(N, K, m) reference inputs at the logged prediction steps, or None
+        without an input cost."""
+        if self.ref_inputs is None:
+            return None
+        if (
+            self.log_control_points
+            and self.options.input_cost == InputCostMode.ControlPoints
+        ):
+            return self._evaluate(self.ref_inputs)
+        return _with_k_axis(self.ref_inputs)
+
+    def _evaluate(self, control_points: ArrayF) -> ArrayF:
+        rows = self.basis[np.minimum(self._pred_steps(), self.horizon_steps - 1)]
+        return np.einsum("kc,ncm->nkm", rows, control_points)
+
+
+def _with_k_axis(values: ArrayF) -> ArrayF:
+    return values if values.ndim == 3 else values[:, None]
 
 
 def load_log(
@@ -240,11 +289,11 @@ def _vector(value: np.ndarray) -> ArrayF:
 
 
 # converters for the built-in metadata that becomes an attribute of the same
-# name; the opt_* keys and bounded_states become MPCLog.options
+# name; the opt_* keys and bounded_states become MPCLog.options, and the
+# _UNUSED keys are for readers without this module
 _BUILTIN: dict[str, Callable[[np.ndarray], Any]] = {
     "log_format_version": int,
     "ts": float,
-    "t_pred": _vector,
     "prediction_stride": int,
     "log_control_points": bool,
     "logging_mode": lambda v: MPCLogger.Mode.__members__[str(v)],
@@ -306,7 +355,8 @@ _OPTIONS: dict[str, tuple[str, Callable[[np.ndarray], Any]]] = {
     "opt_num_general_constraints": ("num_general_constraints", int),
     "opt_num_terminal_constraints": ("num_terminal_constraints", int),
 }
-BUILTIN_KEYS = frozenset(_BUILTIN) | frozenset(_OPTIONS)
+_UNUSED = frozenset({"t_pred_offsets"})
+BUILTIN_KEYS = frozenset(_BUILTIN) | frozenset(_OPTIONS) | _UNUSED
 """Metadata keys MPCLogger writes itself (addMetadata() rejects them)."""
 
 
@@ -342,6 +392,8 @@ def _make_log(
         elif key in _OPTIONS:
             option, convert = _OPTIONS[key]
             options[option] = convert(value)
+        elif key in _UNUSED:
+            pass
         else:
             meta[key] = value.item() if value.ndim == 0 else value
 
@@ -350,8 +402,7 @@ def _make_log(
     for key, cols in (("Hx", n), ("Hu", m), ("Hf", n)):
         if key in fields:
             fields[key] = fields[key].reshape(-1, cols)
-    if "basis" in fields:
-        fields["basis"] = fields["basis"].reshape(-1, fields["num_control_points"])
+    fields["basis"] = fields["basis"].reshape(-1, fields["num_control_points"])
 
     return MPCLog(
         **fields,

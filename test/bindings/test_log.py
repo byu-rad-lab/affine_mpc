@@ -139,7 +139,7 @@ def test_load_log_matches_npz_in_every_mode(tmp_path, mode):
     assert log.formulation == ampc.Formulation.Condensed
     assert log.options.input_cost == ampc.InputCostMode.ControlPoints
     assert log.parameterization_type == ampc.Parameterization.Type.BSpline
-    assert log.spline_degree == 2 and log.basis is None
+    assert log.spline_degree == 2 and log.basis.shape == (10, 4)
     assert log.state_dim == 2 and type(log.state_dim) is int
     assert log.ts == 0.1 and type(log.ts) is float
     assert log.logging_mode == mode
@@ -269,8 +269,16 @@ def test_load_log_shapes_and_views(tmp_path):
     assert log.x_pred.shape == (N, K, 2)
     np.testing.assert_array_equal(log.x, log.states[:, 0])
     np.testing.assert_array_equal(log.x_ref, log.ref_states[:, 0])
-    np.testing.assert_allclose(log.t_pred, [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    np.testing.assert_allclose(log.pred_times[1], 0.1 + log.t_pred)
+    assert log.t_pred.shape == (N, K)
+    np.testing.assert_allclose(log.t_pred[1], 0.1 + np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+    assert log.u_pred.shape == (N, K, 1) and log.u_ref_pred.shape == (N, K, 1)
+    np.testing.assert_array_equal(log.u, log.inputs[:, 0])
+    np.testing.assert_array_equal(log.u_ref, log.ref_inputs[:, 0])
+    # the properties are views, not copies
+    assert np.shares_memory(log.x, log.states)
+    assert np.shares_memory(log.u_pred, log.inputs)
+    with np.load(tmp_path / "log.npz", allow_pickle=False) as data:
+        np.testing.assert_allclose(data["meta_t_pred_offsets"], log.t_pred[0] - log.time[0])
     assert log.prediction_stride == 2
     assert not log.log_control_points
 
@@ -282,7 +290,9 @@ def test_load_log_minimal_stride(tmp_path):
     assert log.x_pred.shape == (4, 1, 2)
     assert log.x_ref_pred.shape == (4, 1, 2)
     np.testing.assert_array_equal(log.x, log.states)
-    assert log.pred_times.shape == (4, 1)
+    assert log.t_pred.shape == (4, 1)
+    assert log.u_pred.shape == (4, 1, 1)
+    np.testing.assert_array_equal(log.u, log.inputs)
 
 
 def test_load_log_control_points_and_no_input_cost(tmp_path):
@@ -293,7 +303,74 @@ def test_load_log_control_points_and_no_input_cost(tmp_path):
     assert log.ref_inputs.shape == (4, 4, 1)
 
     _write_log(tmp_path / "off", input_cost=ampc.InputCostMode.Off)
-    assert ampc.load_log(tmp_path / "off").ref_inputs is None
+    log = ampc.load_log(tmp_path / "off")
+    assert log.ref_inputs is None and log.u_ref_pred is None and log.u_ref is None
+
+
+def _assert_sampled_inputs_match(dense, cp):
+    # the same runs logged both ways give the same sampled inputs
+    np.testing.assert_array_equal(dense.x_pred, cp.x_pred)
+    np.testing.assert_allclose(cp.u_pred, dense.u_pred, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(cp.u, dense.u, rtol=0, atol=1e-12)
+    if dense.u_ref_pred is None:
+        assert cp.u_ref_pred is None
+    else:
+        np.testing.assert_allclose(cp.u_ref_pred, dense.u_ref_pred, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("stride", [0, 1, 3])
+@pytest.mark.parametrize(
+    "input_cost",
+    [ampc.InputCostMode.ControlPoints, ampc.InputCostMode.Trajectory, ampc.InputCostMode.Off],
+)
+def test_control_points_give_the_same_sampled_inputs(tmp_path, stride, input_cost):
+    # stride 3 over T = 10 ends with the terminal step, which repeats u_9
+    for name, cp in (("dense", False), ("cp", True)):
+        _write_log(
+            tmp_path / name,
+            prediction_stride=stride,
+            log_control_points=cp,
+            input_cost=input_cost,
+        )
+    dense, cp = ampc.load_log(tmp_path / "dense"), ampc.load_log(tmp_path / "cp")
+    assert cp.inputs.shape == (4, 4, 1)
+    _assert_sampled_inputs_match(dense, cp)
+
+
+def test_control_points_give_the_same_sampled_inputs_with_a_custom_basis(tmp_path):
+    T, nc = 6, 3
+    basis = np.random.default_rng(0).standard_normal((T, nc))
+    for name, cp in (("dense", False), ("cp", True)):
+        mpc = ampc.MPC(2, 1, ampc.Parameterization.fromBasis(T, basis))
+        mpc.setModelContinuous2Discrete(
+            np.array([[0.0, 1.0], [-1.0, -0.1]]), np.array([0.0, 1.0]), np.zeros(2), 0.1
+        )
+        mpc.setInputLimits(np.array([-1.0]), np.array([1.0]))
+        mpc.setStateWeights(np.array([1.0, 0.1]))
+        mpc.setReferenceState(np.array([0.5, 0.0]))
+        assert mpc.initializeSolver()
+        logger = ampc.MPCLogger(
+            mpc, tmp_path / name, 0.1, prediction_stride=4, log_control_points=cp
+        )
+        x = np.array([1.0, 0.0])
+        for k in range(3):
+            assert mpc.solve(x) == ampc.SolveStatus.Success
+            logger.logStep(0.1 * k, x)
+        logger.finalize()
+    dense, cp = ampc.load_log(tmp_path / "dense"), ampc.load_log(tmp_path / "cp")
+    np.testing.assert_array_equal(cp.basis, basis)
+    _assert_sampled_inputs_match(dense, cp)
+
+
+def test_bspline_logs_its_sampled_basis(tmp_path):
+    _write_log(tmp_path)
+    log = ampc.load_log(tmp_path)
+    param = ampc.Parameterization.bspline(10, 2, 4)
+    expected = np.zeros((10, 4))
+    for k in range(10):
+        start = param.band_start[k]
+        expected[k, start : start + param.band_width] = param.band_weights[:, k]
+    np.testing.assert_array_equal(log.basis, expected)
 
 
 @pytest.mark.parametrize(

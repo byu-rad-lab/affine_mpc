@@ -122,7 +122,7 @@ The logged `states` start at the current state `x0` passed to `logStep()` (predi
 This differs from `getPredictedStateTrajectory()`, which starts at the first predicted state $x_1$ and does not include `x0`.
 
 The timing arrays nest: `qp_solve_time` is part of `mpc_solve_time`, which is the MPC's latency after the measurement; `prepare_time` is separate work done before the measurement, so `prepare_time + mpc_solve_time` is the MPC's work per step; and `loop_time`, if you pass it, covers your whole loop, including model computation and discretization.
-`meta_t_pred` holds the prediction times of the logged samples relative to the time of each step.
+`meta_t_pred_offsets` holds the prediction times of the logged samples relative to the time of each step.
 
 Here:
 
@@ -139,7 +139,8 @@ The logger records configuration metadata such as:
 - dimensions
 - formulation (`formulation`: `condensed` or `sparse`)
 - parameterization type (`bspline` or `custom`)
-- B-spline degree and knot vector, or for a custom basis (`Parameterization.fromBasis()`) the basis, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`)
+- B-spline degree and knot vector
+- the sampled basis for every parameterization, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`); the input at step $k$ is `basis[k] @ control_points`, so logged control points can be evaluated without affine_mpc
 - the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`)
 - limits
 - slew rates (`u0_slew`, `control_point_slew`)
@@ -180,13 +181,14 @@ log.time        # (N,)
 log.states      # (N, K, n), or (N, n) with prediction_stride 0
 log.inputs      # (N, K, m), (N, m), or (N, nc, m) with log_control_points
 
-# the same data in fixed shapes
-log.x           # (N, n) state passed to logStep() at each step
-log.x_pred      # (N, K, n) logged states, with K = 1 for prediction_stride 0
-log.pred_times  # (N, K) time of each logged prediction sample
+# the same data sampled at the logged prediction steps, with K = 1 for prediction_stride 0
+log.t_pred      # (N, K) time of each logged prediction sample
+log.x_pred      # (N, K, n) logged states, starting at x0
+log.u_pred      # (N, K, m) inputs, evaluated from the control points with log_control_points
+log.x, log.u    # (N, n) and (N, m) state and applied input at each step
 
 # what the logger recorded about itself and the MPC
-log.ts, log.t_pred, log.state_dim, log.u_max
+log.ts, log.state_dim, log.u_max
 log.formulation            # ampc.Formulation.Condensed
 log.options.input_cost     # ampc.InputCostMode.ControlPoints
 log.R_diag                 # None without an input cost
@@ -198,10 +200,19 @@ log.meta["example_name"]
 Given `save_dir`, it reads `<save_name>.npz`, `<save_name>_npy/`, or `<save_name>_raw/`, whichever exists (pass `name=` for a `save_name` other than `log`); it raises `ValueError` if more than one does, and you can pass the artifact itself instead.
 The array fields (`time`, `loop_time`, `mpc_solve_time`, `qp_solve_time`, `prepare_time`, `states`, `ref_states`, `inputs`, `ref_inputs`) have the names and shapes listed above, with `ref_inputs` set to `None` without an input cost.
 
+The properties give the logged data in one form, whatever the stride and `log_control_points`:
+
+- `t_pred` `(N, K)`, the time of each logged prediction sample, so `plot(log.t_pred[i], log.x_pred[i])` plots the prediction of step `i`
+- `x_pred` and `x_ref_pred` `(N, K, n)`, the logged states and reference states; `x` and `x_ref` `(N, n)` are their first samples, the state passed to `logStep()` and its reference
+- `u_pred` and `u_ref_pred` `(N, K, m)`, the inputs and reference inputs at the logged prediction steps, evaluated from the control points with `log_control_points` (the terminal step $T$ repeats the input of step $T - 1$, since the horizon has one input fewer than states); `u` and `u_ref` `(N, m)` are their first samples, the applied input and its reference
+- `u_ref_pred` and `u_ref` are `None` without an input cost
+
+Except for `u_pred` and `u_ref_pred` with `log_control_points`, which are computed, these are views of the stored arrays, not copies.
+
 Every built-in metadata value is an attribute of the same name, read exactly from the binary metadata:
 
-- the logger settings `ts`, `t_pred`, `prediction_stride`, `log_control_points`, and `logging_mode` (an `MPCLogger.Mode`)
-- the dimensions, `formulation` (a `Formulation`), and `parameterization_type` (a `Parameterization.Type`), with `spline_degree` and `knots` for a B-spline or `basis`, reshaped to `(horizon_steps, num_control_points)`, for a custom basis
+- the logger settings `ts`, `prediction_stride`, `log_control_points`, and `logging_mode` (an `MPCLogger.Mode`); `t_pred_offsets` is left out, since `t_pred` holds the same times
+- the dimensions, `formulation` (a `Formulation`), and `parameterization_type` (a `Parameterization.Type`), with `spline_degree` and `knots` for a B-spline, and `basis`, reshaped to `(horizon_steps, num_control_points)`
 - `options`, an `Options` rebuilt from the `opt_*` values and `bounded_states`
 - the limits, weights, slew rates, soft-bound penalties, and constraints, with the constraint matrices reshaped to one row per constraint; those that depend on an option, such as `R_diag` or `Hx`, are `None` when the option leaves them out
 
@@ -227,7 +238,10 @@ This lets you trade off detail versus file size.
 
 ## Control-Point Logging Mode
 
-When `log_control_points` is `true`, the logger stores parameterized control points instead of the dense evaluated input trajectory. This can be useful for debugging the parameterization itself.
+When `log_control_points` is `true`, the logger stores parameterized control points instead of the dense evaluated input trajectory.
+This can be useful for debugging the parameterization itself, and it keeps the whole input trajectory when `prediction_stride` is above 1.
+The logged control points are `(N, nc, m)` whatever the stride, so with many control points (such as move blocking with one per step) and a coarse stride they are larger than the strided inputs.
+`load_log()` evaluates them at the logged steps as `u_pred`, the same values the default mode stores.
 
 ## Performance Notes
 

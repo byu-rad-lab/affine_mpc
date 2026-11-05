@@ -32,7 +32,7 @@ constexpr int kLogFormatVersion{1};
 // metadata.
 constexpr std::array<std::string_view, 44> kBuiltinKeys{
     "log_format_version",
-    "t_pred",
+    "t_pred_offsets",
     "ts",
     "prediction_stride",
     "log_control_points",
@@ -286,11 +286,11 @@ MPCLogger::MPCLogger(const MPC* const mpc,
   setBuiltinMetadata("log_format_version", kLogFormatVersion);
   captureMPCSnapshot();
 
-  std::vector<double> t_pred(strided_k_.size());
+  std::vector<double> t_pred_offsets(strided_k_.size());
   for (size_t i = 0; i < strided_k_.size(); ++i)
-    t_pred[i] = strided_k_[i] * ts_;
+    t_pred_offsets[i] = strided_k_[i] * ts_;
 
-  setBuiltinMetadata("t_pred", t_pred);
+  setBuiltinMetadata("t_pred_offsets", t_pred_offsets);
   setBuiltinMetadata("ts", ts_);
   setBuiltinMetadata("prediction_stride", prediction_stride_);
   setBuiltinMetadata("log_control_points", int{log_control_points_});
@@ -326,15 +326,18 @@ void MPCLogger::captureMPCSnapshot()
     setBuiltinMetadata("spline_degree", param.degree);
   setBuiltinMetadata("num_control_points", mpc_->getNumControlPoints());
 
-  if (bspline) {
+  if (bspline)
     setBuiltinMetadata("knots", param.knots);
-  } else {
-    // the basis row by row (horizon_steps x num_control_points), so control
-    // points can be evaluated offline
-    setBuiltinMetadata(
-        "basis", Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
-                     param.band_weights.data(), param.band_weights.size()}});
-  }
+
+  // the sampled basis row by row (horizon_steps x num_control_points), for
+  // every parameterization, so logged control points can be evaluated offline
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> basis{
+      Eigen::MatrixXd::Zero(param.horizon_steps, param.num_control_points)};
+  for (int k{0}; k < param.horizon_steps; ++k)
+    basis.row(k).segment(param.band_start(k), param.band_width) =
+        param.band_weights.col(k).transpose();
+  setBuiltinMetadata("basis", Eigen::VectorXd{Eigen::Map<const Eigen::VectorXd>{
+                                  basis.data(), basis.size()}});
 
   setBuiltinMetadata("opt_slew_initial_input",
                      static_cast<int>(mpc_->getOptions().slew_initial_input));
