@@ -140,8 +140,11 @@ Case drawCase(Draw& draw)
   o.input_bounds = input_modes[draw.integer(0, 2)];
   o.refined_bound_interval = draw.integer(1, 4);
   o.slew_initial_input = draw.coin();
-  o.slew_control_points = draw.coin() && c.param.num_control_points > 1
-                          && c.param.type == P::Type::BSpline;
+  // ControlPoints needs a B-spline; Exact works for any basis
+  if (draw.coin() && c.param.num_control_points > 1)
+    o.slew_bounds = c.param.type == P::Type::BSpline && draw.coin()
+                        ? ampc::SlewBoundMode::ControlPoints
+                        : ampc::SlewBoundMode::Exact;
   o.state_bounds = draw.coin() ? (draw.coin() ? ampc::StateBoundMode::Soft
                                               : ampc::StateBoundMode::Hard)
                                : ampc::StateBoundMode::Off;
@@ -202,7 +205,7 @@ void setAll(ampc::MPC& mpc,
     mpc.setTerminalConstraints(draw.sparse(p, n), VectorXd::Constant(p, -3.0),
                                VectorXd::Constant(p, 3.0));
   }
-  if (o.slew_control_points)
+  if (o.slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(m, 0.7));
   if (o.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(m, 0.3));
@@ -218,9 +221,9 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.num_control_points) + " deg"
                 + std::to_string(c.param.degree) + " opts "};
   s += std::to_string(static_cast<int>(o.input_cost));
-  for (const bool b :
-       {o.use_input_rate_cost, o.slew_initial_input, o.slew_control_points})
+  for (const bool b : {o.use_input_rate_cost, o.slew_initial_input})
     s += b ? '1' : '0';
+  s += " slew_bounds " + std::to_string(static_cast<int>(o.slew_bounds));
   s += " input_bounds " + std::to_string(static_cast<int>(o.input_bounds))
        + " interval " + std::to_string(o.refined_bound_interval);
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
@@ -574,9 +577,10 @@ template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
   expected.push_back({"input_bounds", 0});
   if (o.slew_initial_input)
     expected.push_back({"initial_slew", c.m});
-  if (o.slew_control_points)
-    expected.push_back(
-        {"control_point_slew", c.m * (c.param.num_control_points - 1)});
+  if (o.slew_bounds == ampc::SlewBoundMode::ControlPoints)
+    expected.push_back({"slew_bounds", c.m * (c.param.num_control_points - 1)});
+  else if (o.slew_bounds == ampc::SlewBoundMode::Exact)
+    expected.push_back({"slew_bounds", 0}); // depends on the basis
   if (o.state_bounds != ampc::StateBoundMode::Off)
     expected.push_back(
         {"state_bounds",
@@ -697,7 +701,7 @@ const ampc::Options constrained_msd_opts{
     .input_cost = ampc::InputCostMode::ControlPoints,
     .use_input_rate_cost = true,
     .slew_initial_input = true,
-    .slew_control_points = true,
+    .slew_bounds = ampc::SlewBoundMode::ControlPoints,
     .state_bounds = ampc::StateBoundMode::Hard,
     .num_general_constraints = 1,
     .num_terminal_constraints = 1};

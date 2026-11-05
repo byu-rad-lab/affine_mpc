@@ -108,9 +108,9 @@ QPBuilder::QPBuilder(const Formulation kind,
                            .rows();
   if (opts.slew_initial_input)
     rows_.initial_slew = add<InitialSlew>(layout, input_param).rows();
-  if (opts.slew_control_points)
-    rows_.control_point_slew =
-        add<ControlPointSlew>(layout, input_param).rows();
+  if (opts.slew_bounds != SlewBoundMode::Off)
+    rows_.slew_bounds =
+        add<SlewBounds>(layout, input_param, opts.slew_bounds).rows();
   if (opts.state_bounds != StateBoundMode::Off) {
     const StateBounds& bounds{
         add<StateBounds>(layout, boundedStates(opts, state_dim), state_dim,

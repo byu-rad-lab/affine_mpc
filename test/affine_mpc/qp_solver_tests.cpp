@@ -31,7 +31,7 @@ void setupMassSpringDamper(ampc::MPC& mpc)
 }
 
 const ampc::Options msd_opts{.input_cost = ampc::InputCostMode::ControlPoints,
-                             .slew_control_points = true};
+                             .slew_bounds = ampc::SlewBoundMode::ControlPoints};
 
 // An OSQPSolver that does not provide a dual solution (QPSolver's default)
 class SolverWithoutDuals : public ampc::OSQPSolver

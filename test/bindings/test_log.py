@@ -180,7 +180,7 @@ def test_load_log_with_every_option(tmp_path):
         input_bounds=ampc.InputBoundMode.Refined,
         refined_bound_interval=3,
         slew_initial_input=True,
-        slew_control_points=True,
+        slew_bounds=ampc.SlewBoundMode.ControlPoints,
         state_bounds=ampc.StateBoundMode.Soft,
         bounded_states=[1],
         num_general_constraints=2,
@@ -206,7 +206,7 @@ def test_load_log_with_every_option(tmp_path):
     assert log.Hf.shape == (1, 2)
     assert log.h_min.shape == (2,) and log.hf_max.shape == (1,)
     assert log.x_min.shape == (1,) and log.x_soft_l2.shape == (1,)
-    for name in ("R_diag", "R_rate_diag", "u0_slew", "control_point_slew"):
+    for name in ("R_diag", "R_rate_diag", "u0_slew", "slew_rate"):
         assert getattr(log, name).shape == (1,), name
     assert log.num_steps == 0
 
@@ -222,6 +222,23 @@ def test_load_log_with_a_custom_basis(tmp_path):
     assert log.parameterization_type == ampc.Parameterization.Type.Custom
     assert log.spline_degree is None and log.knots is None
     np.testing.assert_array_equal(log.basis, basis)
+
+
+@pytest.mark.parametrize("mode", list(ampc.SlewBoundMode))
+def test_load_log_with_each_slew_bound_mode(tmp_path, mode):
+    options = ampc.Options(slew_bounds=mode)
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.bspline(10, 2, 4), options)
+    if mode != ampc.SlewBoundMode.Off:
+        mpc.setSlewRate(slew_rate=np.array([0.25]))
+    ampc.MPCLogger(mpc, tmp_path, 0.1).finalize()
+
+    log = ampc.load_log(tmp_path)
+    assert log.meta == {}
+    assert log.options.slew_bounds == mode
+    if mode == ampc.SlewBoundMode.Off:
+        assert log.slew_rate is None
+    else:
+        np.testing.assert_array_equal(log.slew_rate, [0.25])
 
 
 def test_builtin_keys_are_reserved(tmp_path):

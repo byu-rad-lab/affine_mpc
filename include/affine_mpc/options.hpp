@@ -95,6 +95,38 @@ enum class InputBoundMode
 };
 
 /**
+ * @enum SlewBoundMode
+ * @brief Whether and how the MPC enforces the slew-rate limits
+ *   |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 (set with
+ *   MPC::setSlewRate(), per sample step), chosen with Options::slew_bounds.
+ *
+ * The limit is the same in every mode; the mode only decides how it is
+ * enforced. The change from the previous input, u_0 - u_prev, has its own
+ * limit (Options::slew_initial_input).
+ */
+enum class SlewBoundMode
+{
+  /// No slew-rate bounds (the default).
+  Off,
+  /// Bound the differences of consecutive control points, c_i - c_{i-1}, one
+  /// row per difference, with the limit scaled by the knots: a degree-p
+  /// B-spline changes by at most du_max per sample if
+  /// |c_i - c_{i-1}| <= (t_{i+p} - t_i) du_max / p (knots in samples), or
+  /// |c_i - c_{i-1}| <= du_max for degree 0. Exact for degree 0, and for
+  /// degree 1 when every knot interval contains a whole sample step (e.g.
+  /// integer knots at least one sample apart); otherwise sufficient (the
+  /// sampled changes stay inside the limits, but may not reach them).
+  /// Requires a B-spline parameterization.
+  ControlPoints,
+  /// Bound the sampled changes u_k - u_{k-1} exactly. Degree 0, and degree 1
+  /// when ControlPoints is exact: the rows of ControlPoints. Otherwise one row
+  /// per sampled change (T-1 rows per input; banded for B-splines, dense for
+  /// a custom basis), omitting changes whose basis row has a norm of at most
+  /// 1e-9 times the largest. The only mode for a custom basis.
+  Exact,
+};
+
+/**
  * @struct Options
  * @brief The optional costs and constraints of the MPC problem, chosen at
  *   construction.
@@ -119,9 +151,10 @@ enum class InputBoundMode
  *     least once (positive).
  * - slew_initial_input: Slew-rate constraint on the initial input
  *     (|u0 - u_prev| <= u0_slew).
- * - slew_control_points: Slew-rate constraints on the parameterization
- *     control points (|v_{i+1} - v_i| <= control_point_slew). Requires a
- *     B-spline parameterization.
+ * - slew_bounds: Off (the default), or slew-rate bounds
+ *     |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+ *     points (ControlPoints) or the sampled inputs (Exact) (see
+ *     SlewBoundMode).
  *
  * State constraints:
  * - state_bounds: Off (the default), Hard, or Soft state bounds (see
@@ -165,9 +198,9 @@ struct Options
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;
 
-  /// Enables slew rate constraints on parameterization control points (i.e.
-  /// between v_i and v_{i+1})
-  bool slew_control_points = false;
+  /// Whether and how the slew-rate limits |u_k - u_{k-1}| <= du_max for
+  /// k = 1, ..., T-1 are enforced (see SlewBoundMode)
+  SlewBoundMode slew_bounds{SlewBoundMode::Off};
 
   /// @}
   /// @name State constraints
@@ -248,6 +281,9 @@ std::ostream& operator<<(std::ostream& os, StateBoundMode mode);
 
 /// @brief Stream the name of an input bound mode (e.g. `Exact`).
 std::ostream& operator<<(std::ostream& os, InputBoundMode mode);
+
+/// @brief Stream the name of a slew bound mode (e.g. `ControlPoints`).
+std::ostream& operator<<(std::ostream& os, SlewBoundMode mode);
 
 } // namespace affine_mpc
 

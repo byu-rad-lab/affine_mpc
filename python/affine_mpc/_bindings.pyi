@@ -24,6 +24,7 @@ __all__: list[str] = [
     "Parameterization",
     "QPBlock",
     "QuadraticProgram",
+    "SlewBoundMode",
     "SolveInfo",
     "SolveStatus",
     "StateBoundMode",
@@ -70,6 +71,21 @@ class InputBoundMode(enum.Enum):
     Exact: typing.ClassVar[InputBoundMode]
     Refined: typing.ClassVar[InputBoundMode]
 
+class SlewBoundMode(enum.Enum):
+    """
+    Whether and how the MPC enforces the slew-rate limits |u_k - u_{k-1}| <= du_max
+    for k = 1, ..., T-1 (set with MPC.setSlewRate(), per sample step), chosen with
+    Options.slew_bounds.
+
+    The limit is the same in every mode; the mode only decides how it is enforced.
+    The change from the previous input, u_0 - u_prev, has its own limit
+    (Options.slew_initial_input).
+    """
+
+    ControlPoints: typing.ClassVar[SlewBoundMode]
+    Exact: typing.ClassVar[SlewBoundMode]
+    Off: typing.ClassVar[SlewBoundMode]
+
 class Options:
     """
     The optional costs and constraints of the MPC problem, chosen at construction.
@@ -93,9 +109,9 @@ class Options:
             least once (positive, default 16).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
-        slew_control_points: Slew-rate constraints on the parameterization control
-            points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-            parameterization.
+        slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+            |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+            points (ControlPoints) or the sampled inputs (Exact).
 
     State constraints:
         state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
@@ -113,7 +129,7 @@ class Options:
 
     input_bounds: InputBoundMode
     input_cost: InputCostMode
-    slew_control_points: bool
+    slew_bounds: SlewBoundMode
     slew_initial_input: bool
     state_bounds: StateBoundMode
     use_input_rate_cost: bool
@@ -125,7 +141,7 @@ class Options:
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         refined_bound_interval: int = 16,
         slew_initial_input: bool = False,
-        slew_control_points: bool = False,
+        slew_bounds: SlewBoundMode = SlewBoundMode.Off,
         state_bounds: StateBoundMode = StateBoundMode.Off,
         bounded_states: collections.abc.Sequence[int] = [],
         num_general_constraints: int = 0,
@@ -148,9 +164,9 @@ class Options:
                 least once (positive, default 16).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
-            slew_control_points: Slew-rate constraints on the parameterization control
-                points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-                parameterization.
+            slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+                |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+                points (ControlPoints) or the sampled inputs (Exact).
             state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
             bounded_states: Indices of the states with limits (requires state_bounds
                 other than Off). Empty (the default) bounds every state.
@@ -294,8 +310,9 @@ class Parameterization:
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
         bounds every sampled input (whatever Options.input_bounds is) and rejects
-        slew_control_points. It omits the bounds of samples whose basis row has a norm
-        of at most 1e-9 times the largest row norm (e.g. where a Laguerre basis has
+        SlewBoundMode.ControlPoints (SlewBoundMode.Exact bounds the sampled changes).
+        It omits the bounds of samples whose basis row has a norm of at most 1e-9 times
+        the largest row norm (e.g. where a Laguerre basis has
         decayed): such a sample can only leave the limits if the coefficients exceed
         them by about 1e9, and its tiny row would hurt the solver's scaling.
         InputCostMode.ControlPoints weights the coefficients (and
@@ -1519,8 +1536,8 @@ class MPC:
         """
         Get the blocks of constraint rows of A, in order, listing only the blocks the
         options enable: "dynamics" (the sparse formulation's model rows),
-        "input_bounds", "initial_slew", "control_point_slew", "state_bounds" (soft: the
-        upper rows, the lower rows, then the slack rows s >= 0), "general_constraints"
+        "input_bounds", "initial_slew", "slew_bounds", "state_bounds" (soft: the upper
+        rows, the lower rows, then the slack rows s >= 0), "general_constraints"
         (rows per step, steps in order), and "terminal_constraints". Together they
         cover every row. For analysis; allocates the list, so not intended for the
         control loop.
@@ -1591,10 +1608,10 @@ class MPC:
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the control point slew rate (+inf until setSlewRate()).
+        Get the slew-rate limit per sample step (+inf until setSlewRate()).
 
         Raises:
-            RuntimeError: If `slew_control_points` is not enabled.
+            RuntimeError: If `slew_bounds` is Off.
         """
 
     def getSlewRateInitial(
@@ -2218,21 +2235,27 @@ class MPC:
         """
 
     def setSlewRate(
-        self,
-        control_point_slew: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]"
-        ],
+        self, slew_rate: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set slew-rate constraint limits for control points. Control points can vary by
-        up to this magnitude from one index to the next.
+        Set the slew-rate limits |u_k - u_{k-1}| <= slew_rate for k = 1, ..., T-1, the
+        largest change of each input from one sample step to the next (units of the
+        input per sample step, not per second).
 
-        This function can only be called if `slew_control_points` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        The limit means the same in every SlewBoundMode; the mode only decides how it
+        is enforced (Options.slew_bounds). The change from the previous input,
+        u_0 - u_prev, has its own limit (setSlewRateInitial()). This function can only
+        be called if `slew_bounds` is not Off. Must be called prior to
+        `initializeSolver()`, but can also be called after if limits change between
+        solves (which only updates QP vectors). Pass `inf` for an input without a
+        limit.
 
         Args:
-            control_point_slew: Slew-rate vector. All values must be positive.
+            slew_rate: Slew-rate limit per input (size input_dim, non-negative).
+
+        Raises:
+            RuntimeError: If `slew_bounds` is Off.
+            ValueError: If the size is wrong or a value is negative.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -2243,15 +2266,15 @@ class MPC:
         self, u0_slew: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set initial slew-rate constraint limits for control points. Initial input can
-        vary by up to this magnitude from the previous input. See `setPreviousInput()`.
+        Set the initial slew-rate limits |u_0 - u_prev| <= u0_slew, the largest change
+        of the first sampled input from the previous input (see `setPreviousInput()`).
 
         This function can only be called if `slew_initial_input` is enabled. Must be
         called prior to `initializeSolver()`, but can also be called after if limits
         change between solves.
 
         Args:
-            u0_slew: Initial slew-rate vector. All values must be positive.
+            u0_slew: Initial slew-rate limit per input (size input_dim, non-negative).
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update

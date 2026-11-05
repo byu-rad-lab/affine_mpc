@@ -91,6 +91,38 @@ in rows and accuracy.
              "are already exact and cheap).")
       .finalize();
 
+  py::native_enum<ampc::SlewBoundMode>(m, "SlewBoundMode", "enum.Enum",
+                                       R"doc(
+Whether and how the MPC enforces the slew-rate limits |u_k - u_{k-1}| <= du_max
+for k = 1, ..., T-1 (set with MPC.setSlewRate(), per sample step), chosen with
+Options.slew_bounds.
+
+The limit is the same in every mode; the mode only decides how it is enforced.
+The change from the previous input, u_0 - u_prev, has its own limit
+(Options.slew_initial_input).
+)doc")
+      .value("Off", ampc::SlewBoundMode::Off,
+             "No slew-rate bounds (the default).")
+      .value("ControlPoints", ampc::SlewBoundMode::ControlPoints,
+             "Bound the differences of consecutive control points, "
+             "c_i - c_{i-1}, one row per difference, with the limit scaled by "
+             "the knots: a degree-p B-spline changes by at most du_max per "
+             "sample if |c_i - c_{i-1}| <= (t_{i+p} - t_i) du_max / p (knots "
+             "in samples), or |c_i - c_{i-1}| <= du_max for degree 0. Exact "
+             "for degree 0, and for degree 1 when every knot interval contains "
+             "a whole sample step (e.g. integer knots at least one sample "
+             "apart); otherwise sufficient (the sampled changes stay inside "
+             "the limits, but may not reach them). Requires a B-spline "
+             "parameterization.")
+      .value("Exact", ampc::SlewBoundMode::Exact,
+             "Bound the sampled changes u_k - u_{k-1} exactly. Degree 0, and "
+             "degree 1 when ControlPoints is exact: the rows of ControlPoints. "
+             "Otherwise one row per sampled change (T-1 rows per input; "
+             "banded for B-splines, dense for a custom basis), omitting "
+             "changes whose basis row has a norm of at most 1e-9 times the "
+             "largest. The only mode for a custom basis.")
+      .finalize();
+
   py::class_<ampc::Options> opt(m, "Options", R"doc(
 The optional costs and constraints of the MPC problem, chosen at construction.
 
@@ -113,9 +145,9 @@ Input constraints (the input limits are always enforced):
         least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
-    slew_control_points: Slew-rate constraints on the parameterization control
-        points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-        parameterization.
+    slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+        |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+        points (ControlPoints) or the sampled inputs (Exact).
 
 State constraints:
     state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
@@ -130,30 +162,30 @@ General constraints:
         hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
                           )doc");
 
-  opt.def(
-      py::init([](const ampc::InputCostMode input_cost,
-                  const bool use_input_rate_cost,
-                  const ampc::InputBoundMode input_bounds,
-                  const int refined_bound_interval,
-                  const bool slew_initial_input, const bool slew_control_points,
-                  const ampc::StateBoundMode state_bounds,
-                  const std::vector<int>& bounded_states,
-                  const int num_general_constraints,
-                  const int num_terminal_constraints) {
-        ampc::Options opts;
-        opts.input_cost = input_cost;
-        opts.use_input_rate_cost = use_input_rate_cost;
-        opts.input_bounds = input_bounds;
-        opts.refined_bound_interval = refined_bound_interval;
-        opts.slew_initial_input = slew_initial_input;
-        opts.slew_control_points = slew_control_points;
-        opts.state_bounds = state_bounds;
-        opts.bounded_states = bounded_states;
-        opts.num_general_constraints = num_general_constraints;
-        opts.num_terminal_constraints = num_terminal_constraints;
-        return opts;
-      }),
-      R"doc(
+  opt.def(py::init([](const ampc::InputCostMode input_cost,
+                      const bool use_input_rate_cost,
+                      const ampc::InputBoundMode input_bounds,
+                      const int refined_bound_interval,
+                      const bool slew_initial_input,
+                      const ampc::SlewBoundMode slew_bounds,
+                      const ampc::StateBoundMode state_bounds,
+                      const std::vector<int>& bounded_states,
+                      const int num_general_constraints,
+                      const int num_terminal_constraints) {
+            ampc::Options opts;
+            opts.input_cost = input_cost;
+            opts.use_input_rate_cost = use_input_rate_cost;
+            opts.input_bounds = input_bounds;
+            opts.refined_bound_interval = refined_bound_interval;
+            opts.slew_initial_input = slew_initial_input;
+            opts.slew_bounds = slew_bounds;
+            opts.state_bounds = state_bounds;
+            opts.bounded_states = bounded_states;
+            opts.num_general_constraints = num_general_constraints;
+            opts.num_terminal_constraints = num_terminal_constraints;
+            return opts;
+          }),
+          R"doc(
 Construct an Options struct defining optional MPC configuration features. All
 arguments are keyword-only.
 
@@ -170,9 +202,9 @@ Args:
         least once (positive, default 16).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
-    slew_control_points: Slew-rate constraints on the parameterization control
-        points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-        parameterization.
+    slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+        |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+        points (ControlPoints) or the sampled inputs (Exact).
     state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
     bounded_states: Indices of the states with limits (requires state_bounds
         other than Off). Empty (the default) bounds every state.
@@ -182,17 +214,17 @@ Args:
     num_terminal_constraints: Number of terminal constraints
         hf_min <= Hf x_T <= hf_max. Zero (the default) disables them.
       )doc",
-      py::kw_only(), py::arg("input_cost") = ampc::InputCostMode::Off,
-      py::arg("use_input_rate_cost") = false,
-      py::arg("input_bounds") = ampc::InputBoundMode::ControlPoints,
-      py::arg("refined_bound_interval") =
-          ampc::Options{}.refined_bound_interval,
-      py::arg("slew_initial_input") = false,
-      py::arg("slew_control_points") = false,
-      py::arg("state_bounds") = ampc::StateBoundMode::Off,
-      py::arg("bounded_states") = std::vector<int>{},
-      py::arg("num_general_constraints") = 0,
-      py::arg("num_terminal_constraints") = 0);
+          py::kw_only(), py::arg("input_cost") = ampc::InputCostMode::Off,
+          py::arg("use_input_rate_cost") = false,
+          py::arg("input_bounds") = ampc::InputBoundMode::ControlPoints,
+          py::arg("refined_bound_interval") =
+              ampc::Options{}.refined_bound_interval,
+          py::arg("slew_initial_input") = false,
+          py::arg("slew_bounds") = ampc::SlewBoundMode::Off,
+          py::arg("state_bounds") = ampc::StateBoundMode::Off,
+          py::arg("bounded_states") = std::vector<int>{},
+          py::arg("num_general_constraints") = 0,
+          py::arg("num_terminal_constraints") = 0);
 
   opt.def_readwrite("input_cost", &ampc::Options::input_cost);
   opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
@@ -200,7 +232,7 @@ Args:
   opt.def_readwrite("refined_bound_interval",
                     &ampc::Options::refined_bound_interval);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
-  opt.def_readwrite("slew_control_points", &ampc::Options::slew_control_points);
+  opt.def_readwrite("slew_bounds", &ampc::Options::slew_bounds);
   opt.def_readwrite("state_bounds", &ampc::Options::state_bounds);
   // assign a new list (a copy is returned, so appending to it has no effect)
   opt.def_readwrite("bounded_states", &ampc::Options::bounded_states);
@@ -243,7 +275,11 @@ Args:
       prev = true;
     }
     addField(opts.slew_initial_input, "slew_initial_input");
-    addField(opts.slew_control_points, "slew_control_points");
+    if (opts.slew_bounds != ampc::SlewBoundMode::Off) {
+      oss << (prev ? ", " : "") << "slew_bounds=SlewBoundMode."
+          << opts.slew_bounds;
+      prev = true;
+    }
     if (opts.state_bounds != ampc::StateBoundMode::Off) {
       oss << (prev ? ", " : "") << "state_bounds=StateBoundMode."
           << opts.state_bounds;

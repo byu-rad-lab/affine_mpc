@@ -185,6 +185,7 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/input_bounds_tests.cpp
     test/affine_mpc/input_cost_tests.cpp
     test/affine_mpc/input_rate_cost_tests.cpp
+    test/affine_mpc/slew_bounds_tests.cpp
     test/affine_mpc/state_bounds_tests.cpp
     test/affine_mpc/general_constraints_tests.cpp
     test/affine_mpc/qp_pattern_tests.cpp

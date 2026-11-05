@@ -121,7 +121,7 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   }
   if (opts.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(m, 1.0));
-  if (opts.slew_control_points)
+  if (opts.slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(m, 1.0));
   if (opts.state_bounds != ampc::StateBoundMode::Off) {
     const auto k{static_cast<Index>(mpc.getBoundedStates().size())};
@@ -202,6 +202,10 @@ void checkNoAllocationsAfterInitialize(const ampc::Parameterization& param,
   }
   mpc.setInputLimits(VectorXd::Constant(m, -2.0), VectorXd::Constant(m, 2.0));
   EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "limits";
+  if (opts.slew_bounds != ampc::SlewBoundMode::Off) {
+    mpc.setSlewRate(VectorXd::Constant(m, 0.8));
+    EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u) << "slew rate";
+  }
   if (opts.num_general_constraints > 0) {
     mpc.setGeneralConstraints(1.1 * Hx, Hu, h_min, h_max);
     EXPECT_EQ(countAllocations([&] { status = solve(); }), 0u)
@@ -230,7 +234,7 @@ std::vector<AllocationCase> allocationCases()
   const ampc::Options all{.input_cost = ampc::InputCostMode::ControlPoints,
                           .use_input_rate_cost = true,
                           .slew_initial_input = true,
-                          .slew_control_points = true,
+                          .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                           .state_bounds = ampc::StateBoundMode::Hard};
   const ampc::Options sampled{.input_cost = ampc::InputCostMode::ControlPoints,
                               .input_bounds = ampc::InputBoundMode::Exact};
@@ -244,6 +248,9 @@ std::vector<AllocationCase> allocationCases()
                                       ampc::InputCostMode::ControlPoints,
                                   .num_general_constraints = 1,
                                   .num_terminal_constraints = 1};
+  const ampc::Options slew_exact{.input_cost = ampc::InputCostMode::Trajectory,
+                                 .slew_initial_input = true,
+                                 .slew_bounds = ampc::SlewBoundMode::Exact};
   const ampc::Options trajectory{.input_cost = ampc::InputCostMode::Trajectory,
                                  .use_input_rate_cost = true,
                                  .slew_initial_input = true};
@@ -258,6 +265,10 @@ std::vector<AllocationCase> allocationCases()
       {"allOptions", ampc::Parameterization::linearInterp(10, 4), all},
       {"sampledBounds", ampc::Parameterization::bspline(10, 2, 5), sampled},
       {"moveBlocking", ampc::Parameterization::moveBlocking(10, 10), all},
+      {"exactSlew", ampc::Parameterization::bspline(10, 2, 5), slew_exact},
+      {"exactSlewCustomBasis",
+       ampc::Parameterization::fromBasis(10, laguerreBasis(10, 4, 0.6)),
+       slew_exact},
       {"refinedBounds", ampc::Parameterization::bspline(10, 3, 5), refined},
       {"softPosition", ampc::Parameterization::bspline(10, 2, 5), soft},
       {"generalConstraints", ampc::Parameterization::bspline(10, 2, 5),

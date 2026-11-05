@@ -19,6 +19,7 @@ from ._bindings import (
     MPCLogger,
     Options,
     Parameterization,
+    SlewBoundMode,
     StateBoundMode,
 )
 
@@ -99,8 +100,8 @@ class MPCLog:
     """with options.use_input_rate_cost"""
     u0_slew: ArrayF | None = None
     """with options.slew_initial_input"""
-    control_point_slew: ArrayF | None = None
-    """with options.slew_control_points"""
+    slew_rate: ArrayF | None = None
+    """per sample step, with options.slew_bounds other than Off"""
     x_min: ArrayF | None = None
     """with state bounds, one entry per state in options.bounded_states"""
     x_max: ArrayF | None = None
@@ -319,7 +320,7 @@ _BUILTIN: dict[str, Callable[[np.ndarray], Any]] = {
             "R_diag",
             "R_rate_diag",
             "u0_slew",
-            "control_point_slew",
+            "slew_rate",
             "x_min",
             "x_max",
             "x_soft_l1",
@@ -346,7 +347,10 @@ _OPTIONS: dict[str, tuple[str, Callable[[np.ndarray], Any]]] = {
     ),
     "opt_refined_bound_interval": ("refined_bound_interval", int),
     "opt_slew_initial_input": ("slew_initial_input", bool),
-    "opt_slew_control_points": ("slew_control_points", bool),
+    "opt_slew_bounds": (
+        "slew_bounds",
+        lambda v: SlewBoundMode.__members__[_pascal(str(v))],
+    ),
     "opt_state_bounds": (
         "state_bounds",
         lambda v: StateBoundMode.__members__[_pascal(str(v))],

@@ -379,16 +379,20 @@ TEST(MPCLoggerOptionsTest, givenInputCostMode_RecordsMode)
   fs::remove_all(test_dir);
 }
 
-TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsSlewRates)
+TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsModeAndSlewRates)
 {
   const fs::path test_dir{uniqueTempDir("mpc_logger_slew")};
   const auto param{ampc::Parameterization::linearInterp(5, 3)};
-  for (const bool enabled : {false, true}) {
-    SCOPED_TRACE(enabled ? "enabled" : "disabled");
+  for (const auto& [mode, name] :
+       {std::pair{ampc::SlewBoundMode::Off, "off"},
+        std::pair{ampc::SlewBoundMode::ControlPoints, "control_points"},
+        std::pair{ampc::SlewBoundMode::Exact, "exact"}}) {
+    SCOPED_TRACE(name);
+    const bool enabled{mode != ampc::SlewBoundMode::Off};
     fs::remove_all(test_dir);
-    ampc::MPC mpc{2, 1, param,
-                  ampc::Options{.slew_initial_input = enabled,
-                                .slew_control_points = enabled}};
+    ampc::MPC mpc{
+        2, 1, param,
+        ampc::Options{.slew_initial_input = enabled, .slew_bounds = mode}};
     if (enabled) {
       mpc.setSlewRateInitial(Eigen::VectorXd::Constant(1, 0.25));
       mpc.setSlewRate(Eigen::VectorXd::Constant(1, 0.5));
@@ -399,8 +403,13 @@ TEST(MPCLoggerOptionsTest, givenSlewOptions_RecordsSlewRates)
     }
     std::ifstream file{test_dir / "log_params.yaml"};
     const std::string params{std::istreambuf_iterator<char>{file}, {}};
+    EXPECT_NE(params.find(std::string{"opt_slew_bounds: "} + name + "\n"),
+              std::string::npos)
+        << params;
+    EXPECT_EQ(params.find("opt_slew_control_points"), std::string::npos);
+    EXPECT_EQ(params.find("control_point_slew"), std::string::npos);
     EXPECT_EQ(params.find("u0_slew:") != std::string::npos, enabled) << params;
-    EXPECT_EQ(params.find("control_point_slew:") != std::string::npos, enabled)
+    EXPECT_EQ(params.find("slew_rate:") != std::string::npos, enabled)
         << params;
   }
   fs::remove_all(test_dir);

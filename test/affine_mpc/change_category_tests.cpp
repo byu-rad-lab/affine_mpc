@@ -143,7 +143,7 @@ void setStateLimits(ampc::MPC& mpc, const Scales& s)
 
 void setSlew(ampc::MPC& mpc, const Scales& s)
 {
-  if (mpc.getOptions().slew_control_points)
+  if (mpc.getOptions().slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(1, 0.4 * s.slew));
 }
 
@@ -253,12 +253,12 @@ void checkCategoriesAgainstFreshQP(const ampc::Options& opts)
   }
 }
 
-const ampc::Options all_options{.input_cost =
-                                    ampc::InputCostMode::ControlPoints,
-                                .use_input_rate_cost = true,
-                                .slew_initial_input = true,
-                                .slew_control_points = true,
-                                .state_bounds = ampc::StateBoundMode::Hard};
+const ampc::Options all_options{
+    .input_cost = ampc::InputCostMode::ControlPoints,
+    .use_input_rate_cost = true,
+    .slew_initial_input = true,
+    .slew_bounds = ampc::SlewBoundMode::ControlPoints,
+    .state_bounds = ampc::StateBoundMode::Hard};
 
 // the rate cost alone (it then needs the previous input by itself)
 const ampc::Options rate_cost{.use_input_rate_cost = true};

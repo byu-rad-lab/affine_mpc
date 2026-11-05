@@ -47,7 +47,7 @@ constexpr std::array<std::string_view, 44> kBuiltinKeys{
     "knots",
     "basis",
     "opt_slew_initial_input",
-    "opt_slew_control_points",
+    "opt_slew_bounds",
     "opt_use_input_rate_cost",
     "opt_input_cost",
     "opt_input_bounds",
@@ -62,7 +62,7 @@ constexpr std::array<std::string_view, 44> kBuiltinKeys{
     "R_diag",
     "R_rate_diag",
     "u0_slew",
-    "control_point_slew",
+    "slew_rate",
     "bounded_states",
     "x_min",
     "x_max",
@@ -211,6 +211,19 @@ std::string inputBoundModeToString(affine_mpc::InputBoundMode mode)
   return "unknown";
 }
 
+std::string slewBoundModeToString(affine_mpc::SlewBoundMode mode)
+{
+  switch (mode) {
+  case SlewBoundMode::Off:
+    return "off";
+  case SlewBoundMode::ControlPoints:
+    return "control_points";
+  case SlewBoundMode::Exact:
+    return "exact";
+  }
+  return "unknown";
+}
+
 std::string makeShapeString(const std::vector<size_t>& shape)
 {
   std::ostringstream oss;
@@ -341,8 +354,8 @@ void MPCLogger::captureMPCSnapshot()
 
   setBuiltinMetadata("opt_slew_initial_input",
                      static_cast<int>(mpc_->getOptions().slew_initial_input));
-  setBuiltinMetadata("opt_slew_control_points",
-                     static_cast<int>(mpc_->getOptions().slew_control_points));
+  setBuiltinMetadata("opt_slew_bounds",
+                     slewBoundModeToString(mpc_->getOptions().slew_bounds));
   setBuiltinMetadata("opt_use_input_rate_cost",
                      static_cast<int>(mpc_->getOptions().use_input_rate_cost));
   setBuiltinMetadata("opt_input_cost",
@@ -369,8 +382,8 @@ void MPCLogger::captureMPCSnapshot()
     setBuiltinMetadata("R_rate_diag", mpc_->getInputRateWeights());
   if (mpc_->getOptions().slew_initial_input)
     setBuiltinMetadata("u0_slew", mpc_->getSlewRateInitial());
-  if (mpc_->getOptions().slew_control_points)
-    setBuiltinMetadata("control_point_slew", mpc_->getSlewRate());
+  if (mpc_->getOptions().slew_bounds != SlewBoundMode::Off)
+    setBuiltinMetadata("slew_rate", mpc_->getSlewRate());
   if (mpc_->getOptions().state_bounds != StateBoundMode::Off) {
     // x_min and x_max have one entry per bounded state
     const std::vector<int>& bounded{mpc_->getBoundedStates()};

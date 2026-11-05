@@ -162,7 +162,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
       ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
-                    .slew_control_points = true}};
+                    .slew_bounds = ampc::SlewBoundMode::ControlPoints}};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 0.11};

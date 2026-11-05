@@ -202,8 +202,8 @@ def test_from_basis_mpc_bounds_sampled_inputs():
         with pytest.raises(RuntimeError, match="custom basis"):
             mpc.setReferenceInput(np.zeros(1))
 
-    with pytest.raises(ValueError, match="slew_control_points requires a B-spline"):
-        ampc.MPC(2, 1, param, ampc.Options(slew_control_points=True))
+    with pytest.raises(ValueError, match="SlewBoundMode::ControlPoints requires a B-spline"):
+        ampc.MPC(2, 1, param, ampc.Options(slew_bounds=ampc.SlewBoundMode.ControlPoints))
 
 
 def test_from_basis_omits_bounds_where_the_basis_decayed():

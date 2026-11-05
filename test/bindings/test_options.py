@@ -10,7 +10,7 @@ def test_options_interface():
     opts = ampc.Options(input_cost=ampc.InputCostMode.Off)
     opts = ampc.Options(use_input_rate_cost=False)
     opts = ampc.Options(slew_initial_input=False)
-    opts = ampc.Options(slew_control_points=False)
+    opts = ampc.Options(slew_bounds=ampc.SlewBoundMode.Off)
     opts = ampc.Options(input_bounds=ampc.InputBoundMode.ControlPoints)
     opts = ampc.Options(refined_bound_interval=16)
     opts = ampc.Options(state_bounds=ampc.StateBoundMode.Off)
@@ -38,6 +38,24 @@ def test_options_bound_modes():
         ampc.InputBoundMode.Exact,
         ampc.InputBoundMode.Refined,
     ]
+
+
+def test_options_slew_bounds():
+    opts = ampc.Options(slew_bounds=ampc.SlewBoundMode.Exact)
+    assert opts.slew_bounds == ampc.SlewBoundMode.Exact
+    assert repr(opts) == "Options(slew_bounds=SlewBoundMode.Exact)"
+    assert "slew_bounds=Exact" in str(opts)
+    opts.slew_bounds = ampc.SlewBoundMode.ControlPoints
+    assert repr(opts) == "Options(slew_bounds=SlewBoundMode.ControlPoints)"
+    assert ampc.Options().slew_bounds == ampc.SlewBoundMode.Off
+    assert "slew_bounds=Off" in str(ampc.Options())
+    assert list(ampc.SlewBoundMode) == [
+        ampc.SlewBoundMode.Off,
+        ampc.SlewBoundMode.ControlPoints,
+        ampc.SlewBoundMode.Exact,
+    ]
+    with pytest.raises(TypeError):
+        ampc.Options(slew_control_points=True)
     assert list(ampc.StateBoundMode) == [
         ampc.StateBoundMode.Off,
         ampc.StateBoundMode.Hard,

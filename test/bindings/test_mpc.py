@@ -20,7 +20,7 @@ def test_mpc_interface():
         )
         opts = ampc.Options()
         opts.input_cost = ampc.InputCostMode.ControlPoints
-        opts.slew_control_points = True
+        opts.slew_bounds = ampc.SlewBoundMode.ControlPoints
         opts.slew_initial_input = True
         opts.state_bounds = ampc.StateBoundMode.Hard
         mpc = ampc.MPC(n, m, param, opts)
@@ -45,7 +45,7 @@ def test_mpc_interface():
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
         mpc.setStateLimits(x_min=-np.ones(n), x_max=np.ones(n))
-        mpc.setSlewRate(control_point_slew=np.ones(m))
+        mpc.setSlewRate(slew_rate=np.ones(m))
         mpc.setSlewRateInitial(u0_slew=np.ones(m))
         mpc.setPreviousInput(u_prev=np.zeros(m))
 
@@ -67,7 +67,7 @@ def test_mpc_interface():
 
     assert (
         repr(mpc)
-        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_control_points=True, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], control_point_slew=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_bounds=ControlPoints, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], slew_rate=[1])"
     )
     assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
 
@@ -91,7 +91,7 @@ def _all_options_mpc(n=2, m=2, T=6, nc=3):
     opts = ampc.Options(
         input_cost=ampc.InputCostMode.ControlPoints,
         slew_initial_input=True,
-        slew_control_points=True,
+        slew_bounds=ampc.SlewBoundMode.ControlPoints,
         state_bounds=ampc.StateBoundMode.Hard,
     )
     return ampc.MPC(n, m, param, opts), param, opts
@@ -118,7 +118,7 @@ def test_mpc_getters_return_set_values():
 
     mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
     mpc.setStateLimits(x_min=-5 * np.ones(n), x_max=5 * np.ones(n))
-    mpc.setSlewRate(control_point_slew=np.array([0.1, 0.2]))
+    mpc.setSlewRate(slew_rate=np.array([0.1, 0.2]))
     mpc.setSlewRateInitial(u0_slew=np.array([0.3, 0.4]))
     mpc.setPreviousInput(u_prev=np.array([0.7, 0.8]))
     np.testing.assert_array_equal(mpc.getInputMin(), -np.ones(m))
@@ -620,3 +620,62 @@ def test_refined_bound_interval_must_be_positive():
     opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0)
     with pytest.raises(ValueError, match="refined_bound_interval must be positive"):
         ampc.MPC(2, 1, param, opts)
+
+
+def _slew_mpc(param, mode, formulation, slew):
+    n, m = 2, 1
+    opts = ampc.Options(input_cost=ampc.InputCostMode.Trajectory, slew_bounds=mode)
+    mpc = ampc.MPC(n, m, param, opts, formulation=formulation)
+    Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
+    mpc.setInputLimits(np.full(m, -10.0), np.full(m, 10.0))
+    mpc.setStateWeights(np.array([1.0, 0.1]))
+    mpc.setReferenceState(np.array([1.0, 0.0]))
+    mpc.setInputWeights(np.full(m, 1e-3))
+    mpc.setReferenceInput(np.full(m, 3.0))
+    mpc.setSlewRate(slew_rate=np.full(m, slew))
+    settings = ampc.OSQPSettings()
+    settings.eps_abs = settings.eps_rel = 1e-9
+    settings.polishing = True
+    settings.max_iter = 1000000
+    assert mpc.initializeSolver(settings)
+    return mpc
+
+
+@pytest.mark.parametrize("formulation", list(ampc.Formulation))
+def test_slew_bounds_limit_every_sampled_change(formulation):
+    T, slew = 30, 0.1
+    cubic = ampc.Parameterization.bspline(T, 3, 8)
+    basis = np.zeros((T, cubic.num_control_points))
+    for k in range(T):
+        start = cubic.band_start[k]
+        basis[k, start : start + cubic.band_width] = cubic.band_weights[:, k]
+    params = [
+        ampc.Parameterization.bspline(T, 2, 7),
+        ampc.Parameterization.fromBasis(T, basis),
+    ]
+    for param in params:
+        modes = [ampc.SlewBoundMode.Exact]
+        if param.type == ampc.Parameterization.Type.BSpline:
+            modes.append(ampc.SlewBoundMode.ControlPoints)
+        for mode in modes:
+            mpc = _slew_mpc(param, mode, formulation, slew)
+            assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success
+            du = np.abs(np.diff(mpc.getInputTrajectory()[:, 0]))
+            assert du.max() <= slew + 1e-6
+            if mode == ampc.SlewBoundMode.Exact:
+                np.testing.assert_allclose(du.max(), slew, atol=1e-5)
+            names = [b.name for b in mpc.getQPConstraintBlocks()]
+            assert "slew_bounds" in names
+
+            # a limit change only updates the bounds
+            mpc.setSlewRate(slew_rate=np.array([0.05]))
+            assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success
+            du = np.abs(np.diff(mpc.getInputTrajectory()[:, 0]))
+            assert du.max() <= 0.05 + 1e-6
+
+
+def test_slew_bounds_requires_mode_for_set_slew_rate():
+    mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(10, 4))
+    with pytest.raises(RuntimeError, match="Slew rate is not enabled"):
+        mpc.setSlewRate(slew_rate=np.array([0.5]))

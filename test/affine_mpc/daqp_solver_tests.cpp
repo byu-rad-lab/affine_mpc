@@ -36,7 +36,7 @@ void configure(ampc::MPC& mpc, const ampc::Options& opts)
   }
   if (opts.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
-  if (opts.slew_control_points)
+  if (opts.slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(1, 0.5));
   if (opts.state_bounds != ampc::StateBoundMode::Off) {
     // the velocity limit is active during the transient
@@ -110,7 +110,12 @@ std::vector<DAQPCase> daqpCases()
        linear,
        {.input_cost = IC::ControlPoints,
         .slew_initial_input = true,
-        .slew_control_points = true}},
+        .slew_bounds = ampc::SlewBoundMode::ControlPoints}},
+      {"slewExact",
+       bspline,
+       {.input_cost = IC::ControlPoints,
+        .slew_initial_input = true,
+        .slew_bounds = ampc::SlewBoundMode::Exact}},
       {"hardStateBounds",
        bspline,
        {.state_bounds = SB::Hard, .bounded_states = {1}}},
@@ -282,7 +287,7 @@ TEST(DAQPSolverTester, givenMPC_SplitsRowsIntoSimpleBoundsAndGeneralRows)
   // are simple bounds; the 3 control point slew rows and the other 9
   // velocity bounds are general rows
   const ampc::Options opts{.slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard,
                            .bounded_states = {1}};
   ampc::MPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4), opts};
@@ -348,7 +353,7 @@ TEST(DAQPSolverTester, givenIterationLimit_ReportsMaxIterReached)
 // many, so compare the objective, not the solution).
 TEST(DAQPSolverTester, givenSingularCostMatrix_SolvesWithProximalIterations)
 {
-  const ampc::Options opts{.slew_control_points = true};
+  const ampc::Options opts{.slew_bounds = ampc::SlewBoundMode::ControlPoints};
   const auto param{ampc::Parameterization::linearInterp(10, 4)};
   ampc::MPC daqp{2, 1, param, opts}, ref{2, 1, param, opts};
   for (ampc::MPC* mpc : {&daqp, &ref}) {
