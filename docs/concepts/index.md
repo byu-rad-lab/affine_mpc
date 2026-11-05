@@ -75,8 +75,12 @@ $$
             |\bm{u}_0 - \bm{u}_{{-}1}| \leq \bm{u}_{0,\mathrm{slew}}
         }_{ \textcolor{red}{\text{initial slew rate}} } \\
     &\quad \underbrace{
-            |\bm{c}_i - \bm{c}_{i-1}| \leq \bm{c}_{\mathrm{slew}}
-        }_{ \textcolor{red}{\text{slew control points}} } \\
+            |\bm{c}_i - \bm{c}_{i-1}| \leq \lambda_i \bm{u}_{\mathrm{slew}}
+        }_{ \textcolor{red}{\text{control point slew bounds}} }
+        \quad \text{OR} \quad
+        \underbrace{
+            |\bm{u}_k - \bm{u}_{k-1}| \leq \bm{u}_{\mathrm{slew}}
+        }_{ \textcolor{red}{\text{exact slew bounds}} } \\
     &\quad \underbrace{
             \bm{h}_{\min} \leq H_x \bm{x}_k + H_u \bm{u}_k \leq \bm{h}_{\max}
         }_{ \textcolor{red}{\text{general constraints}} } \\

@@ -28,7 +28,7 @@
     | $\bm{u}_{\min}, \bm{u}_{\max} \in \R^m$ | input limits |
     | $\bm{x}_{\min}, \bm{x}_{\max} \in \R^{n_b}$ | state limits of the bounded states |
     | $\bm{u}_{0,\mathrm{slew}} \in \R^m$ | slew rate limit of the initial input |
-    | $\bm{c}_{\mathrm{slew}} \in \R^m$ | slew rate limit between consecutive control points |
+    | $\bm{u}_{\mathrm{slew}} \in \R^m$ | slew rate limit per sample step, on $\bm{u}_k - \bm{u}_{k-1}$ for $k \geq 1$ |
     | $\bm{s} \in \R^{n_b}$ | slack of the soft state bounds, one per bounded state |
     | $\bm{\rho}_1, \bm{\rho}_2 \in \R^{n_b}$ | L1 and L2 penalties of the slack |
     | $n_h$, $n_{h,\mathrm{f}}$ | number of general and terminal constraints |
@@ -56,6 +56,7 @@
     | $\Phi^p(\bm{\tau}) \in \R^{T \times \eta}$ | basis of one input channel, so $\Psi^p(\bm{\tau}) = \Phi^p(\bm{\tau}) \otimes I_m$; written $\Phi$ when the arguments are clear or for a custom basis |
     | $\eta_{\mathrm{r}}$ | number of refined control points bounded by `InputBoundMode::Refined` |
     | $\Omega \in \R^{\eta_{\mathrm{r}} \times \eta}$ | knot insertion matrix: control points to refined control points |
+    | $\lambda_i$ | slew bound factor of $\bm{c}_i - \bm{c}_{i-1}$: $(\tau_{i+p} - \tau_i) / p$, or 1 for $p = 0$ |
 
 <!-- --8<-- [end:parameterization-terms] -->
 

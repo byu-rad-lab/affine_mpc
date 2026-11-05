@@ -331,8 +331,8 @@ B-spline properties that the MPC relies on do not hold, which changes three feat
   No coefficients represent a constant input in general, so in this mode `setReferenceInput()` throws `std::logic_error` (`RuntimeError` in Python) for a custom basis; the coefficient reference defaults to zero, and `setReferenceInputControlPoints()` sets it directly.
   `InputCostMode::Trajectory` weights the sampled inputs for any basis, and accepts a constant reference (`setReferenceInput()`) or a sampled one (`setReferenceInputTrajectory()`); see [Input Cost](problem-formulation.md#input-cost).
 - **Slew rates.**
-  Differences of coefficients do not bound input changes, so `slew_control_points` throws `std::invalid_argument` (`ValueError` in Python) at construction.
-  `slew_initial_input` still works, since it bounds the first sampled input.
+  Differences of coefficients do not bound input changes, so `SlewBoundMode::ControlPoints` throws `std::invalid_argument` (`ValueError` in Python) at construction.
+  `SlewBoundMode::Exact` bounds the sampled changes $\bm{u}_k - \bm{u}_{k-1}$ directly (up to $T-1$ dense rows per input channel, omitting changes whose basis row norm is at most $10^{-9}$ times the largest), and `slew_initial_input` still works, since it bounds the first sampled input.
 
 The input rate cost (`use_input_rate_cost`) and the general constraints act on the sampled inputs, so they mean the same for a custom basis as for a B-spline.
 

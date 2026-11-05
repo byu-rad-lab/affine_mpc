@@ -199,23 +199,43 @@ This constrains the difference between the previous input and the first input in
 
 - Your system is physically limited in how fast it can change inputs
 
-### Control Point Slew Rate Constraint
+### Slew Rate Constraint
 
 $$
-|\bm{c}_i - \bm{c}_{i-1}| \leq \bm{c}_{\mathrm{slew}} \quad i=1,\dots,\eta-1
+|\bm{u}_k - \bm{u}_{k-1}| \leq \bm{u}_{\mathrm{slew}} \quad k=1,\dots,T-1
 $$
 
-This constrains the difference between consecutive control points.
-Slew rates are used to smooth out trajectories,
-preventing potentially harmful input spikes and often yielding smoother or less aggressive actuation.
-This is more natural for degree 0 and 1 splines to essentially set a slew rate constraint between evaluated inputs.
-It can still be used for higher degree splines, but the result may not be as intuitive.
-It requires a B-spline parameterization: with a [custom basis](input-parameterization.md#custom-bases), differences of the coefficients do not bound input changes, so the MPC rejects `slew_control_points` at construction.
+This limits how much each input may change from one sample step to the next over the horizon.
+The limit $\bm{u}_{\mathrm{slew}}$ (`setSlewRate()`) is in units of the input per sample step, not per second, so multiply a rate per second by the sample time.
+The change from the previous input, $\bm{u}_0 - \bm{u}_{-1}$, has its own limit (see [above](#initial-input-slew-rate-constraint)); enable both for a limit on every change.
+
+`slew_bounds` chooses whether and how the limit is enforced: `SlewBoundMode::Off` (the default), `ControlPoints`, or `Exact` (`SlewBoundMode.ControlPoints` and so on in Python).
+The limit means the same in both modes, as the input limits do with `input_bounds`.
+
+- `ControlPoints` bounds the differences of consecutive control points, one row per difference, as
+
+    $$
+    |\bm{c}_i - \bm{c}_{i-1}| \leq \lambda_i \bm{u}_{\mathrm{slew}} \quad i=1,\dots,\eta-1,
+    \qquad
+    \lambda_i = \frac{\tau_{i+p} - \tau_i}{p} \quad (\lambda_i = 1 \text{ for } p = 0),
+    $$
+
+    with the knots in samples.
+    The derivative of a degree $p$ B-spline is a degree $p-1$ B-spline with control points $(\bm{c}_i - \bm{c}_{i-1}) / \lambda_i$, so by the convex hull property these bounds keep the slope, and so every sampled change, within the limit.
+    They are exact for $p = 0$ (each change is zero or one difference) and for $p = 1$ when every knot interval contains a whole sample step, e.g. integer knots one or more samples apart.
+    Otherwise they are sufficient but conservative: the sampled changes stay inside the limit, but may not reach it.
+    Where $p + 1$ knots coincide (a jump, e.g. a double knot for $p = 1$), $\lambda_i = 0$, which forbids the jump; fewer repeated knots (a kink for $p \geq 2$) keep $\lambda_i > 0$.
+    It requires a B-spline parameterization: with a [custom basis](input-parameterization.md#custom-bases), differences of the coefficients do not bound input changes, so the MPC rejects it at construction.
+
+- `Exact` bounds every sampled change $\bm{u}_k - \bm{u}_{k-1}$, $T-1$ rows per input, banded for B-splines and dense for a custom basis.
+  Where the `ControlPoints` rows are already exact ($p = 0$, and $p = 1$ with a whole sample step in every knot interval), it uses them instead.
+  It is the only mode for a custom basis, and it omits the changes whose basis row norm is at most $10^{-9}$ times the largest.
+  As with exact input bounds, its many rows can make OSQP slower on long horizons.
 
 **When you may want to use it:**
 
-- You want to try to smooth the input trajectory
 - Your system is physically limited in how fast it can change inputs
+- You want to smooth the input trajectory or avoid large input steps
 
 ### General Linear Constraints
 

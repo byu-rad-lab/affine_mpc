@@ -141,9 +141,9 @@ The logger records configuration metadata such as:
 - parameterization type (`bspline` or `custom`)
 - B-spline degree and knot vector
 - the sampled basis for every parameterization, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`); the input at step $k$ is `basis[k] @ control_points`, so logged control points can be evaluated without affine_mpc
-- the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`) and `opt_state_bounds` (`off`, `hard`, or `soft`)
+- the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `exact`, or `refined`, with `opt_refined_bound_interval`), `opt_state_bounds` (`off`, `hard`, or `soft`), and `opt_slew_bounds` (`off`, `control_points`, or `exact`)
 - limits
-- slew rates (`u0_slew`, `control_point_slew`)
+- slew rates (`u0_slew`, and `slew_rate` per sample step)
 - weights
 - bounded states and soft-bound penalties (`bounded_states`, `x_soft_l1`, `x_soft_l2`)
 - general and terminal constraints (`Hx`, `Hu`, `h_min`, `h_max`, `Hf`, `hf_min`, `hf_max`), with the matrices flattened row by row

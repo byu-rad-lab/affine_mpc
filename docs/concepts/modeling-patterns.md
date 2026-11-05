@@ -67,7 +67,7 @@ This is a change of variables you can apply yourself:
 1. Use the input limits $\bm{u}_{\min} - \bm{u}_{\mathrm{ss}}$ and $\bm{u}_{\max} - \bm{u}_{\mathrm{ss}}$, and the input reference $\bm{u}_{\mathrm{ref}} - \bm{u}_{\mathrm{ss}}$.
    With general constraints, use the bounds $\bm{h}_{\min} - H_u \bm{u}_{\mathrm{ss}}$ and $\bm{h}_{\max} - H_u \bm{u}_{\mathrm{ss}}$.
    With a custom basis and `InputCostMode::ControlPoints`, `setReferenceInput()` is not available; the default zero coefficient reference corresponds to $\bm{u}_{\mathrm{ref}} = \bm{u}_{\mathrm{ss}}$.
-1. Keep the control point slew rate unchanged (B-splines only), and pass $\bm{u}_{-1} - \bm{u}_{\mathrm{ss}}$ to `setPreviousInput()` for the initial slew rate and the input rate cost.
+1. Keep the slew rate unchanged, and pass $\bm{u}_{-1} - \bm{u}_{\mathrm{ss}}$ to `setPreviousInput()` for the initial slew rate and the input rate cost.
 1. Keep the states, state limits, and `Q` unchanged.
 1. Add $\bm{u}_{\mathrm{ss}}$ back to the results of `getNextInput()` and `getInputTrajectory()`.
 
