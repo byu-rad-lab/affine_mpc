@@ -180,7 +180,7 @@ Here is an example of what to include in your CMake config:
 include(FetchContent)
 FetchContent_Declare(ampc_extern
   GIT_REPOSITORY https://github.com/byu-rad-lab/affine_mpc
-  GIT_TAG        v0.5.2  # (check for latest release)
+  GIT_TAG        v0.6.0  # (check for latest release)
 )
 
 # set options as desired
