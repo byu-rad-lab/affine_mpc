@@ -38,8 +38,9 @@ int main(int argc, char** argv)
       writer.addScalar("scalar_int", static_cast<std::int32_t>(6));
       writer.addString("string_ascii", "condensed");
       writer.addString("string_empty", "");
-      // 2-, 3-, and 4-byte UTF-8 sequences
-      writer.addString("string_utf8", "\u00b5 \u2713 \U0001d465");
+      // 2-, 3-, and 4-byte UTF-8 sequences (U+00B5, U+2713, U+1D465) as bytes,
+      // since MSVC encodes \u escapes in the code page without /utf-8
+      writer.addString("string_utf8", "\xc2\xb5 \xe2\x9c\x93 \xf0\x9d\x91\xa5");
       // a stray continuation byte and a truncated sequence become U+FFFD
       writer.addString("string_invalid", "a\x80"
                                          "b\xe2\x9c");

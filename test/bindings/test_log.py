@@ -425,7 +425,8 @@ def test_load_log_finds_artifacts(tmp_path):
 
 def test_load_log_recovers_a_log_that_was_never_finalized(tmp_path):
     # the process ends without finalize(), as in a crash: whatever the payload
-    # streams flushed is on disk, with a different number of steps per file
+    # streams flushed is on disk, possibly a different number of steps per file
+    # (or every step, depending on the platform's buffering)
     steps = 5000
     script = textwrap.dedent(f"""
         import os, sys
@@ -452,7 +453,7 @@ def test_load_log_recovers_a_log_that_was_never_finalized(tmp_path):
     log = ampc.load_log(tmp_path)
     assert log.format == "raw" and not log.finalized
     N = log.num_steps
-    assert 0 < N < steps
+    assert 0 < N <= steps
     np.testing.assert_allclose(log.time, 0.1 * np.arange(N))
     np.testing.assert_array_equal(log.x, np.tile([1.0, 0.0], (N, 1)))
     assert log.states.shape == (N, 3, 2)
