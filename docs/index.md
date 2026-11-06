@@ -8,10 +8,12 @@ with C++ and Python interfaces.
 - Discrete-time affine time-invariant models
 - Finite-horizon tracking MPC
 - Condensed and sparse formulations
-- Input parameterization with move-blocking, linear interpolation, and B-splines
-- Optional input, state, and slew-rate constraints
+- Input parameterization with move-blocking, linear interpolation, B-splines, or a custom basis (e.g. Laguerre functions)
+- Input limits enforced on the control points or the sampled inputs
+- Optional input and input-rate costs, per-sample slew-rate bounds, hard or soft state bounds, and general and terminal linear constraints
+- OSQP as the QP solver, with DAQP as an optional dense solver
 - Repeated-solve workflows with runtime updates
-- Binary logging for simulation and analysis
+- Binary logging, read in Python with `load_log()` for simulation and analysis
 
 ## What It Is Not
 
