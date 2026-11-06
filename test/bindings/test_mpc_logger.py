@@ -13,7 +13,9 @@ def _has_zlib() -> bool:
     return os.environ.get("AFFINE_MPC_HAS_ZLIB") == "1"
 
 
-def _make_mpc(input_cost: ampc.InputCostMode = ampc.InputCostMode.ControlPoints) -> ampc.MPC:
+def _make_mpc(
+    input_cost: ampc.InputCostMode = ampc.InputCostMode.ControlPoints,
+) -> ampc.MPC:
     opts = ampc.Options(input_cost=input_cost)
     mpc = ampc.MPC(2, 1, ampc.Parameterization.linearInterp(5, 2), opts)
 
@@ -57,7 +59,12 @@ def _log_single_step(
     logger.logStep(t=0.0, x0=x0, loop_time=0.001)
     logger.finalize()
 
-    return save_dir / f"{save_name}.npz", save_dir / f"{save_name}_params.yaml", save_dir / f"{save_name}_raw", save_dir / f"{save_name}_npy"
+    return (
+        save_dir / f"{save_name}.npz",
+        save_dir / f"{save_name}_params.yaml",
+        save_dir / f"{save_name}_raw",
+        save_dir / f"{save_name}_npy",
+    )
 
 
 def test_mpc_logger_interface():
@@ -137,7 +144,9 @@ def test_mpc_logger_stride_behavior():
         with np.load(npz_path, allow_pickle=False) as data:
             np.testing.assert_equal(data["states"].shape[1], 4)
             np.testing.assert_equal(data["inputs"].shape[1], 4)
-            np.testing.assert_allclose(data["meta_t_pred_offsets"], np.array([0.0, 0.2, 0.4, 0.5]))
+            np.testing.assert_allclose(
+                data["meta_t_pred_offsets"], np.array([0.0, 0.2, 0.4, 0.5])
+            )
 
 
 def test_mpc_logger_control_points_mode():
@@ -151,7 +160,9 @@ def test_mpc_logger_control_points_mode():
 
         with np.load(npz_path, allow_pickle=False) as data:
             np.testing.assert_equal(data["states"].shape[1], 6)
-            np.testing.assert_equal(data["inputs"].shape[1], data["meta_num_control_points"].item())
+            np.testing.assert_equal(
+                data["inputs"].shape[1], data["meta_num_control_points"].item()
+            )
 
 
 def test_mpc_logger_zero_stride_squeezes_arrays():

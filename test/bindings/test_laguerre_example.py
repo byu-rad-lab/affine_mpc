@@ -24,8 +24,12 @@ def test_laguerre_basis_matches_closed_forms(example):
     beta = 1 - a**2
     basis = example.laguerre_basis(T, N, a)
     assert basis.shape == (T, N)
-    np.testing.assert_allclose(basis[:, 0], np.sqrt(beta) * a ** np.arange(T), rtol=0, atol=1e-14)
-    np.testing.assert_allclose(basis[0], np.sqrt(beta) * (-a) ** np.arange(N), rtol=0, atol=1e-14)
+    np.testing.assert_allclose(
+        basis[:, 0], np.sqrt(beta) * a ** np.arange(T), rtol=0, atol=1e-14
+    )
+    np.testing.assert_allclose(
+        basis[0], np.sqrt(beta) * (-a) ** np.arange(N), rtol=0, atol=1e-14
+    )
 
     # pole 0: unit pulses, so inputs after the first N steps are zero
     np.testing.assert_array_equal(example.laguerre_basis(8, 3, 0.0), np.eye(8, 3))

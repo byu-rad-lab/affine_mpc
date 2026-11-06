@@ -81,7 +81,9 @@ def test_options_input_cost():
     opts = ampc.Options(input_cost=ampc.InputCostMode.Trajectory)
     assert opts.input_cost == ampc.InputCostMode.Trajectory
     assert repr(opts) == "Options(input_cost=InputCostMode.Trajectory)"
-    assert str(opts).startswith("Options(input_cost=Trajectory, use_input_rate_cost=False,")
+    assert str(opts).startswith(
+        "Options(input_cost=Trajectory, use_input_rate_cost=False,"
+    )
     opts.input_cost = ampc.InputCostMode.ControlPoints
     opts.use_input_rate_cost = True
     assert repr(opts) == (

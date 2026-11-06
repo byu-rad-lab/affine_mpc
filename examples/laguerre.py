@@ -50,8 +50,15 @@ def prepare_basis(basis: np.ndarray) -> np.ndarray:
 def run(deviation: bool) -> tuple[float, float]:
     """Closed-loop run; returns the final position and the tracking cost."""
     T, N, pole, ts = 40, 4, 0.8, 0.1
-    param = ampc.Parameterization.fromBasis(T, prepare_basis(laguerre_basis(T, N, pole)))
-    mpc = ampc.MPC(state_dim=2, input_dim=1, param=param, opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
+    param = ampc.Parameterization.fromBasis(
+        T, prepare_basis(laguerre_basis(T, N, pole))
+    )
+    mpc = ampc.MPC(
+        state_dim=2,
+        input_dim=1,
+        param=param,
+        opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints),
+    )
 
     A = np.array([[0.0, 1.0], [-0.6, -0.1]])
     B = np.array([0.0, 0.2])
@@ -86,7 +93,9 @@ def run(deviation: bool) -> tuple[float, float]:
         # u_tilde is the same as propagating the plant with uk.
         xk = mpc.propagateModel(xk, u_tilde)
         cost += float((xk - x_ref) @ (Q_diag * (xk - x_ref)))
-    print(f"{'deviation' if deviation else 'direct':9} form: final position {xk[0]:.4f}, cost {cost:.3f}")
+    print(
+        f"{'deviation' if deviation else 'direct':9} form: final position {xk[0]:.4f}, cost {cost:.3f}"
+    )
     return xk[0], cost
 
 

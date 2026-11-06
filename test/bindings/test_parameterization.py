@@ -55,18 +55,26 @@ def test_parameterization_str_and_repr():
         str(param)
         == "Parameterization(horizon_steps=5, degree=1, num_control_points=3, knots=[0, 0, 2, 4, 4])"
     )
-    assert repr(param) == "Parameterization(horizon_steps=5, degree=1, num_control_points=3)"
+    assert (
+        repr(param)
+        == "Parameterization(horizon_steps=5, degree=1, num_control_points=3)"
+    )
 
     custom = ampc.Parameterization(
         horizon_steps=5,
         degree=1,
         knots=np.array([0, 0, 1, 4, 4]),
     )
-    assert repr(custom) == "Parameterization(horizon_steps=5, degree=1, knots=[0, 0, 1, 4, 4])"
+    assert (
+        repr(custom)
+        == "Parameterization(horizon_steps=5, degree=1, knots=[0, 0, 1, 4, 4])"
+    )
 
 
 def test_parameterization_band_reproduces_evaluate():
-    param = ampc.Parameterization.bspline(horizon_steps=12, degree=2, num_control_points=6)
+    param = ampc.Parameterization.bspline(
+        horizon_steps=12, degree=2, num_control_points=6
+    )
     assert param.band_width == 3
     assert param.band_start.shape == (12,)
     assert param.band_weights.shape == (3, 12)
@@ -141,7 +149,9 @@ def _laguerre_basis(horizon_steps, num_functions, pole):
 def test_from_basis_interface():
     import pytest
 
-    bspline = ampc.Parameterization.bspline(horizon_steps=10, degree=2, num_control_points=5)
+    bspline = ampc.Parameterization.bspline(
+        horizon_steps=10, degree=2, num_control_points=5
+    )
     assert bspline.type == ampc.Parameterization.Type.BSpline
     basis = np.zeros((10, 5))
     for k in range(10):
@@ -158,7 +168,9 @@ def test_from_basis_interface():
     np.testing.assert_array_equal(param.band_start, np.zeros(10))
     np.testing.assert_array_equal(param.band_weights, basis.T)
     ctrls = np.linspace(-1.0, 2.0, 10)
-    np.testing.assert_allclose(param.evaluate(2, ctrls), bspline.evaluate(2, ctrls), rtol=0, atol=1e-15)
+    np.testing.assert_allclose(
+        param.evaluate(2, ctrls), bspline.evaluate(2, ctrls), rtol=0, atol=1e-15
+    )
 
     expected = "Parameterization(type=custom, horizon_steps=10, num_control_points=5)"
     assert str(param) == expected
@@ -192,7 +204,11 @@ def test_from_basis_mpc_bounds_sampled_inputs():
     T = 30
     param = ampc.Parameterization.fromBasis(T, _laguerre_basis(T, 4, 0.8))
     for formulation in list(ampc.Formulation):
-        mpc = _custom_basis_mpc(formulation, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
+        mpc = _custom_basis_mpc(
+            formulation,
+            param,
+            ampc.Options(input_cost=ampc.InputCostMode.ControlPoints),
+        )
         assert mpc.solve(np.array([0.5, -0.2])) == ampc.SolveStatus.Success
         u_traj = mpc.getInputTrajectory()
         assert u_traj.min() >= -1e-6
@@ -202,8 +218,12 @@ def test_from_basis_mpc_bounds_sampled_inputs():
         with pytest.raises(RuntimeError, match="custom basis"):
             mpc.setReferenceInput(np.zeros(1))
 
-    with pytest.raises(ValueError, match="SlewBoundMode::ControlPoints requires a B-spline"):
-        ampc.MPC(2, 1, param, ampc.Options(slew_bounds=ampc.SlewBoundMode.ControlPoints))
+    with pytest.raises(
+        ValueError, match="SlewBoundMode::ControlPoints requires a B-spline"
+    ):
+        ampc.MPC(
+            2, 1, param, ampc.Options(slew_bounds=ampc.SlewBoundMode.ControlPoints)
+        )
 
 
 def test_from_basis_omits_bounds_where_the_basis_decayed():
@@ -217,7 +237,11 @@ def test_from_basis_omits_bounds_where_the_basis_decayed():
     assert 4 < expected < T - 5
     param = ampc.Parameterization.fromBasis(T, basis)
     for formulation in list(ampc.Formulation):
-        mpc = _custom_basis_mpc(formulation, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints))
+        mpc = _custom_basis_mpc(
+            formulation,
+            param,
+            ampc.Options(input_cost=ampc.InputCostMode.ControlPoints),
+        )
         rows = {b.name: b.size for b in mpc.getQPConstraintBlocks()}
         assert rows["input_bounds"] == expected
         assert mpc.solve(np.array([0.5, -0.2])) == ampc.SolveStatus.Success
@@ -230,10 +254,16 @@ def test_from_basis_logger_metadata(tmp_path):
     basis = _laguerre_basis(T, 3, 0.6)
     param = ampc.Parameterization.fromBasis(T, basis)
     mpc = _custom_basis_mpc(
-        ampc.Formulation.Condensed, param, ampc.Options(input_cost=ampc.InputCostMode.ControlPoints)
+        ampc.Formulation.Condensed,
+        param,
+        ampc.Options(input_cost=ampc.InputCostMode.ControlPoints),
     )
     logger = ampc.MPCLogger(
-        mpc, tmp_path, 0.1, log_control_points=True, mode=ampc.MPCLogger.Mode.NpzUncompressed
+        mpc,
+        tmp_path,
+        0.1,
+        log_control_points=True,
+        mode=ampc.MPCLogger.Mode.NpzUncompressed,
     )
     x0 = np.array([0.5, -0.2])
     assert mpc.solve(x0) == ampc.SolveStatus.Success
@@ -247,7 +277,9 @@ def test_from_basis_logger_metadata(tmp_path):
         np.testing.assert_array_equal(logged_basis, basis)
         # the logged control points are coefficients of the logged basis
         u_traj = logged_basis @ data["inputs"][0].reshape(-1)
-        np.testing.assert_allclose(u_traj, mpc.getInputTrajectory()[:, 0], rtol=0, atol=1e-12)
+        np.testing.assert_allclose(
+            u_traj, mpc.getInputTrajectory()[:, 0], rtol=0, atol=1e-12
+        )
     params = (tmp_path / "log_params.yaml").read_text()
     assert "parameterization_type: custom" in params
 

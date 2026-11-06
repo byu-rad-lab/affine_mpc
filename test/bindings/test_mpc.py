@@ -69,7 +69,9 @@ def test_mpc_interface():
         repr(mpc)
         == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_bounds=ControlPoints, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], slew_rate=[1])"
     )
-    assert str(mpc).startswith("MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n")
+    assert str(mpc).startswith(
+        "MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n"
+    )
 
     assert function_fails(mpc.initializeSolver, solver_settings=None)
     # the default formulation is condensed
@@ -134,17 +136,24 @@ def test_mpc_getters_return_set_values():
     # flat (the C++ stacked layout) or one row per step; the getters return rows
     mpc.setReferenceStateTrajectory(x_traj=x_ref)
     mpc.setReferenceInputControlPoints(control_points=ctrls_ref)
-    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceStateTrajectory(), x_ref.reshape(T, n)
+    )
     np.testing.assert_array_equal(
         mpc.getReferenceInputControlPoints(), ctrls_ref.reshape(nc, m)
     )
     mpc.setReferenceStateTrajectory(x_traj=2 * x_ref.reshape(T, n))
     mpc.setReferenceInputControlPoints(control_points=2 * ctrls_ref.reshape(nc, m))
-    np.testing.assert_array_equal(mpc.getReferenceStateTrajectory(), 2 * x_ref.reshape(T, n))
+    np.testing.assert_array_equal(
+        mpc.getReferenceStateTrajectory(), 2 * x_ref.reshape(T, n)
+    )
     np.testing.assert_array_equal(
         mpc.getReferenceInputControlPoints(), 2 * ctrls_ref.reshape(nc, m)
     )
-    with pytest.raises(ValueError, match=rf"x_traj must have shape \({T}, {n}\) or \({T * n},\), got \({n}, {T}\)"):
+    with pytest.raises(
+        ValueError,
+        match=rf"x_traj must have shape \({T}, {n}\) or \({T * n},\), got \({n}, {T}\)",
+    ):
         mpc.setReferenceStateTrajectory(x_ref.reshape(n, T))
 
     # getters return copies, so editing one does not change the MPC
@@ -288,7 +297,9 @@ def test_model_offset_setters(formulation):
     wc = np.array([0.3, -0.4])
     mpc.setModelOffsetContinuous2Discrete(wc=wc)
     Ad, Bd, wd = ampc.Discretizer(n, m).discretize(Ac, Bc, wc, 0.1)
-    np.testing.assert_allclose(mpc.propagateModel(x, u), Ad @ x + Bd @ u + wd, atol=1e-15)
+    np.testing.assert_allclose(
+        mpc.propagateModel(x, u), Ad @ x + Bd @ u + wd, atol=1e-15
+    )
 
     mpc.setModelOffsetDiscrete(wd=np.array([0.01, 0.02]))
     np.testing.assert_allclose(
@@ -556,10 +567,25 @@ def test_mpc_formulation_argument():
     cases = [
         (ampc.MPC(2, 1, param), Condensed, ampc.InputCostMode.Off, 4),
         (ampc.MPC(2, 1, param, opts), Condensed, ampc.InputCostMode.ControlPoints, 4),
-        (ampc.MPC(2, 1, param, opts, formulation=Sparse), Sparse, ampc.InputCostMode.ControlPoints, 4),
+        (
+            ampc.MPC(2, 1, param, opts, formulation=Sparse),
+            Sparse,
+            ampc.InputCostMode.ControlPoints,
+            4,
+        ),
         (ampc.MPC(2, 1, param, formulation=Sparse), Sparse, ampc.InputCostMode.Off, 4),
-        (ampc.MPC(state_dim=2, input_dim=1, horizon_steps=10), Condensed, ampc.InputCostMode.Off, 10),
-        (ampc.MPC(2, 1, 10, opts=opts, formulation=Sparse), Sparse, ampc.InputCostMode.ControlPoints, 10),
+        (
+            ampc.MPC(state_dim=2, input_dim=1, horizon_steps=10),
+            Condensed,
+            ampc.InputCostMode.Off,
+            10,
+        ),
+        (
+            ampc.MPC(2, 1, 10, opts=opts, formulation=Sparse),
+            Sparse,
+            ampc.InputCostMode.ControlPoints,
+            10,
+        ),
     ]
     for mpc, formulation, input_cost, nc in cases:
         assert mpc.getFormulation() == formulation
@@ -617,7 +643,9 @@ def test_refined_input_bounds(formulation):
 
 def test_refined_bound_interval_must_be_positive():
     param = ampc.Parameterization.bspline(20, 2, 5)
-    opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0)
+    opts = ampc.Options(
+        input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0
+    )
     with pytest.raises(ValueError, match="refined_bound_interval must be positive"):
         ampc.MPC(2, 1, param, opts)
 

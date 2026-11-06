@@ -287,7 +287,9 @@ def test_load_log_shapes_and_views(tmp_path):
     np.testing.assert_array_equal(log.x, log.states[:, 0])
     np.testing.assert_array_equal(log.x_ref, log.ref_states[:, 0])
     assert log.t_pred.shape == (N, K)
-    np.testing.assert_allclose(log.t_pred[1], 0.1 + np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+    np.testing.assert_allclose(
+        log.t_pred[1], 0.1 + np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    )
     assert log.u_pred.shape == (N, K, 1) and log.u_ref_pred.shape == (N, K, 1)
     np.testing.assert_array_equal(log.u, log.inputs[:, 0])
     np.testing.assert_array_equal(log.u_ref, log.ref_inputs[:, 0])
@@ -295,7 +297,9 @@ def test_load_log_shapes_and_views(tmp_path):
     assert np.shares_memory(log.x, log.states)
     assert np.shares_memory(log.u_pred, log.inputs)
     with np.load(tmp_path / "log.npz", allow_pickle=False) as data:
-        np.testing.assert_allclose(data["meta_t_pred_offsets"], log.t_pred[0] - log.time[0])
+        np.testing.assert_allclose(
+            data["meta_t_pred_offsets"], log.t_pred[0] - log.time[0]
+        )
     assert log.prediction_stride == 2
     assert not log.log_control_points
 
@@ -338,7 +342,11 @@ def _assert_sampled_inputs_match(dense, cp):
 @pytest.mark.parametrize("stride", [0, 1, 3])
 @pytest.mark.parametrize(
     "input_cost",
-    [ampc.InputCostMode.ControlPoints, ampc.InputCostMode.Trajectory, ampc.InputCostMode.Off],
+    [
+        ampc.InputCostMode.ControlPoints,
+        ampc.InputCostMode.Trajectory,
+        ampc.InputCostMode.Off,
+    ],
 )
 def test_control_points_give_the_same_sampled_inputs(tmp_path, stride, input_cost):
     # stride 3 over T = 10 ends with the terminal step, which repeats u_9

@@ -21,7 +21,9 @@ def _run_fixture(case_name: str, output_path: Path) -> None:
     subprocess.run([_fixture_binary(), case_name, str(output_path)], check=True)
 
 
-def _run_fixture_expect_failure(case_name: str, output_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_fixture_expect_failure(
+    case_name: str, output_path: Path
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [_fixture_binary(), case_name, str(output_path)],
         check=False,
@@ -63,10 +65,14 @@ def test_npz_writer_basic_roundtrip():
             )
 
             np.testing.assert_equal(data["int32_data"].dtype, np.dtype(np.int32))
-            np.testing.assert_array_equal(data["int32_data"], np.array([1, 2, 3, 4], dtype=np.int32))
+            np.testing.assert_array_equal(
+                data["int32_data"], np.array([1, 2, 3, 4], dtype=np.int32)
+            )
 
             np.testing.assert_equal(data["int64_data"].dtype, np.dtype(np.int64))
-            np.testing.assert_array_equal(data["int64_data"], np.array([9, 8, 7], dtype=np.int64))
+            np.testing.assert_array_equal(
+                data["int64_data"], np.array([9, 8, 7], dtype=np.int64)
+            )
 
             np.testing.assert_equal(data["scalar_double"].shape, ())
             np.testing.assert_equal(data["scalar_double"].dtype, np.dtype(np.float64))
@@ -167,7 +173,9 @@ def test_npy_writer_basic_roundtrip():
         data = np.load(npy_path, allow_pickle=False)
         np.testing.assert_equal(data.shape, (2, 2))
         np.testing.assert_equal(data.dtype, np.dtype(np.float64))
-        np.testing.assert_allclose(data, np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64))
+        np.testing.assert_allclose(
+            data, np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64)
+        )
 
 
 def test_npy_writer_empty_array_roundtrip():

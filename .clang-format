@@ -8,7 +8,7 @@ InsertNewlineAtEOF: true
 Language: Cpp
 # Standard: Cpp11
 
-# ColumnLimit: 80
+ColumnLimit: 80
 # AccessModifierOffset: -4
 # IndentWidth: 4
 # UseTab: Never

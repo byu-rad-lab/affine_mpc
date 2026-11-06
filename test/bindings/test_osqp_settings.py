@@ -68,10 +68,7 @@ def test_osqp_settings_repr_uses_recommended_defaults():
 
     settings.verbose = True
     settings.eps_abs = 1e-4
-    assert (
-        repr(settings)
-        == "OSQPSettings(eps_abs=0.0001, verbose=True)"
-    )
+    assert repr(settings) == "OSQPSettings(eps_abs=0.0001, verbose=True)"
 
     settings = ampc.OSQPSettings()
     settings.adaptive_rho = ampc.OSQPSettings.AdaptiveRhoType.KKTError
