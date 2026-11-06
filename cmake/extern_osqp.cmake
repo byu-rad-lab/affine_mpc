@@ -11,8 +11,12 @@
 # itself under this project's name (affine_mpc_osqp).
 
 if(BUILD_SHARED_LIBS AND NOT TARGET osqp::osqp)
-  # Only look for a system OSQP when building shared libraries. Static system
-  # linkage has been less reliable, so static builds fetch OSQP explicitly.
+  # Only look for a system OSQP when building shared libraries. A static
+  # affine_mpc bundles OSQP into what links it, including the Python module
+  # (static is the default, and what pip and the wheels build), so static
+  # builds fetch OSQP: a system archive may not be position-independent, may
+  # be built with other options (e.g. float, which affine_mpc rejects), or
+  # may be unusable (Arch's libosqpstatic.a has only slim LTO objects).
   find_package(osqp 1.0.0 CONFIG QUIET)
 
   # This is a temporary patch to fix the Arch Linux osqp package, which currently
