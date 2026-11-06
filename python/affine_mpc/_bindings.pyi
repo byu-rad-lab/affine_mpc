@@ -145,7 +145,7 @@ class Options:
         state_bounds: StateBoundMode = StateBoundMode.Off,
         bounded_states: collections.abc.Sequence[int] = [],
         num_general_constraints: int = 0,
-        num_terminal_constraints: int = 0
+        num_terminal_constraints: int = 0,
     ) -> None:
         """
         Construct an Options struct defining optional MPC configuration features. All
@@ -1136,7 +1136,7 @@ class MPC:
         param: Parameterization,
         opts: Options = Options(),
         *,
-        formulation: Formulation = Formulation.Condensed
+        formulation: Formulation = Formulation.Condensed,
     ) -> None:
         """
         Construct an MPC with an input parameterization, options, and formulation.
@@ -1161,7 +1161,7 @@ class MPC:
         horizon_steps: int,
         opts: Options = Options(),
         *,
-        formulation: Formulation = Formulation.Condensed
+        formulation: Formulation = Formulation.Condensed,
     ) -> None:
         """
         Construct an MPC that optimizes every input of the horizon (no
