@@ -48,7 +48,7 @@
     | $\eta$ | number of control points |
     | $\mu$  | number of knots |
     | $p$    | degree |
-    | $\bm{c}_i \in \R^m$ | control point at index $i$ |
+    | $\bm{c}_i \in \R^m$ | control point at index $i$ (the coefficient of the $i$th basis column for a custom basis) |
     | $\bm{c}_{\mathrm{ref},i} \in \R^m$ | reference control point at index $i$ |
     | $\bm{\tau} = [\tau_0, \dots, \tau_{\mu-1}]$ | knot vector |
     | $b_i^p(k, \bm{\tau})$ | $i$th B-spline basis function evaluated at horizon step $k$ |
