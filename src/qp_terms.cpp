@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -302,33 +303,116 @@ void InitialSlew::updateVector(const MPCData& d, FormulationImpl&, QP& qp)
   qp.u.segment(rows_.offset, rows_.rows) = d.u_prev + d.u0_slew;
 }
 
-// ---- ControlPointSlew -------------------------------------------------------
+// ---- SlewBounds -------------------------------------------------------------
 
-void ControlPointSlew::declare(QPLayout& layout, FormulationImpl& /*f*/)
+namespace {
+
+// Whether the control point differences bound the sampled changes exactly:
+// always for degree 0 (each change is zero or one difference), and for degree
+// 1 when every knot interval [t_i, t_{i+1}] contains a whole sample step
+// [k-1, k], over which the change equals the interval's slope (a step across
+// knots changes by a convex combination of the slopes it spans, so it adds no
+// limit). A zero-length interval (a jump) does not, since its factor 0 would
+// forbid the jump.
+bool controlPointSlewIsExact(const Parameterization& param)
+{
+  if (param.type != Parameterization::Type::BSpline || param.degree > 1)
+    return false;
+  if (param.degree == 0)
+    return true;
+  constexpr double snap_tol{1e-9}; // round-off from integer knots
+  for (int i{1}; i < param.num_control_points; ++i) {
+    const double first{std::ceil(param.knots(i) - snap_tol)};
+    const double last{std::floor(param.knots(i + 1) + snap_tol)};
+    if (first + 1.0 > last)
+      return false;
+  }
+  return true;
+}
+
+} // namespace
+
+SlewBounds::SlewBounds(const VectorParameterization& input_param,
+                       const SlewBoundMode mode) :
+    input_param_{input_param}
+{
+  const Parameterization& param{input_param.parameterization()};
+  const bool control_point_rows{param.type == Parameterization::Type::BSpline
+                                && (mode == SlewBoundMode::ControlPoints
+                                    || controlPointSlewIsExact(param))};
+  if (control_point_rows) {
+    // c_i - c_{i-1}. The derivative of a degree-p B-spline has the control
+    // points p (c_i - c_{i-1}) / (t_{i+p} - t_i) (knots in samples), so by
+    // the convex hull property and the mean value theorem, bounding them by
+    // du_max bounds every sampled change. Degree 0 changes by exactly the
+    // differences.
+    const int p{param.degree};
+    const auto num_rows{static_cast<std::size_t>(param.num_control_points - 1)};
+    D_.reserve(2 * num_rows);
+    factors_.reserve(num_rows);
+    for (int i{1}; i < param.num_control_points; ++i) {
+      D_.push_back({i - 1, i - 1, -1.0});
+      D_.push_back({i - 1, i, 1.0});
+      factors_.push_back(p == 0 ? 1.0
+                                : (param.knots(i + p) - param.knots(i)) / p);
+    }
+    return;
+  }
+
+  // Construction only: the sampled differences D Phi, k = 1, ..., T-1,
+  // omitting rows that are negligible next to the largest (e.g. where a custom
+  // basis has decayed), as the input bounds of a custom basis do
+  const MatrixXd Phi{sampledBasis(param)};
+  const Index num_steps{Phi.rows() - 1};
+  if (num_steps <= 0)
+    return;
+  const MatrixXd DPhi{Phi.bottomRows(num_steps) - Phi.topRows(num_steps)};
+  const VectorXd norms{DPhi.rowwise().norm()};
+  constexpr double prune_tol{1e-9};
+  const double keep_above{prune_tol * norms.maxCoeff()};
+  int row{0};
+  for (Index k{0}; k < num_steps; ++k) {
+    if (!(norms(k) > keep_above))
+      continue;
+    for (Index i{0}; i < DPhi.cols(); ++i)
+      if (DPhi(k, i) != 0.0)
+        D_.push_back({row, static_cast<int>(i), DPhi(k, i)});
+    factors_.push_back(1.0);
+    ++row;
+  }
+}
+
+void SlewBounds::declare(QPLayout& layout, FormulationImpl& /*f*/)
 {
   const int m{input_param_.inputDim()};
-  rows_ = layout.addRows(input_param_.numCoefficients() - m);
-  // c_{i+1} - c_i
-  for (int i{0}; i < rows_.rows; ++i)
-    A_.declare(rows_.offset + i, i, -1.0);
-  for (int i{0}; i < rows_.rows; ++i)
-    A_.declare(rows_.offset + i, i + m, 1.0);
+  rows_ = layout.addRows(m * static_cast<int>(factors_.size()));
+  // The control points come first in every formulation, so these rows do not
+  // depend on it
+  for (const Entry& e : D_)
+    for (int ch{0}; ch < m; ++ch)
+      A_.declare(rows_.offset + e.row * m + ch,
+                 input_param_.coefficientIndex(ch, e.cp), e.value);
   layout.declareA(A_.entries);
 }
 
-void ControlPointSlew::updateMatrix(const MPCData&, FormulationImpl&, QP&)
+void SlewBounds::updateMatrix(const MPCData&, FormulationImpl&, QP&)
 {
   A_.write();
 }
 
-void ControlPointSlew::updateVector(const MPCData& d, FormulationImpl&, QP& qp)
+void SlewBounds::updateVector(const MPCData& d, FormulationImpl&, QP& qp)
 {
-  const int num_differences{input_param_.parameterization().num_control_points
-                            - 1};
-  qp.u.segment(rows_.offset, rows_.rows) =
-      d.ctrls_slew.replicate(num_differences, 1);
-  qp.l.segment(rows_.offset, rows_.rows) =
-      -qp.u.segment(rows_.offset, rows_.rows);
+  const int m{input_param_.inputDim()};
+  int row{rows_.offset};
+  for (const double factor : factors_) {
+    for (int ch{0}; ch < m; ++ch, ++row) {
+      // an infinite limit stays infinite on a factor-0 row (0 * inf is NaN)
+      const double du{d.slew_rate(ch)};
+      const double bound{std::isinf(du) ? du : factor * du};
+      qp.l(row) = -bound;
+      qp.u(row) = bound;
+    }
+  }
 }
 
 // ---- StateBounds ------------------------------------------------------------

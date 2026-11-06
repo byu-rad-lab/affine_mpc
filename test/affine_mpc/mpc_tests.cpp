@@ -80,7 +80,7 @@ protected:
   int slewRows() const
   {
     const ampc::detail::QPRows& rows{qpBuilder().rows()};
-    return rows.initial_slew.rows + rows.control_point_slew.rows;
+    return rows.initial_slew.rows + rows.slew_bounds.rows;
   }
 };
 
@@ -107,14 +107,14 @@ TEST(MPCTester, givenConfiguration_GettersReturnSetValues)
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, param, opts};
 
   const ampc::Options& got{base.getOptions()};
   EXPECT_EQ(got.input_cost, opts.input_cost);
   EXPECT_EQ(got.slew_initial_input, opts.slew_initial_input);
-  EXPECT_EQ(got.slew_control_points, opts.slew_control_points);
+  EXPECT_EQ(got.slew_bounds, opts.slew_bounds);
   EXPECT_EQ(got.state_bounds, opts.state_bounds);
   EXPECT_EQ(got.input_bounds, opts.input_bounds);
 
@@ -189,7 +189,7 @@ TEST(MPCTester, givenSetters_MarkTheirChangeCategoriesOnly)
   const int n{2}, m{1};
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, ampc::Parameterization::linearInterp(5, 3), opts};
   using ampc::detail::DataChange;
@@ -514,7 +514,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
   const ampc::Parameterization param{5, 1, 3};
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard};
   ampc::MPC condensed{2, 1, param, opts};
   ampc::MPC sparse{2, 1, param, opts, ampc::Formulation::Sparse};
@@ -545,7 +545,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  options = Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
             "refined_bound_interval=16, "
-            "slew_initial_input=true, slew_control_points=true, "
+            "slew_initial_input=true, slew_bounds=ControlPoints, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
@@ -557,7 +557,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  x_min = [-8, -9]\n"
             "  x_max = [10, 11]\n"
             "  u0_slew = [12]\n"
-            "  control_point_slew = [13]");
+            "  slew_rate = [13]");
 
   std::ostringstream condensed_summary_ss;
   ampc::printInline(condensed_summary_ss, condensed);
@@ -568,13 +568,13 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "options=Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
             "refined_bound_interval=16, "
-            "slew_initial_input=true, slew_control_points=true, "
+            "slew_initial_input=true, slew_bounds=ControlPoints, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
             "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
-            "control_point_slew=[13])");
+            "slew_rate=[13])");
 
   std::ostringstream sparse_ss;
   sparse_ss << sparse;
@@ -588,7 +588,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  options = Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
             "refined_bound_interval=16, "
-            "slew_initial_input=true, slew_control_points=true, "
+            "slew_initial_input=true, slew_bounds=ControlPoints, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0)\n"
             "  solver_initialized = false\n"
@@ -600,7 +600,7 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "  x_min = [-8, -9]\n"
             "  x_max = [10, 11]\n"
             "  u0_slew = [12]\n"
-            "  control_point_slew = [13]");
+            "  slew_rate = [13]");
 
   std::ostringstream sparse_summary_ss;
   ampc::printInline(sparse_summary_ss, sparse);
@@ -611,13 +611,13 @@ TEST(MPCStreamOperator, givenCondensedAndSparse_FormatsSummary)
             "options=Options(input_cost=ControlPoints, "
             "use_input_rate_cost=false, input_bounds=ControlPoints, "
             "refined_bound_interval=16, "
-            "slew_initial_input=true, slew_control_points=true, "
+            "slew_initial_input=true, slew_bounds=ControlPoints, "
             "state_bounds=Hard, bounded_states=[], "
             "num_general_constraints=0, num_terminal_constraints=0), "
             "solver_initialized=false, "
             "Q=[1, 2], Qf=[3, 4], R=[5], u_min=[-6], u_max=[7], "
             "x_min=[-8, -9], x_max=[10, 11], u0_slew=[12], "
-            "control_point_slew=[13])");
+            "slew_rate=[13])");
 }
 
 TEST(MPCTester, askedToUpdateTrajectories_updatesCorrectly)
@@ -903,7 +903,8 @@ TEST(MPCTester, stateSaturationDisabledButUsed_Throws)
 TEST(MPCTester, givenNegativeSlewRate_Throws)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.slew_bounds = ampc::SlewBoundMode::ControlPoints}};
 
   Eigen::Vector<double, 1> ctrls_slew{-0.5};
   expectInvalidArgumentWithMessage(
@@ -976,7 +977,7 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
   const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                            .slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard};
   MPCTester base{n, m, {T, deg, nc}, opts};
 
@@ -1032,7 +1033,7 @@ TEST(MPCTester, givenWrongSizeArguments_Throws)
                                    "x_max must have size 2");
 
   expectInvalidArgumentWithMessage([&]() { base.setSlewRate(u2); },
-                                   "control_point_slew must have size 1");
+                                   "slew_rate must have size 1");
   expectInvalidArgumentWithMessage([&]() { base.setSlewRateInitial(u2); },
                                    "u0_slew must have size 1");
   expectInvalidArgumentWithMessage([&]() { base.setPreviousInput(u2); },
@@ -1072,7 +1073,7 @@ TEST(MPCTester,
   auto test = [&](bool sat_u_traj) {
     const int n{2}, m{1}, T{4}, nc{3}, deg{0};
     const ampc::Options opts{
-        .input_bounds = sat_u_traj ? ampc::InputBoundMode::Exact
+        .input_bounds = sat_u_traj ? ampc::InputBoundMode::Trajectory
                                    : ampc::InputBoundMode::ControlPoints};
     MPCTester base{n, m, {T, deg, nc}, opts};
 
@@ -1120,7 +1121,7 @@ TEST(MPCTester,
   // uniform active knots {0, 3, 6, 9}: every knot is a sample, one row per knot
   const int n{2}, m{1}, T{10}, nc{4}, deg{1};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -1165,8 +1166,10 @@ TEST(MPCTester,
   const int n{2}, m{2}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -1193,8 +1196,10 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_RemovesDuplicateSamples)
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{7};
   knots << 0, 0, 2.3, 2.7, 3.5, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 2, 3, 4, 9};
   const MatrixXd A = base.getASatU();
@@ -1209,8 +1214,10 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1NearIntegerKnot_SnapsToInteger)
   const int n{2}, m{1}, T{10}, deg{1};
   VectorXd knots{6};
   knots << 0, 0, 3 + 1e-12, 6 - 1e-12, 9, 9;
-  MPCTester base{
-      n, m, {T, deg, knots}, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{n,
+                 m,
+                 {T, deg, knots},
+                 {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 3, 6, 9};
   const MatrixXd A = base.getASatU();
@@ -1228,7 +1235,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1RepeatedKnots_BoundsBothSides)
   VectorXd knots{8};
   knots << 0, 0, 4, 4, 6.5, 6.5, 9, 9;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 3, 4, 6, 7, 9};
   const int num_rows{static_cast<int>(samples.size())};
@@ -1256,7 +1264,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_ConstrainedRowsMatchSampledInputs)
   VectorXd knots{8};
   knots << 0, 0, 1.5, 4.2, 4.8, 11, 19, 19;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   const std::vector<int> samples{0, 1, 2, 4, 5, 11, 19};
   const int num_rows{static_cast<int>(samples.size())};
@@ -1295,7 +1304,8 @@ TEST(MPCTester, givenInputTrajSatOptionDeg1_AllowsControlPointsOutsideLimits)
   VectorXd knots{6};
   knots << 0, 0, 2.5, 6.5, 12, 12;
   const ampc::Parameterization param{T, deg, knots};
-  MPCTester base{n, m, param, {.input_bounds = ampc::InputBoundMode::Exact}};
+  MPCTester base{
+      n, m, param, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{0}, u_max{1};
   base.setInputLimits(u_min, u_max);
@@ -1323,7 +1333,7 @@ TEST(MPCTester,
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, 1> u_min{-1}, u_max{2};
   base.setInputLimits(u_min, u_max);
@@ -1353,7 +1363,7 @@ TEST(MPCTester,
 {
   const int n{4}, m{2}, T{10}, nc{5}, deg{2};
   MPCTester base{
-      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Exact}};
+      n, m, {T, deg, nc}, {.input_bounds = ampc::InputBoundMode::Trajectory}};
 
   Eigen::Vector<double, m> u_min{-1, -0.1}, u_max{2, 1};
   base.setInputLimits(u_min, u_max);
@@ -1419,7 +1429,8 @@ TEST(MPCTester, givenInitialSlewRate_FormsSlewRateConstraintsCorrectly)
 TEST(MPCTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
-  MPCTester base{n, m, {T, deg, nc}, {.slew_control_points = true}};
+  MPCTester base{
+      n, m, {T, deg, nc}, {.slew_bounds = ampc::SlewBoundMode::ControlPoints}};
 
   Eigen::Vector<double, 1> ctrls_slew{0.5};
   base.setSlewRate(ctrls_slew);
@@ -1437,7 +1448,9 @@ TEST(MPCTester, givenSlewRate_FormsSlewRateConstraintsCorrectly)
   A_expected.diagonal(m).setConstant(1.0);
   ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
 
-  VectorXd u_expected = ctrls_slew.replicate(m * (nc - 1), 1);
+  // knots 0, 1.5, 3: linear segments of 1.5 samples, |c_i - c_{i-1}| <= 1.5
+  // slew
+  VectorXd u_expected = 1.5 * ctrls_slew.replicate(m * (nc - 1), 1);
   VectorXd l_expected = -u_expected;
 
   ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
@@ -1448,7 +1461,7 @@ TEST(MPCTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{4}, nc{3}, deg{1};
   affine_mpc::Options opts{.slew_initial_input = true,
-                           .slew_control_points = true};
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints};
   MPCTester base{n, m, {T, deg, nc}, opts};
 
   Eigen::Vector<double, 1> slew{0.5}, u_prev{0.1};
@@ -1470,8 +1483,9 @@ TEST(MPCTester, givenBothSlewRates_FormsSlewRateConstraintsCorrectly)
   ASSERT_TRUE(expectEigenNear(A, A_expected, 1e-15));
 
   VectorXd u_expected{m * nc}, l_expected{m * nc};
-  u_expected << u_prev(0) + slew(0), slew(0), slew(0);
-  l_expected << u_prev(0) - slew(0), -slew(0), -slew(0);
+  // the initial slew, then linear segments of 1.5 samples
+  u_expected << u_prev(0) + slew(0), 1.5 * slew(0), 1.5 * slew(0);
+  l_expected << u_prev(0) - slew(0), -1.5 * slew(0), -1.5 * slew(0);
 
   ASSERT_TRUE(expectEigenNear(l, l_expected, 1e-15));
   ASSERT_TRUE(expectEigenNear(u, u_expected, 1e-15));

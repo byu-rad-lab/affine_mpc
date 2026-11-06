@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <osqp.h>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -48,7 +47,7 @@ constexpr int validateInputDim(int input_dim)
 }
 
 // The bounded states need state bounds and must be valid indices.
-// Control-point slew relies on B-spline properties.
+// Slew bounds on control points rely on B-spline properties.
 const Options& validateOptions(const Options& opts,
                                int state_dim,
                                const Parameterization& param)
@@ -72,11 +71,12 @@ const Options& validateOptions(const Options& opts,
     throw std::invalid_argument(
         "[MPC::validateOptions] num_general_constraints and "
         "num_terminal_constraints must be non-negative.");
-  if (opts.slew_control_points && param.type != Parameterization::Type::BSpline)
+  if (opts.slew_bounds == SlewBoundMode::ControlPoints
+      && param.type != Parameterization::Type::BSpline)
     throw std::invalid_argument(
-        "[MPC::validateOptions] slew_control_points requires a B-spline "
-        "parameterization: differences of custom basis coefficients do not "
-        "bound input changes.");
+        "[MPC::validateOptions] SlewBoundMode::ControlPoints requires a "
+        "B-spline parameterization: differences of custom basis coefficients "
+        "do not bound input changes (use SlewBoundMode::Trajectory).");
   return opts;
 }
 
@@ -201,7 +201,7 @@ MPC::MPC(int state_dim,
     general_set_{false},
     terminal_set_{false},
     slew0_rate_set_{false},
-    ctrls_slew_rate_set_{false},
+    slew_rate_set_{false},
     solver_initialized_{false},
     model_sparsity_{ModelSparsity::InitialNonzeros},
     mpc_solve_time_{0.0},
@@ -338,7 +338,7 @@ std::vector<QPBlock> MPC::getQPConstraintBlocks() const
        {std::pair<const char*, detail::RowBlock>{"dynamics", rows.dynamics},
         {"input_bounds", rows.input_bounds},
         {"initial_slew", rows.initial_slew},
-        {"control_point_slew", rows.control_point_slew},
+        {"slew_bounds", rows.slew_bounds},
         {"state_bounds", rows.state_bounds},
         {"general_constraints", rows.general_constraints},
         {"terminal_constraints", rows.terminal_constraints}})
@@ -367,8 +367,8 @@ void MPC::checkSetup(const char* caller, const char* action) const
     missing("Model", "");
   if (!u_lims_set_)
     missing("Input limits", "");
-  if (opts_.slew_control_points && !ctrls_slew_rate_set_)
-    missing("Slew rate", " (slew_control_points is enabled)");
+  if (opts_.slew_bounds != SlewBoundMode::Off && !slew_rate_set_)
+    missing("Slew rate", " (slew_bounds is ControlPoints or Trajectory)");
   if (opts_.slew_initial_input && !slew0_rate_set_)
     missing("Initial slew rate", " (slew_initial_input is enabled)");
   if (opts_.state_bounds != StateBoundMode::Off && !x_lims_set_)
@@ -946,17 +946,16 @@ void MPC::setTerminalConstraints(const Ref<const MatrixXd>& Hf,
   pending_ |= DataChange::Limits;
 }
 
-void MPC::setSlewRate(const Ref<const VectorXd>& control_point_slew)
+void MPC::setSlewRate(const Ref<const VectorXd>& slew_rate)
 {
-  if (!opts_.slew_control_points)
+  if (opts_.slew_bounds == SlewBoundMode::Off)
     throw std::logic_error("[MPC::setSlewRate] Slew rate is not enabled.");
-  validateSize(control_point_slew.size(), input_dim_, "setSlewRate",
-               "control_point_slew");
-  if (control_point_slew.minCoeff() < 0.0)
+  validateSize(slew_rate.size(), input_dim_, "setSlewRate", "slew_rate");
+  if (slew_rate.minCoeff() < 0.0)
     throw std::invalid_argument(
         "[MPC::setSlewRate] Slew rate must be non-negative.");
-  data_.ctrls_slew = control_point_slew;
-  ctrls_slew_rate_set_ = true;
+  data_.slew_rate = slew_rate;
+  slew_rate_set_ = true;
   pending_ |= DataChange::Limits;
 }
 
@@ -1104,9 +1103,9 @@ const VectorXd& MPC::getTerminalConstraintMax() const
 
 const VectorXd& MPC::getSlewRate() const
 {
-  if (!opts_.slew_control_points)
+  if (opts_.slew_bounds == SlewBoundMode::Off)
     throw std::logic_error("[MPC::getSlewRate] Slew rate is not enabled.");
-  return data_.ctrls_slew;
+  return data_.slew_rate;
 }
 
 const VectorXd& MPC::getSlewRateInitial() const
@@ -1180,8 +1179,8 @@ std::ostream& print(std::ostream& os, const MPC& mpc, bool capitalize_bools)
        << "\n  x_soft_l2 = " << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)
     os << "\n  u0_slew = " << mpc.getSlewRateInitial().format(fmt);
-  if (mpc.getOptions().slew_control_points)
-    os << "\n  control_point_slew = " << mpc.getSlewRate().format(fmt);
+  if (mpc.getOptions().slew_bounds != SlewBoundMode::Off)
+    os << "\n  slew_rate = " << mpc.getSlewRate().format(fmt);
   const IOFormat mat_fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "[", "]", "[", "]"};
   if (mpc.getOptions().num_general_constraints > 0)
@@ -1230,8 +1229,8 @@ printInline(std::ostream& os, const MPC& mpc, bool capitalize_bools)
        << ", x_soft_l2=" << mpc.getStateBoundL2Penalties().format(fmt);
   if (mpc.getOptions().slew_initial_input)
     os << ", u0_slew=" << mpc.getSlewRateInitial().format(fmt);
-  if (mpc.getOptions().slew_control_points)
-    os << ", control_point_slew=" << mpc.getSlewRate().format(fmt);
+  if (mpc.getOptions().slew_bounds != SlewBoundMode::Off)
+    os << ", slew_rate=" << mpc.getSlewRate().format(fmt);
   const IOFormat mat_fmt{
       StreamPrecision, DontAlignCols, ", ", ", ", "[", "]", "[", "]"};
   if (mpc.getOptions().num_general_constraints > 0)

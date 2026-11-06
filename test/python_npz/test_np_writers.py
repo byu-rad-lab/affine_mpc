@@ -21,7 +21,9 @@ def _run_fixture(case_name: str, output_path: Path) -> None:
     subprocess.run([_fixture_binary(), case_name, str(output_path)], check=True)
 
 
-def _run_fixture_expect_failure(case_name: str, output_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_fixture_expect_failure(
+    case_name: str, output_path: Path
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [_fixture_binary(), case_name, str(output_path)],
         check=False,
@@ -43,6 +45,10 @@ def test_npz_writer_basic_roundtrip():
                 "int64_data",
                 "scalar_double",
                 "scalar_int",
+                "string_ascii",
+                "string_empty",
+                "string_utf8",
+                "string_invalid",
             }
 
             np.testing.assert_equal(data["float_data"].shape, (3,))
@@ -59,18 +65,33 @@ def test_npz_writer_basic_roundtrip():
             )
 
             np.testing.assert_equal(data["int32_data"].dtype, np.dtype(np.int32))
-            np.testing.assert_array_equal(data["int32_data"], np.array([1, 2, 3, 4], dtype=np.int32))
+            np.testing.assert_array_equal(
+                data["int32_data"], np.array([1, 2, 3, 4], dtype=np.int32)
+            )
 
             np.testing.assert_equal(data["int64_data"].dtype, np.dtype(np.int64))
-            np.testing.assert_array_equal(data["int64_data"], np.array([9, 8, 7], dtype=np.int64))
+            np.testing.assert_array_equal(
+                data["int64_data"], np.array([9, 8, 7], dtype=np.int64)
+            )
 
-            np.testing.assert_equal(data["scalar_double"].shape, (1,))
+            np.testing.assert_equal(data["scalar_double"].shape, ())
             np.testing.assert_equal(data["scalar_double"].dtype, np.dtype(np.float64))
-            np.testing.assert_allclose(data["scalar_double"], np.array([4.5], dtype=np.float64))
+            assert data["scalar_double"].item() == 4.5
 
-            np.testing.assert_equal(data["scalar_int"].shape, (1,))
+            np.testing.assert_equal(data["scalar_int"].shape, ())
             np.testing.assert_equal(data["scalar_int"].dtype, np.dtype(np.int32))
-            np.testing.assert_array_equal(data["scalar_int"], np.array([6], dtype=np.int32))
+            assert data["scalar_int"].item() == 6
+
+            expected_strings = {
+                "string_ascii": "condensed",
+                "string_empty": "",
+                "string_utf8": "\u00b5 \u2713 \U0001d465",
+                "string_invalid": "a\ufffdb\ufffd\ufffd",
+            }
+            for key, expected in expected_strings.items():
+                assert data[key].shape == (), key
+                assert data[key].dtype.kind == "U", key
+                assert data[key].item() == expected, key
 
 
 def test_npz_writer_compression_mode():
@@ -152,7 +173,9 @@ def test_npy_writer_basic_roundtrip():
         data = np.load(npy_path, allow_pickle=False)
         np.testing.assert_equal(data.shape, (2, 2))
         np.testing.assert_equal(data.dtype, np.dtype(np.float64))
-        np.testing.assert_allclose(data, np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64))
+        np.testing.assert_allclose(
+            data, np.array([[0.5, 1.5], [2.5, 3.5]], dtype=np.float64)
+        )
 
 
 def test_npy_writer_empty_array_roundtrip():

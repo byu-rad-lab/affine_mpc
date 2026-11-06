@@ -10,12 +10,13 @@
 #include "affine_mpc/detail/qp.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/solve_status.hpp"
+#include "osqp_solver_impl.hpp"
 #include "utils.hpp"
 
-class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver
+class OSQPSolverProtectedTester : public affine_mpc::OSQPSolver::Impl
 {
 public:
-  OSQPSolverProtectedTester(const int n, const int m) : OSQPSolver(n, m) {}
+  OSQPSolverProtectedTester(const int n, const int m) : Impl(n, m) {}
   ~OSQPSolverProtectedTester() {}
 
   bool testInitializeP(const Eigen::Ref<const MatrixXF>& P)
@@ -26,7 +27,8 @@ public:
     VectorXF l{m_}, u{m_};
     l.setZero();
     u.setOnes();
-    OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+    affine_mpc::OSQPSettings settings{
+        affine_mpc::OSQPSolver::getDefaultSettings()};
     return initialize(P, A, q, l, u, settings);
   }
 
@@ -38,7 +40,8 @@ public:
     VectorXF l{m_}, u{m_};
     l.setZero();
     u.setOnes();
-    OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+    affine_mpc::OSQPSettings settings{
+        affine_mpc::OSQPSolver::getDefaultSettings()};
     bool success = initialize(P, A, q, l, u, settings);
     ASSERT_TRUE(success);
   }
@@ -202,7 +205,8 @@ TEST(OSQPSolverProtectedTester, askedToUpdateP_ReplacesPdataCorrectly)
       1, 1, 1, 1, 5, 0, 1, 1, 1, 1, 1, 6;
 
   bool success{true};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   success &= base.initialize(P, A, q, l, u, settings);
 
   P << 5, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 1, 1, 3, 0, 0, 0, 1, 1, 1, 2, 0, 0,
@@ -241,7 +245,8 @@ TEST(OSQPSolverProtectedTester, askedToUpdateA_ReplacesAdataCorrectly)
   P.diagonal().setOnes();
 
   bool success{true};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   success &= base.initialize(P, A, q, l, u, settings);
 
   // This changes the structure but the internal check only counts the number of
@@ -279,7 +284,8 @@ TEST(OSQPSolverProtectedTester,
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
 
   bool success{true};
   success &= base.initialize(P, A, q, l, u, settings);
@@ -327,7 +333,8 @@ TEST(OSQPSolverProtectedTester, askedToSolveExample_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   // polishing tests the boundary conditions better but is a little slower
@@ -358,7 +365,8 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterVectorUpdate_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   // polishing tests the boundary conditions better but is a little slower
@@ -410,7 +418,8 @@ TEST(OSQPSolverProtectedTester, solvingExampleAfterMatrixUpdate_solvesCorrectly)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.alpha = 1.0;
   settings.verbose = false;
   settings.polishing = true;
@@ -463,7 +472,8 @@ TEST(OSQPSolverProtectedTester,
   // no pattern exists before initialization
   EXPECT_FALSE(base.isWithinSparsityPattern(P, A));
 
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
   EXPECT_TRUE(base.isWithinSparsityPattern(P, A));
 
@@ -507,7 +517,8 @@ TEST(OSQPSolverProtectedTester, askedForSolveInfo_ReportsLastSolve)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.verbose = false;
   settings.polishing = true;
   ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
@@ -553,6 +564,15 @@ affine_mpc::detail::QP setupTestQP()
 // threshold below which OSQP treats ||q||_inf as 1 in its cost scaling
 const Eigen::Vector2d setup_q{Eigen::Vector2d::Constant(2 * OSQP_MIN_SCALING)};
 
+// Solve through the QP interface and copy the solution into z
+affine_mpc::SolveStatus solveQP(affine_mpc::QPSolver& solver,
+                                Eigen::Vector2d& z)
+{
+  const affine_mpc::SolveStatus status{solver.solve()};
+  z = solver.getSolutionMap();
+  return status;
+}
+
 } // namespace
 
 TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithCostScalingFromP)
@@ -561,20 +581,21 @@ TEST(OSQPSolverProtectedTester, givenQPInterface_SetsUpWithCostScalingFromP)
   // with a negligible q and then updating q differs from setting up with q
   const int n{2}, m{3};
   const affine_mpc::detail::QP qp{setupTestQP()};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-8;
 
   affine_mpc::OSQPSolver by_qp{n, m, settings};
   ASSERT_TRUE(by_qp.initialize(qp, affine_mpc::QPBlockLayout{}));
-  affine_mpc::OSQPSolver small_then_q{n, m, settings};
+  affine_mpc::OSQPSolver::Impl small_then_q{n, m};
   ASSERT_TRUE(
       small_then_q.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
   ASSERT_TRUE(small_then_q.updateCostVector(qp.q));
-  affine_mpc::OSQPSolver with_q{n, m, settings};
+  affine_mpc::OSQPSolver::Impl with_q{n, m};
   ASSERT_TRUE(with_q.initialize(qp.P, qp.A, qp.q, qp.l, qp.u, settings));
 
   Eigen::Vector2d z_qp, z_small, z_q;
-  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(by_qp, z_qp), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(small_then_q.solve(z_small), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(with_q.solve(z_q), affine_mpc::SolveStatus::Success);
 
@@ -591,7 +612,8 @@ TEST(OSQPSolverProtectedTester, givenQPInterface_CostScalingDoesNotDependOnQ)
   // given the same q, solve identically: the cost scaling depends on P alone
   const int n{2}, m{3};
   affine_mpc::detail::QP qp{setupTestQP()};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-8;
 
   affine_mpc::OSQPSolver large_q{n, m, settings};
@@ -600,11 +622,12 @@ TEST(OSQPSolverProtectedTester, givenQPInterface_CostScalingDoesNotDependOnQ)
   qp.q *= 1e-3;
   affine_mpc::OSQPSolver small_q{n, m, settings};
   ASSERT_TRUE(small_q.initialize(qp, affine_mpc::QPBlockLayout{}));
-  ASSERT_TRUE(small_q.updateCostVector(q));
+  qp.q = q;
+  ASSERT_TRUE(small_q.updateCostVector(qp));
 
   Eigen::Vector2d z_large, z_small;
-  ASSERT_EQ(large_q.solve(z_large), affine_mpc::SolveStatus::Success);
-  ASSERT_EQ(small_q.solve(z_small), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(large_q, z_large), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(small_q, z_small), affine_mpc::SolveStatus::Success);
   EXPECT_EQ(large_q.getSolveInfo().iterations,
             small_q.getSolveInfo().iterations);
   EXPECT_EQ(z_large, z_small);
@@ -616,7 +639,8 @@ TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesFromP)
   // holds; through the QP interface it must match a fresh setup from P alone
   const int n{2}, m{3};
   affine_mpc::detail::QP qp{setupTestQP()};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-8;
   Eigen::Matrix2d P_new;
   P_new << 8, 2, 2, 3;
@@ -626,19 +650,19 @@ TEST(OSQPSolverProtectedTester, givenQPInterfaceMatrixUpdate_RescalesFromP)
   qp.P = P_new;
   ASSERT_TRUE(by_qp.updateMatrices(qp, true, false));
 
-  affine_mpc::OSQPSolver fresh{n, m, settings};
+  affine_mpc::OSQPSolver::Impl fresh{n, m};
   ASSERT_TRUE(fresh.initialize(qp.P, qp.A, setup_q, qp.l, qp.u, settings));
   ASSERT_TRUE(fresh.updateCostVector(qp.q));
 
   // the raw update keeps OSQP's behavior: it rescales with the q it holds
-  affine_mpc::OSQPSolver raw{n, m, settings};
+  affine_mpc::OSQPSolver::Impl raw{n, m};
   ASSERT_TRUE(raw.initialize(Eigen::Matrix2d{{4, 1}, {1, 2}}, qp.A, setup_q,
                              qp.l, qp.u, settings));
   ASSERT_TRUE(raw.updateCostVector(qp.q));
   ASSERT_TRUE(raw.updateCostMatrix(P_new));
 
   Eigen::Vector2d z_qp, z_fresh, z_raw;
-  ASSERT_EQ(by_qp.solve(z_qp), affine_mpc::SolveStatus::Success);
+  ASSERT_EQ(solveQP(by_qp, z_qp), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(fresh.solve(z_fresh), affine_mpc::SolveStatus::Success);
   ASSERT_EQ(raw.solve(z_raw), affine_mpc::SolveStatus::Success);
   EXPECT_EQ(by_qp.getSolveInfo().iterations, fresh.getSolveInfo().iterations);
@@ -663,7 +687,8 @@ TEST(OSQPSolverProtectedTester, givenExample_ReportsDualSolution)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.verbose = false;
   settings.polishing = true;
   ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
@@ -703,10 +728,11 @@ TEST(OSQPSolverProtectedTester, givenColdStart_NextSolveStartsFromZero)
   u << 1, 0.7, 0.7;
   Eigen::Matrix<OSQPFloat, n, n> P;
   P << 4, 1, 1, 2;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   settings.verbose = false;
   // deterministic iteration counts: fixed rho, check termination every step
-  settings.adaptive_rho = false;
+  settings.adaptive_rho = affine_mpc::OSQPSettings::AdaptiveRhoType::Disabled;
   settings.check_termination = 1;
   ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
 
@@ -743,7 +769,8 @@ TEST(OSQPSolverProtectedTester,
   Eigen::Matrix<OSQPFloat, m, 1> l, u;
   l << 1, 0, 0;
   u << 1, 0.7, 0.7;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.verbose = false;
 
   OSQPSolverProtectedTester combined{n, m}, separate{n, m};
@@ -777,7 +804,8 @@ TEST(OSQPSolverProtectedTester,
   Eigen::Matrix<OSQPFloat, m, 1> l, u;
   l << 1, 0, 0;
   u << 1, 0.7, 0.7;
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   settings.verbose = false;
   settings.polishing = true;
 
@@ -806,7 +834,8 @@ TEST(OSQPSolverProtectedTester, givenInfiniteBounds_ConvergesToUnconstrainedMin)
   const Eigen::Matrix<OSQPFloat, n, 1> q{1.0, 1.0};
   const double inf{std::numeric_limits<double>::infinity()};
   const Eigen::Matrix<OSQPFloat, m, 1> l{-inf, -inf}, u{inf, inf};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   ASSERT_TRUE(base.initialize(P, A, q, l, u, settings));
 
   const Eigen::Vector2d expected{P.ldlt().solve(-q)};
@@ -825,8 +854,8 @@ TEST(OSQPSolverProtectedTester, givenInfiniteBounds_ConvergesToUnconstrainedMin)
 
 namespace {
 
-using SparseMatrixXF = affine_mpc::OSQPSolver::SparseMatrixXF;
-using MatrixXF = affine_mpc::OSQPSolver::MatrixXF;
+using SparseMatrixXF = affine_mpc::OSQPSolver::Impl::SparseMatrixXF;
+using MatrixXF = affine_mpc::OSQPSolver::Impl::MatrixXF;
 using Mask = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>;
 
 // M's values on the entries of a mask, stored even where they are zero
@@ -865,7 +894,8 @@ TEST(OSQPSolverProtectedTester, givenSparseMatrices_PatternIsTheStoredEntries)
 {
   SparseProblem p;
   OSQPSolverProtectedTester sparse{3, 2};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   SparseMatrixXF Ps{stored(p.P, p.P_mask)}, As{stored(p.A, p.A_mask)};
   ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
 
@@ -931,7 +961,8 @@ TEST(OSQPSolverProtectedTester, givenSparseFullPattern_UpdatesWithoutCopy)
   A_mask << 1, 1, 0, 1;
   const Eigen::Vector2d q{1.0, 1.0}, l{1.0, 0.0}, u{1.0, 0.7};
   OSQPSolverProtectedTester dense{2, 2}, sparse{2, 2};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
   ASSERT_TRUE(dense.initialize(P, A, q, l, u, settings));
   ASSERT_TRUE(sparse.initialize(stored(P, P_mask), stored(A, A_mask), q, l, u,
                                 settings));
@@ -956,7 +987,8 @@ TEST(OSQPSolverProtectedTester, givenSparsePWithoutDiagonal_InitializeFails)
   const Eigen::Vector2d q{0.0, 0.0};
   const Eigen::Matrix<double, 1, 1> l{0.0}, u{1.0};
   OSQPSolverProtectedTester sparse{2, 1};
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   EXPECT_FALSE(sparse.initialize(stored(P, P_mask), stored(A, A_mask), q, l, u,
                                  settings));
 }
@@ -968,7 +1000,8 @@ TEST(OSQPSolverProtectedTester,
   OSQPSolverProtectedTester sparse{3, 2};
   SparseMatrixXF Ps{stored(p.P, p.P_mask)}, As{stored(p.A, p.A_mask)};
   EXPECT_FALSE(sparse.isWithinSparsityPattern(Ps, As)); // not initialized
-  OSQPSettings settings{affine_mpc::OSQPSolver::getDefaultSettings()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getDefaultSettings()};
   ASSERT_TRUE(sparse.initialize(Ps, As, p.q, p.l, p.u, settings));
   EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
 
@@ -982,4 +1015,186 @@ TEST(OSQPSolverProtectedTester,
   // explicit zeros
   As.coeffRef(0, 0) = 0.0;
   EXPECT_TRUE(sparse.isWithinSparsityPattern(Ps, As));
+}
+
+namespace {
+
+// Compares every field of OSQP 1.0's settings struct
+void expectSameOSQPSettings(const ::OSQPSettings& a, const ::OSQPSettings& b)
+{
+  EXPECT_EQ(a.device, b.device);
+  EXPECT_EQ(a.linsys_solver, b.linsys_solver);
+  EXPECT_EQ(a.allocate_solution, b.allocate_solution);
+  EXPECT_EQ(a.verbose, b.verbose);
+  EXPECT_EQ(a.profiler_level, b.profiler_level);
+  EXPECT_EQ(a.warm_starting, b.warm_starting);
+  EXPECT_EQ(a.scaling, b.scaling);
+  EXPECT_EQ(a.polishing, b.polishing);
+  EXPECT_EQ(a.rho, b.rho);
+  EXPECT_EQ(a.rho_is_vec, b.rho_is_vec);
+  EXPECT_EQ(a.sigma, b.sigma);
+  EXPECT_EQ(a.alpha, b.alpha);
+  EXPECT_EQ(a.cg_max_iter, b.cg_max_iter);
+  EXPECT_EQ(a.cg_tol_reduction, b.cg_tol_reduction);
+  EXPECT_EQ(a.cg_tol_fraction, b.cg_tol_fraction);
+  EXPECT_EQ(a.cg_precond, b.cg_precond);
+  EXPECT_EQ(a.adaptive_rho, b.adaptive_rho);
+  EXPECT_EQ(a.adaptive_rho_interval, b.adaptive_rho_interval);
+  EXPECT_EQ(a.adaptive_rho_fraction, b.adaptive_rho_fraction);
+  EXPECT_EQ(a.adaptive_rho_tolerance, b.adaptive_rho_tolerance);
+  EXPECT_EQ(a.max_iter, b.max_iter);
+  EXPECT_EQ(a.eps_abs, b.eps_abs);
+  EXPECT_EQ(a.eps_rel, b.eps_rel);
+  EXPECT_EQ(a.eps_prim_inf, b.eps_prim_inf);
+  EXPECT_EQ(a.eps_dual_inf, b.eps_dual_inf);
+  EXPECT_EQ(a.scaled_termination, b.scaled_termination);
+  EXPECT_EQ(a.check_termination, b.check_termination);
+  EXPECT_EQ(a.check_dualgap, b.check_dualgap);
+  EXPECT_EQ(a.time_limit, b.time_limit);
+  EXPECT_EQ(a.delta, b.delta);
+  EXPECT_EQ(a.polish_refine_iter, b.polish_refine_iter);
+}
+
+} // namespace
+
+// The defaults are OSQP's, so this fails when an OSQP update changes them
+TEST(OSQPSettingsTester, givenDefaultSettings_MatchOSQPDefaults)
+{
+  ::OSQPSettings osqp_defaults;
+  osqp_set_default_settings(&osqp_defaults);
+  {
+    SCOPED_TRACE("OSQPSettings{}");
+    expectSameOSQPSettings(affine_mpc::toOSQP(affine_mpc::OSQPSettings{}),
+                           osqp_defaults);
+  }
+  {
+    SCOPED_TRACE("getDefaultSettings()");
+    expectSameOSQPSettings(
+        affine_mpc::toOSQP(affine_mpc::OSQPSolver::getDefaultSettings()),
+        osqp_defaults);
+  }
+}
+
+TEST(OSQPSettingsTester, givenNonDefaultSettings_ConvertsEveryField)
+{
+  // every field differs from OSQP's default
+  using Settings = affine_mpc::OSQPSettings;
+  Settings s;
+  s.device = 1;
+  s.linsys_solver = Settings::LinsysSolverType::IndirectSolver;
+  s.allocate_solution = false;
+  s.verbose = false;
+  s.profiler_level = 2;
+  s.warm_starting = false;
+  s.scaling = 3;
+  s.polishing = true;
+  s.rho = 0.25;
+  s.rho_is_vec = false;
+  s.sigma = 2e-6;
+  s.alpha = 1.3;
+  s.cg_max_iter = 31;
+  s.cg_tol_reduction = 7;
+  s.cg_tol_fraction = 0.2;
+  s.cg_precond = Settings::PreconditionerType::NoPreconditioner;
+  s.adaptive_rho = Settings::AdaptiveRhoType::KKTError;
+  s.adaptive_rho_interval = 17;
+  s.adaptive_rho_fraction = 0.6;
+  s.adaptive_rho_tolerance = 4.0;
+  s.max_iter = 123;
+  s.eps_abs = 2e-5;
+  s.eps_rel = 3e-5;
+  s.eps_prim_inf = 4e-5;
+  s.eps_dual_inf = 5e-5;
+  s.scaled_termination = true;
+  s.check_termination = 9;
+  s.check_dualgap = false;
+  s.time_limit = 0.5;
+  s.delta = 3e-6;
+  s.polish_refine_iter = 5;
+
+  ::OSQPSettings expected;
+  osqp_set_default_settings(&expected);
+  expected.device = 1;
+  expected.linsys_solver = OSQP_INDIRECT_SOLVER;
+  expected.allocate_solution = 0;
+  expected.verbose = 0;
+  expected.profiler_level = 2;
+  expected.warm_starting = 0;
+  expected.scaling = 3;
+  expected.polishing = 1;
+  expected.rho = 0.25;
+  expected.rho_is_vec = 0;
+  expected.sigma = 2e-6;
+  expected.alpha = 1.3;
+  expected.cg_max_iter = 31;
+  expected.cg_tol_reduction = 7;
+  expected.cg_tol_fraction = 0.2;
+  expected.cg_precond = OSQP_NO_PRECONDITIONER;
+  expected.adaptive_rho = OSQP_ADAPTIVE_RHO_UPDATE_KKT_ERROR;
+  expected.adaptive_rho_interval = 17;
+  expected.adaptive_rho_fraction = 0.6;
+  expected.adaptive_rho_tolerance = 4.0;
+  expected.max_iter = 123;
+  expected.eps_abs = 2e-5;
+  expected.eps_rel = 3e-5;
+  expected.eps_prim_inf = 4e-5;
+  expected.eps_dual_inf = 5e-5;
+  expected.scaled_termination = 1;
+  expected.check_termination = 9;
+  expected.check_dualgap = 0;
+  expected.time_limit = 0.5;
+  expected.delta = 3e-6;
+  expected.polish_refine_iter = 5;
+
+  expectSameOSQPSettings(affine_mpc::toOSQP(s), expected);
+}
+
+TEST(OSQPSettingsTester, givenSolutionNotAllocated_InitializeFails)
+{
+  affine_mpc::detail::QP qp{setupTestQP()};
+  affine_mpc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings()};
+  settings.allocate_solution = false;
+  affine_mpc::OSQPSolver solver{2, 3, settings};
+  EXPECT_FALSE(solver.initialize(qp, affine_mpc::QPBlockLayout{}));
+  EXPECT_FALSE(solver.isInitialized());
+}
+
+TEST(OSQPSettingsTester, givenSettings_PrintsEveryField)
+{
+  std::ostringstream os;
+  os << affine_mpc::OSQPSettings{};
+  const std::string text{os.str()};
+  for (const char* field : {"adaptive_rho = Iterations",
+                            "adaptive_rho_fraction =",
+                            "adaptive_rho_interval =",
+                            "adaptive_rho_tolerance =",
+                            "allocate_solution = true",
+                            "alpha =",
+                            "cg_max_iter =",
+                            "cg_precond = DiagonalPreconditioner",
+                            "cg_tol_fraction =",
+                            "cg_tol_reduction =",
+                            "check_dualgap = true",
+                            "check_termination =",
+                            "delta =",
+                            "device =",
+                            "eps_abs =",
+                            "eps_dual_inf =",
+                            "eps_prim_inf =",
+                            "eps_rel =",
+                            "linsys_solver = DirectSolver",
+                            "max_iter = 4000",
+                            "polishing = false",
+                            "polish_refine_iter =",
+                            "profiler_level =",
+                            "rho =",
+                            "rho_is_vec =",
+                            "scaled_termination =",
+                            "scaling = 10",
+                            "sigma =",
+                            "time_limit =",
+                            "verbose = true",
+                            "warm_starting = true"})
+    EXPECT_NE(text.find(field), std::string::npos) << field;
 }

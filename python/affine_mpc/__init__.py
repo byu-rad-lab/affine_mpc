@@ -16,6 +16,7 @@ from ._bindings import (
     InputCostMode,
     StateBoundMode,
     InputBoundMode,
+    SlewBoundMode,
     ModelSparsity,
     Parameterization,
     QPBlock,
@@ -30,12 +31,14 @@ from ._bindings import (
     MPC,
     MPCLogger,
 )
+from .log import MPCLog, load_log
 
 __all__ = [
     "Options",
     "InputCostMode",
     "StateBoundMode",
     "InputBoundMode",
+    "SlewBoundMode",
     "ModelSparsity",
     "Parameterization",
     "QPBlock",
@@ -49,4 +52,6 @@ __all__ = [
     "Formulation",
     "MPC",
     "MPCLogger",
+    "MPCLog",
+    "load_log",
 ]

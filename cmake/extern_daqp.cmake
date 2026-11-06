@@ -2,7 +2,8 @@
 # affine_mpc_daqp_link (the target affine_mpc links privately) and
 # AFFINE_MPC_DAQP_FOUND_PACKAGE (whether it is an installed DAQP package).
 #
-# An installed DAQP (find_package(daqp)) is used if found; DAQP installs no
+# An installed DAQP (find_package(daqp)) is used if found, in shared and static
+# builds alike (unlike OSQP, which static builds always fetch); DAQP installs no
 # CMake version file, so its version can not be checked, and 0.10.3 or newer
 # is expected. Otherwise DAQP's sources are fetched and built into a static,
 # position-independent library of this project (affine_mpc_daqp), which a

@@ -24,6 +24,7 @@ __all__: list[str] = [
     "Parameterization",
     "QPBlock",
     "QuadraticProgram",
+    "SlewBoundMode",
     "SolveInfo",
     "SolveStatus",
     "StateBoundMode",
@@ -67,8 +68,23 @@ class InputBoundMode(enum.Enum):
     """
 
     ControlPoints: typing.ClassVar[InputBoundMode]
-    Exact: typing.ClassVar[InputBoundMode]
     Refined: typing.ClassVar[InputBoundMode]
+    Trajectory: typing.ClassVar[InputBoundMode]
+
+class SlewBoundMode(enum.Enum):
+    """
+    Whether and how the MPC enforces the slew-rate limits |u_k - u_{k-1}| <= du_max
+    for k = 1, ..., T-1 (set with MPC.setSlewRate(), per sample step), chosen with
+    Options.slew_bounds.
+
+    The limit is the same in every mode; the mode only decides how it is enforced.
+    The change from the previous input, u_0 - u_prev, has its own limit
+    (Options.slew_initial_input).
+    """
+
+    ControlPoints: typing.ClassVar[SlewBoundMode]
+    Off: typing.ClassVar[SlewBoundMode]
+    Trajectory: typing.ClassVar[SlewBoundMode]
 
 class Options:
     """
@@ -86,16 +102,16 @@ class Options:
 
     Input constraints (the input limits are always enforced):
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-            default), the sampled inputs (InputBoundMode.Exact), or the control
+            default), the sampled inputs (InputBoundMode.Trajectory), or the control
             points after knot insertion (InputBoundMode.Refined).
         refined_bound_interval: Longest knot interval, in samples, after the knot
             insertion of InputBoundMode.Refined, which splits every interval at
             least once (positive, default 16).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
-        slew_control_points: Slew-rate constraints on the parameterization control
-            points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-            parameterization.
+        slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+            |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+            points (ControlPoints) or the sampled inputs (Trajectory).
 
     State constraints:
         state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
@@ -113,7 +129,7 @@ class Options:
 
     input_bounds: InputBoundMode
     input_cost: InputCostMode
-    slew_control_points: bool
+    slew_bounds: SlewBoundMode
     slew_initial_input: bool
     state_bounds: StateBoundMode
     use_input_rate_cost: bool
@@ -125,11 +141,11 @@ class Options:
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
         refined_bound_interval: int = 16,
         slew_initial_input: bool = False,
-        slew_control_points: bool = False,
+        slew_bounds: SlewBoundMode = SlewBoundMode.Off,
         state_bounds: StateBoundMode = StateBoundMode.Off,
         bounded_states: collections.abc.Sequence[int] = [],
         num_general_constraints: int = 0,
-        num_terminal_constraints: int = 0
+        num_terminal_constraints: int = 0,
     ) -> None:
         """
         Construct an Options struct defining optional MPC configuration features. All
@@ -141,16 +157,16 @@ class Options:
             use_input_rate_cost: Enables a cost on the change of the sampled inputs
                 ((u_k - u_{k-1})^T R_rate (u_k - u_{k-1}) with u_{-1} = u_prev).
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
-                default), the sampled inputs (InputBoundMode.Exact), or the control
+                default), the sampled inputs (InputBoundMode.Trajectory), or the control
                 points after knot insertion (InputBoundMode.Refined).
             refined_bound_interval: Longest knot interval, in samples, after the knot
                 insertion of InputBoundMode.Refined, which splits every interval at
                 least once (positive, default 16).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
-            slew_control_points: Slew-rate constraints on the parameterization control
-                points (|v_{i+1} - v_i| <= control_point_slew). Requires a B-spline
-                parameterization.
+            slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
+                |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 enforced on the control
+                points (ControlPoints) or the sampled inputs (Trajectory).
             state_bounds: StateBoundMode.Off (the default), Hard, or Soft state bounds.
             bounded_states: Indices of the states with limits (requires state_bounds
                 other than Off). Empty (the default) bounds every state.
@@ -294,8 +310,9 @@ class Parameterization:
         transposed), and type is Type.Custom, with degree = -1 and empty knots. Since
         the B-spline convex hull property does not hold, an MPC with a custom basis
         bounds every sampled input (whatever Options.input_bounds is) and rejects
-        slew_control_points. It omits the bounds of samples whose basis row has a norm
-        of at most 1e-9 times the largest row norm (e.g. where a Laguerre basis has
+        SlewBoundMode.ControlPoints (SlewBoundMode.Trajectory bounds the sampled changes).
+        It omits the bounds of samples whose basis row has a norm of at most 1e-9 times
+        the largest row norm (e.g. where a Laguerre basis has
         decayed): such a sample can only leave the limits if the coefficients exceed
         them by about 1e9, and its tiny row would hurt the solver's scaling.
         InputCostMode.ControlPoints weights the coefficients (and
@@ -685,10 +702,17 @@ class OSQPSettings:
     convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
 
     Attributes:
-        adaptive_rho: Enable adaptive ADMM step size.
-        adaptive_rho_fraction: Fraction of primal and dual residuals to trigger rho update.
-        adaptive_rho_interval: Minimum number of iterations between rho updates.
-        adaptive_rho_tolerance: Absolute residual tolerance for adaptive rho updates.
+        adaptive_rho: When rho is adapted (AdaptiveRhoType): Disabled, every
+            adaptive_rho_interval iterations (Iterations), after a fraction of
+            the setup time (Time, needs OSQP built with profiling), or when the
+            KKT error has decreased to adaptive_rho_fraction of its value at the
+            last adaptation (KKTError).
+        adaptive_rho_fraction: Fraction of the setup time (Time) or of the KKT
+            error at the last adaptation (KKTError) at which rho is adapted.
+        adaptive_rho_interval: Iterations between rho adaptations (Iterations);
+            zero chooses it from check_termination.
+        adaptive_rho_tolerance: Minimum ratio between a new rho and the current
+            one to change it.
         alpha: Relaxation parameter. Default for QP solvers is 1.6.
             =1: no relaxation (standard ADMM).
             >1: over-relaxation (can improve convergence in some cases).
@@ -748,8 +772,25 @@ class OSQPSettings:
         DiagonalPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
         NoPreconditioner: typing.ClassVar[OSQPSettings.PreconditionerType]
 
+    class AdaptiveRhoType(enum.Enum):
+        """
+        When OSQP adapts rho.
+        """
+
+        Disabled: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        Iterations: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        KKTError: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+        Time: typing.ClassVar[OSQPSettings.AdaptiveRhoType]
+
+    adaptive_rho: OSQPSettings.AdaptiveRhoType
     cg_precond: OSQPSettings.PreconditionerType
+    check_dualgap: bool
     linsys_solver: OSQPSettings.LinsysSolverType
+    polishing: bool
+    rho_is_vec: bool
+    scaled_termination: bool
+    verbose: bool
+    warm_starting: bool
     @staticmethod
     def fromOSQPDefaults() -> OSQPSettings:
         """
@@ -763,10 +804,6 @@ class OSQPSettings:
 
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
-    @property
-    def adaptive_rho(self) -> int: ...
-    @adaptive_rho.setter
-    def adaptive_rho(self, arg0: int) -> None: ...
     @property
     def adaptive_rho_fraction(self) -> float: ...
     @adaptive_rho_fraction.setter
@@ -795,10 +832,6 @@ class OSQPSettings:
     def cg_tol_reduction(self) -> int: ...
     @cg_tol_reduction.setter
     def cg_tol_reduction(self, arg0: int) -> None: ...
-    @property
-    def check_dualgap(self) -> int: ...
-    @check_dualgap.setter
-    def check_dualgap(self, arg0: int) -> None: ...
     @property
     def check_termination(self) -> int: ...
     @check_termination.setter
@@ -832,10 +865,6 @@ class OSQPSettings:
     @polish_refine_iter.setter
     def polish_refine_iter(self, arg0: int) -> None: ...
     @property
-    def polishing(self) -> int: ...
-    @polishing.setter
-    def polishing(self, arg0: int) -> None: ...
-    @property
     def profiler_level(self) -> int: ...
     @profiler_level.setter
     def profiler_level(self, arg0: int) -> None: ...
@@ -843,14 +872,6 @@ class OSQPSettings:
     def rho(self) -> float: ...
     @rho.setter
     def rho(self, arg0: float) -> None: ...
-    @property
-    def rho_is_vec(self) -> int: ...
-    @rho_is_vec.setter
-    def rho_is_vec(self, arg0: int) -> None: ...
-    @property
-    def scaled_termination(self) -> int: ...
-    @scaled_termination.setter
-    def scaled_termination(self, arg0: int) -> None: ...
     @property
     def scaling(self) -> int: ...
     @scaling.setter
@@ -863,14 +884,6 @@ class OSQPSettings:
     def time_limit(self) -> float: ...
     @time_limit.setter
     def time_limit(self, arg0: float) -> None: ...
-    @property
-    def verbose(self) -> int: ...
-    @verbose.setter
-    def verbose(self, arg0: int) -> None: ...
-    @property
-    def warm_starting(self) -> int: ...
-    @warm_starting.setter
-    def warm_starting(self, arg0: int) -> None: ...
 
 class DAQPSettings:
     """
@@ -1123,7 +1136,7 @@ class MPC:
         param: Parameterization,
         opts: Options = Options(),
         *,
-        formulation: Formulation = Formulation.Condensed
+        formulation: Formulation = Formulation.Condensed,
     ) -> None:
         """
         Construct an MPC with an input parameterization, options, and formulation.
@@ -1148,7 +1161,7 @@ class MPC:
         horizon_steps: int,
         opts: Options = Options(),
         *,
-        formulation: Formulation = Formulation.Condensed
+        formulation: Formulation = Formulation.Condensed,
     ) -> None:
         """
         Construct an MPC that optimizes every input of the horizon (no
@@ -1523,8 +1536,8 @@ class MPC:
         """
         Get the blocks of constraint rows of A, in order, listing only the blocks the
         options enable: "dynamics" (the sparse formulation's model rows),
-        "input_bounds", "initial_slew", "control_point_slew", "state_bounds" (soft: the
-        upper rows, the lower rows, then the slack rows s >= 0), "general_constraints"
+        "input_bounds", "initial_slew", "slew_bounds", "state_bounds" (soft: the upper
+        rows, the lower rows, then the slack rows s >= 0), "general_constraints"
         (rows per step, steps in order), and "terminal_constraints". Together they
         cover every row. For analysis; allocates the list, so not intended for the
         control loop.
@@ -1595,10 +1608,10 @@ class MPC:
         self,
     ) -> typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]:
         """
-        Get the control point slew rate (+inf until setSlewRate()).
+        Get the slew-rate limit per sample step (+inf until setSlewRate()).
 
         Raises:
-            RuntimeError: If `slew_control_points` is not enabled.
+            RuntimeError: If `slew_bounds` is Off.
         """
 
     def getSlewRateInitial(
@@ -2222,21 +2235,27 @@ class MPC:
         """
 
     def setSlewRate(
-        self,
-        control_point_slew: typing.Annotated[
-            numpy.typing.NDArray[numpy.float64], "[m, 1]"
-        ],
+        self, slew_rate: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set slew-rate constraint limits for control points. Control points can vary by
-        up to this magnitude from one index to the next.
+        Set the slew-rate limits |u_k - u_{k-1}| <= slew_rate for k = 1, ..., T-1, the
+        largest change of each input from one sample step to the next (units of the
+        input per sample step, not per second).
 
-        This function can only be called if `slew_control_points` is enabled. Must be
-        called prior to `initializeSolver()`, but can also be called after if limits
-        change between solves.
+        The limit means the same in every SlewBoundMode; the mode only decides how it
+        is enforced (Options.slew_bounds). The change from the previous input,
+        u_0 - u_prev, has its own limit (setSlewRateInitial()). This function can only
+        be called if `slew_bounds` is not Off. Must be called prior to
+        `initializeSolver()`, but can also be called after if limits change between
+        solves (which only updates QP vectors). Pass `inf` for an input without a
+        limit.
 
         Args:
-            control_point_slew: Slew-rate vector. All values must be positive.
+            slew_rate: Slew-rate limit per input (size input_dim, non-negative).
+
+        Raises:
+            RuntimeError: If `slew_bounds` is Off.
+            ValueError: If the size is wrong or a value is negative.
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -2247,15 +2266,15 @@ class MPC:
         self, u0_slew: typing.Annotated[numpy.typing.NDArray[numpy.float64], "[m, 1]"]
     ) -> None:
         """
-        Set initial slew-rate constraint limits for control points. Initial input can
-        vary by up to this magnitude from the previous input. See `setPreviousInput()`.
+        Set the initial slew-rate limits |u_0 - u_prev| <= u0_slew, the largest change
+        of the first sampled input from the previous input (see `setPreviousInput()`).
 
         This function can only be called if `slew_initial_input` is enabled. Must be
         called prior to `initializeSolver()`, but can also be called after if limits
         change between solves.
 
         Args:
-            u0_slew: Initial slew-rate vector. All values must be positive.
+            u0_slew: Initial slew-rate limit per input (size input_dim, non-negative).
 
         Note:
             The QP is updated in the next prepare() or solve(), which report update
@@ -2523,12 +2542,18 @@ class MPCLogger:
                 trajectory instead of the evaluated dense input trajectory.
             save_name: Base name for the output artifact(s) (default: "log").
             mode: Finalization output mode. Raw payload files are always staged under
-                `<save_name>_raw/` during logging.
+                `<save_name>_raw/` during logging, next to `params.yaml`, `meta.npz`,
+                and `staging_info.yaml`, which are written at construction so a log
+                that is never finalized can still be loaded.
                 - RawRecoverable: saves data arrays as `*.npyh` + `*.bin` plus
-                  `data_info.yaml` to `<save_name>_raw/`.
-                - Npy: saves data arrays to `<save_name>_npy/*.npy`.
+                  `data_info.yaml`, `meta.npz`, and `params.yaml` to
+                  `<save_name>_raw/`.
+                - Npy: saves data arrays and `meta.npz` to `<save_name>_npy/`.
                 - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
                 - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+
+                The NPY and NPZ modes also write the metadata to
+                `<save_name>_params.yaml` in save_dir.
 
                 NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
                 finalization exceeds those limits, the logger falls back to NPY output
@@ -2537,8 +2562,8 @@ class MPCLogger:
 
     def addMetadata(self, key: str, value: typing.Any, precision: int = -1) -> None:
         """
-        Add or overwrite custom metadata to be saved in both the main output artifact
-        and YAML metadata when supported.
+        Add or overwrite custom metadata to be saved in both the binary output and the
+        YAML metadata file.
 
         User-added metadata is preserved in the order it was added and appears after the
         automatic MPC snapshot in the output files.
@@ -2547,7 +2572,12 @@ class MPCLogger:
             key: Unique identifier for the metadata entry.
             value: The value to store (int, float, string, 1D NDArray, list[float]).
             precision: Optional decimal precision for floating point output in YAML.
-                -1 uses default precision.
+                -1 uses default precision (6 significant digits); the binary output is
+                always exact.
+
+        Raises:
+            ValueError: If key is one the logger writes itself (such as ts, u_max, or
+                opt_input_cost).
         """
 
     def captureMPCSnapshot(self) -> None:
@@ -2590,14 +2620,13 @@ class MPCLogger:
             ValueError: If x0 does not have size state_dim.
         """
 
-    def writeParamFile(
-        self, filename: os.PathLike[str] | str | bytes = "params.yaml"
-    ) -> None:
+    def writeParamFile(self, filename: os.PathLike[str] | str | bytes = "") -> None:
         """
-        Write the internal metadata map to a YAML file.
+        Write the internal metadata map to a YAML file within save_dir.
 
         Args:
-            filename: Output filename (should end with .yaml or .yml).
+            filename: Output filename (should end with .yaml or .yml); empty (the
+                default) writes <save_name>_params.yaml, the file finalize() writes.
         """
 
 def hasDAQP() -> bool:

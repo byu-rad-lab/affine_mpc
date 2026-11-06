@@ -36,9 +36,10 @@ from an MPC object.
       .value("RawRecoverable", ampc::MPCLogger::Mode::RawRecoverable,
              "Write each data array into 2 files: a NPY header (`.npyh`) + "
              "binary (`.bin`). Also write a `data_info.yaml` with readable "
-             "header information.")
+             "header information, and the metadata to `meta.npz`.")
       .value("Npy", ampc::MPCLogger::Mode::Npy,
-             "Write each data array to a NPY (`.npy`) file.")
+             "Write each data array to a NPY (`.npy`) file, and the metadata "
+             "to `meta.npz`.")
       .value(
           "NpzUncompressed", ampc::MPCLogger::Mode::NpzUncompressed,
           "Write all data arrays into a single uncompressed NPZ (`.npz`) file.")
@@ -75,12 +76,18 @@ Args:
         trajectory instead of the evaluated dense input trajectory.
     save_name: Base name for the output artifact(s) (default: "log").
     mode: Finalization output mode. Raw payload files are always staged under
-        `<save_name>_raw/` during logging.
+        `<save_name>_raw/` during logging, next to `params.yaml`, `meta.npz`,
+        and `staging_info.yaml`, which are written at construction so a log
+        that is never finalized can still be loaded.
         - RawRecoverable: saves data arrays as `*.npyh` + `*.bin` plus
-          `data_info.yaml` to `<save_name>_raw/`.
-        - Npy: saves data arrays to `<save_name>_npy/*.npy`.
+          `data_info.yaml`, `meta.npz`, and `params.yaml` to
+          `<save_name>_raw/`.
+        - Npy: saves data arrays and `meta.npz` to `<save_name>_npy/`.
         - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
         - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+
+        The NPY and NPZ modes also write the metadata to
+        `<save_name>_params.yaml` in save_dir.
 
         NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
         finalization exceeds those limits, the logger falls back to NPY output
@@ -138,8 +145,8 @@ Raises:
         }
       },
       R"doc(
-Add or overwrite custom metadata to be saved in both the main output artifact
-and YAML metadata when supported.
+Add or overwrite custom metadata to be saved in both the binary output and the
+YAML metadata file.
 
 User-added metadata is preserved in the order it was added and appears after the
 automatic MPC snapshot in the output files.
@@ -148,7 +155,12 @@ Args:
     key: Unique identifier for the metadata entry.
     value: The value to store (int, float, string, 1D NDArray, list[float]).
     precision: Optional decimal precision for floating point output in YAML.
-        -1 uses default precision.
+        -1 uses default precision (6 significant digits); the binary output is
+        always exact.
+
+Raises:
+    ValueError: If key is one the logger writes itself (such as ts, u_max, or
+        opt_input_cost).
       )doc",
       py::arg("key"), py::arg("value"), py::arg("precision") = -1);
 
@@ -170,12 +182,13 @@ loop ends. Raw payloads are preserved on failure to support recovery.
 
   log.def("writeParamFile", &ampc::MPCLogger::writeParamFile,
           R"doc(
-Write the internal metadata map to a YAML file.
+Write the internal metadata map to a YAML file within save_dir.
 
 Args:
-    filename: Output filename (should end with .yaml or .yml).
+    filename: Output filename (should end with .yaml or .yml); empty (the
+        default) writes <save_name>_params.yaml, the file finalize() writes.
           )doc",
-          py::arg("filename") = "params.yaml");
+          py::arg("filename") = "");
 }
 
 } // namespace affine_mpc_py

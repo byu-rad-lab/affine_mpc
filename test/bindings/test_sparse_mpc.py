@@ -37,7 +37,7 @@ def test_bspline_mpc_interface():
             opts=ampc.Options(
                 input_cost=ampc.InputCostMode.ControlPoints,
                 slew_initial_input=True,
-                slew_control_points=True,
+                slew_bounds=ampc.SlewBoundMode.ControlPoints,
                 state_bounds=ampc.StateBoundMode.Hard,
             ),
             formulation=ampc.Formulation.Sparse,
@@ -51,7 +51,7 @@ def test_bspline_mpc_interface():
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
         mpc.setStateLimits(x_min=-np.ones(n), x_max=np.ones(n))
-        mpc.setSlewRate(control_point_slew=np.ones(m))
+        mpc.setSlewRate(slew_rate=np.ones(m))
         mpc.setSlewRateInitial(u0_slew=np.ones(m))
         mpc.setPreviousInput(u_prev=np.zeros(m))
 

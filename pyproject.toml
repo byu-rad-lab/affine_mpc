@@ -77,3 +77,7 @@ AFFINE_MPC_WITH_DAQP = "ON"
 # Current commit must be tagged with no working changes to get a clean version;
 # otherwise, a local version identifier is added.
 write_to = "python/affine_mpc/_version.py" 
+
+[tool.black]
+# black's default, made explicit
+line-length = 88

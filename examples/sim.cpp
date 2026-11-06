@@ -17,7 +17,7 @@ int main()
   const auto param{ampc::Parameterization::linearInterp(T, nc)};
   const ampc::Options opts{
       .input_cost = ampc::InputCostMode::ControlPoints,
-      .slew_control_points = true,
+      .slew_bounds = ampc::SlewBoundMode::ControlPoints,
   };
   ampc::MPC msd_mpc{n, m, param, opts, ampc::Formulation::Condensed};
 
@@ -26,7 +26,8 @@ int main()
   double ts{0.1};
   msd_mpc.setModelContinuous2Discrete(A, B, w, ts);
 
-  Eigen::Vector<double, m> u_min{0}, u_max{3}, slew{1};
+  // the input may change by at most 0.25 N per step (2.5 N/s)
+  Eigen::Vector<double, m> u_min{0}, u_max{3}, slew{0.25};
   msd_mpc.setInputLimits(u_min, u_max);
   msd_mpc.setSlewRate(slew);
 

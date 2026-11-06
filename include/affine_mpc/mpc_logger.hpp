@@ -23,6 +23,8 @@
 
 namespace affine_mpc {
 
+class NpzWriter;
+
 /**
  * @class MPCLogger
  * @brief High-performance binary logger for MPC data and metadata.
@@ -31,8 +33,9 @@ namespace affine_mpc {
  *   frequencies. Per-step data is always written to raw binary payload files
  *   during logging. Finalization then either keeps those raw payloads with
  *   recovery metadata, converts them to standalone `.npy` files, or packages
- *   them into a single `.npz` archive. Simulation metadata is stored in a YAML
- *   file.
+ *   them into a single `.npz` archive. Metadata is stored as `meta_*` arrays
+ *   in that archive, or in a `meta.npz` in the `.npy` and raw directories, and
+ *   in a YAML file for reading.
  *
  *   The logger is designed to be used within a simulation or control loop. It
  *   provides a convenience method to automatically extract and stride
@@ -46,8 +49,9 @@ public:
    *
    *   - RawRecoverable: Write each data array to 2 files: a NPY header
    *     (`.npyh`) + binary (`.bin`). Also write a `data_info.yaml` with
-   *     readable header information.
-   *   - Npy: Write each data array to a NPY (`.npy`) file.
+   *     readable header information, and the metadata to `meta.npz`.
+   *   - Npy: Write each data array to a NPY (`.npy`) file, and the metadata
+   *     to `meta.npz`.
    *   - NpzUncompressed: Write all data arrays into a single uncompressed NPZ
    *     (`.npz`) file.
    *   - NpzCompressed: Write all data arrays into a single compressed NPZ
@@ -91,12 +95,19 @@ public:
    *   not logged with control points.
    * @param save_name Base name for the output artifact(s) (default: "log").
    * @param mode Finalization output mode. Raw payload files are always staged
-   *   under `<save_name>_raw/` during logging.
-   *   - RawRecoverable: saves data `*.bin`, NPY header info `*.npyh`, and
-   *     readable header info `data_info.yaml` all to `<save_name>_raw/`.
-   *   - NPY: saves `*.npy` data arrays to `<save_name>_npy/`.
+   *   under `<save_name>_raw/` during logging, next to `params.yaml`,
+   *   `meta.npz`, and `staging_info.yaml` (the shape of one row of each
+   *   payload), which are written at construction so a log that is never
+   *   finalized can still be loaded.
+   *   - RawRecoverable: saves data `*.bin`, NPY header info `*.npyh`,
+   *     readable header info `data_info.yaml`, `meta.npz`, and `params.yaml`
+   *     all to `<save_name>_raw/`.
+   *   - NPY: saves `*.npy` data arrays and `meta.npz` to `<save_name>_npy/`.
    *   - NpzUncompressed: saves all data into an uncompressed `<save_name>.npz`.
    *   - NpzCompressed: saves all data into a compressed `<save_name>.npz`.
+   *
+   *   The NPY and NPZ modes also write the metadata to
+   *   `<save_name>_params.yaml` in `save_dir`.
    *
    *   NPZ output is limited by ZIP32 size bounds of about 4 GiB. If NPZ
    *   finalization exceeds those limits, the logger falls back to NPY output
@@ -135,8 +146,8 @@ public:
                double loop_time = -1.0);
 
   /**
-   * @brief Add or overwrite custom metadata to be saved in both the main output
-   *   artifact and YAML metadata when supported.
+   * @brief Add or overwrite custom metadata to be saved in both the binary
+   *   output and the YAML metadata file.
    *
    *   User-added metadata is preserved in the order it was added and appears
    *   after the automatic MPC snapshot in the output files.
@@ -144,7 +155,10 @@ public:
    * @param key Unique identifier for the metadata entry.
    * @param value The value to store (int, double, string, or VectorXd).
    * @param precision Optional decimal precision for floating point output in
-   *   YAML. -1 uses default precision.
+   *   YAML. -1 uses default precision (6 significant digits); the binary
+   *   output is always exact.
+   * @throws std::invalid_argument if key is one the logger writes itself
+   *   (such as `ts`, `u_max`, or `opt_input_cost`).
    */
   void addMetadata(const std::string& key,
                    const MetadataValue& value,
@@ -169,9 +183,11 @@ public:
 
   /**
    * @brief Write the internal metadata map to a YAML file within `save_dir`.
-   * @param filename Output filename (should end with .yaml or .yml).
+   * @param filename Output filename (should end with .yaml or .yml); empty
+   *   (the default) writes `<save_name>_params.yaml`, the file finalize()
+   *   writes.
    */
-  void writeParamFile(const std::filesystem::path& filename = "params.yaml");
+  void writeParamFile(const std::filesystem::path& filename = {});
 
 private:
   struct MetadataEntry
@@ -202,7 +218,16 @@ private:
                        const std::filesystem::path& npy_dir) const;
   void writeDataInfoFile(const std::vector<PayloadEntry>& payloads,
                          const std::filesystem::path& data_info_path) const;
+  void
+  writeStagingInfoFile(const std::vector<PayloadEntry>& payloads,
+                       const std::filesystem::path& staging_info_path) const;
   void writeParamFileToPath(const std::filesystem::path& path) const;
+  void setBuiltinMetadata(const std::string& key, const MetadataValue& value);
+  void setMetadata(const std::string& key,
+                   const MetadataValue& value,
+                   int precision);
+  void writeMetaNpzFile(const std::filesystem::path& path) const;
+  void addMetadataEntries(NpzWriter& writer) const;
   void writeStep(double t);
 
   std::filesystem::path rawDirPath() const;
@@ -210,6 +235,7 @@ private:
   std::filesystem::path rawHeaderPath(const std::string& name) const;
   std::filesystem::path npyDirPath() const;
   std::filesystem::path npzPath() const;
+  std::filesystem::path paramFilePath() const;
 
   const MPC* const mpc_;
   const int state_dim_, input_dim_, horizon_steps_, num_ctrls_, spline_degree_;

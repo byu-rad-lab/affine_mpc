@@ -33,7 +33,9 @@ def _has_importable_package(root: Path) -> bool:
     if not (pkg_dir / "__init__.py").exists():
         return False
 
-    bindings = list(pkg_dir.glob("_bindings*.so")) + list(pkg_dir.glob("_bindings*.pyd"))
+    bindings = list(pkg_dir.glob("_bindings*.so")) + list(
+        pkg_dir.glob("_bindings*.pyd")
+    )
     return len(bindings) > 0
 
 
@@ -70,7 +72,10 @@ def _infer_has_zlib(root: Path) -> str:
         if not cache.exists():
             continue
         text = cache.read_text()
-        if "ZLIB_LIBRARY_RELEASE:FILEPATH=" in text and "ZLIB_LIBRARY_RELEASE-NOTFOUND" not in text:
+        if (
+            "ZLIB_LIBRARY_RELEASE:FILEPATH=" in text
+            and "ZLIB_LIBRARY_RELEASE-NOTFOUND" not in text
+        ):
             return "1"
         if "ZLIB_FOUND:INTERNAL=TRUE" in text or "ZLIB_FOUND:BOOL=TRUE" in text:
             return "1"

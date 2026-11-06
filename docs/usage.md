@@ -33,13 +33,13 @@ For the shared mathematical background, see [Concepts](concepts/index.md).
     - `Parameterization`
     - `Discretizer`
     - `Options`
-    - `DAQPSettings`
+    - `OSQPSettings` (`affine_mpc/osqp_settings.hpp`) and `DAQPSettings`
     - `MPC` and `Formulation` (`affine_mpc/mpc.hpp`)
     - `MPCLogger`
     - `SolveStatus`
     - `SolveInfo`
 
-    For users wanting to modify default solver settings, `OSQPSettings` is defined in the global namespace from OSQP.
+    `affine_mpc::OSQPSettings` mirrors OSQP's own settings struct, with the same field names and OSQP's defaults, so the public headers do not include OSQP's.
 
 ## Typical Workflow
 
@@ -80,7 +80,7 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
         input_cost=affine_mpc.InputCostMode.ControlPoints,
         input_bounds=affine_mpc.InputBoundMode.ControlPoints,
         slew_initial_input=False,
-        slew_control_points=True,
+        slew_bounds=affine_mpc.SlewBoundMode.ControlPoints,
         state_bounds=affine_mpc.StateBoundMode.Off,
     )
     ```
@@ -92,13 +92,13 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     opts.input_cost = affine_mpc::InputCostMode::ControlPoints;
     opts.input_bounds = affine_mpc::InputBoundMode::ControlPoints;
     opts.slew_initial_input = false;
-    opts.slew_control_points = true;
+    opts.slew_bounds = affine_mpc::SlewBoundMode::ControlPoints;
     opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
-The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_control_points`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_bounds`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
 In Python they are keyword arguments; in C++20, designated initializers must follow this order.
-`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Exact`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
+`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Trajectory`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
@@ -225,8 +225,8 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
         mpc.setSlewRateInitial(u0_slew)
     if opts.slew_initial_input or opts.use_input_rate_cost:
         mpc.setPreviousInput(u_prev)  # defaults to zeros
-    if opts.slew_control_points:
-        mpc.setSlewRate(u_slew)
+    if opts.slew_bounds != affine_mpc.SlewBoundMode.Off:
+        mpc.setSlewRate(u_slew)  # largest change per sample step
     if opts.state_bounds != affine_mpc.StateBoundMode.Off:
         mpc.setStateLimits(x_min, x_max)  # one entry per bounded state
     if opts.state_bounds == affine_mpc.StateBoundMode.Soft:
@@ -246,8 +246,8 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
     if (opts.slew_initial_input || opts.use_input_rate_cost) {
       mpc.setPreviousInput(u_prev); // defaults to zeros
     }
-    if (opts.slew_control_points) {
-      mpc.setSlewRate(u_slew);
+    if (opts.slew_bounds != affine_mpc::SlewBoundMode::Off) {
+      mpc.setSlewRate(u_slew); // largest change per sample step
     }
     if (opts.state_bounds != affine_mpc::StateBoundMode::Off) {
       mpc.setStateLimits(x_min, x_max); // one entry per bounded state
@@ -405,6 +405,8 @@ If input cost is enabled, input references can also be configured.
     ```
 
 You can pass an `OSQPSettings` object into `initializeSolver()` if you want to customize the default solver settings.
+It has the fields of OSQP's settings (see [OSQP's documentation](https://osqp.org/docs/interfaces/solver_settings.html)).
+In Python, `OSQPSettings()` gives the recommended settings and `OSQPSettings.fromOSQPDefaults()` OSQP's defaults; in C++, `OSQPSolver::getRecommendedSettings()` gives the recommended settings and `OSQPSettings{}` (or `OSQPSolver::getDefaultSettings()`) OSQP's defaults.
 `getRecommendedSettings()` leaves `max_iter` at OSQP's default (4000).
 Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need more, so raise it if you see `MaxIterReached`:
 
@@ -419,7 +421,8 @@ Long horizons solved from a cold start (e.g. $T = 500$ with degree 2) can need m
 === "C++"
 
     ```cpp
-    OSQPSettings settings = affine_mpc::OSQPSolver::getRecommendedSettings();
+    affine_mpc::OSQPSettings settings =
+        affine_mpc::OSQPSolver::getRecommendedSettings();
     settings.max_iter = 20000;
     if (!mpc.initializeSolver(settings)) { /* handle the error */ }
     ```

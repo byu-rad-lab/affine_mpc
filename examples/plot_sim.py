@@ -3,6 +3,8 @@ from numpy.typing import NDArray
 from pathlib import Path
 import tempfile
 
+import affine_mpc as ampc
+
 try:
     import abracatabra as plt
     from matplotlib.axes import Axes
@@ -23,41 +25,29 @@ ArrayF = NDArray[np.float64]
 def main():
     save_dir = Path(tempfile.gettempdir()) / "ampc_example"
 
-    npz_path = save_dir / "log.npz"
-    if not npz_path.exists():
-        print(f"Error: {npz_path} not found. Run 'example_sim' first.")
+    try:
+        log = ampc.load_log(save_dir)
+    except FileNotFoundError:
+        print(f"Error: no log found in {save_dir}. Run 'example_sim' first.")
         return
 
-    data = np.load(npz_path)
-
-    # logged with an input cost: (N, nc, m) control points for
-    # InputCostMode.ControlPoints with log_control_points, otherwise at the logged
-    # steps like ref_states; index 0 is the first input either way
-    has_input_ref = "ref_inputs" in data.files
-
-    time: ArrayF = data["time"]
-    states: ArrayF = data["states"]  # (N, K, n) or (N, n)
-    ref_states: ArrayF = data["ref_states"]  # same shape as states
-    inputs: ArrayF = data["inputs"]  # (N, K, m) or (N, nc, m) or (N, m)
+    time: ArrayF = log.time
+    t_pred: ArrayF = log.t_pred  # (N, K)
+    states: ArrayF = log.x_pred  # (N, K, n)
+    # (N, K, m), evaluated from the control points with log_control_points
+    inputs: ArrayF = log.u_pred
     # (N,) each, converted to ms
-    loop_time: ArrayF = data["loop_time"] * 1000.0
-    mpc_solve_time: ArrayF = data["mpc_solve_time"] * 1000.0
-    qp_solve_time: ArrayF = data["qp_solve_time"] * 1000.0
-    prepare_time: ArrayF = data["prepare_time"] * 1000.0
-    t_pred: ArrayF = data["meta_t_pred"]  # (K,)
-    log_ctrl_pts = bool(data["meta_log_control_points"])
+    loop_time: ArrayF = log.loop_time * 1000.0
+    mpc_solve_time: ArrayF = log.mpc_solve_time * 1000.0
+    qp_solve_time: ArrayF = log.qp_solve_time * 1000.0
+    prepare_time: ArrayF = log.prepare_time * 1000.0
 
-    u_min = data["meta_u_min"]
-    u_max = data["meta_u_max"]
+    u_min = log.u_min
+    u_max = log.u_max
 
-    is_2d = states.ndim == 2
-    x_hist = states if is_2d else states[:, 0]
-    xr_hist = ref_states if is_2d else ref_states[:, 0]
-    u_hist = inputs if (inputs.ndim == 2) else inputs[:, 0]
-
-    pos, vel = x_hist.T
-    pos_ref, vel_ref = xr_hist.T
-    force = u_hist.squeeze()
+    pos, vel = log.x.T
+    pos_ref, vel_ref = log.x_ref.T
+    force = log.u.squeeze()
 
     # Set up axes
     ref_style = "g-."
@@ -91,11 +81,8 @@ def main():
     ax_t_vel.plot(time, vel_ref, ref_style)
 
     ax_t_F.step(time, force, where="post")
-    if has_input_ref:
-        ref_inputs = data["ref_inputs"]
-        ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
-        force_ref = ur_hist.squeeze()
-        ax_t_F.plot(time, force_ref, ref_style)
+    if log.u_ref is not None:  # logged with an input cost
+        ax_t_F.plot(time, log.u_ref.squeeze(), ref_style)
 
     # Plot limits
     ax_t_F.plot(time[[0, -1]], np.tile(u_min, 2), lim_style, label="limits")
@@ -105,7 +92,7 @@ def main():
     ax_t_F.legend()
 
     # Prediction tab
-    if not is_2d:
+    if log.prediction_stride > 0:
         fig_pred = window.add_figure_tab("predictions")
         ax_p = fig_pred.subplots(3, 1, sharex=True)
         ax_p_pos: Axes = ax_p[0]
@@ -124,16 +111,15 @@ def main():
 
         step = 2
         pos_pred, vel_pred = states.transpose(2, 0, 1)  # each now (N, K)
-        force_pred = inputs.squeeze()  # now (N, K) or (N, nc)
+        force_pred = inputs[:, :, 0]  # (N, K)
         for i in range(0, len(time), step):
-            t = time[i] + t_pred
+            t = t_pred[i]
             a = 0.15
             ax_p_pos.plot(
                 t, pos_pred[i], pred_style, alpha=a, label="predicted" if i == 0 else ""
             )
             ax_p_vel.plot(t, vel_pred[i], pred_style, alpha=a)
-            if not log_ctrl_pts:
-                ax_p_F.step(t, force_pred[i], pred_style, where="post", alpha=a)
+            ax_p_F.step(t, force_pred[i], pred_style, where="post", alpha=a)
 
         # add tracking
         ax_p_pos.plot(time, pos, label="actual")
@@ -143,11 +129,8 @@ def main():
         ax_p_vel.plot(time, vel_ref, ref_style)
 
         ax_p_F.step(time, force, where="post")
-        if has_input_ref:
-            ref_inputs = data["ref_inputs"]
-            ur_hist = ref_inputs if (ref_inputs.ndim == 2) else ref_inputs[:, 0, :]
-            force_ref = ur_hist.squeeze()
-            ax_p_F.plot(time, force_ref, ref_style)
+        if log.u_ref is not None:
+            ax_p_F.plot(time, log.u_ref.squeeze(), ref_style)
 
         # add limits
         ax_p_F.plot(time[[0, -1]], np.tile(u_min, 2), lim_style, label="limits")

@@ -59,9 +59,9 @@ const ampc::Options opts{.input_cost = ampc::InputCostMode::ControlPoints,
                          .slew_initial_input = true,
                          .state_bounds = ampc::StateBoundMode::Hard};
 
-OSQPSettings tightSettings()
+ampc::OSQPSettings tightSettings()
 {
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   settings.eps_abs = settings.eps_rel = 1e-9;
   settings.max_iter = 20000;
   return settings;

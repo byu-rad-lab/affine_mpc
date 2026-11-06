@@ -186,8 +186,8 @@ struct MPCData
       u_prev.setZero(input_dim);
     if (opts.use_input_rate_cost)
       R_rate.setOnes(input_dim);
-    if (opts.slew_control_points)
-      ctrls_slew.setConstant(input_dim, inf);
+    if (opts.slew_bounds != SlewBoundMode::Off)
+      slew_rate.setConstant(input_dim, inf);
     if (opts.state_bounds != StateBoundMode::Off) {
       const int num_bounded{
           static_cast<int>(boundedStates(opts, state_dim).size())};
@@ -241,8 +241,9 @@ struct MPCData
   /// L1 and L2 penalties on the slack of each bounded state
   /// (StateBoundMode::Soft)
   Eigen::VectorXd x_soft_l1, x_soft_l2;
-  Eigen::VectorXd ctrls_slew; ///< control point slew rate
-  Eigen::VectorXd u0_slew;    ///< initial input slew rate
+  /// slew rate per sample step, |u_k - u_{k-1}| for k >= 1 (`slew_bounds`)
+  Eigen::VectorXd slew_rate;
+  Eigen::VectorXd u0_slew; ///< initial input slew rate
   /// previous input (`slew_initial_input` or `use_input_rate_cost`)
   Eigen::VectorXd u_prev;
 

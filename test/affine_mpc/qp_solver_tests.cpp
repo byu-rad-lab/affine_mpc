@@ -31,7 +31,7 @@ void setupMassSpringDamper(ampc::MPC& mpc)
 }
 
 const ampc::Options msd_opts{.input_cost = ampc::InputCostMode::ControlPoints,
-                             .slew_control_points = true};
+                             .slew_bounds = ampc::SlewBoundMode::ControlPoints};
 
 // An OSQPSolver that does not provide a dual solution (QPSolver's default)
 class SolverWithoutDuals : public ampc::OSQPSolver
@@ -63,7 +63,7 @@ TEST_P(QPSolverInterfaceTester,
   setupMassSpringDamper(by_settings);
   setupMassSpringDamper(by_object);
 
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-7;
   ASSERT_TRUE(by_settings.initializeSolver(settings));
   ASSERT_TRUE(by_object.initializeSolver(std::make_unique<ampc::OSQPSolver>(
@@ -111,14 +111,14 @@ TEST(QPSolverInterfaceTester, givenInitializedSolver_ThrowsInvalidArgument)
   setupMassSpringDamper(second);
   auto solver{std::make_unique<ampc::OSQPSolver>(first.getNumQPVariables(),
                                                  first.getNumQPConstraints())};
-  const auto P{
-      MatrixXd::Identity(first.getNumQPVariables(), first.getNumQPVariables())};
-  const auto A{MatrixXd::Identity(first.getNumQPConstraints(),
-                                  first.getNumQPVariables())};
-  const VectorXd q{VectorXd::Zero(first.getNumQPVariables())};
-  const VectorXd b{VectorXd::Ones(first.getNumQPConstraints())};
-  ASSERT_TRUE(solver->initialize(P, A, q, -b, b,
-                                 ampc::OSQPSolver::getDefaultSettings()));
+  const int nv{first.getNumQPVariables()}, nc{first.getNumQPConstraints()};
+  ampc::detail::QP qp;
+  qp.P = MatrixXd::Identity(nv, nv);
+  qp.A = MatrixXd::Identity(nc, nv);
+  qp.q = VectorXd::Zero(nv);
+  qp.u = VectorXd::Ones(nc);
+  qp.l = -qp.u;
+  ASSERT_TRUE(solver->initialize(qp, ampc::QPBlockLayout{}));
   EXPECT_THROW((void)second.initializeSolver(std::move(solver)),
                std::invalid_argument);
 }
@@ -151,7 +151,7 @@ TEST_P(QPSolverInterfaceTester, givenSolve_DualSolutionAndResidualsMatchTheQP)
   const auto param{ampc::Parameterization::linearInterp(10, 3)};
   ampc::MPC mpc{2, 1, param, msd_opts, GetParam()};
   setupMassSpringDamper(mpc);
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-9;
   auto solver{std::make_unique<ampc::OSQPSolver>(
       mpc.getNumQPVariables(), mpc.getNumQPConstraints(), settings)};
@@ -223,7 +223,7 @@ TEST(QPSolverInterfaceTester, givenDAQPSettings_UsesDAQPWhenBuiltWithIt)
                std::invalid_argument);
 
   ASSERT_TRUE(daqp.initializeSolver(ampc::DAQPSettings{}));
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-10;
   settings.max_iter = 100000;
   ASSERT_TRUE(ref.initializeSolver(settings));

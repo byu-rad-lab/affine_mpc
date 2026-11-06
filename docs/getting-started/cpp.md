@@ -38,7 +38,7 @@ The project targets:
 Required dependencies:
 
 - [Eigen](https://eigen.tuxfamily.org/dox/GettingStarted.html) 3.4+ (fetched if not on system)
-- [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system)
+- [OSQP](https://osqp.org/docs/get_started/) 1.0+ (fetched if not on system; static builds always fetch it)
 
 All of these can be installed from source (see their docs), but here are installation instructions for some common operating systems:
 
@@ -93,7 +93,7 @@ All of these can be installed from source (see their docs), but here are install
 
 - [ZLIB](https://zlib.net/) for NPZ compression (must be on system - commonly is for Linux/MacOS)
 - [GTest](https://google.github.io/googletest/) for unit tests (fetched if not on system)
-- [DAQP](https://github.com/darnstrom/daqp) as an alternative QP solver for the condensed formulation, built with `-DAFFINE_MPC_WITH_DAQP=ON` (fetched if not on system; see [Choosing the QP solver](../usage.md#choosing-the-qp-solver))
+- [DAQP](https://github.com/darnstrom/daqp) as an alternative QP solver for the condensed formulation, built with `-DAFFINE_MPC_WITH_DAQP=ON` (fetched if not on system; unlike OSQP, an installed DAQP is also used by static builds, and projects that use a static `affine_mpc` then need it too; see [Choosing the QP solver](../usage.md#choosing-the-qp-solver))
 
 === "Arch"
 
@@ -124,7 +124,7 @@ All of these can be installed from source (see their docs), but here are install
 After running the `example_sim` executable from above, you should see:
 
 - The example runs successfully, printing the log path to the console.
-- `log.npz` and `params.yaml` are written under the `ampc_example` temp directory, replacing the log of any earlier run.
+- `log.npz` and `log_params.yaml` are written under the `ampc_example` temp directory, replacing the log of any earlier run.
 
 For more detail on what the example demonstrates and how to interpret the outputs, see [Mass-Spring-Damper](../examples/mass-spring-damper.md).
 
@@ -149,12 +149,14 @@ This is useful if you want to reuse `affine_mpc` in multiple projects.
 
 !!! tip
 
-    If you install to your system, you should probably have OSQP and Eigen installed on your
-    system and use their shared libraries:
+    If you install to your system, you should probably build shared libraries, with Eigen installed on your system (and OSQP too, if you want `affine_mpc` to use the system's OSQP):
 
     ```sh
     cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
     ```
+
+    Projects that use the installed `affine_mpc` need Eigen, but not OSQP's headers or CMake package.
+    A static `affine_mpc` includes its own OSQP, so a program that also links another OSQP should use a shared `affine_mpc`.
 
 You can install `affine_mpc` to your system after it has been built (likely need admin privileges):
 
@@ -178,7 +180,7 @@ Here is an example of what to include in your CMake config:
 include(FetchContent)
 FetchContent_Declare(ampc_extern
   GIT_REPOSITORY https://github.com/byu-rad-lab/affine_mpc
-  GIT_TAG        v0.5.2  # (check for latest release)
+  GIT_TAG        v0.6.0  # (check for latest release)
 )
 
 # set options as desired

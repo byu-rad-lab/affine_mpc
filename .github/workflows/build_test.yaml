@@ -111,6 +111,61 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
+  # Installs the library (static and shared, with DAQP) and builds and runs a
+  # project that finds it only through affine_mpc_DIR. OSQP is a private
+  # dependency, so the install has no OSQP headers or osqp package (a static
+  # build installs the archive as affine_mpc_osqp), and the consumer neither
+  # looks up nor includes OSQP.
+  install-consumer:
+    strategy:
+      fail-fast: false
+      matrix:
+        shared: [OFF, ON]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libeigen3-dev zlib1g-dev
+
+      - name: Build and install the library
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+            -DAFFINE_MPC_WITH_DAQP=ON \
+            -DAFFINE_MPC_WARNINGS_AS_ERRORS=ON
+          cmake --build build --parallel
+          cmake --install build --prefix "$RUNNER_TEMP/prefix"
+          rm -rf build
+
+      - name: Check the install has no OSQP headers or package
+        run: |
+          find "$RUNNER_TEMP/prefix" | sort
+          if find "$RUNNER_TEMP/prefix" -iname '*.h' | grep -i osqp; then
+            echo "OSQP headers were installed"; exit 1
+          fi
+          if find "$RUNNER_TEMP/prefix" -ipath '*cmake/osqp*' | grep .; then
+            echo "an osqp CMake package was installed"; exit 1
+          fi
+          if find "$RUNNER_TEMP/prefix" -name 'libosqp*' | grep .; then
+            echo "an OSQP library was installed"; exit 1
+          fi
+
+      - name: Build and run the consumer
+        run: |
+          config_dir=$(dirname "$(find "$RUNNER_TEMP/prefix" -name affine_mpcConfig.cmake)")
+          cmake -S test/install_consumer -B consumer \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Daffine_mpc_DIR="$config_dir" \
+            -DCMAKE_DISABLE_FIND_PACKAGE_osqp=ON
+          cmake --build consumer --parallel
+          ./consumer/consumer
+
   # C++ library, examples, and tests on macOS and Windows (the Python bindings
   # are covered on these platforms by the wheel builds).
   build-test-other-os:

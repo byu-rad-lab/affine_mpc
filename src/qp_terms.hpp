@@ -222,7 +222,7 @@ private:
 /// u_min <= M c <= u_max on each input channel's control points c, where the
 /// rows of M are chosen by the InputBoundMode so that bounding M c bounds
 /// every sampled input: the identity (ControlPoints), the sampled basis rows
-/// that make it exact (Exact, or any mode with a custom basis), or the map
+/// that make it exact (Trajectory, or any mode with a custom basis), or the map
 /// from the control points to the refined control points after knot
 /// insertion (Refined, or the sampled rows when those are fewer). M is banded
 /// and depends only on the basis, so it is computed once.
@@ -290,13 +290,22 @@ private:
   ConstantEntries A_;
 };
 
-/// |c_{i+1} - c_i| <= control_point_slew (`slew_control_points`).
-class ControlPointSlew final : public QPTerm
+/// |u_k - u_{k-1}| <= du_max for k = 1, ..., T-1 (`slew_bounds`, du_max set
+/// with setSlewRate()).
+///
+/// Each row r bounds a weighted sum of one input channel's control points,
+/// D_r c, by factor_r du_max, with the same rows and factors for every
+/// channel (interleaved: row r of channel ch is row r m + ch of the block).
+/// Either the control point differences c_i - c_{i-1}, with the factors of a
+/// degree-p B-spline's derivative control points, (t_{i+p} - t_i) / p (1 for
+/// degree 0), or the sampled differences (phi_k - phi_{k-1})^T c with factor
+/// 1 (SlewBoundMode::Trajectory when the control point rows are not exact). The
+/// rows and factors depend only on the basis, so they are computed once and a
+/// limit change only rewrites the bounds.
+class SlewBounds final : public QPTerm
 {
 public:
-  explicit ControlPointSlew(const VectorParameterization& input_param) :
-      input_param_{input_param}
-  {}
+  SlewBounds(const VectorParameterization& input_param, SlewBoundMode mode);
   void declare(QPLayout& layout, FormulationImpl& f) override;
   DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
@@ -310,7 +319,15 @@ public:
   void updateVector(const MPCData& d, FormulationImpl& f, QP& qp) override;
 
 private:
+  struct Entry // a nonzero D(row, cp) on one channel's control points
+  {
+    int row, cp;
+    double value;
+  };
+
   const VectorParameterization& input_param_;
+  std::vector<Entry> D_;        // the rows on one channel
+  std::vector<double> factors_; // the limit factor of each row
   ConstantEntries A_;
 };
 

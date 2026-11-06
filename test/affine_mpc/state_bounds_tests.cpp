@@ -59,7 +59,7 @@ const ampc::Options soft_position{.state_bounds = ampc::StateBoundMode::Soft,
 // Polishing makes the solutions of equivalent QPs agree to round-off
 bool initialize(ampc::MPC& mpc)
 {
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   settings.polishing = true;
   settings.max_iter = 20000;
   return mpc.initializeSolver(settings);

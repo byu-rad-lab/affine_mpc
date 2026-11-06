@@ -26,7 +26,7 @@ def test_implicit_mpc_interface():
             opts=ampc.Options(
                 input_cost=ampc.InputCostMode.ControlPoints,
                 slew_initial_input=True,
-                slew_control_points=True,
+                slew_bounds=ampc.SlewBoundMode.ControlPoints,
                 state_bounds=ampc.StateBoundMode.Hard,
             ),
         )
@@ -39,7 +39,7 @@ def test_implicit_mpc_interface():
 
         mpc.setInputLimits(u_min=-np.ones(m), u_max=np.ones(m))
         mpc.setStateLimits(x_min=-np.ones(n), x_max=np.ones(n))
-        mpc.setSlewRate(control_point_slew=np.ones(m))
+        mpc.setSlewRate(slew_rate=np.ones(m))
         mpc.setSlewRateInitial(u0_slew=np.ones(m))
         mpc.setPreviousInput(u_prev=np.zeros(m))
 
@@ -167,11 +167,20 @@ def test_wrong_size_arguments_raise(formulation):
 
     with pytest.raises(ValueError, match="u0 must have size 1, got 4"):
         mpc.getNextInput(np.zeros(4))
-    with pytest.raises(ValueError, match=r"control_points must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)"):
+    with pytest.raises(
+        ValueError,
+        match=r"control_points must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)",
+    ):
         mpc.getInputControlPoints(np.zeros(1))
-    with pytest.raises(ValueError, match=r"u_traj must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)"):
+    with pytest.raises(
+        ValueError,
+        match=r"u_traj must be .* shape \(10, 1\) or \(10,\), got shape \(1,\)",
+    ):
         mpc.getInputTrajectory(np.zeros(1))
-    with pytest.raises(ValueError, match=r"x_traj must be .* shape \(10, 2\) or \(20,\), got shape \(2, 10\)"):
+    with pytest.raises(
+        ValueError,
+        match=r"x_traj must be .* shape \(10, 2\) or \(20,\), got shape \(2, 10\)",
+    ):
         mpc.getPredictedStateTrajectory(np.zeros((n, T)))
     # the getters write in place, so they can not convert the caller's array
     with pytest.raises(ValueError, match="dtype float32"):
@@ -198,7 +207,9 @@ def test_reset_warm_start_repeats_solve_from_zero(formulation):
     mpc.setReferenceState(np.array([1.0, 0.0]))
 
     settings = ampc.OSQPSettings()
-    settings.adaptive_rho = False  # deterministic iteration counts
+    settings.adaptive_rho = (
+        ampc.OSQPSettings.AdaptiveRhoType.Disabled
+    )  # deterministic iteration counts
     settings.check_termination = 1
     assert mpc.initializeSolver(settings)
 

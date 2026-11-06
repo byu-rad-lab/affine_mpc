@@ -36,7 +36,7 @@ void configure(ampc::MPC& mpc, const ampc::Options& opts)
   }
   if (opts.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
-  if (opts.slew_control_points)
+  if (opts.slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(1, 0.5));
   if (opts.state_bounds != ampc::StateBoundMode::Off) {
     // the velocity limit is active during the transient
@@ -56,9 +56,9 @@ void configure(ampc::MPC& mpc, const ampc::Options& opts)
                                VectorXd::Constant(1, 0.95));
 }
 
-OSQPSettings referenceSettings()
+ampc::OSQPSettings referenceSettings()
 {
-  OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings(true)};
   settings.eps_abs = settings.eps_rel = 1e-10;
   settings.max_iter = 1000000;
   settings.warm_starting = false;
@@ -100,7 +100,7 @@ std::vector<DAQPCase> daqpCases()
       {"inputBoundsRefined",
        bspline,
        {.input_bounds = IB::Refined, .refined_bound_interval = 4}},
-      {"inputBoundsExact", bspline, {.input_bounds = IB::Exact}},
+      {"inputBoundsTrajectory", bspline, {.input_bounds = IB::Trajectory}},
       {"inputCostControlPoints", bspline, {.input_cost = IC::ControlPoints}},
       {"inputCostTrajectory", bspline, {.input_cost = IC::Trajectory}},
       {"inputRateCost",
@@ -110,7 +110,12 @@ std::vector<DAQPCase> daqpCases()
        linear,
        {.input_cost = IC::ControlPoints,
         .slew_initial_input = true,
-        .slew_control_points = true}},
+        .slew_bounds = ampc::SlewBoundMode::ControlPoints}},
+      {"slewTrajectory",
+       bspline,
+       {.input_cost = IC::ControlPoints,
+        .slew_initial_input = true,
+        .slew_bounds = ampc::SlewBoundMode::Trajectory}},
       {"hardStateBounds",
        bspline,
        {.state_bounds = SB::Hard, .bounded_states = {1}}},
@@ -282,7 +287,7 @@ TEST(DAQPSolverTester, givenMPC_SplitsRowsIntoSimpleBoundsAndGeneralRows)
   // are simple bounds; the 3 control point slew rows and the other 9
   // velocity bounds are general rows
   const ampc::Options opts{.slew_initial_input = true,
-                           .slew_control_points = true,
+                           .slew_bounds = ampc::SlewBoundMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Hard,
                            .bounded_states = {1}};
   ampc::MPC mpc{2, 1, ampc::Parameterization::linearInterp(10, 4), opts};
@@ -348,7 +353,7 @@ TEST(DAQPSolverTester, givenIterationLimit_ReportsMaxIterReached)
 // many, so compare the objective, not the solution).
 TEST(DAQPSolverTester, givenSingularCostMatrix_SolvesWithProximalIterations)
 {
-  const ampc::Options opts{.slew_control_points = true};
+  const ampc::Options opts{.slew_bounds = ampc::SlewBoundMode::ControlPoints};
   const auto param{ampc::Parameterization::linearInterp(10, 4)};
   ampc::MPC daqp{2, 1, param, opts}, ref{2, 1, param, opts};
   for (ampc::MPC* mpc : {&daqp, &ref}) {

@@ -1,5 +1,6 @@
 #include "npz_writer.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -93,13 +94,11 @@ std::string makeShapeString(const std::vector<size_t>& shape)
   return oss.str();
 }
 
-template <typename T>
-std::vector<std::uint8_t> makeNpyHeader(const std::vector<size_t>& shape)
+std::vector<std::uint8_t> makeNpyHeader(const std::string& descr,
+                                        const std::vector<size_t>& shape)
 {
-  static_assert(kSupportedNpyType<T>, "Unsupported npy dtype");
-
   std::ostringstream header;
-  header << "{'descr': '" << DTypeTraits<T>::descr
+  header << "{'descr': '" << descr
          << "', 'fortran_order': False, 'shape': " << makeShapeString(shape)
          << ", }";
   std::string header_str{header.str()};
@@ -122,6 +121,46 @@ std::vector<std::uint8_t> makeNpyHeader(const std::vector<size_t>& shape)
   appendLittleEndian16(payload, static_cast<std::uint16_t>(header_str.size()));
   appendBytes(payload, header_str.data(), header_str.size());
   return payload;
+}
+
+template <typename T>
+std::vector<std::uint8_t> makeNpyHeader(const std::vector<size_t>& shape)
+{
+  static_assert(kSupportedNpyType<T>, "Unsupported npy dtype");
+  return makeNpyHeader(DTypeTraits<T>::descr, shape);
+}
+
+// Decodes UTF-8 to code points; an invalid sequence becomes U+FFFD.
+std::vector<std::uint32_t> decodeUtf8(const std::string& str)
+{
+  std::vector<std::uint32_t> code_points;
+  code_points.reserve(str.size());
+  size_t i{0};
+  while (i < str.size()) {
+    const auto lead = static_cast<unsigned char>(str[i]);
+    const size_t len = lead < 0x80           ? 1
+                       : (lead >> 5) == 0x6  ? 2
+                       : (lead >> 4) == 0xe  ? 3
+                       : (lead >> 3) == 0x1e ? 4
+                                             : 0;
+    std::uint32_t cp{len == 1   ? lead
+                     : len == 2 ? lead & 0x1fu
+                     : len == 3 ? lead & 0x0fu
+                                : lead & 0x07u};
+    bool valid{len > 0 && i + len <= str.size()};
+    for (size_t k{1}; valid && k < len; ++k) {
+      const auto next = static_cast<unsigned char>(str[i + k]);
+      valid = (next >> 6) == 0x2;
+      cp = (cp << 6) | (next & 0x3fu);
+    }
+    // reject overlong forms, surrogates, and values past U+10FFFF
+    constexpr std::uint32_t kMinForLength[]{0, 0, 0x80, 0x800, 0x10000};
+    valid = valid && cp >= kMinForLength[len] && cp <= 0x10ffff
+            && (cp < 0xd800 || cp > 0xdfff);
+    code_points.push_back(valid ? cp : 0xfffd);
+    i += valid ? len : 1;
+  }
+  return code_points;
 }
 
 size_t countShapeElements(const std::vector<size_t>& shape)
@@ -604,7 +643,12 @@ void NpzWriter::addArrayImpl(const std::string& name,
 {
   ensureNotFinalized();
 
-  const std::vector<std::uint8_t> npy_bytes = makeNpyPayload(data, shape);
+  addNpyBytes(name, makeNpyPayload(data, shape));
+}
+
+void NpzWriter::addNpyBytes(const std::string& name,
+                            const std::vector<std::uint8_t>& npy_bytes)
+{
   Impl::Entry entry{};
   entry.filename = name + ".npy";
   entry.uncompressed_size =
@@ -700,22 +744,38 @@ void NpzWriter::addArray(const std::string& name,
 
 void NpzWriter::addScalar(const std::string& name, float value)
 {
-  addArray(name, &value, {1});
+  addArray(name, &value, {});
 }
 
 void NpzWriter::addScalar(const std::string& name, double value)
 {
-  addArray(name, &value, {1});
+  addArray(name, &value, {});
 }
 
 void NpzWriter::addScalar(const std::string& name, std::int32_t value)
 {
-  addArray(name, &value, {1});
+  addArray(name, &value, {});
 }
 
 void NpzWriter::addScalar(const std::string& name, std::int64_t value)
 {
-  addArray(name, &value, {1});
+  addArray(name, &value, {});
+}
+
+void NpzWriter::addString(const std::string& name, const std::string& value)
+{
+  ensureNotFinalized();
+
+  // NumPy's fixed-width UTF-32 string type; '<U0' is not a usable width
+  const std::vector<std::uint32_t> code_points{decodeUtf8(value)};
+  const size_t width{std::max<size_t>(code_points.size(), 1)};
+  std::vector<std::uint8_t> npy_bytes{
+      makeNpyHeader("<U" + std::to_string(width), {})};
+  npy_bytes.reserve(npy_bytes.size() + 4 * width);
+  for (const std::uint32_t cp : code_points)
+    appendLittleEndian32(npy_bytes, cp);
+  npy_bytes.resize(npy_bytes.size() + 4 * (width - code_points.size()), 0);
+  addNpyBytes(name, npy_bytes);
 }
 
 void NpzWriter::finalize()

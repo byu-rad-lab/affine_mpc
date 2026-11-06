@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 project(affine_mpc
   LANGUAGES CXX C
-  VERSION 0.5.2
+  VERSION 0.6.0
 )
 
 # Default to an optimized build. Single-config generators (Makefiles, Ninja)
@@ -113,8 +113,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link dependencies
 target_link_libraries(${PROJECT_NAME}
   PUBLIC Eigen3::Eigen
-  PUBLIC osqp::osqp
+  # private: no public header includes OSQP's (see extern_osqp.cmake)
+  PRIVATE ${affine_mpc_osqp_link}
 )
+# As for DAQP: an installed shared OSQP outside the default search paths is
+# not linked by consumers, so the installed library keeps the path to it
+if(AFFINE_MPC_OSQP_FOUND_PACKAGE)
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+  )
+endif()
 # Fail to compile if any Eigen code under a license other than MPL-2.0 (or a
 # compatible one) is used, so the compiled library stays as licenses/ describes
 target_compile_definitions(${PROJECT_NAME} PRIVATE EIGEN_MPL2_ONLY)
@@ -177,11 +185,13 @@ if(AFFINE_MPC_BUILD_TESTS)
     test/affine_mpc/input_bounds_tests.cpp
     test/affine_mpc/input_cost_tests.cpp
     test/affine_mpc/input_rate_cost_tests.cpp
+    test/affine_mpc/slew_bounds_tests.cpp
     test/affine_mpc/state_bounds_tests.cpp
     test/affine_mpc/general_constraints_tests.cpp
     test/affine_mpc/qp_pattern_tests.cpp
     test/affine_mpc/model_sparsity_tests.cpp
     test/affine_mpc/utils_tests.cpp
+    test/affine_mpc/public_headers_tests.cpp
   )
   if(AFFINE_MPC_WITH_DAQP)
     list(APPEND TEST_SOURCES test/affine_mpc/daqp_solver_tests.cpp)
@@ -249,10 +259,16 @@ if(AFFINE_MPC_BUILD_TESTS)
       ${PROJECT_NAME}::${PROJECT_NAME}
     )
     # tests of internal headers (src/)
-    if(TEST_NAME MATCHES "^(npz_writer|mpc|condensed_mpc|general_constraints|qp_pattern|model_sparsity)_tests$")
+    if(TEST_NAME MATCHES "^(npz_writer|mpc|condensed_mpc|general_constraints|qp_pattern|model_sparsity|osqp_solver)_tests$")
       target_include_directories(${TEST_NAME}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
       )
+    endif()
+    # tests of the internal OSQP header (src/osqp_solver_impl.hpp), which need
+    # OSQP's headers, and its functions (a shared affine_mpc hides those of a
+    # fetched OSQP)
+    if(TEST_NAME MATCHES "^(osqp_solver|qp_pattern)_tests$")
+      target_link_libraries(${TEST_NAME} PRIVATE ${affine_mpc_osqp_target})
     endif()
     gtest_discover_tests(${TEST_NAME})
   endforeach()
@@ -276,19 +292,22 @@ if(TARGET affine_mpc_osqp)
     RENAME ${affine_mpc_osqp_file}
     COMPONENT core
   )
-  install(DIRECTORY
-      "${osqp_extern_SOURCE_DIR}/include/public/"
-      "${osqp_extern_BINARY_DIR}/include/public/"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/affine_mpc/third_party/osqp
-    COMPONENT core
-    FILES_MATCHING PATTERN "*.h"
-  )
 endif()
 install(TARGETS ${affine_mpc_install_targets}
   EXPORT ${PROJECT_NAME}Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT core
+)
+# affine_mpc's license and those of the third-party code compiled into the
+# installed libraries (OSQP, DAQP, and Eigen); see licenses/README.md
+install(FILES LICENSE
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}
+  COMPONENT core
+)
+install(DIRECTORY licenses/
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses
   COMPONENT core
 )
 
@@ -332,12 +351,14 @@ if(AFFINE_MPC_WITH_DAQP AND AFFINE_MPC_DAQP_FOUND_PACKAGE
 else()
   set(AFFINE_MPC_CONFIG_NEEDS_DAQP FALSE)
 endif()
-# A bundled OSQP is installed with this package, so only an external one is
-# looked up
-if(TARGET affine_mpc_osqp)
-  set(AFFINE_MPC_CONFIG_NEEDS_OSQP FALSE)
-else()
+# Likewise its private link to an OSQP target it did not fetch (only when a
+# parent project defines osqp::osqp: static builds otherwise fetch OSQP, and
+# install it with this package)
+if(AFFINE_MPC_OSQP_FOUND_PACKAGE
+   AND affine_mpc_library_type STREQUAL "STATIC_LIBRARY")
   set(AFFINE_MPC_CONFIG_NEEDS_OSQP TRUE)
+else()
+  set(AFFINE_MPC_CONFIG_NEEDS_OSQP FALSE)
 endif()
 
 configure_package_config_file(

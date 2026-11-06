@@ -1,20 +1,38 @@
 #include "affine_mpc_py_module.hpp"
 
-#include <osqp_api_constants.h>
-#include <osqp_api_types.h>
 #include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <sstream>
 
+#include "affine_mpc/osqp_settings.hpp"
 #include "affine_mpc/osqp_solver.hpp"
 
 namespace affine_mpc_py {
 namespace ampc = affine_mpc;
 namespace py = pybind11;
+using Linsys = ampc::OSQPSettings::LinsysSolverType;
+using Precond = ampc::OSQPSettings::PreconditionerType;
+using AdaptiveRho = ampc::OSQPSettings::AdaptiveRhoType;
+
+namespace {
+const char* adaptiveRhoName(const AdaptiveRho type)
+{
+  switch (type) {
+  case AdaptiveRho::Disabled:
+    return "Disabled";
+  case AdaptiveRho::Time:
+    return "Time";
+  case AdaptiveRho::KKTError:
+    return "KKTError";
+  default:
+    return "Iterations";
+  }
+}
+} // namespace
 
 void moduleAddOsqpSettings(py::module& m)
 {
-  py::class_<OSQPSettings> s(m, "OSQPSettings", R"doc(
+  py::class_<ampc::OSQPSettings> s(m, "OSQPSettings", R"doc(
 OSQP solver settings.
 
 Most users will likely not need to modify the default settings, but they are
@@ -27,10 +45,17 @@ Defaults are usually sufficient for MPC applications, but can be adjusted if
 convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
 
 Attributes:
-    adaptive_rho: Enable adaptive ADMM step size.
-    adaptive_rho_fraction: Fraction of primal and dual residuals to trigger rho update.
-    adaptive_rho_interval: Minimum number of iterations between rho updates.
-    adaptive_rho_tolerance: Absolute residual tolerance for adaptive rho updates.
+    adaptive_rho: When rho is adapted (AdaptiveRhoType): Disabled, every
+        adaptive_rho_interval iterations (Iterations), after a fraction of
+        the setup time (Time, needs OSQP built with profiling), or when the
+        KKT error has decreased to adaptive_rho_fraction of its value at the
+        last adaptation (KKTError).
+    adaptive_rho_fraction: Fraction of the setup time (Time) or of the KKT
+        error at the last adaptation (KKTError) at which rho is adapted.
+    adaptive_rho_interval: Iterations between rho adaptations (Iterations);
+        zero chooses it from check_termination.
+    adaptive_rho_tolerance: Minimum ratio between a new rho and the current
+        one to change it.
     alpha: Relaxation parameter. Default for QP solvers is 1.6.
         =1: no relaxation (standard ADMM).
         >1: over-relaxation (can improve convergence in some cases).
@@ -73,18 +98,25 @@ Attributes:
                              )doc");
 
   // must define LinsysSolverType before using below
-  py::native_enum<osqp_linsys_solver_type>(
+  py::native_enum<ampc::OSQPSettings::LinsysSolverType>(
       s, "LinsysSolverType", "enum.Enum", "Enum for linear system solver type.")
-      .value("DirectSolver", osqp_linsys_solver_type::OSQP_DIRECT_SOLVER)
-      .value("IndirectSolver", osqp_linsys_solver_type::OSQP_INDIRECT_SOLVER)
-      .value("UnknownSolver", osqp_linsys_solver_type::OSQP_UNKNOWN_SOLVER)
+      .value("DirectSolver", Linsys::DirectSolver)
+      .value("IndirectSolver", Linsys::IndirectSolver)
+      .value("UnknownSolver", Linsys::UnknownSolver)
       .finalize();
 
-  py::native_enum<osqp_precond_type>(s, "PreconditionerType", "enum.Enum",
-                                     "Enum for preconditioner type.")
-      .value("NoPreconditioner", osqp_precond_type::OSQP_NO_PRECONDITIONER)
-      .value("DiagonalPreconditioner",
-             osqp_precond_type::OSQP_DIAGONAL_PRECONDITIONER)
+  py::native_enum<Precond>(s, "PreconditionerType", "enum.Enum",
+                           "Enum for preconditioner type.")
+      .value("NoPreconditioner", Precond::NoPreconditioner)
+      .value("DiagonalPreconditioner", Precond::DiagonalPreconditioner)
+      .finalize();
+
+  py::native_enum<AdaptiveRho>(s, "AdaptiveRhoType", "enum.Enum",
+                               "When OSQP adapts rho.")
+      .value("Disabled", AdaptiveRho::Disabled)
+      .value("Iterations", AdaptiveRho::Iterations)
+      .value("Time", AdaptiveRho::Time)
+      .value("KKTError", AdaptiveRho::KKTError)
       .finalize();
 
   s.def_static(
@@ -93,55 +125,57 @@ Attributes:
 
   s.def(py::init<>([]() { return ampc::OSQPSolver::getRecommendedSettings(); }),
         "Constructor sets affine_mpc recommended values.");
-  s.def_readwrite("adaptive_rho", &OSQPSettings::adaptive_rho);
+  s.def_readwrite("adaptive_rho", &ampc::OSQPSettings::adaptive_rho);
   s.def_readwrite("adaptive_rho_fraction",
-                  &OSQPSettings::adaptive_rho_fraction);
+                  &ampc::OSQPSettings::adaptive_rho_fraction);
   s.def_readwrite("adaptive_rho_interval",
-                  &OSQPSettings::adaptive_rho_interval);
+                  &ampc::OSQPSettings::adaptive_rho_interval);
   s.def_readwrite("adaptive_rho_tolerance",
-                  &OSQPSettings::adaptive_rho_tolerance);
-  s.def_readwrite("alpha", &OSQPSettings::alpha);
-  s.def_readwrite("cg_max_iter", &OSQPSettings::cg_max_iter);
-  s.def_readwrite("cg_precond", &OSQPSettings::cg_precond);
-  s.def_readwrite("cg_tol_fraction", &OSQPSettings::cg_tol_fraction);
-  s.def_readwrite("cg_tol_reduction", &OSQPSettings::cg_tol_reduction);
-  s.def_readwrite("check_dualgap", &OSQPSettings::check_dualgap);
-  s.def_readwrite("check_termination", &OSQPSettings::check_termination);
-  s.def_readwrite("delta", &OSQPSettings::delta);
-  s.def_readwrite("eps_abs", &OSQPSettings::eps_abs);
-  s.def_readwrite("eps_dual_inf", &OSQPSettings::eps_dual_inf);
-  s.def_readwrite("eps_prim_inf", &OSQPSettings::eps_prim_inf);
-  s.def_readwrite("eps_rel", &OSQPSettings::eps_rel);
-  s.def_readwrite("linsys_solver", &OSQPSettings::linsys_solver);
-  s.def_readwrite("max_iter", &OSQPSettings::max_iter);
-  s.def_readwrite("polishing", &OSQPSettings::polishing);
-  s.def_readwrite("polish_refine_iter", &OSQPSettings::polish_refine_iter);
-  s.def_readwrite("profiler_level", &OSQPSettings::profiler_level);
-  s.def_readwrite("rho", &OSQPSettings::rho);
-  s.def_readwrite("rho_is_vec", &OSQPSettings::rho_is_vec);
-  s.def_readwrite("scaled_termination", &OSQPSettings::scaled_termination);
-  s.def_readwrite("scaling", &OSQPSettings::scaling);
-  s.def_readwrite("sigma", &OSQPSettings::sigma);
-  s.def_readwrite("time_limit", &OSQPSettings::time_limit);
-  s.def_readwrite("verbose", &OSQPSettings::verbose);
-  s.def_readwrite("warm_starting", &OSQPSettings::warm_starting);
+                  &ampc::OSQPSettings::adaptive_rho_tolerance);
+  s.def_readwrite("alpha", &ampc::OSQPSettings::alpha);
+  s.def_readwrite("cg_max_iter", &ampc::OSQPSettings::cg_max_iter);
+  s.def_readwrite("cg_precond", &ampc::OSQPSettings::cg_precond);
+  s.def_readwrite("cg_tol_fraction", &ampc::OSQPSettings::cg_tol_fraction);
+  s.def_readwrite("cg_tol_reduction", &ampc::OSQPSettings::cg_tol_reduction);
+  s.def_readwrite("check_dualgap", &ampc::OSQPSettings::check_dualgap);
+  s.def_readwrite("check_termination", &ampc::OSQPSettings::check_termination);
+  s.def_readwrite("delta", &ampc::OSQPSettings::delta);
+  s.def_readwrite("eps_abs", &ampc::OSQPSettings::eps_abs);
+  s.def_readwrite("eps_dual_inf", &ampc::OSQPSettings::eps_dual_inf);
+  s.def_readwrite("eps_prim_inf", &ampc::OSQPSettings::eps_prim_inf);
+  s.def_readwrite("eps_rel", &ampc::OSQPSettings::eps_rel);
+  s.def_readwrite("linsys_solver", &ampc::OSQPSettings::linsys_solver);
+  s.def_readwrite("max_iter", &ampc::OSQPSettings::max_iter);
+  s.def_readwrite("polishing", &ampc::OSQPSettings::polishing);
+  s.def_readwrite("polish_refine_iter",
+                  &ampc::OSQPSettings::polish_refine_iter);
+  s.def_readwrite("profiler_level", &ampc::OSQPSettings::profiler_level);
+  s.def_readwrite("rho", &ampc::OSQPSettings::rho);
+  s.def_readwrite("rho_is_vec", &ampc::OSQPSettings::rho_is_vec);
+  s.def_readwrite("scaled_termination",
+                  &ampc::OSQPSettings::scaled_termination);
+  s.def_readwrite("scaling", &ampc::OSQPSettings::scaling);
+  s.def_readwrite("sigma", &ampc::OSQPSettings::sigma);
+  s.def_readwrite("time_limit", &ampc::OSQPSettings::time_limit);
+  s.def_readwrite("verbose", &ampc::OSQPSettings::verbose);
+  s.def_readwrite("warm_starting", &ampc::OSQPSettings::warm_starting);
 
-  s.def("__str__", [](const OSQPSettings& self) {
+  s.def("__str__", [](const ampc::OSQPSettings& self) {
     std::ostringstream os;
     const auto tf = [](bool b) { return b ? "True" : "False"; };
-    auto linsysSolverStr = [](const osqp_linsys_solver_type solver) {
+    auto linsysSolverStr = [](const Linsys solver) {
       switch (solver) {
-      case OSQP_DIRECT_SOLVER:
+      case Linsys::DirectSolver:
         return "DirectSolver";
-      case OSQP_INDIRECT_SOLVER:
+      case Linsys::IndirectSolver:
         return "IndirectSolver";
       default:
         return "UnknownSolver";
       }
     };
-    auto precondStr = [](const osqp_precond_type precond) {
+    auto precondStr = [](const Precond precond) {
       switch (precond) {
-      case OSQP_NO_PRECONDITIONER:
+      case Precond::NoPreconditioner:
         return "NoPreconditioner";
       default:
         return "DiagonalPreconditioner";
@@ -149,7 +183,7 @@ Attributes:
     };
 
     os << "OSQP Solver Settings:\n"
-       << "  adaptive_rho = " << tf(self.adaptive_rho) << "\n"
+       << "  adaptive_rho = " << adaptiveRhoName(self.adaptive_rho) << "\n"
        << "  adaptive_rho_fraction = " << self.adaptive_rho_fraction << "\n"
        << "  adaptive_rho_interval = " << self.adaptive_rho_interval << "\n"
        << "  adaptive_rho_tolerance = " << self.adaptive_rho_tolerance << "\n"
@@ -182,8 +216,9 @@ Attributes:
     return os.str();
   });
 
-  s.def("__repr__", [](const OSQPSettings& self) {
-    const OSQPSettings defaults{ampc::OSQPSolver::getRecommendedSettings()};
+  s.def("__repr__", [](const ampc::OSQPSettings& self) {
+    const ampc::OSQPSettings defaults{
+        ampc::OSQPSolver::getRecommendedSettings()};
     std::ostringstream oss;
 
     oss << "OSQPSettings(";
@@ -202,14 +237,14 @@ Attributes:
       addSeparator();
       oss << name << '=' << value;
     };
-    auto addLinsysSolver = [&](const osqp_linsys_solver_type value) {
+    auto addLinsysSolver = [&](const Linsys value) {
       addSeparator();
       oss << "linsys_solver=OSQPSettings.LinsysSolverType.";
       switch (value) {
-      case OSQP_DIRECT_SOLVER:
+      case Linsys::DirectSolver:
         oss << "DirectSolver";
         break;
-      case OSQP_INDIRECT_SOLVER:
+      case Linsys::IndirectSolver:
         oss << "IndirectSolver";
         break;
       default:
@@ -217,11 +252,11 @@ Attributes:
         break;
       }
     };
-    auto addPreconditioner = [&](const osqp_precond_type value) {
+    auto addPreconditioner = [&](const Precond value) {
       addSeparator();
       oss << "cg_precond=OSQPSettings.PreconditionerType.";
       switch (value) {
-      case OSQP_NO_PRECONDITIONER:
+      case Precond::NoPreconditioner:
         oss << "NoPreconditioner";
         break;
       default:
@@ -230,8 +265,11 @@ Attributes:
       }
     };
 
-    if (self.adaptive_rho != defaults.adaptive_rho)
-      addBool("adaptive_rho", self.adaptive_rho);
+    if (self.adaptive_rho != defaults.adaptive_rho) {
+      addSeparator();
+      oss << "adaptive_rho=OSQPSettings.AdaptiveRhoType."
+          << adaptiveRhoName(self.adaptive_rho);
+    }
     if (self.adaptive_rho_fraction != defaults.adaptive_rho_fraction)
       addValue("adaptive_rho_fraction", self.adaptive_rho_fraction);
     if (self.adaptive_rho_interval != defaults.adaptive_rho_interval)

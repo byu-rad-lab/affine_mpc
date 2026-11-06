@@ -23,7 +23,9 @@ def test_discretizer_matches_closed_form_double_integrator():
     assert disc.hasDiscretized()
 
     # a new offset reuses G
-    np.testing.assert_allclose(disc.discretizeOffset(np.array([1.0, 2.0])), G @ [1.0, 2.0])
+    np.testing.assert_allclose(
+        disc.discretizeOffset(np.array([1.0, 2.0])), G @ [1.0, 2.0]
+    )
 
 
 def test_discretizer_matches_mpc_discretization():

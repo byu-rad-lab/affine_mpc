@@ -63,7 +63,7 @@ $$
         \quad \text{OR} \quad
         \underbrace{
             \bm{u}_{\min} \leq \bm{u}_k \leq \bm{u}_{\max}
-        }_{ \textcolor{red}{\text{exact input bounds}} } \\
+        }_{ \textcolor{red}{\text{trajectory input bounds}} } \\
     &\quad \underbrace{
             \bm{x}_{\min} \leq \bm{x}_k \leq \bm{x}_{\max}
         }_{ \textcolor{red}{\text{hard state bounds}} }
@@ -75,8 +75,12 @@ $$
             |\bm{u}_0 - \bm{u}_{{-}1}| \leq \bm{u}_{0,\mathrm{slew}}
         }_{ \textcolor{red}{\text{initial slew rate}} } \\
     &\quad \underbrace{
-            |\bm{c}_i - \bm{c}_{i-1}| \leq \bm{c}_{\mathrm{slew}}
-        }_{ \textcolor{red}{\text{slew control points}} } \\
+            |\bm{c}_i - \bm{c}_{i-1}| \leq \lambda_i \bm{u}_{\mathrm{slew}}
+        }_{ \textcolor{red}{\text{control point slew bounds}} }
+        \quad \text{OR} \quad
+        \underbrace{
+            |\bm{u}_k - \bm{u}_{k-1}| \leq \bm{u}_{\mathrm{slew}}
+        }_{ \textcolor{red}{\text{trajectory slew bounds}} } \\
     &\quad \underbrace{
             \bm{h}_{\min} \leq H_x \bm{x}_k + H_u \bm{u}_k \leq \bm{h}_{\max}
         }_{ \textcolor{red}{\text{general constraints}} } \\
@@ -86,11 +90,22 @@ $$
 \end{align}
 $$
 
-The weighted norm used above is:
+The weighted norm used above is defined as $\: \left\lVert \bm{y} \right\rVert^2_M = \bm{y}^\T M \bm{y}$.
 
-$$
-\left\lVert \bm{y} \right\rVert^2_M = \bm{y}^\T M \bm{y}
-$$
+??? info "How to enable each labeled term in code"
+
+    Unlabeled terms are always present; each labeled term is enabled at construction by a field of `Options` (values are enum members in both interfaces, e.g. `InputCostMode::Trajectory` in C++ and `InputCostMode.Trajectory` in Python).
+
+    | `Options` field            | Type             | Choices                                                                                                                                                     |
+    | -------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `input_cost`               | `InputCostMode`  | `Off` (default)<br>`ControlPoints` → $\textcolor{red}{\text{control point cost}}$<br>`Trajectory` → $\textcolor{red}{\text{input trajectory cost}}$         |
+    | `use_input_rate_cost`      | `bool`           | `false` (default)<br>`true` → $\textcolor{red}{\text{input rate cost}}$                                                                                     |
+    | `input_bounds`             | `InputBoundMode` | `ControlPoints` (default)<br>`Refined` → $\textcolor{red}{\text{refined input bounds}}$<br>`Trajectory` → $\textcolor{red}{\text{trajectory input bounds}}$ |
+    | `slew_initial_input`       | `bool`           | `false` (default)<br>`true` → $\textcolor{red}{\text{initial slew rate}}$                                                                                   |
+    | `slew_bounds`              | `SlewBoundMode`  | `Off` (default)<br>`ControlPoints` → $\textcolor{red}{\text{control point slew bounds}}$<br>`Trajectory` → $\textcolor{red}{\text{trajectory slew bounds}}$ |
+    | `state_bounds`             | `StateBoundMode` | `Off` (default)<br>`Hard` → $\textcolor{red}{\text{hard state bounds}}$<br>`Soft` → $\textcolor{red}{\text{soft state bounds}}$                             |
+    | `num_general_constraints`  | `int`            | `0` (default)<br>`> 0` → $\textcolor{red}{\text{general constraints}}$                                                                                      |
+    | `num_terminal_constraints` | `int`            | `0` (default)<br>`> 0` → $\textcolor{red}{\text{terminal constraints}}$                                                                                     |
 
 --8<-- "concepts/nomenclature.md:mpc-terms"
 

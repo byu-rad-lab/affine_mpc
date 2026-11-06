@@ -140,7 +140,7 @@ TEST(SparseMPCProtectedTester,
 {
   const int n{2}, m{1}, T{5}, nc{3}, deg{2};
   const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Exact};
+  const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Trajectory};
   SparseMPCProtectedTester mpc{n, m, param, opts};
   SparseMPCProtectedTester mpc_no_sat{n, m, param};
   mpc.setModel();
@@ -170,9 +170,9 @@ TEST(SparseMPCProtectedTester,
 TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
 {
   const int n{2}, m{1}, T{5}, nc{3};
-  SparseMPCProtectedTester mpc{n, m,
-                               ampc::Parameterization::linearInterp(T, nc),
-                               ampc::Options{.slew_control_points = true}};
+  SparseMPCProtectedTester mpc{
+      n, m, ampc::Parameterization::linearInterp(T, nc),
+      ampc::Options{.slew_bounds = ampc::SlewBoundMode::ControlPoints}};
   mpc.setModel();
 
   VectorXd slew{1};
@@ -200,8 +200,9 @@ TEST(SparseMPCProtectedTester, givenSlewRate_FormsSlewConstraintsCorrectly)
   const VectorXd l_slew = mpc.getL().tail(slew_rows);
   const VectorXd ctrls_slew = mpc.getU().tail(slew_rows);
   VectorXd l_slew_test{slew_rows}, ctrls_slew_test{slew_rows};
-  l_slew_test << -slew, -slew;
-  ctrls_slew_test << slew, slew;
+  // linear segments of 2 samples: |c_i - c_{i-1}| <= 2 slew
+  l_slew_test << -2.0 * slew, -2.0 * slew;
+  ctrls_slew_test << 2.0 * slew, 2.0 * slew;
   ASSERT_TRUE(expectEigenNear(l_slew, l_slew_test, 1e-15));
   ASSERT_TRUE(expectEigenNear(ctrls_slew, ctrls_slew_test, 1e-15));
 }
@@ -250,7 +251,7 @@ TEST(SparseMPCProtectedTester,
   const int n{2}, m{1}, T{5}, nc{3};
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
-      ampc::Options{.slew_control_points = true,
+      ampc::Options{.slew_bounds = ampc::SlewBoundMode::ControlPoints,
                     .state_bounds = ampc::StateBoundMode::Hard}};
   mpc.setModel();
 
@@ -300,8 +301,9 @@ TEST(SparseMPCProtectedTester,
   const VectorXd l_slew = mpc.getL().segment(slew_start, slew_rows);
   const VectorXd ctrls_slew = mpc.getU().segment(slew_start, slew_rows);
   VectorXd l_slew_test{slew_rows}, ctrls_slew_test{slew_rows};
-  l_slew_test << -slew, -slew;
-  ctrls_slew_test << slew, slew;
+  // linear segments of 2 samples: |c_i - c_{i-1}| <= 2 slew
+  l_slew_test << -2.0 * slew, -2.0 * slew;
+  ctrls_slew_test << 2.0 * slew, 2.0 * slew;
   ASSERT_TRUE(expectEigenNear(l_slew, l_slew_test, 1e-15));
   ASSERT_TRUE(expectEigenNear(ctrls_slew, ctrls_slew_test, 1e-15));
 }
@@ -508,7 +510,7 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
   SparseMPCProtectedTester mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
       ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
-                    .slew_control_points = true}};
+                    .slew_bounds = ampc::SlewBoundMode::ControlPoints}};
   mpc.setModel();
 
   Vector2d Q_diag{1.0, 0.11};
@@ -526,7 +528,8 @@ TEST(SparseMPCProtectedTester, initializedAndAskedToSolve_RespectsSlewRate)
   mpc.setReferenceInput(u_goal);
   mpc.setSlewRate(ctrls_slew);
 
-  OSQPSettings settings{affine_mpc::OSQPSolver::getRecommendedSettings(true)};
+  ampc::OSQPSettings settings{
+      affine_mpc::OSQPSolver::getRecommendedSettings(true)};
   ASSERT_TRUE(mpc.initializeSolver(settings));
 
   Vector2d x0{0.0, 0.0};

@@ -36,7 +36,10 @@ def simulate():
         param=ampc.Parameterization.linearInterp(
             horizon_steps=10, num_control_points=3
         ),
-        opts=ampc.Options(input_cost=ampc.InputCostMode.ControlPoints, slew_control_points=True),
+        opts=ampc.Options(
+            input_cost=ampc.InputCostMode.ControlPoints,
+            slew_bounds=ampc.SlewBoundMode.ControlPoints,
+        ),
         formulation=ampc.Formulation.Condensed,
     )
 
@@ -50,7 +53,8 @@ def simulate():
     u_max = np.array([3.0])
     msd_mpc.setInputLimits(u_min, u_max)
 
-    slew = np.ones(1)
+    # the input may change by at most 0.25 N per step (2.5 N/s)
+    slew = np.array([0.25])
     msd_mpc.setSlewRate(slew)
 
     Q_diag = np.array([1, 0.1])

@@ -64,7 +64,7 @@ void allocatePattern(QP::SparseMatrix& M,
   std::fill(outer, outer + cols + 1, 0);
   for (std::size_t k{0}; k < keys.size(); ++k) {
     ++outer[keys[k] / rows + 1];
-    inner[k] = static_cast<OSQPInt>(keys[k] % rows);
+    inner[k] = static_cast<detail::QPIndex>(keys[k] % rows);
   }
   for (Index j{0}; j < cols; ++j)
     outer[j + 1] += outer[j];
@@ -108,9 +108,9 @@ QPBuilder::QPBuilder(const Formulation kind,
                            .rows();
   if (opts.slew_initial_input)
     rows_.initial_slew = add<InitialSlew>(layout, input_param).rows();
-  if (opts.slew_control_points)
-    rows_.control_point_slew =
-        add<ControlPointSlew>(layout, input_param).rows();
+  if (opts.slew_bounds != SlewBoundMode::Off)
+    rows_.slew_bounds =
+        add<SlewBounds>(layout, input_param, opts.slew_bounds).rows();
   if (opts.state_bounds != StateBoundMode::Off) {
     const StateBounds& bounds{
         add<StateBounds>(layout, boundedStates(opts, state_dim), state_dim,

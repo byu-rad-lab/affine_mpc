@@ -162,7 +162,7 @@ TEST(CondensedMPCProtectedTester, initializedAndAskedToSolve_SolvesCorrecly)
   CondensedMPCProtectedTester msd_mpc{
       n, m, ampc::Parameterization::linearInterp(T, nc),
       ampc::Options{.input_cost = ampc::InputCostMode::ControlPoints,
-                    .slew_control_points = true}};
+                    .slew_bounds = ampc::SlewBoundMode::ControlPoints}};
   msd_mpc.setModel();
 
   Eigen::Matrix<double, n, 1> Q{1, 0.11};
@@ -229,7 +229,7 @@ TEST(CondensedMPCProtectedTester,
   // loosened tolerances to speed up test (else hits max iters)
   settings.eps_abs = 1e-4;
   settings.eps_rel = 1e-4;
-  settings.adaptive_rho = true;
+  settings.adaptive_rho = ampc::OSQPSettings::AdaptiveRhoType::Iterations;
   ASSERT_TRUE(msd_mpc.initializeSolver(settings));
   ASSERT_EQ(msd_mpc.solve(Vector2d{0.0, 0.0}), ampc::SolveStatus::Success);
 

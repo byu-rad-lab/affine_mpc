@@ -120,12 +120,13 @@ if(BUILD_SHARED_LIBS)
   # These libs are aliased when built by this project rather than imported from
   # a system package with find_package. If built by this project they must be
   # installed to the python environment.
+  # OSQP is a private dependency of libaffine_mpc (absorbed into it when
+  # fetched), so only that library is installed here.
   get_target_property(affine_mpc_is_aliased
     affine_mpc::affine_mpc ALIASED_TARGET
   )
-  get_target_property(osqp_is_aliased osqp::osqp ALIASED_TARGET)
 
-  if(affine_mpc_is_aliased OR osqp_is_aliased)
+  if(affine_mpc_is_aliased)
     # This means a .so file will be copied into the python environment
     # and the RPATH must know to look for it there.
     if(APPLE)
@@ -133,9 +134,6 @@ if(BUILD_SHARED_LIBS)
     elseif(UNIX)
       set_target_properties(_bindings PROPERTIES INSTALL_RPATH "$ORIGIN")
     endif()
-  endif()
-
-  if(affine_mpc_is_aliased)
     install(TARGETS affine_mpc
       RUNTIME DESTINATION affine_mpc
       LIBRARY DESTINATION affine_mpc
@@ -143,16 +141,6 @@ if(BUILD_SHARED_LIBS)
     )
   else()
     message(STATUS "Using affine_mpc shared lib found from system.")
-  endif()
-
-  if(osqp_is_aliased)
-    install(TARGETS osqp
-      RUNTIME DESTINATION affine_mpc
-      LIBRARY DESTINATION affine_mpc
-      COMPONENT python_bindings
-    )
-  else()
-    message(STATUS "Using OSQP shared lib found from system.")
   endif()
 endif()
 

@@ -184,7 +184,7 @@ Entries related to optional constraints assume the corresponding constraint fami
 | $\bm{x}_\mathrm{min}$, $\bm{x}_\mathrm{max}$ | `setStateLimits()`                                        |
 | $\bm{u}_\mathrm{min}$, $\bm{u}_\mathrm{max}$ | `setInputLimits()`                                        |
 | $\bm{u}_{0,\mathrm{slew}}$                       | `setSlewRateInitial()`                                    |
-| $\bm{c}_\mathrm{slew}$                           | `setSlewRate()`                                           |
+| $\bm{u}_\mathrm{slew}$                           | `setSlewRate()`                                           |
 | $H_x$, $H_u$, $\bm{h}_\mathrm{min}$, $\bm{h}_\mathrm{max}$ | `setGeneralConstraints()`                       |
 | $H_\mathrm{f}$, $\bm{h}_{\mathrm{f},\mathrm{min}}$, $\bm{h}_{\mathrm{f},\mathrm{max}}$ | `setTerminalConstraints()`  |
 | $\bm{u}_{-1}$                                     | `setPreviousInput()` (also set by each successful solve)  |
@@ -310,7 +310,7 @@ but the actual cost depends on the formulation and problem structure.
 | $\bm{u}_\mathrm{min}$      |     |                 |     | ✓                   | ✓                       |
 | $\bm{u}_\mathrm{max}$      |     |                 |     | ✓                   | ✓                       |
 | $\bm{u}_{0,\mathrm{slew}}$ |     |                 |     | ✓                   | ✓                       |
-| $\bm{c}_\mathrm{slew}$     |     |                 |     | ✓                   | ✓                       |
+| $\bm{u}_\mathrm{slew}$     |     |                 |     | ✓                   | ✓                       |
 | $\bm{h}_\mathrm{min}$, $\bm{h}_\mathrm{max}$ | | |     | ✓                   | ✓                       |
 | $\bm{h}_{\mathrm{f},\mathrm{min}}$, $\bm{h}_{\mathrm{f},\mathrm{max}}$ | | | | ✓          | ✓                       |
 | $\bm{u}_{-1}$              |     |                 | ✓   | ✓                   | ✓                       |

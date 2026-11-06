@@ -4,6 +4,7 @@ import pybind11_stubgen
 import re
 import sys
 import shutil
+import subprocess
 import tempfile
 
 sys.path = sys.path[1:]
@@ -73,6 +74,8 @@ pybind11_stubgen.main(
         "--enum-class-locations",
         "InputBoundMode$:affine_mpc._bindings",
         "--enum-class-locations",
+        "SlewBoundMode$:affine_mpc._bindings",
+        "--enum-class-locations",
         "InputCostMode$:affine_mpc._bindings",
         "--enum-class-locations",
         "Formulation$:affine_mpc._bindings",
@@ -139,23 +142,21 @@ content = re.sub(
     r"Formulation = \.\.\.", "Formulation = Formulation.Condensed", content
 )
 
-try:
-    import black
-
-    formatted = black.format_file_contents(
-        content, fast=True, mode=black.FileMode(is_pyi=True)
-    )
-except ImportError:
-    print("black not found!")
-    formatted = content
-
 ## put stub file in build folder and install it
 # with open(stub_file, "w", encoding="utf-8") as f:
-#     f.write(formatted)
+#     f.write(content)
 
 ## put stub file in repo and commit it
 with open(repo_stub_file, "w", encoding="utf-8") as f:
-    f.write(formatted)
+    f.write(content)
+
+# Format with the black command line, which reads pyproject.toml (line length,
+# and the target Python versions from requires-python) as for every other file
+black = subprocess.run(
+    [sys.executable, "-m", "black", "-q", str(repo_stub_file)], check=False
+)
+if black.returncode != 0:
+    print("black failed or is not installed; the stub is not formatted!")
 print("Stub file written to:", repo_stub_file)
 
 shutil.rmtree(stub_dir)

@@ -12,7 +12,8 @@
 #include "affine_mpc/osqp_solver.hpp"
 #include "affine_mpc/parameterization.hpp"
 #include "affine_mpc/quadratic_program.hpp"
-#include "qp_builder.hpp" // internal (src/): the declared entries
+#include "osqp_solver_impl.hpp" // internal (src/): the CSC buffers
+#include "qp_builder.hpp"       // internal (src/): the declared entries
 #include "qp_entries.hpp"
 #include "utils.hpp"
 
@@ -134,13 +135,16 @@ Case drawCase(Draw& draw)
   o.input_cost = cost_modes[draw.integer(0, 2)];
   o.use_input_rate_cost = draw.coin();
   const ampc::InputBoundMode input_modes[]{ampc::InputBoundMode::ControlPoints,
-                                           ampc::InputBoundMode::Exact,
+                                           ampc::InputBoundMode::Trajectory,
                                            ampc::InputBoundMode::Refined};
   o.input_bounds = input_modes[draw.integer(0, 2)];
   o.refined_bound_interval = draw.integer(1, 4);
   o.slew_initial_input = draw.coin();
-  o.slew_control_points = draw.coin() && c.param.num_control_points > 1
-                          && c.param.type == P::Type::BSpline;
+  // ControlPoints needs a B-spline; Trajectory works for any basis
+  if (draw.coin() && c.param.num_control_points > 1)
+    o.slew_bounds = c.param.type == P::Type::BSpline && draw.coin()
+                        ? ampc::SlewBoundMode::ControlPoints
+                        : ampc::SlewBoundMode::Trajectory;
   o.state_bounds = draw.coin() ? (draw.coin() ? ampc::StateBoundMode::Soft
                                               : ampc::StateBoundMode::Hard)
                                : ampc::StateBoundMode::Off;
@@ -201,7 +205,7 @@ void setAll(ampc::MPC& mpc,
     mpc.setTerminalConstraints(draw.sparse(p, n), VectorXd::Constant(p, -3.0),
                                VectorXd::Constant(p, 3.0));
   }
-  if (o.slew_control_points)
+  if (o.slew_bounds != ampc::SlewBoundMode::Off)
     mpc.setSlewRate(VectorXd::Constant(m, 0.7));
   if (o.slew_initial_input)
     mpc.setSlewRateInitial(VectorXd::Constant(m, 0.3));
@@ -217,9 +221,9 @@ std::string describe(const Case& c)
                 + std::to_string(c.param.num_control_points) + " deg"
                 + std::to_string(c.param.degree) + " opts "};
   s += std::to_string(static_cast<int>(o.input_cost));
-  for (const bool b :
-       {o.use_input_rate_cost, o.slew_initial_input, o.slew_control_points})
+  for (const bool b : {o.use_input_rate_cost, o.slew_initial_input})
     s += b ? '1' : '0';
+  s += " slew_bounds " + std::to_string(static_cast<int>(o.slew_bounds));
   s += " input_bounds " + std::to_string(static_cast<int>(o.input_bounds))
        + " interval " + std::to_string(o.refined_bound_interval);
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
@@ -263,13 +267,13 @@ TEST(QPPatternTester, givenSparseMPC_NonzerosAreWithinDeclaredEntries)
 
 namespace {
 
-using SparseMatrixXF = ampc::OSQPSolver::SparseMatrixXF;
+using SparseMatrixXF = ampc::OSQPSolver::Impl::SparseMatrixXF;
 
 // Exposes the CSC buffers the wrapper builds and the values it sends to OSQP
-class SolverInspector : public ampc::OSQPSolver
+class SolverInspector : public ampc::OSQPSolver::Impl
 {
 public:
-  using OSQPSolver::OSQPSolver;
+  using Impl::Impl;
   // the values of P (A) sent by the last initialize() or matrix update: the
   // stored values themselves when they go to OSQP without a copy
   VectorXd sentP(const SparseMatrixXF* P) const
@@ -295,19 +299,23 @@ public:
 // triangle, all stored) as its pattern, and their values without a copy
 void expectSentAsStored(const SolverInspector& csc, const ampc::detail::QP& qp)
 {
-  using MapI = Map<const ampc::OSQPSolver::VectorXI>;
+  // (OSQP's index type may differ from the QP's)
+  using IndexVector = Matrix<ampc::detail::QPIndex, Dynamic, 1>;
+  using MapI = Map<const IndexVector>;
   const Index nv{qp.P_csc.cols()};
-  EXPECT_TRUE(
-      expectEigenNear(csc.Pp(), MapI(qp.P_csc.outerIndexPtr(), nv + 1), 0.0))
+  EXPECT_TRUE(expectEigenNear(csc.Pp().cast<ampc::detail::QPIndex>(),
+                              MapI(qp.P_csc.outerIndexPtr(), nv + 1), 0.0))
       << "P cols";
-  EXPECT_TRUE(expectEigenNear(
-      csc.Pi(), MapI(qp.P_csc.innerIndexPtr(), qp.P_csc.nonZeros()), 0.0))
-      << "P rows";
   EXPECT_TRUE(
-      expectEigenNear(csc.Ap(), MapI(qp.A_csc.outerIndexPtr(), nv + 1), 0.0))
+      expectEigenNear(csc.Pi().cast<ampc::detail::QPIndex>(),
+                      MapI(qp.P_csc.innerIndexPtr(), qp.P_csc.nonZeros()), 0.0))
+      << "P rows";
+  EXPECT_TRUE(expectEigenNear(csc.Ap().cast<ampc::detail::QPIndex>(),
+                              MapI(qp.A_csc.outerIndexPtr(), nv + 1), 0.0))
       << "A cols";
-  EXPECT_TRUE(expectEigenNear(
-      csc.Ai(), MapI(qp.A_csc.innerIndexPtr(), qp.A_csc.nonZeros()), 0.0))
+  EXPECT_TRUE(
+      expectEigenNear(csc.Ai().cast<ampc::detail::QPIndex>(),
+                      MapI(qp.A_csc.innerIndexPtr(), qp.A_csc.nonZeros()), 0.0))
       << "A rows";
   EXPECT_TRUE(csc.direct()) << "values copied";
 }
@@ -368,7 +376,7 @@ TEST(QPPatternTester, givenSparseMPC_CscPatternIsTheDeclaredEntries)
 // initialized with the same values
 TEST(QPPatternTester, givenSparseMPC_CscSolverDataIsTheStoredStructure)
 {
-  const OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
+  const ampc::OSQPSettings settings{ampc::OSQPSolver::getRecommendedSettings()};
   int initialized{0}, compared{0};
   for (unsigned seed{0}; seed < 200; ++seed) {
     Draw draw{seed};
@@ -461,7 +469,7 @@ TEST(QPPatternTester, givenSparseInitialNonzeros_PatternIsMaskedAndSolvesMatch)
     EXPECT_EQ(full.qpData().A_csc.nonZeros() - masked.qpData().A_csc.nonZeros(),
               T * band * out_B + (T - 1) * out_A);
     EXPECT_EQ(full.qpData().P_csc.nonZeros(), masked.qpData().P_csc.nonZeros());
-    const OSQPInt nnz_A{static_cast<OSQPInt>(masked.qpData().A_csc.nonZeros())};
+    const Index nnz_A{masked.qpData().A_csc.nonZeros()};
     for (int change{0}; change < 4; ++change) {
       SCOPED_TRACE("change " + std::to_string(change));
       setAll(masked, c, draw, &Ad_mask, &Bd_mask);
@@ -569,9 +577,10 @@ template <ampc::Formulation F> void checkLayoutAndQP(const Case& c, Draw& draw)
   expected.push_back({"input_bounds", 0});
   if (o.slew_initial_input)
     expected.push_back({"initial_slew", c.m});
-  if (o.slew_control_points)
-    expected.push_back(
-        {"control_point_slew", c.m * (c.param.num_control_points - 1)});
+  if (o.slew_bounds == ampc::SlewBoundMode::ControlPoints)
+    expected.push_back({"slew_bounds", c.m * (c.param.num_control_points - 1)});
+  else if (o.slew_bounds == ampc::SlewBoundMode::Trajectory)
+    expected.push_back({"slew_bounds", 0}); // depends on the basis
   if (o.state_bounds != ampc::StateBoundMode::Off)
     expected.push_back(
         {"state_bounds",
@@ -692,7 +701,7 @@ const ampc::Options constrained_msd_opts{
     .input_cost = ampc::InputCostMode::ControlPoints,
     .use_input_rate_cost = true,
     .slew_initial_input = true,
-    .slew_control_points = true,
+    .slew_bounds = ampc::SlewBoundMode::ControlPoints,
     .state_bounds = ampc::StateBoundMode::Hard,
     .num_general_constraints = 1,
     .num_terminal_constraints = 1};

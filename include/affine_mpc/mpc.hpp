@@ -664,27 +664,37 @@ public:
                               const Eigen::Ref<const Eigen::VectorXd>& hf_max);
 
   /**
-   * @brief Set slew-rate constraint limits for control points. Control points
-   *   can vary by up to this magnitude from one index to the next.
+   * @brief Set the slew-rate limits |u_k - u_{k-1}| <= slew_rate for
+   *   k = 1, ..., T-1, the largest change of each input from one sample step
+   *   to the next (units of the input per sample step, not per second).
    *
-   *   This function can only be called if `slew_control_points` is enabled.
-   *   Must be called prior to `initializeSolver()`, but can also be called
-   *   after if limits change between solves.
-   * @param control_point_slew Slew-rate vector.
+   *   The limit means the same in every SlewBoundMode; the mode only decides
+   *   how it is enforced (Options::slew_bounds). The change from the
+   *   previous input, u_0 - u_prev, has its own limit (setSlewRateInitial()).
+   *   This function can only be called if `slew_bounds` is not Off. Must be
+   *   called prior to `initializeSolver()`, but can also be called after if
+   *   limits change between solves (which only updates QP vectors). Pass
+   *   `inf` for an input without a limit.
+   * @param slew_rate Slew-rate limit per input (size input_dim,
+   *   non-negative).
+   * @throws std::logic_error if `slew_bounds` is Off.
+   * @throws std::invalid_argument if the size is wrong or a value is
+   *   negative.
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
-  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& control_point_slew);
+  void setSlewRate(const Eigen::Ref<const Eigen::VectorXd>& slew_rate);
 
   /**
-   * @brief Set initial slew-rate constraint limits for control points. Initial
-   *   input can vary by up to this magnitude from the previous input. See
-   *   `setPreviousInput()`.
+   * @brief Set the initial slew-rate limits |u_0 - u_prev| <= u0_slew, the
+   *   largest change of the first sampled input from the previous input (see
+   *   `setPreviousInput()`).
    *
    *   This function can only be called if `slew_initial_input` is enabled.
    *   Must be called prior to `initializeSolver()`, but can also be called
    *   after if limits change between solves.
-   * @param u0_slew Initial slew-rate vector.
+   * @param u0_slew Initial slew-rate limit per input (size input_dim,
+   *   non-negative).
    * @note The QP is updated in the next prepare() or solve(), which report
    *   update failures.
    */
@@ -848,8 +858,9 @@ public:
   const Eigen::VectorXd& getTerminalConstraintMax() const;
 
   /**
-   * @brief Get the control point slew rate (+inf until setSlewRate()).
-   * @throws std::logic_error if `slew_control_points` is not enabled.
+   * @brief Get the slew-rate limit per sample step (+inf until
+   *   setSlewRate()).
+   * @throws std::logic_error if `slew_bounds` is Off.
    */
   const Eigen::VectorXd& getSlewRate() const;
 
@@ -1036,7 +1047,7 @@ public:
    * @brief The blocks of constraint rows of A, in order, listing only the
    *   blocks the options enable: "dynamics" (the sparse formulation's
    *   model rows),
-   *   "input_bounds", "initial_slew", "control_point_slew", "state_bounds"
+   *   "input_bounds", "initial_slew", "slew_bounds", "state_bounds"
    *   (soft: the upper rows, the lower rows, then the slack rows s >= 0),
    *   "general_constraints" (rows per step, steps in order), and
    *   "terminal_constraints". Together they cover every row. For analysis;
@@ -1124,7 +1135,7 @@ private:
       pending_; // categories changed since they were applied to the QP
   bool model_set_, model_from_continuous_, u_lims_set_, x_lims_set_;
   bool x_penalties_set_, general_set_, terminal_set_;
-  bool slew0_rate_set_, ctrls_slew_rate_set_;
+  bool slew0_rate_set_, slew_rate_set_;
   bool solver_initialized_;
   ModelSparsity model_sparsity_; // passed to initializeSolver()
   double mpc_solve_time_; ///< duration of the last solve() call (seconds)

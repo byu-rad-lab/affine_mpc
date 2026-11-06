@@ -23,7 +23,7 @@ struct QPRows
   RowBlock dynamics; ///< the formulation's own rows (sparse model)
   RowBlock input_bounds;
   RowBlock initial_slew;
-  RowBlock control_point_slew;
+  RowBlock slew_bounds;  ///< control point or sampled-input differences
   RowBlock state_bounds; ///< soft: the upper rows, lower rows, then s >= 0
   RowBlock general_constraints;  ///< p rows per step, steps in order
   RowBlock terminal_constraints; ///< the rows on x_T
