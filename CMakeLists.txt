@@ -300,6 +300,16 @@ install(TARGETS ${affine_mpc_install_targets}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   COMPONENT core
 )
+# affine_mpc's license and those of the third-party code compiled into the
+# installed libraries (OSQP, DAQP, and Eigen); see licenses/README.md
+install(FILES LICENSE
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}
+  COMPONENT core
+)
+install(DIRECTORY licenses/
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses
+  COMPONENT core
+)
 
 if(AFFINE_MPC_WITH_DAQP)
   install(DIRECTORY include/

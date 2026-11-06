@@ -3,6 +3,7 @@
 affine_mpc itself is licensed under the BSD 3-Clause License (`../LICENSE`).
 The Python wheels also contain compiled code from the projects below, so their license texts and notices are included here and in each wheel's `.dist-info/licenses/` directory.
 The source distribution contains only affine_mpc's own source; these projects are downloaded when it is built.
+`cmake --install` installs this directory with affine_mpc's `LICENSE` in `share/doc/affine_mpc` for the OSQP, DAQP, and Eigen code compiled into the installed libraries; the other rows apply only to the wheels.
 
 | Component | Version | License | Files | Source |
 | --- | --- | --- | --- | --- |
