@@ -41,7 +41,8 @@ int main(int argc, char** argv)
       // 2-, 3-, and 4-byte UTF-8 sequences
       writer.addString("string_utf8", "\u00b5 \u2713 \U0001d465");
       // a stray continuation byte and a truncated sequence become U+FFFD
-      writer.addString("string_invalid", "a\x80" "b\xe2\x9c");
+      writer.addString("string_invalid", "a\x80"
+                                         "b\xe2\x9c");
       writer.finalize();
     } else if (case_name == "npz_empty") {
       ampc::NpzWriter writer(output_path);
