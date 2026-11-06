@@ -1,4 +1,4 @@
-# <img src="docs/assets/favicon.svg" alt="affine_mpc logo" width="32" height="32"> affine_mpc
+# <img src="https://raw.githubusercontent.com/byu-rad-lab/affine_mpc/main/docs/assets/favicon.svg" alt="affine_mpc logo" width="32" height="32"> affine_mpc
 
 [![PyPI](https://img.shields.io/pypi/v/affine_mpc.svg)](https://pypi.org/project/affine-mpc/)
 [![Build and Test](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/build_test.yaml/badge.svg)](https://github.com/byu-rad-lab/affine_mpc/actions/workflows/build_test.yaml)
@@ -18,10 +18,10 @@ Researchers and engineers often need an MPC tool that sits between low-level QP 
 ## Highlights
 
 - Condensed and sparse MPC formulations behind a common interface
-- Move-blocking, linear interpolation, and B-spline input parameterizations
-- Optional input cost, state bounds, input bounds, and slew-rate constraints
-- Efficient OSQP-backed updates when the QP sparsity pattern is unchanged
-- Binary `.npz` logging via `MPCLogger` for plotting and post-run analysis
+- Move-blocking, linear-interpolation, B-spline, and custom-basis (e.g. Laguerre) input parameterizations
+- Input limits enforced on the control points or the sampled inputs, and optional input and input-rate costs, per-sample slew-rate bounds, hard or soft state bounds, and general and terminal linear constraints
+- Efficient OSQP updates when the QP sparsity pattern is unchanged, with DAQP as an optional dense solver
+- Binary logging via `MPCLogger`, read in Python with `load_log()` for plotting and analysis
 
 ## Documentation
 
@@ -41,20 +41,18 @@ Core C++ sources live under `src/` and `include/`, Python bindings and package s
 ## Important Usage Notes
 
 - Fully configure the model, limits, weights, and references before calling `initializeSolver()`
-- OSQP sparsity is fixed at initialization; later updates must not introduce new nonzero structure
-- If a model coefficient may become nonzero later, initialize with that structure already present (or, with the sparse formulation, pass `ModelSparsity::Full` to `initializeSolver()`); with the condensed formulation the same holds for cost weights
+- OSQP sparsity is fixed at initialization; later updates must not introduce new nonzero structure (see [Runtime Updates](https://byu-rad-lab.github.io/affine_mpc/concepts/runtime-updates/) for which entries are tracked and how to include ones that become nonzero later)
 
 ## Community Standards
 
-- Contributing guide: `CONTRIBUTING.md`
-- Code of conduct: `CODE_OF_CONDUCT.md`
-- Citation metadata: `CITATION.cff`
+- [Contributing guide](https://github.com/byu-rad-lab/affine_mpc/blob/main/CONTRIBUTING.md)
+- [Code of conduct](https://github.com/byu-rad-lab/affine_mpc/blob/main/CODE_OF_CONDUCT.md)
 
 ## Citation
 
-If you use `affine_mpc` in research, please cite the project using the metadata in `CITATION.cff`.
+If you use `affine_mpc` in research, please cite the project using the metadata in [`CITATION.cff`](https://github.com/byu-rad-lab/affine_mpc/blob/main/CITATION.cff).
 
 ## License
 
 This project is licensed under the BSD 3-Clause License.
-See `LICENSE` for details.
+See [`LICENSE`](https://github.com/byu-rad-lab/affine_mpc/blob/main/LICENSE) for details.
