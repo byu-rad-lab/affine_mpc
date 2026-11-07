@@ -499,6 +499,10 @@ OSQP's first-order iterations are also less accurate when $P$ is badly condition
 Directions in which the cost barely changes are then weakly determined, so OSQP can stop with a first input that is noticeably off even when it reports `Success`, and warm starting can carry that error from step to step, which shows up in closed loop as input chatter or a small limit cycle.
 Tightening `eps_abs` and `eps_rel`, adding an input or input-rate weight, or using DAQP for a condensed problem fixes this; polishing does not help when no constraints are active.
 To check, compute the condition number of $P$ from `getQP()` (e.g. `np.linalg.cond(mpc.getQP().P.toarray())`, outside the control loop).
+A badly conditioned $P$ can also make OSQP report `DualInfeasible`, which says the QP is unbounded.
+An MPC cost is a sum of weighted squares, so the QP is never unbounded, and this status always comes from the conditioning.
+The recommended settings use `eps_dual_inf = 1e-6` (OSQP's default is `1e-4`), which usually avoids it, at the cost of more iterations on those QPs.
+For real-time use, bound the worst case with `max_iter` or `time_limit` (in seconds).
 
 === "Python"
 

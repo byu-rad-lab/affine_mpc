@@ -1738,7 +1738,8 @@ class MPC:
     ) -> bool:
         """
         Initialize OSQP solver after configuring MPC setup. Calling this method after
-        a successful initialization will simply return True without doing anything.
+        a successful initialization returns True and ignores its arguments, so pass the
+        settings to the first call.
 
         Prior to calling this function, you must have set the model and input limits.
         You must also provide parameters for all enabled options before calling this

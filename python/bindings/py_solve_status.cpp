@@ -26,7 +26,10 @@ void moduleAddSolveStatus(py::module& m)
       .value("PrimalInfeasible", ampc::SolveStatus::PrimalInfeasible,
              "OSQP reported value - see their docs")
       .value("DualInfeasible", ampc::SolveStatus::DualInfeasible,
-             "OSQP reported value - see their docs")
+             "The solver reported the problem as dual infeasible "
+             "(unbounded). An MPC QP is bounded, so this is numerical: "
+             "usually a badly conditioned cost Hessian (for OSQP, see "
+             "OSQPSettings.eps_dual_inf).")
       .value("MaxIterReached", ampc::SolveStatus::MaxIterReached,
              "OSQP reported value - see their docs")
       .value("TimeLimitReached", ampc::SolveStatus::TimeLimitReached,
