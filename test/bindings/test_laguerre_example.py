@@ -71,3 +71,25 @@ def test_deviation_form_holds_the_reference(example):
     # the direct form decays to zero over the horizon and settles short
     assert abs(direct_position - 1.0) > 0.05
     assert deviation_cost < direct_cost
+
+
+def test_ill_conditioned_basis_is_not_reported_dual_infeasible(example):
+    # An unprepared slow-pole basis makes the condensed Hessian badly
+    # conditioned (condition number ~1e11). With OSQP's eps_dual_inf (1e-4),
+    # its nearly flat directions passed as an unbounded ray, so this bounded
+    # QP stopped as DualInfeasible after a few hundred iterations
+    ampc = example.ampc
+    T, N, a = 100, 10, 0.95
+    param = ampc.Parameterization.fromBasis(T, example.laguerre_basis(T, N, a))
+    mpc = ampc.MPC(2, 1, param)
+    A = np.array([[0.0, 1.0], [-0.6, -0.1]])
+    B = np.array([0.0, 0.2])
+    u_ss = 0.75  # holds x_ref
+    mpc.setModelContinuous2Discrete(A, B, B * u_ss, 0.01)
+    mpc.setInputLimits(np.array([-6.0 - u_ss]), np.array([6.0 - u_ss]))
+    mpc.setStateWeights(np.array([1.0, 0.02]))
+    mpc.setReferenceState(np.array([0.25, 0.0]))
+    settings = ampc.OSQPSettings()
+    settings.max_iter = 20000
+    assert mpc.initializeSolver(settings)
+    assert mpc.solve(np.zeros(2)) == ampc.SolveStatus.Success

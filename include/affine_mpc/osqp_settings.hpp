@@ -19,7 +19,8 @@ namespace affine_mpc {
  *
  * OSQPSolver::getRecommendedSettings() gives the settings
  * MPC::initializeSolver() uses by default, which differ from OSQP's defaults
- * (tighter tolerances, warm starting, and no printing). See OSQP's
+ * (tighter tolerances, including eps_dual_inf, warm starting, and no
+ * printing). See OSQP's
  * documentation for the meaning of each setting:
  * https://osqp.org/docs/interfaces/solver_settings.html.
  *
