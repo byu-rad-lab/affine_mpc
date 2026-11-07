@@ -59,6 +59,8 @@ def test_osqp_settings_defaults():
     assert recommended.verbose is False
     assert recommended.eps_abs == 1e-6
     assert recommended.eps_rel == 1e-6
+    assert recommended.eps_dual_inf == 1e-6
+    assert recommended.eps_prim_inf == defaults.eps_prim_inf
     assert recommended.max_iter == defaults.max_iter
 
 
