@@ -175,6 +175,13 @@ OSQPSolver::getRecommendedSettings(bool polish_near_boundaries) noexcept
   settings.eps_rel = 1e-6; // default is 1e-3
   settings.eps_abs = 1e-6; // default is 1e-3
 
+  // An MPC cost is a sum of weighted squares, so it is bounded below and the
+  // QP is never dual infeasible. OSQP's default (1e-4) accepts a nearly flat
+  // direction of an ill-conditioned P as an unbounded ray, so a solvable QP
+  // can stop as DualInfeasible. eps_prim_inf keeps OSQP's default: tightening
+  // it delays the detection of QPs that are genuinely primal infeasible.
+  settings.eps_dual_inf = 1e-6; // default is 1e-4
+
   // Adds a polishing step (extra solve after convergence) that can improve
   // solution accuracy when the solution is near the boundaries of the
   // constraints. This can be helpful for MPC when the solution saturates inputs

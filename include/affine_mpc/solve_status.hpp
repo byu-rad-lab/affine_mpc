@@ -28,7 +28,10 @@ enum class SolveStatus
   /// within 10 times eps_abs and eps_rel (see SolveInfo's residuals).
   SolvedInaccurate,
   PrimalInfeasible, ///< Problem is primal infeasible
-  DualInfeasible,   ///< Problem is dual infeasible
+  /// The solver reported the problem as dual infeasible (unbounded). An MPC
+  /// QP is bounded, so this is numerical: usually a badly conditioned cost
+  /// Hessian (for OSQP, see OSQPSettings::eps_dual_inf).
+  DualInfeasible,
   MaxIterReached,   ///< The solver hit its iteration limit
   TimeLimitReached, ///< The solver hit its time limit
   OtherFailure,     ///< Any other solver error

@@ -151,6 +151,9 @@ public:
    *   ModelSparsity::Full, every entry, which costs more per solve when the
    *   model has structural zeros. The condensed formulation supports only
    *   ModelSparsity::InitialNonzeros for now.
+   *
+   *   After a successful initialization, a later call returns true and
+   *   ignores its arguments, so pass the settings to the first call.
    * @param solver_settings OSQP solver settings (optional). Defaults to
    *   recommended settings.
    * @param model_sparsity Which entries of Ad and Bd the solver tracks.

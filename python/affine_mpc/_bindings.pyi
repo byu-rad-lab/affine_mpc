@@ -700,6 +700,8 @@ class OSQPSettings:
     Tightening these can improve solution accuracy but may increase solve time.
     Defaults are usually sufficient for MPC applications, but can be adjusted if
     convergence is an issue. OSQP default is 1e-3 while affine_mpc defaults to 1e-6.
+    affine_mpc also tightens `eps_dual_inf` to 1e-6 (OSQP: 1e-4), since a looser
+    value can report a badly conditioned but solvable QP as DualInfeasible.
 
     Attributes:
         adaptive_rho: When rho is adapted (AdaptiveRhoType): Disabled, every
@@ -1736,7 +1738,8 @@ class MPC:
     ) -> bool:
         """
         Initialize OSQP solver after configuring MPC setup. Calling this method after
-        a successful initialization will simply return True without doing anything.
+        a successful initialization returns True and ignores its arguments, so pass the
+        settings to the first call.
 
         Prior to calling this function, you must have set the model and input limits.
         You must also provide parameters for all enabled options before calling this
