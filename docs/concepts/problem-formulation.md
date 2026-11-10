@@ -107,7 +107,7 @@ The default, `InputBoundMode::ControlPoints` (`InputBoundMode.ControlPoints` in 
 However, when the spline does not pass through its control points at the sample times, it becomes harder for the parameterization to utilize the full input range (it essentially becomes flattened).
 This happens for any degree higher than 1, and for degree 1 when an active knot is not an integer.
 `InputBoundMode::Trajectory` saturates the evaluated inputs instead, which adds more optimization constraints, but it lets the control points leave the input saturation range while the evaluated inputs remain saturated.
-`InputBoundMode::Refined` lies between the two: it saturates the control points of the same spline after knot insertion, which still saturates the entire input trajectory but stays much closer to the limits than the original control points.
+`InputBoundMode::Refined` lies between the two: it saturates the control points of a refined representation of the same input curve (after knot insertion), which still saturates the entire input trajectory but stays much closer to the limits than the original control points.
 
 ![Cubic spline with the same shape scaled to fit input limits [0, 1] two ways. When the control points are saturated the sampled inputs stay well inside the limits, and when every sample is saturated the control points leave the limits while the samples reach them.](../assets/input-parameterization/degree3-saturation.svg)
 Saturating the control points (left) versus every sample (right) of a cubic spline.
@@ -123,8 +123,8 @@ How many constraints are added depends on the degree $p$:
 - A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whatever `input_bounds` is.
 
 With $p > 1$, `Trajectory` adds a row for every sample, so it can make OSQP slower on long horizons.
-`Refined` adds about $\max(T / L, 2(\eta - p)) + p$ rows per input instead, where $L$ is `refined_bound_interval`, the longest knot interval after the insertion (in samples), and it uses the `Trajectory` rows whenever those are not more; for $p \le 1$ it is the same as `Trajectory`, and a custom basis constrains every sample.
-See [Input Bounds](input-parameterization.md#input-bounds) for how the refined control points are built and how to choose $L$.
+`Refined` adds about $\max(K, 2(\eta - p)) + p$ rows per input instead, where $K$ is `min_refined_intervals`, the minimum number of knot intervals across the horizon in the refined representation, and it uses the `Trajectory` rows whenever those are not more; for $p \le 1$ it is the same as `Trajectory`, and a custom basis constrains every sample.
+See [Input Bounds](input-parameterization.md#input-bounds) for how the refined control points are built and how to choose $K$.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
 Saturating the control points (left) versus the knot-adjacent samples (right) of a degree 1 spline with non-integer knots.

@@ -99,7 +99,7 @@ std::vector<DAQPCase> daqpCases()
        {.input_bounds = IB::ControlPoints}},
       {"inputBoundsRefined",
        bspline,
-       {.input_bounds = IB::Refined, .refined_bound_interval = 4}},
+       {.input_bounds = IB::Refined, .min_refined_intervals = 8}},
       {"inputBoundsTrajectory", bspline, {.input_bounds = IB::Trajectory}},
       {"inputCostControlPoints", bspline, {.input_cost = IC::ControlPoints}},
       {"inputCostTrajectory", bspline, {.input_cost = IC::Trajectory}},

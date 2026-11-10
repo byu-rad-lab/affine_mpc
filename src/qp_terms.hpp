@@ -231,7 +231,7 @@ class InputBounds final : public QPTerm
 public:
   InputBounds(const VectorParameterization& input_param,
               InputBoundMode mode,
-              int refined_bound_interval);
+              int min_refined_intervals);
   void declare(QPLayout& layout, FormulationImpl& f) override;
   DataChangeSet matrixDependsOn(const FormulationImpl&) const override
   {
@@ -258,7 +258,7 @@ private:
   };
   static BoundRows boundRows(const VectorParameterization& input_param,
                              InputBoundMode mode,
-                             int refined_bound_interval);
+                             int min_refined_intervals);
 
   const VectorParameterization& input_param_;
   const BoundRows M_;

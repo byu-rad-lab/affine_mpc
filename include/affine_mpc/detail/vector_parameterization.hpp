@@ -98,13 +98,15 @@ public:
 
   /**
    * @brief Refine a B-spline by knot insertion (Oslo algorithm): split every
-   *   active knot interval of length l into max(2, ceil(l / max_interval))
-   *   equal parts.
-   * @param max_interval Longest refined knot interval in samples (positive).
+   *   active knot interval of length l into
+   *   max(2, ceil(min_intervals l / range)) equal parts, where range is the
+   *   length of the active knots.
+   * @param min_intervals Minimum number of refined knot intervals in the
+   *   active range (non-negative; 0 splits every interval once).
    * @return The refined knots, the banded map R, and the refined control
    *   points the samples depend on.
    */
-  KnotRefinement refineKnots(int max_interval) const;
+  KnotRefinement refineKnots(int min_intervals) const;
 
 private:
   const Parameterization param_;

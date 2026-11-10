@@ -582,7 +582,7 @@ TEST(ConsistencyTester, givenRefinedInputBounds_CondensedAndSparseMPCAgree)
     SCOPED_TRACE("degree " + std::to_string(deg));
     const auto param{ampc::Parameterization::bspline(T, deg, nc, 1.2)};
     const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Refined,
-                             .refined_bound_interval = 3};
+                             .min_refined_intervals = 10};
     ConsistencyTester tester{n, m, param, opts};
     tester.setup(); // input limits are [0, 3]
 
@@ -1218,7 +1218,7 @@ TEST(ConsistencyTester, givenEveryOptionCombination_CondensedAndSparseQPsMatch)
     opts.state_bounds =
         bits & 2 ? ampc::StateBoundMode::Hard : ampc::StateBoundMode::Off;
     opts.input_bounds = input_modes[bits >> 2];
-    opts.refined_bound_interval = 2; // splits the degree 2 and 3 intervals
+    opts.min_refined_intervals = 6; // splits the degree 3 intervals in three
 
     for (int degree{0}; degree <= 3; ++degree) {
       const auto param{ampc::Parameterization::bspline(T, degree, nc)};

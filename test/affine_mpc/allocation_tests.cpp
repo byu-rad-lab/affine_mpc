@@ -240,7 +240,7 @@ std::vector<AllocationCase> allocationCases()
                               .input_bounds = ampc::InputBoundMode::Trajectory};
   const ampc::Options refined{.input_cost = ampc::InputCostMode::ControlPoints,
                               .input_bounds = ampc::InputBoundMode::Refined,
-                              .refined_bound_interval = 2};
+                              .min_refined_intervals = 6};
   const ampc::Options soft{.input_cost = ampc::InputCostMode::ControlPoints,
                            .state_bounds = ampc::StateBoundMode::Soft,
                            .bounded_states = {0}};

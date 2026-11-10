@@ -23,10 +23,10 @@ using Refinement = ampc::detail::VectorParameterization::KnotRefinement;
 
 namespace {
 
-Refinement refine(const ampc::Parameterization& param, int max_interval)
+Refinement refine(const ampc::Parameterization& param, int min_intervals)
 {
   return ampc::detail::VectorParameterization{1, param}.refineKnots(
-      max_interval);
+      min_intervals);
 }
 
 // The refined spline sampled at k = 0, ..., T-1, from its knots and control
@@ -143,9 +143,9 @@ TEST(KnotRefinementTest, givenSplines_RefinedControlPointsReproduceSpline)
   std::mt19937 gen{7};
   std::uniform_real_distribution<double> dist{-2.0, 2.0};
   for (const auto& [name, param] : splines()) {
-    for (const int L : {1, 2, 3, 5, 8, 16, 1000}) {
-      SCOPED_TRACE(name + " max_interval=" + std::to_string(L));
-      const Refinement r{refine(param, L)};
+    for (const int K : {0, 2, 5, 16, 40, 100}) {
+      SCOPED_TRACE(name + " intervals=" + std::to_string(K));
+      const Refinement r{refine(param, K)};
       const int p{param.degree}, T{param.horizon_steps};
       ASSERT_EQ(r.weights.rows(), p + 1);
       ASSERT_EQ(r.start.size(), r.knots.size() - p - 1);
@@ -164,9 +164,9 @@ TEST(KnotRefinementTest, givenSplines_RefinedControlPointsReproduceSpline)
 TEST(KnotRefinementTest, givenSplines_RIsBandedConvexCombination)
 {
   for (const auto& [name, param] : splines()) {
-    for (const int L : {1, 4, 16}) {
-      SCOPED_TRACE(name + " max_interval=" + std::to_string(L));
-      const Refinement r{refine(param, L)};
+    for (const int K : {0, 16, 64}) {
+      SCOPED_TRACE(name + " intervals=" + std::to_string(K));
+      const Refinement r{refine(param, K)};
       for (Index j{0}; j < r.start.size(); ++j) {
         EXPECT_GE(r.start(j), 0);
         EXPECT_LE(r.start(j) + r.weights.rows(), param.num_control_points);
@@ -180,13 +180,16 @@ TEST(KnotRefinementTest, givenSplines_RIsBandedConvexCombination)
   }
 }
 
-TEST(KnotRefinementTest, givenMaxInterval_SplitsEveryIntervalIntoEqualParts)
+TEST(KnotRefinementTest, givenMinIntervals_SplitsEveryIntervalIntoEqualParts)
 {
   for (const auto& [name, param] : splines()) {
-    for (const int L : {1, 2, 3, 7, 16, 1000}) {
-      SCOPED_TRACE(name + " max_interval=" + std::to_string(L));
-      const int p{param.degree};
-      const Refinement r{refine(param, L)};
+    for (const int K : {0, 1, 4, 13, 40, 1000}) {
+      SCOPED_TRACE(name + " intervals=" + std::to_string(K));
+      const int p{param.degree}, n{param.num_control_points};
+      const Refinement r{refine(param, K)};
+      // the longest refined interval: the active range over K
+      const double range{param.knots(n) - param.knots(p)};
+      const double max_length{K > 0 ? range / K : range};
 
       // the end knots are unchanged and the original knots are kept
       ASSERT_TRUE(
@@ -198,31 +201,37 @@ TEST(KnotRefinementTest, givenMaxInterval_SplitsEveryIntervalIntoEqualParts)
                             param.knots(i)),
                   r.knots.data() + r.knots.size());
 
-      // each nonempty interval is split into max(2, ceil(length / L)) equal
-      // parts, so every interval is split and none is longer than L
-      int expected_inserted{0};
+      // each nonempty interval is split into max(2, ceil(K length / range))
+      // equal parts, so every interval is split, the active range has at
+      // least K intervals, and none is longer than range / K
+      int expected_inserted{0}, refined_intervals{0};
       for (const double length : activeIntervals(param.knots, p))
-        if (length > 0.0)
-          expected_inserted +=
-              std::max(2, static_cast<int>(std::ceil(length / L))) - 1;
+        if (length > 0.0) {
+          const int parts{std::max(
+              2, static_cast<int>(std::ceil(length / max_length - 1e-9)))};
+          expected_inserted += parts - 1;
+          refined_intervals += parts;
+        }
       EXPECT_EQ(r.knots.size() - param.knots.size(), expected_inserted);
+      EXPECT_GE(refined_intervals, K);
       for (const double length : activeIntervals(r.knots, p))
-        EXPECT_LE(length, L * (1.0 + 1e-12));
+        EXPECT_LE(length, max_length * (1.0 + 1e-12));
     }
   }
 }
 
-TEST(KnotRefinementTest, givenIntervalsAtMostMaxInterval_SplitsEachInTwo)
+TEST(KnotRefinementTest, givenFewIntervals_SplitsEachIntervalInTwo)
 {
-  // uniform knots with intervals of exactly 6 samples (4 intervals)
+  // uniform knots with 4 intervals of exactly 6 samples: up to 8 refined
+  // intervals split each in two, 12 in three
   const auto param{ampc::Parameterization::bspline(25, 2, 6)};
   ASSERT_EQ(activeIntervals(param.knots, 2).front(), 6.0);
-  EXPECT_EQ(refine(param, 6).knots.size(), param.knots.size() + 4);
-  EXPECT_EQ(refine(param, 100).knots.size(), param.knots.size() + 4);
-  EXPECT_EQ(refine(param, 3).knots.size(), param.knots.size() + 4);
-  EXPECT_EQ(refine(param, 2).knots.size(), param.knots.size() + 8);
+  EXPECT_EQ(refine(param, 0).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 4).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 8).knots.size(), param.knots.size() + 4);
+  EXPECT_EQ(refine(param, 12).knots.size(), param.knots.size() + 8);
   // the inserted knots are the midpoints
-  const Refinement r{refine(param, 6)};
+  const Refinement r{refine(param, 0)};
   for (Index i{0}; i < 4; ++i)
     EXPECT_DOUBLE_EQ(r.knots(3 + 2 * i), 3.0 + 6.0 * i);
 }
@@ -233,10 +242,10 @@ TEST(KnotRefinementTest, givenRefinement_SampledPointsAreThoseSamplesUse)
   // every sampled input is a convex combination of the kept ones
   using Spline1d = Spline<double, 1>;
   for (const auto& [name, param] : splines()) {
-    for (const int L : {1, 2, 5}) {
-      SCOPED_TRACE(name + " max_interval=" + std::to_string(L));
+    for (const int K : {0, 10, 40}) {
+      SCOPED_TRACE(name + " intervals=" + std::to_string(K));
       const int p{param.degree};
-      const Refinement r{refine(param, L)};
+      const Refinement r{refine(param, K)};
       const Spline1d::KnotVectorType tau{r.knots.transpose()};
       std::vector<int> used;
       for (int k{0}; k < param.horizon_steps; ++k) {
@@ -261,18 +270,18 @@ TEST(RefinedInputBoundsTest, givenDegree2OrMore_BoundsSampledRefinedPoints)
 {
   for (const int m : {1, 2}) {
     for (const auto& [name, param] : splines()) {
-      for (const int L : {1, 4, 16}) {
+      for (const int K : {0, 8, 40}) {
         SCOPED_TRACE(name + " m=" + std::to_string(m)
-                     + " max_interval=" + std::to_string(L));
+                     + " intervals=" + std::to_string(K));
         const int n{2};
         ampc::MPC mpc{n,
                       m,
                       param,
                       {.input_bounds = ampc::InputBoundMode::Refined,
-                       .refined_bound_interval = L}};
+                       .min_refined_intervals = K}};
         setupMSD(mpc, m, VectorXd::Constant(m, -1.0),
                  VectorXd::Constant(m, 2.0), Vector2d{1.0, 0.0});
-        const Refinement r{refine(param, L)};
+        const Refinement r{refine(param, K)};
         const int num_rows{static_cast<int>(r.sampled.size())};
         if (num_rows >= param.horizon_steps) {
           // no fewer rows than the samples: the sampled rows are used
@@ -324,7 +333,7 @@ TEST(RefinedInputBoundsTest, givenDegree0Or1_UsesTheExactCheapRows)
                       m,
                       param,
                       {.input_bounds = ampc::InputBoundMode::Refined,
-                       .refined_bound_interval = 1}};
+                       .min_refined_intervals = 1000}};
     ampc::MPC expected{n, m, param, {.input_bounds = same}};
     for (ampc::MPC* mpc : {&refined, &expected})
       setupMSD(*mpc, m, VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 2.0),
@@ -349,63 +358,68 @@ TEST(RefinedInputBoundsTest, givenCustomBasis_BoundsEverySample)
 
 TEST(RefinedInputBoundsTest, givenLongHorizon_RowCountsLieBetweenModes)
 {
-  // T = 500, 10 control points: intervals of 62.4 samples, each split into
-  // max(2, ceil(62.4 / L)) parts, plus degree rows
-  const int n{2}, m{1}, T{500}, nc{10};
-  for (const int deg : {2, 3}) {
-    const auto param{ampc::Parameterization::bspline(T, deg, nc)};
-    auto rows = [&](ampc::InputBoundMode mode, int L) {
-      ampc::MPC mpc{
-          n, m, param, {.input_bounds = mode, .refined_bound_interval = L}};
-      return inputBoundRows(mpc);
-    };
-    EXPECT_EQ(rows(ampc::InputBoundMode::ControlPoints, 8), nc);
-    EXPECT_EQ(rows(ampc::InputBoundMode::Trajectory, 8), T);
-    for (const int L : {4, 8, 16, 32, 64, 1000}) {
-      SCOPED_TRACE("degree " + std::to_string(deg) + " L=" + std::to_string(L));
-      const int got{rows(ampc::InputBoundMode::Refined, L)};
-      const int intervals{nc - deg};
-      const double length{(T - 1.0) / intervals};
-      const int refined_intervals{
-          intervals * std::max(2, static_cast<int>(std::ceil(length / L)))};
-      EXPECT_EQ(got, refined_intervals + deg);
-      EXPECT_LT(got, T);
+  // T = 500, 10 control points: equal intervals, each split into
+  // max(2, ceil(K / intervals)) parts, plus degree rows; the rows depend on K
+  // and the control points, not on T
+  const int n{2}, m{1}, nc{10};
+  for (const int T : {100, 500, 2000}) {
+    for (const int deg : {2, 3}) {
+      const auto param{ampc::Parameterization::bspline(T, deg, nc)};
+      auto rows = [&](ampc::InputBoundMode mode, int K) {
+        ampc::MPC mpc{
+            n, m, param, {.input_bounds = mode, .min_refined_intervals = K}};
+        return inputBoundRows(mpc);
+      };
+      EXPECT_EQ(rows(ampc::InputBoundMode::ControlPoints, 8), nc);
+      EXPECT_EQ(rows(ampc::InputBoundMode::Trajectory, 8), T);
+      for (const int K : {0, 8, 16, 32, 64}) {
+        SCOPED_TRACE("T " + std::to_string(T) + " degree " + std::to_string(deg)
+                     + " K=" + std::to_string(K));
+        const int intervals{nc - deg};
+        const int parts{std::max(2, (K + intervals - 1) / intervals)};
+        EXPECT_EQ(rows(ampc::InputBoundMode::Refined, K),
+                  intervals * parts + deg);
+      }
     }
   }
 }
 
 TEST(RefinedInputBoundsTest, givenTooManyRefinedRows_UsesTrajectoryRows)
 {
-  // T = 10, 5 cubic control points: 2 intervals of 4.5 samples; L = 2 splits
-  // each into 3, giving 6 + 3 = 9 refined rows (fewer than T), and L = 1
+  // T = 10, 5 cubic control points: 2 intervals of 4.5 samples; K = 6 splits
+  // each into 3, giving 6 + 3 = 9 refined rows (fewer than T), and K = 10
   // splits each into 5, giving 13 (not fewer), so the sampled rows are used
   const int n{2}, m{2}, T{10};
   const auto param{ampc::Parameterization::bspline(T, 3, 5)};
-  auto make = [&](ampc::InputBoundMode mode, int L) {
+  auto make = [&](ampc::InputBoundMode mode, int K) {
     ampc::MPC mpc{
-        n, m, param, {.input_bounds = mode, .refined_bound_interval = L}};
+        n, m, param, {.input_bounds = mode, .min_refined_intervals = K}};
     setupMSD(mpc, m, VectorXd::Constant(m, -1.0), VectorXd::Constant(m, 2.0),
              Vector2d{1.0, 0.0});
     return inputBoundMatrix(mpc, n);
   };
-  ASSERT_EQ(refine(param, 2).sampled.size(), 9u);
-  ASSERT_EQ(refine(param, 1).sampled.size(), 13u);
-  EXPECT_EQ(make(ampc::InputBoundMode::Refined, 2).rows(), m * 9);
-  EXPECT_TRUE(expectEigenNear(make(ampc::InputBoundMode::Refined, 1),
-                              make(ampc::InputBoundMode::Trajectory, 1), 0.0));
+  ASSERT_EQ(refine(param, 6).sampled.size(), 9u);
+  ASSERT_EQ(refine(param, 10).sampled.size(), 13u);
+  EXPECT_EQ(make(ampc::InputBoundMode::Refined, 6).rows(), m * 9);
+  EXPECT_TRUE(expectEigenNear(make(ampc::InputBoundMode::Refined, 10),
+                              make(ampc::InputBoundMode::Trajectory, 10), 0.0));
 }
 
 TEST(RefinedInputBoundsTest, givenShortHorizon_IsTighterThanControlPoints)
 {
-  // T = 40, 6 quadratic control points: every interval (9.75 samples) is
-  // shorter than the default L = 16 but is still split in two, so the optimal
-  // cost with the limit active inside the horizon is strictly lower than with
-  // the control point bounds (and no lower than with exact bounds)
+  // T = 40, 6 quadratic control points: K = 0 splits every interval (9.75
+  // samples) only in two, and the optimal cost with the limit active inside
+  // the horizon is still strictly lower than with the control point bounds
+  // (and no lower than with exact bounds)
   const int n{2}, m{1}, T{40};
   const auto param{ampc::Parameterization::bspline(T, 2, 6)};
   auto cost = [&](ampc::InputBoundMode mode, int expected_rows) {
-    ampc::MPC mpc{
-        n, m, param, {.input_bounds = mode, .slew_initial_input = true}};
+    ampc::MPC mpc{n,
+                  m,
+                  param,
+                  {.input_bounds = mode,
+                   .min_refined_intervals = 0,
+                   .slew_initial_input = true}};
     setupMSD(mpc, m, VectorXd::Zero(1), VectorXd::Constant(1, 3.0),
              Vector2d{1.0, 0.0});
     mpc.setSlewRateInitial(VectorXd::Constant(1, 0.5));
@@ -430,13 +444,13 @@ TEST(RefinedInputBoundsTest, givenDefaultOptions_KeepsControlPointBounds)
 {
   const ampc::Options opts{};
   EXPECT_EQ(opts.input_bounds, ampc::InputBoundMode::ControlPoints);
-  EXPECT_EQ(opts.refined_bound_interval, 16);
+  EXPECT_EQ(opts.min_refined_intervals, 16);
 }
 
-TEST(RefinedInputBoundsTest, givenNonPositiveInterval_Throws)
+TEST(RefinedInputBoundsTest, givenNegativeMinIntervals_Throws)
 {
   const auto param{ampc::Parameterization::bspline(20, 2, 5)};
-  for (const int L : {0, -3}) {
+  for (const int K : {-1, -3}) {
     for (const auto mode :
          {ampc::InputBoundMode::Refined, ampc::InputBoundMode::ControlPoints}) {
       expectInvalidArgumentWithMessage(
@@ -444,9 +458,9 @@ TEST(RefinedInputBoundsTest, givenNonPositiveInterval_Throws)
             ampc::MPC mpc{2,
                           1,
                           param,
-                          {.input_bounds = mode, .refined_bound_interval = L}};
+                          {.input_bounds = mode, .min_refined_intervals = K}};
           },
-          "refined_bound_interval must be positive");
+          "min_refined_intervals must not be negative");
     }
   }
 }
@@ -463,15 +477,15 @@ TEST(RefinedInputBoundsTest, givenRandomSolves_SampledInputsStayInsideLimits)
     for (const auto& [name, param] : splines()) {
       if (param.horizon_steps > 100)
         continue; // keep the test fast
-      for (const int L : {1, 3, 8}) {
+      for (const int K : {1000, 10, 0}) {
         const int n{2}, T{param.horizon_steps};
         const ampc::Options opts{.input_bounds = ampc::InputBoundMode::Refined,
-                                 .refined_bound_interval = L};
+                                 .min_refined_intervals = K};
         ampc::MPC condensed{n, m, param, opts};
         ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
         for (int trial{0}; trial < 3; ++trial) {
-          SCOPED_TRACE(name + " m=" + std::to_string(m) + " max_interval="
-                       + std::to_string(L) + " trial " + std::to_string(trial));
+          SCOPED_TRACE(name + " m=" + std::to_string(m) + " intervals="
+                       + std::to_string(K) + " trial " + std::to_string(trial));
           VectorXd u_min{m}, u_max{m};
           for (int j{0}; j < m; ++j) {
             u_min(j) = -lim(gen);
@@ -521,11 +535,12 @@ TEST(RefinedInputBoundsTest, givenActiveLimit_FeasibleSetsAreNested)
   // points within them, a finer nested refinement keeps them within, and
   // refined control points within the limits give sampled inputs within them.
   // So the optimal cost can only decrease from ControlPoints to Refined with
-  // L = 8, 4, 2 (nested knots here: intervals of 14.75 samples) to Trajectory.
+  // K = 8, 16, 32 (4 intervals of 14.75 samples split into 2, 4, and 8 parts,
+  // so the knots are nested) to Trajectory.
   const int n{2}, m{1}, T{60};
   const auto param{ampc::Parameterization::bspline(T, 2, 6)};
   const VectorXd u_min{VectorXd::Zero(1)}, u_max{VectorXd::Constant(1, 3.0)};
-  auto cost = [&](ampc::InputBoundMode mode, int L) {
+  auto cost = [&](ampc::InputBoundMode mode, int K) {
     double objective[2]{};
     int i{0};
     for (const auto formulation :
@@ -534,7 +549,7 @@ TEST(RefinedInputBoundsTest, givenActiveLimit_FeasibleSetsAreNested)
                     m,
                     param,
                     {.input_bounds = mode,
-                     .refined_bound_interval = L,
+                     .min_refined_intervals = K,
                      .slew_initial_input = true},
                     formulation};
       setupMSD(mpc, m, u_min, u_max, Vector2d{1.0, 0.0});
@@ -552,8 +567,8 @@ TEST(RefinedInputBoundsTest, givenActiveLimit_FeasibleSetsAreNested)
   };
   const double control_points{cost(ampc::InputBoundMode::ControlPoints, 8)};
   const double coarse{cost(ampc::InputBoundMode::Refined, 8)};
-  const double medium{cost(ampc::InputBoundMode::Refined, 4)};
-  const double fine{cost(ampc::InputBoundMode::Refined, 2)};
+  const double medium{cost(ampc::InputBoundMode::Refined, 16)};
+  const double fine{cost(ampc::InputBoundMode::Refined, 32)};
   const double exact{cost(ampc::InputBoundMode::Trajectory, 8)};
   const double tol{1e-6 * std::abs(control_points)};
   EXPECT_LT(coarse, control_points - 100 * tol);

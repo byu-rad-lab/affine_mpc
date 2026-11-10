@@ -335,7 +335,7 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsMode)
     fs::remove_all(test_dir);
     ampc::MPC mpc{
         2, 1, param,
-        ampc::Options{.input_bounds = mode, .refined_bound_interval = 3}};
+        ampc::Options{.input_bounds = mode, .min_refined_intervals = 3}};
     {
       ampc::MPCLogger logger{&mpc, test_dir, 0.1};
       logger.finalize();
@@ -346,7 +346,7 @@ TEST(MPCLoggerOptionsTest, givenInputBoundMode_RecordsMode)
               std::string::npos)
         << params;
     EXPECT_EQ(params.find("opt_saturate_input_trajectory"), std::string::npos);
-    EXPECT_NE(params.find("opt_refined_bound_interval: 3\n"), std::string::npos)
+    EXPECT_NE(params.find("opt_min_refined_intervals: 3\n"), std::string::npos)
         << params;
   }
   fs::remove_all(test_dir);

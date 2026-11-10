@@ -104,7 +104,7 @@ QPBuilder::QPBuilder(const Formulation kind,
   else if (opts.input_cost == InputCostMode::Trajectory)
     add<InputTrajectoryCost>(layout, input_param);
   rows_.input_bounds = add<InputBounds>(layout, input_param, opts.input_bounds,
-                                        opts.refined_bound_interval)
+                                        opts.min_refined_intervals)
                            .rows();
   if (opts.slew_initial_input)
     rows_.initial_slew = add<InitialSlew>(layout, input_param).rows();

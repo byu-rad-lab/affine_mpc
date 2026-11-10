@@ -22,7 +22,7 @@ print(std::ostream& os, const Options& opts, bool capitalize_bools)
   os << "Options(input_cost=" << opts.input_cost
      << ", use_input_rate_cost=" << boolStr(opts.use_input_rate_cost)
      << ", input_bounds=" << opts.input_bounds
-     << ", refined_bound_interval=" << opts.refined_bound_interval
+     << ", min_refined_intervals=" << opts.min_refined_intervals
      << ", slew_initial_input=" << boolStr(opts.slew_initial_input)
      << ", slew_bounds=" << opts.slew_bounds
      << ", state_bounds=" << opts.state_bounds << ", bounded_states=[";

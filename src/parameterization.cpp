@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <ostream>
 #include <sstream>
@@ -635,22 +636,25 @@ std::vector<int> Parameterization::inputSaturationSamples() const
   return samples;
 }
 
-void Parameterization::refineKnots(const int max_interval,
+void Parameterization::refineKnots(const int min_intervals,
                                    VectorXd& refined_knots,
                                    VectorXi& R_start,
                                    MatrixXd& R_weights,
                                    std::vector<int>& sampled) const
 {
-  assert(type == Type::BSpline && max_interval > 0);
+  assert(type == Type::BSpline && min_intervals >= 0);
   const int p{degree}, n{num_control_points};
   const VectorXd& t{knots};
 
   // Split every nonempty active knot interval [t_i, t_{i+1}] (i = p, ...,
-  // n-1) into max(2, ceil(length / max_interval)) equal parts, so every
-  // interval is split at least once and none is longer than max_interval.
-  // Lengths within round-off of a multiple of max_interval are not split
-  // further.
-  const double max_length{max_interval * (1.0 + 1e-9)};
+  // n-1) into max(2, ceil(length / max_length)) equal parts, with max_length
+  // the active range [t_p, t_n] divided by min_intervals, so every interval is
+  // split at least once and the active range has at least min_intervals
+  // intervals (min_intervals = 0 splits every interval once). Lengths within
+  // round-off of a multiple of max_length are not split further.
+  const double max_length{min_intervals > 0
+                              ? (t(n) - t(p)) / min_intervals * (1.0 + 1e-9)
+                              : std::numeric_limits<double>::infinity()};
   std::vector<double> tau(t.data(), t.data() + p + 1);
   for (int i{p}; i < n; ++i) {
     const double length{t(i + 1) - t(i)};

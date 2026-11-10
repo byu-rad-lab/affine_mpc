@@ -80,14 +80,16 @@ enum class InputBoundMode
   /// exact. Degree > 1: every sample (T rows per input), which can make OSQP
   /// slower on long horizons.
   Trajectory,
-  /// Bound the control points of the same spline after knot insertion: every
-  /// knot interval of length l is split into max(2, ceil(l / L)) equal parts,
-  /// with L = Options::refined_bound_interval samples, and the refined control
-  /// points that some sample depends on are bounded. By the convex hull
-  /// property of the refined control points, every sampled input stays inside
-  /// the limits, with less of the range lost than with ControlPoints and far
-  /// fewer rows than Trajectory on long horizons (about
-  /// max(T / L, 2 (num_control_points - degree)) + degree rows per input).
+  /// Bound the control points of a refined representation of the same input
+  /// curve: knot insertion splits every knot interval of length l into
+  /// max(2, ceil(K l / (T - 1))) equal parts, with
+  /// K = Options::min_refined_intervals, and the refined control points that
+  /// some sample depends on are bounded. By the convex
+  /// hull property of the refined control points, every sampled input stays
+  /// inside the limits, with less of the range lost than with ControlPoints
+  /// and far fewer rows than Trajectory on long horizons (about
+  /// max(K, 2 (num_control_points - degree)) + degree rows per input,
+  /// independent of T).
   /// If that is not fewer than the rows of Trajectory (T per input), the rows
   /// of Trajectory are used instead. Degree 0: the same as ControlPoints;
   /// degree 1: the same as Trajectory (both are already exact and cheap).
@@ -147,9 +149,11 @@ enum class SlewBoundMode
  * - input_bounds: Bound the control points (ControlPoints, the default), the
  *     sampled inputs (Trajectory), or the control points after knot insertion
  *     (Refined) (see InputBoundMode).
- * - refined_bound_interval: Longest knot interval, in samples, after the knot
- *     insertion of InputBoundMode::Refined, which splits every interval at
- *     least once (positive).
+ * - min_refined_intervals: Minimum number of knot intervals across the horizon
+ *     in the refined representation of InputBoundMode::Refined, which splits
+ *     every interval at least once (non-negative; 0 splits every interval
+ *     once; if this gives at least T constraints per input, Trajectory's
+ *     exact constraints are used instead).
  * - slew_initial_input: Slew-rate constraint on the initial input
  *     (|u0 - u_prev| <= u0_slew).
  * - slew_bounds: Off (the default), or slew-rate bounds
@@ -190,11 +194,14 @@ struct Options
   /// (see InputBoundMode)
   InputBoundMode input_bounds{InputBoundMode::ControlPoints};
 
-  /// Longest knot interval, in samples, after the knot insertion of
-  /// InputBoundMode::Refined, which also splits every interval at least once
-  /// (positive; unused by the other modes). Smaller values bound the sampled
-  /// inputs more tightly with more rows.
-  int refined_bound_interval = 16;
+  /// Minimum number of knot intervals across the horizon in the refined
+  /// representation of InputBoundMode::Refined, which also splits every
+  /// interval at least once (non-negative; 0 splits every interval once;
+  /// unused by the other modes). Doubling it shrinks the gap between the
+  /// refined control points and the input about 4x and about doubles its
+  /// constraints. If this gives at least T constraints per input, the T exact
+  /// constraints of Trajectory are used instead.
+  int min_refined_intervals = 16;
 
   /// Enables slew rate constraint on initial input (i.e. between u0 and u_prev)
   bool slew_initial_input = false;

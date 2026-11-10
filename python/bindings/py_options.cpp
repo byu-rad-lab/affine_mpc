@@ -77,16 +77,17 @@ in rows and accuracy.
              "rows), which is exact. Degree > 1: every sample (T rows per "
              "input), which can make OSQP slower on long horizons.")
       .value("Refined", ampc::InputBoundMode::Refined,
-             "Bound the control points of the same spline after knot "
-             "insertion: every knot interval of length l is split into "
-             "max(2, ceil(l / L)) equal parts, with L = "
-             "Options.refined_bound_interval samples, and the refined control "
+             "Bound the control points of a refined representation of the "
+             "same input curve: knot insertion splits every knot interval of "
+             "length l into max(2, ceil(K l / (T - 1))) equal parts, with K = "
+             "Options.min_refined_intervals, and the refined control "
              "points that some sample depends on are bounded. By the convex "
              "hull property of the refined control points, every sampled "
              "input stays inside the limits, with less of the range lost than "
              "with ControlPoints and far fewer rows than Trajectory on long "
-             "horizons (about max(T / L, 2 (num_control_points - degree)) + "
-             "degree rows per input). If that is not fewer than the rows of "
+             "horizons (about max(K, 2 (num_control_points - degree)) + "
+             "degree rows per input, independent of T). If that is not fewer "
+             "than the rows of "
              "Trajectory (T per input), the rows of Trajectory are used "
              "instead. Degree "
              "0: the same as ControlPoints; degree 1: the same as Trajectory "
@@ -144,9 +145,11 @@ Input constraints (the input limits are always enforced):
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
         default), the sampled inputs (InputBoundMode.Trajectory), or the control
         points after knot insertion (InputBoundMode.Refined).
-    refined_bound_interval: Longest knot interval, in samples, after the knot
-        insertion of InputBoundMode.Refined, which splits every interval at
-        least once (positive, default 16).
+    min_refined_intervals: Minimum number of knot intervals across the horizon
+        in the refined representation of InputBoundMode.Refined, which splits
+        every interval at least once (non-negative, default 16; 0 splits every
+        interval once; if this gives at least T constraints per input,
+        InputBoundMode.Trajectory's exact constraints are used instead).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -169,7 +172,7 @@ General constraints:
   opt.def(py::init([](const ampc::InputCostMode input_cost,
                       const bool use_input_rate_cost,
                       const ampc::InputBoundMode input_bounds,
-                      const int refined_bound_interval,
+                      const int min_refined_intervals,
                       const bool slew_initial_input,
                       const ampc::SlewBoundMode slew_bounds,
                       const ampc::StateBoundMode state_bounds,
@@ -180,7 +183,7 @@ General constraints:
             opts.input_cost = input_cost;
             opts.use_input_rate_cost = use_input_rate_cost;
             opts.input_bounds = input_bounds;
-            opts.refined_bound_interval = refined_bound_interval;
+            opts.min_refined_intervals = min_refined_intervals;
             opts.slew_initial_input = slew_initial_input;
             opts.slew_bounds = slew_bounds;
             opts.state_bounds = state_bounds;
@@ -201,9 +204,11 @@ Args:
     input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
         default), the sampled inputs (InputBoundMode.Trajectory), or the control
         points after knot insertion (InputBoundMode.Refined).
-    refined_bound_interval: Longest knot interval, in samples, after the knot
-        insertion of InputBoundMode.Refined, which splits every interval at
-        least once (positive, default 16).
+    min_refined_intervals: Minimum number of knot intervals across the horizon
+        in the refined representation of InputBoundMode.Refined, which splits
+        every interval at least once (non-negative, default 16; 0 splits every
+        interval once; if this gives at least T constraints per input,
+        InputBoundMode.Trajectory's exact constraints are used instead).
     slew_initial_input: Slew-rate constraint on the initial input
         (|u0 - u_prev| <= u0_slew).
     slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -221,8 +226,8 @@ Args:
           py::kw_only(), py::arg("input_cost") = ampc::InputCostMode::Off,
           py::arg("use_input_rate_cost") = false,
           py::arg("input_bounds") = ampc::InputBoundMode::ControlPoints,
-          py::arg("refined_bound_interval") =
-              ampc::Options{}.refined_bound_interval,
+          py::arg("min_refined_intervals") =
+              ampc::Options{}.min_refined_intervals,
           py::arg("slew_initial_input") = false,
           py::arg("slew_bounds") = ampc::SlewBoundMode::Off,
           py::arg("state_bounds") = ampc::StateBoundMode::Off,
@@ -233,8 +238,8 @@ Args:
   opt.def_readwrite("input_cost", &ampc::Options::input_cost);
   opt.def_readwrite("use_input_rate_cost", &ampc::Options::use_input_rate_cost);
   opt.def_readwrite("input_bounds", &ampc::Options::input_bounds);
-  opt.def_readwrite("refined_bound_interval",
-                    &ampc::Options::refined_bound_interval);
+  opt.def_readwrite("min_refined_intervals",
+                    &ampc::Options::min_refined_intervals);
   opt.def_readwrite("slew_initial_input", &ampc::Options::slew_initial_input);
   opt.def_readwrite("slew_bounds", &ampc::Options::slew_bounds);
   opt.def_readwrite("state_bounds", &ampc::Options::state_bounds);
@@ -273,9 +278,9 @@ Args:
           << opts.input_bounds;
       prev = true;
     }
-    if (opts.refined_bound_interval != ampc::Options{}.refined_bound_interval) {
+    if (opts.min_refined_intervals != ampc::Options{}.min_refined_intervals) {
       oss << (prev ? ", " : "")
-          << "refined_bound_interval=" << opts.refined_bound_interval;
+          << "min_refined_intervals=" << opts.min_refined_intervals;
       prev = true;
     }
     addField(opts.slew_initial_input, "slew_initial_input");

@@ -64,9 +64,9 @@ const Options& validateOptions(const Options& opts,
           "increasing state indices in [0, state_dim).");
     previous = i;
   }
-  if (opts.refined_bound_interval < 1)
+  if (opts.min_refined_intervals < 0)
     throw std::invalid_argument(
-        "[MPC::validateOptions] refined_bound_interval must be positive.");
+        "[MPC::validateOptions] min_refined_intervals must not be negative.");
   if (opts.num_general_constraints < 0 || opts.num_terminal_constraints < 0)
     throw std::invalid_argument(
         "[MPC::validateOptions] num_general_constraints and "

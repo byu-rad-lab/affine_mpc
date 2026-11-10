@@ -29,6 +29,7 @@ Other bases, such as Laguerre functions, can be used through a sampled basis mat
 
 B-splines are continuous in nature, but the MPC input trajectory $\{\bm{u}_k\}_{k=0}^{T-1}$ is discrete.
 We therefore define a spline over the interval $t \in [0, T-1]$ and evaluate it at the integer horizon indices.
+We call the spline evaluated at every $t$ the input curve; the input trajectory samples it at the integer horizon indices.
 The parameterized input trajectory is given by
 
 $$
@@ -263,25 +264,29 @@ The input limits $\bm{u}_{\min} \le \bm{u}_k \le \bm{u}_{\max}$ are always enfor
   For $p \ge 2$, and for $p = 1$ with non-integer knots, the spline does not pass through its control points, so whenever the input changes the bound keeps the sampled inputs away from the limits and part of the input range is unusable.
 - `InputBoundMode::Trajectory` bounds the sampled inputs.
   For $p = 1$ only the samples next to each knot are needed (at most $2\eta - 2$ rows per input), but for $p \ge 2$ every sample is bounded ($T$ rows per input), which can make OSQP slower and less reliable on long horizons.
-- `InputBoundMode::Refined` bounds the control points of the same spline after knot insertion, described below.
+- `InputBoundMode::Refined` bounds the control points of a refined representation of the same input curve, described below.
   It uses much of the range that `ControlPoints` loses, with far fewer rows than `Trajectory`.
 
 ### Refined Bounds
 
-Inserting a knot changes the knot vector and the control points of a B-spline but not the spline itself: the new control points are fixed convex combinations of the old ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
+Inserting knots gives a second representation of the same input curve: a longer knot vector and more control points, which are fixed convex combinations of the original ones (Boehm's knot insertion, or the Oslo algorithm for many knots at once).
+The input curve itself does not change: on each original knot interval it is the same polynomial, now split across several refined knot intervals.
 Per input channel, the refined control points are $\Omega \bm{c}$, where $\Omega$ depends only on the knots and is banded (each refined control point combines at most $p+1$ consecutive control points).
-The refined control points lie closer to the spline and converge to it as the knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined spline.
+They are not decision variables: the QP still optimizes the original control points $\bm{c}$, and $\Omega \bm{c}$ only appears in the bound rows.
+The refined control points lie closer to the input curve and converge to it as the refined knot intervals shrink, so bounding them is tighter than bounding the original control points, while every sampled input still stays inside the limits by the convex hull property of the refined representation.
 
-`Refined` splits every active knot interval into $\max(2, \lceil \ell / L \rceil)$ equal parts, where $\ell$ is its length and $L$ is `refined_bound_interval` (`Options::refined_bound_interval`, default 16), so every interval is split at least once and none is longer than $L$ samples.
-It then bounds the refined control points that some sample depends on, about $\max(T / L, 2(\eta - p)) + p$ rows per input.
-If that is not fewer than the $T$ rows of `Trajectory` (short horizons or a very small $L$), `Refined` uses the `Trajectory` rows instead, which are exact and fewer; this is decided once at construction.
-For example, a quadratic spline with $T = 500$ and $\eta = 10$ uniform control points has knot intervals of about 62 samples, so $L = 16$ splits each into 4 and bounds 34 refined control points per input, against 10 rows for `ControlPoints` and 500 for `Trajectory`.
+`Refined` splits every active knot interval into $\max(2, \lceil K \ell / (T-1) \rceil)$ equal parts, where $\ell$ is its length and $K$ is `min_refined_intervals` (`Options::min_refined_intervals`, default 16), so every interval is split at least once and the horizon has at least $K$ refined intervals.
+It then bounds the refined control points that some sample depends on, about $\max(K, 2(\eta - p)) + p$ rows per input, independent of $T$.
+$K = 0$ splits every interval exactly once, about $2(\eta - p) + p$ rows per input.
+If the refined rows are not fewer than the $T$ rows of `Trajectory` (short horizons or a large $K$), `Refined` uses the `Trajectory` rows instead, which are exact and fewer; this is decided once at construction.
+For example, a quadratic spline with $T = 500$ and $\eta = 6$ uniform control points has 4 knot intervals, so $K = 16$ splits each into 4 and bounds 18 refined control points per input, against 6 rows for `ControlPoints` and 500 for `Trajectory`.
 $\Omega$ is computed once at construction, so the refined rows add no work to updates or solves beyond their number.
 
-A smaller $L$ bounds the sampled inputs more tightly with more rows.
-Very small values approach the row count of `Trajectory` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Trajectory`.
-Because every interval is split at least once, `Refined` is tighter than `ControlPoints` even on short horizons whose knot intervals are all at most $L$ samples long.
-The bound holds for the continuous spline, not only at the samples, so it stays slightly conservative compared with `Trajectory`.
+The gap between the refined control points and the input shrinks about four times each time the refined intervals are halved, so a larger $K$ bounds the sampled inputs more tightly with more rows.
+The gap matters most when the inputs stay at their limits much of the time; a larger $K$, such as 32, then recovers more of the range, while for inputs that reach their limits only briefly, splitting every interval once ($K = 0$) is usually as good.
+Very large values approach the row count of `Trajectory` (and fall back to its rows), and many nearly parallel rows can make OSQP need many more iterations, as with `Trajectory`.
+Because every interval is split at least once, `Refined` is tighter than `ControlPoints` for every $K$.
+The bound holds for the continuous input, not only at the samples, so it stays slightly conservative compared with `Trajectory`, most on short horizons with few samples per knot interval.
 
 Degrees 0 and 1 already have exact bounds with few rows, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Trajectory` (the samples next to each knot).
 A [custom basis](#custom-bases) always bounds the sampled inputs, whatever the mode (omitting samples where the basis has decayed).

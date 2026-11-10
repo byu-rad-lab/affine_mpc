@@ -104,9 +104,11 @@ class Options:
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
             default), the sampled inputs (InputBoundMode.Trajectory), or the control
             points after knot insertion (InputBoundMode.Refined).
-        refined_bound_interval: Longest knot interval, in samples, after the knot
-            insertion of InputBoundMode.Refined, which splits every interval at
-            least once (positive, default 16).
+        min_refined_intervals: Minimum number of knot intervals across the horizon
+            in the refined representation of InputBoundMode.Refined, which splits
+            every interval at least once (non-negative, default 16; 0 splits every
+            interval once; if this gives at least T constraints per input,
+            InputBoundMode.Trajectory's exact constraints are used instead).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -139,7 +141,7 @@ class Options:
         input_cost: InputCostMode = InputCostMode.Off,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
-        refined_bound_interval: int = 16,
+        min_refined_intervals: int = 16,
         slew_initial_input: bool = False,
         slew_bounds: SlewBoundMode = SlewBoundMode.Off,
         state_bounds: StateBoundMode = StateBoundMode.Off,
@@ -159,9 +161,11 @@ class Options:
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
                 default), the sampled inputs (InputBoundMode.Trajectory), or the control
                 points after knot insertion (InputBoundMode.Refined).
-            refined_bound_interval: Longest knot interval, in samples, after the knot
-                insertion of InputBoundMode.Refined, which splits every interval at
-                least once (positive, default 16).
+            min_refined_intervals: Minimum number of knot intervals across the horizon
+                in the refined representation of InputBoundMode.Refined, which splits
+                every interval at least once (non-negative, default 16; 0 splits every
+                interval once; if this gives at least T constraints per input,
+                InputBoundMode.Trajectory's exact constraints are used instead).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -184,6 +188,10 @@ class Options:
     @bounded_states.setter
     def bounded_states(self, arg0: collections.abc.Sequence[int]) -> None: ...
     @property
+    def min_refined_intervals(self) -> int: ...
+    @min_refined_intervals.setter
+    def min_refined_intervals(self, arg0: int) -> None: ...
+    @property
     def num_general_constraints(self) -> int: ...
     @num_general_constraints.setter
     def num_general_constraints(self, arg0: int) -> None: ...
@@ -191,10 +199,6 @@ class Options:
     def num_terminal_constraints(self) -> int: ...
     @num_terminal_constraints.setter
     def num_terminal_constraints(self, arg0: int) -> None: ...
-    @property
-    def refined_bound_interval(self) -> int: ...
-    @refined_bound_interval.setter
-    def refined_bound_interval(self, arg0: int) -> None: ...
 
 class ModelSparsity(enum.Enum):
     """
