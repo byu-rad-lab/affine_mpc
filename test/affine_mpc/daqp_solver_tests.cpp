@@ -334,7 +334,18 @@ TEST(DAQPSolverTester,
   ASSERT_TRUE(mpc.initializeSolver(std::make_unique<ampc::DAQPSolver>()));
   EXPECT_EQ(mpc.solve(Vector2d{0.0, 2.0}), ampc::SolveStatus::PrimalInfeasible);
   EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::PrimalInfeasible);
+  EXPECT_TRUE(std::isnan(mpc.getSolveInfo().objective));
+  VectorXd u_traj(10), y(mpc.getNumQPConstraints());
+  mpc.getInputTrajectory(u_traj);
+  ASSERT_TRUE(mpc.getDualSolution(y));
+  EXPECT_TRUE(u_traj.array().isNaN().all());
+  EXPECT_TRUE(y.array().isNaN().all());
+
   EXPECT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  mpc.getInputTrajectory(u_traj);
+  ASSERT_TRUE(mpc.getDualSolution(y));
+  EXPECT_TRUE(u_traj.allFinite());
+  EXPECT_TRUE(y.allFinite());
 }
 
 TEST(DAQPSolverTester, givenIterationLimit_ReportsMaxIterReached)

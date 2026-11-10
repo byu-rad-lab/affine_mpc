@@ -484,10 +484,12 @@ is in the main runtime loop. Common cases include:
 
 How to respond to a failed solve depends on the application.
 For example, you could reuse the previously applied input or have a fallback control law like LQR.
-After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return the solver's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
+Check the returned status: after `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver has no solution, and the result getters such as `getNextInput()` return NaN.
+After `MaxIterReached` or `TimeLimitReached` they return the solver's last iterate, which is not a solution and may violate the constraints, and after `UpdateFailed` they still return the previous solution.
+To fall back on the previous plan instead, copy the results you need after each successful solve.
 The previous input used by `slew_initial_input` and `use_input_rate_cost` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
-The failed solve's iterates may also have diverged, which would slow down the next solve since the solver warm starts from them,
-so call `resetWarmStart()` to start the next solve from zero.
+An iterate that stopped early may also be far from the solution, which would slow down the next solve since the solver warm starts from it,
+so call `resetWarmStart()` to start the next solve from zero (after a solve without a solution, OSQP already does).
 
 `MaxIterReached` is a partial exception.
 With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.

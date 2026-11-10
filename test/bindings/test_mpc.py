@@ -386,8 +386,11 @@ def test_partial_and_soft_state_bounds(formulation):
     np.testing.assert_array_equal(soft.getStateBoundL2Penalties(), [100.0])
 
     # starting past the limit: infeasible when hard, solvable when soft
-    _, status = build(opts, np.array([0.9, 0.0]))
+    infeasible, status = build(opts, np.array([0.9, 0.0]))
     assert status == ampc.SolveStatus.PrimalInfeasible
+    assert np.isnan(infeasible.getNextInput()).all()
+    assert np.isnan(infeasible.getPredictedStateTrajectory()).all()
+    assert np.isnan(infeasible.getSolveInfo().objective)
     _, status = build(soft_opts, np.array([0.9, 0.0]))
     assert status == ampc.SolveStatus.Success
 

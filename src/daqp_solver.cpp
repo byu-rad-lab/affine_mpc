@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -300,10 +301,17 @@ SolveStatus DAQPSolver::solve()
       d.result.exitflag = flag;
       d.result.iter = 0;
       d.result.solve_time = 0.0;
+      d.x.setConstant(std::numeric_limits<double>::quiet_NaN());
       return daqpExitFlagToSolveStatus(flag);
     }
   }
   daqp_solve(&d.result, &d.work);
+  const SolveStatus status{daqpExitFlagToSolveStatus(d.result.exitflag)};
+  if (!detail::hasSolution(status)) {
+    // DAQP leaves a partial iterate or the previous solution
+    d.x.setConstant(std::numeric_limits<double>::quiet_NaN());
+    return status;
+  }
   if (d.work.n_prox > 0) {
     // DAQP's objective of the proximal iterations is approximate
     const Eigen::Map<const Eigen::MatrixXd> P{d.problem.H, d.num_vars,
@@ -312,7 +320,7 @@ SolveStatus DAQPSolver::solve()
     d.Px.noalias() = P * d.x;
     d.result.fval = 0.5 * d.x.dot(d.Px) + q.dot(d.x);
   }
-  return daqpExitFlagToSolveStatus(d.result.exitflag);
+  return status;
 }
 
 const Eigen::Map<const Eigen::VectorXd>
@@ -329,6 +337,10 @@ bool DAQPSolver::getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const
   if (!d.initialized)
     return false;
   assert(y.size() == d.num_rows);
+  if (!detail::hasSolution(daqpExitFlagToSolveStatus(d.result.exitflag))) {
+    y.setConstant(std::numeric_limits<double>::quiet_NaN());
+    return true;
+  }
   // DAQP has one multiplier per variable bound, which intersects the simple
   // rows of that variable, so it belongs to the row that sets the active
   // bound, divided by that row's coefficient; the other simple rows get zero
@@ -353,9 +365,12 @@ SolveInfo DAQPSolver::getSolveInfo() const noexcept
   if (!d.initialized)
     return SolveInfo{};
   // mpc_solve_time and prepare_time are only known to MPC
-  return SolveInfo{daqpExitFlagToSolveStatus(d.result.exitflag),
+  const SolveStatus status{daqpExitFlagToSolveStatus(d.result.exitflag)};
+  return SolveInfo{status,
                    d.result.iter,
-                   d.result.fval,
+                   detail::hasSolution(status)
+                       ? d.result.fval
+                       : std::numeric_limits<double>::quiet_NaN(),
                    d.result.solve_time,
                    0.0,
                    0.0};

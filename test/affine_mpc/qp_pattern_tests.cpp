@@ -666,7 +666,10 @@ template <ampc::Formulation F> void checkAssemble(unsigned seed)
   VectorXd ctrl_a{c.m * c.param.num_control_points}, ctrl_b{ctrl_a.size()};
   a.getInputControlPoints(ctrl_a);
   b.getInputControlPoints(ctrl_b);
-  EXPECT_TRUE(expectEigenNear(ctrl_a, ctrl_b, 0.0));
+  if (ampc::detail::hasSolution(status_a))
+    EXPECT_TRUE(expectEigenNear(ctrl_a, ctrl_b, 0.0));
+  else // NaN
+    EXPECT_TRUE(ctrl_a.array().isNaN().all() && ctrl_b.array().isNaN().all());
   // a failed update stops solve() before it writes x0, so each QP keeps the x0
   // parts last written (a's from assembleQP(), b's from initializeSolver())
   if (status_a != ampc::SolveStatus::UpdateFailed) {

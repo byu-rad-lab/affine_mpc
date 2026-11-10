@@ -14,7 +14,11 @@ void moduleAddSolveStatus(py::module& m)
 {
   py::native_enum<ampc::SolveStatus>(
       m, "SolveStatus", "enum.Enum",
-      "Enum for reporting the status of an MPC solve.")
+      "Enum for reporting the status of an MPC solve.\n\n"
+      "After PrimalInfeasible, DualInfeasible, or OtherFailure the solver has "
+      "no solution, and the solution getters of MPC return NaN. After "
+      "MaxIterReached or TimeLimitReached they return the solver's last "
+      "iterate, which is finite but may violate the constraints.")
       .value("Success", ampc::SolveStatus::Success, "MPC solved successfully")
       .value("NotInitialized", ampc::SolveStatus::NotInitialized,
              "MPC solver not initialized - must call initializeSolver() first")
@@ -57,7 +61,8 @@ done in MPC.prepare() is reported separately in prepare_time.
       .def_readonly("objective", &ampc::SolveInfo::objective,
                     "QP objective value 1/2 z^T P z + q^T z at the solution. "
                     "Omits constant terms of the MPC cost, so it is not the "
-                    "full MPC cost.")
+                    "full MPC cost. NaN when the solve has no solution (see "
+                    "SolveStatus).")
       .def_readonly("qp_solve_time", &ampc::SolveInfo::qp_solve_time,
                     "Time the QP solver spent solving, including polishing "
                     "(seconds). Zero when OSQP is built without profiling.")

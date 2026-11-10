@@ -116,7 +116,8 @@ public:
    *
    *   The memory it views is fixed by initialize() and owned by the solver,
    *   so the view stays valid (and reflects later solves) while the solver
-   *   exists. Empty before initialization.
+   *   exists. Empty before initialization. NaN after a solve without a
+   *   solution (see detail::hasSolution()).
    */
   virtual const Eigen::Map<const Eigen::VectorXd>
   getSolutionMap() const noexcept = 0;
@@ -125,7 +126,7 @@ public:
    * @brief Write the dual solution of the last solve() into y: one value per
    *   row of A, with P z + q + A^T y = 0 at a solution (positive when a row
    *   is at its upper bound, negative at its lower bound, zero when
-   *   inactive).
+   *   inactive), NaN after a solve without a solution.
    * @param y Output of size equal to the number of rows of A.
    * @return False, leaving y unchanged, if the solver does not provide a dual
    *   solution (the default) or is not initialized.

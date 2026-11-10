@@ -937,6 +937,81 @@ TEST(ConsistencyTester, givenFailedSolve_PreviousInputIsNotUpdated)
   check_infeasible(sparse_infeasible);
 }
 
+// OSQP fills a solve without a solution with OSQP_NAN, which OSQP 1.0 defines
+// as the finite 2143289344.0
+TEST(ConsistencyTester, givenSolveWithoutSolution_GettersReturnNaN)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{.slew_initial_input = true};
+  auto all_nan = [](const MatrixXd& v) { return v.array().isNaN().all(); };
+
+  auto check = [&](ampc::MPC& mpc) {
+    configureMsd(mpc, opts);
+    mpc.setSlewRateInitial(VectorXd::Constant(m, 0.5));
+    ASSERT_TRUE(mpc.initializeSolver());
+    const Vector2d x0{0.5, -0.2};
+
+    // u_0 must be in [2, 3] and within 0.5 of u_prev = 0.2
+    mpc.setPreviousInput(VectorXd::Constant(m, 0.2));
+    mpc.setInputLimits(VectorXd::Constant(m, 2.0), VectorXd::Constant(m, 3.0));
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::PrimalInfeasible);
+    VectorXd u0{m}, cp{m * nc}, u_traj{m * T}, x_traj{n * T},
+        y{mpc.getNumQPConstraints()};
+    mpc.getNextInput(u0);
+    mpc.getInputControlPoints(cp);
+    mpc.getInputTrajectory(u_traj);
+    mpc.getPredictedStateTrajectory(x_traj);
+    ASSERT_TRUE(mpc.getDualSolution(y));
+    EXPECT_TRUE(all_nan(u0));
+    EXPECT_TRUE(all_nan(cp));
+    EXPECT_TRUE(all_nan(u_traj));
+    EXPECT_TRUE(all_nan(x_traj));
+    EXPECT_TRUE(all_nan(y));
+    EXPECT_TRUE(std::isnan(mpc.getSolveInfo().objective));
+
+    // the next solve recovers without resetWarmStart()
+    mpc.setInputLimits(VectorXd::Constant(m, 0.0), VectorXd::Constant(m, 3.0));
+    ASSERT_EQ(mpc.solve(x0), ampc::SolveStatus::Success);
+    mpc.getNextInput(u0);
+    ASSERT_TRUE(mpc.getDualSolution(y));
+    EXPECT_TRUE(u0.allFinite());
+    EXPECT_TRUE(y.allFinite());
+    EXPECT_TRUE(std::isfinite(mpc.getSolveInfo().objective));
+  };
+
+  ampc::MPC condensed{n, m, param, opts};
+  check(condensed);
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
+  check(sparse);
+}
+
+TEST(ConsistencyTester, givenIterationLimit_GettersReturnFiniteIterate)
+{
+  const int n{2}, m{1}, T{10}, nc{5};
+  const auto param{ampc::Parameterization::linearInterp(T, nc)};
+  const ampc::Options opts{};
+
+  auto check = [&](ampc::MPC& mpc) {
+    configureMsd(mpc, opts);
+    auto settings{ampc::OSQPSolver::getRecommendedSettings(true)};
+    settings.max_iter = 1;
+    ASSERT_TRUE(mpc.initializeSolver(settings));
+    ASSERT_EQ(mpc.solve(Vector2d{0.5, -0.2}),
+              ampc::SolveStatus::MaxIterReached);
+    VectorXd u0{m}, y{mpc.getNumQPConstraints()};
+    mpc.getNextInput(u0);
+    ASSERT_TRUE(mpc.getDualSolution(y));
+    EXPECT_TRUE(u0.allFinite());
+    EXPECT_TRUE(y.allFinite());
+  };
+
+  ampc::MPC condensed{n, m, param, opts};
+  check(condensed);
+  ampc::MPC sparse{n, m, param, opts, ampc::Formulation::Sparse};
+  check(sparse);
+}
+
 TEST(ConsistencyTester, askedForQPCostMatrix_ReflectsLastSolve)
 {
   const int n{2}, m{1}, T{10}, nc{5};

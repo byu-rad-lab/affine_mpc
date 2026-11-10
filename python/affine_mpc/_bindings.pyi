@@ -945,6 +945,8 @@ class DAQPSettings:
 class SolveStatus(enum.Enum):
     """
     Enum for reporting the status of an MPC solve.
+
+    After PrimalInfeasible, DualInfeasible, or OtherFailure the solver has no solution, and the solution getters of MPC return NaN. After MaxIterReached or TimeLimitReached they return the solver's last iterate, which is finite but may violate the constraints.
     """
 
     DualInfeasible: typing.ClassVar[SolveStatus]
@@ -987,7 +989,7 @@ class SolveInfo:
     @property
     def objective(self) -> float:
         """
-        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
+        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost. NaN when the solve has no solution (see SolveStatus).
         """
 
     @property
@@ -1229,8 +1231,8 @@ class MPC:
         positive when row i is at its upper bound, negative at its lower bound, and
         zero when inactive. They are the multipliers of the QP's cost, which is half
         the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
-        closely they satisfy the equation above. After a failed solve they are the
-        solver's last iterate, like the primal solution.
+        closely they satisfy the equation above. After a failed solve they are NaN or
+        the solver's last iterate, like the primal solution (see solve()).
 
         Args:
             y: Result will be stored here (equivalent to return value), of size
@@ -1257,8 +1259,8 @@ class MPC:
         positive when row i is at its upper bound, negative at its lower bound, and
         zero when inactive. They are the multipliers of the QP's cost, which is half
         the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
-        closely they satisfy the equation above. After a failed solve they are the
-        solver's last iterate, like the primal solution.
+        closely they satisfy the equation above. After a failed solve they are NaN or
+        the solver's last iterate, like the primal solution (see solve()).
 
         Returns:
             y: The dual solution, of size getNumQPConstraints().
@@ -1895,8 +1897,10 @@ class MPC:
         Make the next solve() start from zero instead of warm starting from the previous
         solution (an OSQP cold start).
 
-        Useful after a failed solve, whose iterates may have diverged and would slow
-        down or prevent convergence of the next solve. Does not change the problem data,
+        Useful after a solve that stopped early (`MaxIterReached` or
+        `TimeLimitReached`), whose iterate may be far from the solution and would slow
+        down the next solve. After a solve without a solution (`PrimalInfeasible`,
+        `DualInfeasible`), OSQP already starts the next solve from zero. Does not change the problem data,
         the previous input used by `slew_initial_input`, or the results returned by the
         solution getters. No-op before initializeSolver().
         """
@@ -2466,9 +2470,14 @@ class MPC:
                 non-finite model or weight values), so the QP was not solved and the
                 getters still return the previous solution. The update is retried at
                 the next solve, which usually recovers once the values are valid again
-                (infinite weights can leave OSQP unable to recover). Verify your
-                problem setup and consult the solver's documentation for any other
-                value.
+                (infinite weights can leave OSQP unable to recover). After
+                `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver has
+                no solution, and the solution getters (getNextInput(),
+                getInputControlPoints(), getInputTrajectory(),
+                getPredictedStateTrajectory(), and getDualSolution()) return NaN.
+                After `MaxIterReached` or `TimeLimitReached` they return the solver's
+                last iterate, which may violate the constraints. Verify your problem
+                setup and consult the solver's documentation for any other value.
 
         The GIL is released while solving, so other Python threads can run (e.g.
         solving several independent MPC objects in parallel threads). Do not modify x0
