@@ -63,18 +63,19 @@ hull property), but for degree > 1, or degree 1 with non-integer knots, it can
 keep the samples away from the limits, so the inputs do not use the full range.
 A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
 inputs are always bounded, whatever the mode. Refined bounds lie between the two
-in rows and accuracy.
+in number of constraints and accuracy.
 )doc")
       .value("ControlPoints", ampc::InputBoundMode::ControlPoints,
-             "Bound the control points (the default): one row per control "
-             "point, and the sampled inputs stay inside the limits.")
+             "Bound the control points (the default): one constraint per "
+             "control point, and the sampled inputs stay inside the limits.")
       .value("Trajectory", ampc::InputBoundMode::Trajectory,
              "Bound the sampled inputs u_k (the input trajectory) exactly, "
              "which lets the control points leave the limits. Degree 0: the "
              "same as ControlPoints (the "
              "control points are the sampled inputs). Degree 1: only the "
              "samples adjacent to each knot (at most 2*num_control_points-2 "
-             "rows), which is exact. Degree > 1: every sample (T rows per "
+             "constraints), which is exact. Degree > 1: every sample (T "
+             "constraints per "
              "input), which can make OSQP slower on long horizons.")
       .value("Refined", ampc::InputBoundMode::Refined,
              "Bound the control points of a refined representation of the "
@@ -84,11 +85,11 @@ in rows and accuracy.
              "points that some sample depends on are bounded. By the convex "
              "hull property of the refined control points, every sampled "
              "input stays inside the limits, with less of the range lost than "
-             "with ControlPoints and far fewer rows than Trajectory on long "
-             "horizons (about max(K, 2 (num_control_points - degree)) + "
-             "degree rows per input, independent of T). If that is not fewer "
-             "than the rows of "
-             "Trajectory (T per input), the rows of Trajectory are used "
+             "with ControlPoints and far fewer constraints than Trajectory on "
+             "long horizons (about max(K, 2 (num_control_points - degree)) + "
+             "degree constraints per input, independent of T). If that is not "
+             "fewer than the constraints of Trajectory (T per input), the "
+             "constraints of Trajectory are used "
              "instead. Degree "
              "0: the same as ControlPoints; degree 1: the same as Trajectory "
              "(both "
@@ -109,7 +110,8 @@ The change from the previous input, u_0 - u_prev, has its own limit
              "No slew-rate bounds (the default).")
       .value("ControlPoints", ampc::SlewBoundMode::ControlPoints,
              "Bound the differences of consecutive control points, "
-             "c_i - c_{i-1}, one row per difference, with the limit scaled by "
+             "c_i - c_{i-1}, one constraint per difference, with the limit "
+             "scaled by "
              "the knots: a degree-p B-spline changes by at most du_max per "
              "sample if |c_i - c_{i-1}| <= (t_{i+p} - t_i) du_max / p (knots "
              "in samples), or |c_i - c_{i-1}| <= du_max for degree 0. Exact "
@@ -121,8 +123,9 @@ The change from the previous input, u_0 - u_prev, has its own limit
       .value("Trajectory", ampc::SlewBoundMode::Trajectory,
              "Bound the changes u_k - u_{k-1} of the input trajectory exactly. "
              "Degree 0, and "
-             "degree 1 when ControlPoints is exact: the rows of ControlPoints. "
-             "Otherwise one row per sampled change (T-1 rows per input; "
+             "degree 1 when ControlPoints is exact: the constraints of "
+             "ControlPoints. Otherwise one constraint per sampled change (T-1 "
+             "per input; "
              "banded for B-splines, dense for a custom basis), omitting "
              "changes whose basis row has a norm of at most 1e-9 times the "
              "largest. The only mode for a custom basis.")

@@ -966,10 +966,11 @@ every step k = 0, ..., T-1.
 This function can only be called if `num_general_constraints` is positive.
 Must be called prior to `initializeSolver()`, but can also be called after if
 the constraints change between solves. x_0 is the measured state passed to
-solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
-(a zero row of Hu) only checks x_0 at k = 0, and the problem is infeasible if x_0
-violates it. The predicted states x_1, ..., x_{T-1} are paired with the inputs
-u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
+solve(), so the k = 0 constraints act on u_0 given x_0; a constraint without an
+input part (a zero row of Hu) only checks x_0 at k = 0, and the problem is
+infeasible if x_0 violates it. The predicted states x_1, ..., x_{T-1} are paired
+with the inputs u_1, ..., u_{T-1}; constrain the final state x_T with
+setTerminalConstraints().
 Pass `-inf` or `inf` for a side without a bound.
 
 Changing Hx or Hu rebuilds QP matrices and makes the solver refactor (like a

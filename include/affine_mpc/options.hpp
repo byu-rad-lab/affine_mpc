@@ -66,19 +66,19 @@ enum class StateBoundMode
  * knots, it can keep the samples away from the limits, so the inputs do not
  * use the full range. A custom basis (Parameterization::fromBasis()) has no
  * such property, so its sampled inputs are always bounded, whatever the mode.
- * Refined bounds lie between the two in rows and accuracy.
+ * Refined bounds lie between the two in number of constraints and accuracy.
  */
 enum class InputBoundMode
 {
-  /// Bound the control points (the default): one row per control point, and
-  /// the sampled inputs stay inside the limits.
+  /// Bound the control points (the default): one constraint per control point,
+  /// and the sampled inputs stay inside the limits.
   ControlPoints,
   /// Bound the sampled inputs u_k (the input trajectory) exactly, which lets
   /// the control points leave the limits. Degree 0: the same as ControlPoints
   /// (the control points are the sampled inputs). Degree 1: only the samples
-  /// adjacent to each knot (at most 2*num_control_points-2 rows), which is
-  /// exact. Degree > 1: every sample (T rows per input), which can make OSQP
-  /// slower on long horizons.
+  /// adjacent to each knot (at most 2*num_control_points-2 constraints), which
+  /// is exact. Degree > 1: every sample (T constraints per input), which can
+  /// make OSQP slower on long horizons.
   Trajectory,
   /// Bound the control points of a refined representation of the same input
   /// curve: knot insertion splits every knot interval of length l into
@@ -87,12 +87,13 @@ enum class InputBoundMode
   /// some sample depends on are bounded. By the convex
   /// hull property of the refined control points, every sampled input stays
   /// inside the limits, with less of the range lost than with ControlPoints
-  /// and far fewer rows than Trajectory on long horizons (about
-  /// max(K, 2 (num_control_points - degree)) + degree rows per input,
+  /// and far fewer constraints than Trajectory on long horizons (about
+  /// max(K, 2 (num_control_points - degree)) + degree constraints per input,
   /// independent of T).
-  /// If that is not fewer than the rows of Trajectory (T per input), the rows
-  /// of Trajectory are used instead. Degree 0: the same as ControlPoints;
-  /// degree 1: the same as Trajectory (both are already exact and cheap).
+  /// If that is not fewer than the constraints of Trajectory (T per input),
+  /// the constraints of Trajectory are used instead. Degree 0: the same as
+  /// ControlPoints; degree 1: the same as Trajectory (both are already exact
+  /// and cheap).
   Refined,
 };
 
@@ -111,7 +112,7 @@ enum class SlewBoundMode
   /// No slew-rate bounds (the default).
   Off,
   /// Bound the differences of consecutive control points, c_i - c_{i-1}, one
-  /// row per difference, with the limit scaled by the knots: a degree-p
+  /// constraint per difference, with the limit scaled by the knots: a degree-p
   /// B-spline changes by at most du_max per sample if
   /// |c_i - c_{i-1}| <= (t_{i+p} - t_i) du_max / p (knots in samples), or
   /// |c_i - c_{i-1}| <= du_max for degree 0. Exact for degree 0, and for
@@ -121,11 +122,11 @@ enum class SlewBoundMode
   /// Requires a B-spline parameterization.
   ControlPoints,
   /// Bound the changes u_k - u_{k-1} of the input trajectory exactly. Degree 0,
-  /// and degree 1 when ControlPoints is exact: the rows of ControlPoints.
-  /// Otherwise one row per sampled change (T-1 rows per input; banded for
-  /// B-splines, dense for a custom basis), omitting changes whose basis row has
-  /// a norm of at most 1e-9 times the largest. The only mode for a custom
-  /// basis.
+  /// and degree 1 when ControlPoints is exact: the constraints of
+  /// ControlPoints. Otherwise one constraint per sampled change (T-1 per
+  /// input; banded for B-splines, dense for a custom basis), omitting changes
+  /// whose basis row has a norm of at most 1e-9 times the largest. The only
+  /// mode for a custom basis.
   Trajectory,
 };
 
@@ -198,7 +199,7 @@ struct Options
   /// representation of InputBoundMode::Refined, which also splits every
   /// interval at least once (non-negative; 0 splits every interval once;
   /// unused by the other modes). Doubling it shrinks the gap between the
-  /// refined control points and the input about 4x and about doubles its
+  /// refined control points and the input curve about 4x and about doubles its
   /// constraints. If this gives at least T constraints per input, the T exact
   /// constraints of Trajectory are used instead.
   int min_refined_intervals = 16;
@@ -219,8 +220,8 @@ struct Options
 
   /// Indices of the states that have limits (requires state_bounds other than
   /// Off; strictly increasing, in [0, state_dim)). Empty bounds every state.
-  /// Each bounded state adds a row per horizon step, so bounding only the
-  /// states that need it keeps the QP small.
+  /// Each bounded state adds a constraint per horizon step, so bounding only
+  /// the states that need it keeps the QP small.
   std::vector<int> bounded_states{};
 
   /// @}
@@ -229,7 +230,7 @@ struct Options
 
   /// Number of general linear constraints h_min <= Hx x_k + Hu u_k <= h_max per
   /// step (k = 0, ..., T-1, set with setGeneralConstraints()). Zero disables
-  /// them; each one adds a row per horizon step.
+  /// them; each one adds a constraint per horizon step.
   int num_general_constraints = 0;
 
   /// Number of terminal constraints hf_min <= Hf x_T <= hf_max (set with

@@ -266,7 +266,7 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
 
 To limit only some states, list them in the options, e.g. `bounded_states=[3, 4]` in Python or `opts.bounded_states = {3, 4};` in C++ (see [State Saturation](concepts/problem-formulation.md#state-saturation-constraint)).
 
-For linear constraints on combinations of states and inputs, set the number of rows in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
+For linear constraints on combinations of states and inputs, set the number of constraints in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
 
 #### Set weights
 
@@ -641,9 +641,9 @@ See [Logging](logging.md) for output format and workflow details.
 ### 9. (Optional) Inspect the QP
 
 `getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
-`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and constraint rows are which.
 These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
-`getDualSolution()` gives the multipliers of the rows from the last solve; it only fills the vector you pass in C++.
+`getDualSolution()` gives the multipliers of the constraint rows from the last solve; it only fills the vector you pass in C++.
 See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
 
 ## Interface Notes

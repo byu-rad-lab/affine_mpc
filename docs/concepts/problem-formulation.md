@@ -113,6 +113,7 @@ This happens for any degree higher than 1, and for degree 1 when an active knot 
 Saturating the control points (left) versus every sample (right) of a cubic spline.
 Only the samples are constrained, so the continuous spline may cross a limit between samples.
 
+Each constraint bounds one quantity from both sides (a lower and an upper limit), so it is one row of the QP's constraint matrix.
 How many constraints are added depends on the degree $p$:
 
 - $p = 0$: `Trajectory` is the same as `ControlPoints`, since the control points are the evaluated inputs.
@@ -122,8 +123,8 @@ How many constraints are added depends on the degree $p$:
 - $p > 1$: every sample $k = 0, \dots, T-1$ is constrained.
 - A [custom basis](input-parameterization.md#custom-bases) always constrains every sample, whatever `input_bounds` is.
 
-With $p > 1$, `Trajectory` adds a row for every sample, so it can make OSQP slower on long horizons.
-`Refined` adds about $\max(K, 2(\eta - p)) + p$ rows per input instead, where $K$ is `min_refined_intervals`, the minimum number of knot intervals across the horizon in the refined representation, and it uses the `Trajectory` rows whenever those are not more; for $p \le 1$ it is the same as `Trajectory`, and a custom basis constrains every sample.
+With $p > 1$, `Trajectory` adds a constraint for every sample, so it can make OSQP slower on long horizons.
+`Refined` adds about $\max(K, 2(\eta - p)) + p$ constraints per input instead, where $K$ is `min_refined_intervals`, the minimum number of knot intervals across the horizon in the refined representation, and it uses the `Trajectory` constraints whenever those are not more; for $p \le 1$ it is the same as `Trajectory`, and a custom basis constrains every sample.
 See [Input Bounds](input-parameterization.md#input-bounds) for how the refined control points are built and how to choose $K$.
 
 ![Degree 1 spline with active knots at 0, 2.5, 6.5, and 12 and input limits [0, 1]. Saturating the control points keeps the samples next to the non-integer knots off the limits, while saturating only the knot-adjacent samples lets the control points leave the limits so the samples reach them.](../assets/input-parameterization/degree1-saturation.svg)
@@ -153,7 +154,7 @@ Set the limits with `setStateLimits(x_min, x_max)`.
 
 Often only a few states need limits (e.g. roll and pitch of a quadrotor with 12 states).
 List them in `bounded_states`; the limits then have one entry per listed state.
-Every bounded state adds one constraint row per horizon step, and with the condensed formulation each row is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state bounds at all).
+Every bounded state adds one constraint per horizon step, and with the condensed formulation each is dense, so bounding only the states that need it keeps the QP much smaller (in one 12-state example, bounding 2 states through infinite limits on the other 10 made the condensed solves 12 to 14 times slower than no state bounds at all).
 
 #### Hard
 
@@ -212,7 +213,7 @@ The change from the previous input, $\bm{u}_0 - \bm{u}_{-1}$, has its own limit 
 `slew_bounds` chooses whether and how the limit is enforced: `SlewBoundMode::Off` (the default), `ControlPoints`, or `Trajectory` (`SlewBoundMode.ControlPoints` and so on in Python).
 The limit means the same in both modes, as the input limits do with `input_bounds`.
 
-- `ControlPoints` bounds the differences of consecutive control points, one row per difference, as
+- `ControlPoints` bounds the differences of consecutive control points, one constraint per difference, as
 
     $$
     |\bm{c}_i - \bm{c}_{i-1}| \leq \lambda_i \bm{u}_{\mathrm{slew}} \quad i=1,\dots,\eta-1,
@@ -227,10 +228,10 @@ The limit means the same in both modes, as the input limits do with `input_bound
     Where $p + 1$ knots coincide (a jump, e.g. a double knot for $p = 1$), $\lambda_i = 0$, which forbids the jump; fewer repeated knots (a kink for $p \geq 2$) keep $\lambda_i > 0$.
     It requires a B-spline parameterization: with a [custom basis](input-parameterization.md#custom-bases), differences of the coefficients do not bound input changes, so the MPC rejects it at construction.
 
-- `Trajectory` bounds every sampled change $\bm{u}_k - \bm{u}_{k-1}$, $T-1$ rows per input, banded for B-splines and dense for a custom basis.
-  Where the `ControlPoints` rows are already exact ($p = 0$, and $p = 1$ with a whole sample step in every knot interval), it uses them instead.
+- `Trajectory` bounds every sampled change $\bm{u}_k - \bm{u}_{k-1}$, $T-1$ constraints per input, banded for B-splines and dense for a custom basis.
+  Where the `ControlPoints` constraints are already exact ($p = 0$, and $p = 1$ with a whole sample step in every knot interval), it uses them instead.
   It is the only mode for a custom basis, and it omits the changes whose basis row norm is at most $10^{-9}$ times the largest.
-  As with `Trajectory` input bounds, its many rows can make OSQP slower on long horizons.
+  As with `Trajectory` input bounds, its many constraints can make OSQP slower on long horizons.
 
 **When you may want to use it:**
 
@@ -261,7 +262,7 @@ With the condensed formulation, as with the model, an entry of these matrices th
 
 !!! danger
 
-    A constraint row without an input part (a zero row of $H_u$) only checks the measured state at $k = 0$,
+    A constraint without an input part (a zero row of $H_u$) only checks the measured state at $k = 0$,
     so the problem is infeasible whenever $\bm{x}_0$ violates it, as with hard state bounds.
     OSQP can also need many iterations when more constraints are active than there are control points.
 
