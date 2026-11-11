@@ -64,7 +64,7 @@ class InputBoundMode(enum.Enum):
     keep the samples away from the limits, so the inputs do not use the full range.
     A custom basis (Parameterization.fromBasis()) has no such property, so its sampled
     inputs are always bounded, whatever the mode. Refined bounds lie between the two
-    in rows and accuracy.
+    in number of constraints and accuracy.
     """
 
     ControlPoints: typing.ClassVar[InputBoundMode]
@@ -104,9 +104,11 @@ class Options:
         input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
             default), the sampled inputs (InputBoundMode.Trajectory), or the control
             points after knot insertion (InputBoundMode.Refined).
-        refined_bound_interval: Longest knot interval, in samples, after the knot
-            insertion of InputBoundMode.Refined, which splits every interval at
-            least once (positive, default 16).
+        min_refined_intervals: Minimum number of knot intervals across the horizon
+            in the refined representation of InputBoundMode.Refined, which splits
+            every interval at least once (non-negative, default 16; 0 splits every
+            interval once; if this gives at least T constraints per input,
+            InputBoundMode.Trajectory's exact constraints are used instead).
         slew_initial_input: Slew-rate constraint on the initial input
             (|u0 - u_prev| <= u0_slew).
         slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -139,7 +141,7 @@ class Options:
         input_cost: InputCostMode = InputCostMode.Off,
         use_input_rate_cost: bool = False,
         input_bounds: InputBoundMode = InputBoundMode.ControlPoints,
-        refined_bound_interval: int = 16,
+        min_refined_intervals: int = 16,
         slew_initial_input: bool = False,
         slew_bounds: SlewBoundMode = SlewBoundMode.Off,
         state_bounds: StateBoundMode = StateBoundMode.Off,
@@ -159,9 +161,11 @@ class Options:
             input_bounds: Bound the control points (InputBoundMode.ControlPoints, the
                 default), the sampled inputs (InputBoundMode.Trajectory), or the control
                 points after knot insertion (InputBoundMode.Refined).
-            refined_bound_interval: Longest knot interval, in samples, after the knot
-                insertion of InputBoundMode.Refined, which splits every interval at
-                least once (positive, default 16).
+            min_refined_intervals: Minimum number of knot intervals across the horizon
+                in the refined representation of InputBoundMode.Refined, which splits
+                every interval at least once (non-negative, default 16; 0 splits every
+                interval once; if this gives at least T constraints per input,
+                InputBoundMode.Trajectory's exact constraints are used instead).
             slew_initial_input: Slew-rate constraint on the initial input
                 (|u0 - u_prev| <= u0_slew).
             slew_bounds: SlewBoundMode.Off (the default), or slew-rate bounds
@@ -184,6 +188,10 @@ class Options:
     @bounded_states.setter
     def bounded_states(self, arg0: collections.abc.Sequence[int]) -> None: ...
     @property
+    def min_refined_intervals(self) -> int: ...
+    @min_refined_intervals.setter
+    def min_refined_intervals(self, arg0: int) -> None: ...
+    @property
     def num_general_constraints(self) -> int: ...
     @num_general_constraints.setter
     def num_general_constraints(self, arg0: int) -> None: ...
@@ -191,10 +199,6 @@ class Options:
     def num_terminal_constraints(self) -> int: ...
     @num_terminal_constraints.setter
     def num_terminal_constraints(self, arg0: int) -> None: ...
-    @property
-    def refined_bound_interval(self) -> int: ...
-    @refined_bound_interval.setter
-    def refined_bound_interval(self, arg0: int) -> None: ...
 
 class ModelSparsity(enum.Enum):
     """
@@ -941,6 +945,8 @@ class DAQPSettings:
 class SolveStatus(enum.Enum):
     """
     Enum for reporting the status of an MPC solve.
+
+    After PrimalInfeasible, DualInfeasible, or OtherFailure the solver has no solution, and the solution getters of MPC return NaN. After MaxIterReached or TimeLimitReached they return the solver's last iterate, which is finite but may violate the constraints.
     """
 
     DualInfeasible: typing.ClassVar[SolveStatus]
@@ -983,7 +989,7 @@ class SolveInfo:
     @property
     def objective(self) -> float:
         """
-        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost.
+        QP objective value 1/2 z^T P z + q^T z at the solution. Omits constant terms of the MPC cost, so it is not the full MPC cost. NaN when the solve has no solution (see SolveStatus).
         """
 
     @property
@@ -1225,8 +1231,8 @@ class MPC:
         positive when row i is at its upper bound, negative at its lower bound, and
         zero when inactive. They are the multipliers of the QP's cost, which is half
         the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
-        closely they satisfy the equation above. After a failed solve they are the
-        solver's last iterate, like the primal solution.
+        closely they satisfy the equation above. After a failed solve they are NaN or
+        the solver's last iterate, like the primal solution (see solve()).
 
         Args:
             y: Result will be stored here (equivalent to return value), of size
@@ -1253,8 +1259,8 @@ class MPC:
         positive when row i is at its upper bound, negative at its lower bound, and
         zero when inactive. They are the multipliers of the QP's cost, which is half
         the MPC cost. OSQP's are approximate; getSolveInfo().dual_residual says how
-        closely they satisfy the equation above. After a failed solve they are the
-        solver's last iterate, like the primal solution.
+        closely they satisfy the equation above. After a failed solve they are NaN or
+        the solver's last iterate, like the primal solution (see solve()).
 
         Returns:
             y: The dual solution, of size getNumQPConstraints().
@@ -1891,8 +1897,10 @@ class MPC:
         Make the next solve() start from zero instead of warm starting from the previous
         solution (an OSQP cold start).
 
-        Useful after a failed solve, whose iterates may have diverged and would slow
-        down or prevent convergence of the next solve. Does not change the problem data,
+        Useful after a solve that stopped early (`MaxIterReached` or
+        `TimeLimitReached`), whose iterate may be far from the solution and would slow
+        down the next solve. After a solve without a solution (`PrimalInfeasible`,
+        `DualInfeasible`), OSQP already starts the next solve from zero. Does not change the problem data,
         the previous input used by `slew_initial_input`, or the results returned by the
         solution getters. No-op before initializeSolver().
         """
@@ -1915,10 +1923,11 @@ class MPC:
         This function can only be called if `num_general_constraints` is positive.
         Must be called prior to `initializeSolver()`, but can also be called after if
         the constraints change between solves. x_0 is the measured state passed to
-        solve(), so the k = 0 rows constrain u_0 given x_0; a row without an input part
-        (a zero row of Hu) only checks x_0 at k = 0, and the problem is infeasible if x_0
-        violates it. The predicted states x_1, ..., x_{T-1} are paired with the inputs
-        u_1, ..., u_{T-1}; constrain the final state x_T with setTerminalConstraints().
+        solve(), so the k = 0 constraints act on u_0 given x_0; a constraint without an
+        input part (a zero row of Hu) only checks x_0 at k = 0, and the problem is
+        infeasible if x_0 violates it. The predicted states x_1, ..., x_{T-1} are paired
+        with the inputs u_1, ..., u_{T-1}; constrain the final state x_T with
+        setTerminalConstraints().
         Pass `-inf` or `inf` for a side without a bound.
 
         Changing Hx or Hu rebuilds QP matrices and makes the solver refactor (like a
@@ -2462,9 +2471,14 @@ class MPC:
                 non-finite model or weight values), so the QP was not solved and the
                 getters still return the previous solution. The update is retried at
                 the next solve, which usually recovers once the values are valid again
-                (infinite weights can leave OSQP unable to recover). Verify your
-                problem setup and consult the solver's documentation for any other
-                value.
+                (infinite weights can leave OSQP unable to recover). After
+                `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver has
+                no solution, and the solution getters (getNextInput(),
+                getInputControlPoints(), getInputTrajectory(),
+                getPredictedStateTrajectory(), and getDualSolution()) return NaN.
+                After `MaxIterReached` or `TimeLimitReached` they return the solver's
+                last iterate, which may violate the constraints. Verify your problem
+                setup and consult the solver's documentation for any other value.
 
         The GIL is released while solving, so other Python threads can run (e.g.
         solving several independent MPC objects in parallel threads). Do not modify x0

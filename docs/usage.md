@@ -96,9 +96,9 @@ See [Input Parameterization](concepts/input-parameterization.md#provided-factory
     opts.state_bounds = affine_mpc::StateBoundMode::Off;
     ```
 
-The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `refined_bound_interval`, `slew_initial_input`, `slew_bounds`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
+The options are grouped into costs (`input_cost`, `use_input_rate_cost`), input constraints (`input_bounds`, `min_refined_intervals`, `slew_initial_input`, `slew_bounds`), state constraints (`state_bounds`, `bounded_states`), and general constraints (`num_general_constraints`, `num_terminal_constraints`), in this order.
 In Python they are keyword arguments; in C++20, designated initializers must follow this order.
-`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Trajectory`), or on the control points after knot insertion (`Refined`, whose longest knot interval in samples is `refined_bound_interval`); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
+`input_bounds` chooses how the input limits are enforced: on the control points (`ControlPoints`, the default), on the sampled inputs (`Trajectory`), or on the control points after knot insertion (`Refined`, with at least `min_refined_intervals` refined knot intervals across the horizon); see [Input Bounds](concepts/input-parameterization.md#input-bounds).
 See [Concepts](concepts/index.md) for more details on options.
 
 ### 3. Construct the MPC object
@@ -266,7 +266,7 @@ The same discretization is available on its own as `Discretizer`, e.g. to simula
 
 To limit only some states, list them in the options, e.g. `bounded_states=[3, 4]` in Python or `opts.bounded_states = {3, 4};` in C++ (see [State Saturation](concepts/problem-formulation.md#state-saturation-constraint)).
 
-For linear constraints on combinations of states and inputs, set the number of rows in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
+For linear constraints on combinations of states and inputs, set the number of constraints in the options, e.g. `num_general_constraints=2` in Python or `opts.num_general_constraints = 2;` in C++, and pass $H_x$ ($2 \times n$) and $H_u$ ($2 \times m$) to `setGeneralConstraints()` (see [General Linear Constraints](concepts/problem-formulation.md#general-linear-constraints)).
 
 #### Set weights
 
@@ -484,10 +484,12 @@ is in the main runtime loop. Common cases include:
 
 How to respond to a failed solve depends on the application.
 For example, you could reuse the previously applied input or have a fallback control law like LQR.
-After a failed solve (any status other than `Success` or `SolvedInaccurate`), the result getters such as `getNextInput()` return the solver's last iterate, which is not a solution and may violate the constraints (after `UpdateFailed` they still return the previous solution).
+Check the returned status: after `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver has no solution, and the result getters such as `getNextInput()` return NaN.
+After `MaxIterReached` or `TimeLimitReached` they return the solver's last iterate, which is not a solution and may violate the constraints, and after `UpdateFailed` they still return the previous solution.
+To fall back on the previous plan instead, copy the results you need after each successful solve.
 The previous input used by `slew_initial_input` and `use_input_rate_cost` is only updated after `Success` or `SolvedInaccurate`, so after a failure call `setPreviousInput()` with the input you actually applied.
-The failed solve's iterates may also have diverged, which would slow down the next solve since the solver warm starts from them,
-so call `resetWarmStart()` to start the next solve from zero.
+An iterate that stopped early may also be far from the solution, which would slow down the next solve since the solver warm starts from it,
+so call `resetWarmStart()` to start the next solve from zero (after a solve without a solution, OSQP already does).
 
 `MaxIterReached` is a partial exception.
 With B-spline parameterizations its iterate is often close to the solution, but it is not guaranteed to satisfy the constraints.
@@ -639,9 +641,9 @@ See [Logging](logging.md) for output format and workflow details.
 ### 9. (Optional) Inspect the QP
 
 `getQP()` returns the QP the last solve used, and `assembleQP(x0, qp)` assembles it for a given initial state without solving, for analysis or for handing to another solver.
-`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and rows are which.
+`getQPVariableBlocks()` and `getQPConstraintBlocks()` say which variables and constraint rows are which.
 These are analysis and debugging tools: they copy or allocate, so keep them out of the control loop.
-`getDualSolution()` gives the multipliers of the rows from the last solve; it only fills the vector you pass in C++.
+`getDualSolution()` gives the multipliers of the constraint rows from the last solve; it only fills the vector you pass in C++.
 See [Accessing the QP](concepts/qp-formulation.md#accessing-the-qp).
 
 ## Interface Notes

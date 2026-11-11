@@ -25,7 +25,8 @@ namespace {
 
 // 1: scalar metadata with shape (), string metadata in the NPZ, meta.npz in
 // the NPY and raw directories, and <save_name>_params.yaml
-constexpr int kLogFormatVersion{1};
+// 2: opt_min_refined_intervals replaces opt_refined_bound_interval
+constexpr int kLogFormatVersion{2};
 
 // Every key the logger writes itself, whether or not the options log it.
 // addMetadata() rejects them, so load_log() can tell built-in values from user
@@ -51,7 +52,7 @@ constexpr std::array<std::string_view, 44> kBuiltinKeys{
     "opt_use_input_rate_cost",
     "opt_input_cost",
     "opt_input_bounds",
-    "opt_refined_bound_interval",
+    "opt_min_refined_intervals",
     "opt_state_bounds",
     "opt_num_general_constraints",
     "opt_num_terminal_constraints",
@@ -362,8 +363,8 @@ void MPCLogger::captureMPCSnapshot()
                      inputCostModeToString(mpc_->getOptions().input_cost));
   setBuiltinMetadata("opt_input_bounds",
                      inputBoundModeToString(mpc_->getOptions().input_bounds));
-  setBuiltinMetadata("opt_refined_bound_interval",
-                     mpc_->getOptions().refined_bound_interval);
+  setBuiltinMetadata("opt_min_refined_intervals",
+                     mpc_->getOptions().min_refined_intervals);
   setBuiltinMetadata("opt_state_bounds",
                      stateBoundModeToString(mpc_->getOptions().state_bounds));
   setBuiltinMetadata("opt_num_general_constraints",

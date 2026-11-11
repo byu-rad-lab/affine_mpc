@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <osqp_api_constants.h>
 #include <osqp_api_functions.h>
@@ -206,9 +207,13 @@ SolveInfo OSQPSolver::Impl::getSolveInfo() const noexcept
     return SolveInfo{};
   const OSQPInfo& info{*solver_->info};
   // mpc_solve_time and prepare_time are only known to MPC
-  SolveInfo result{osqpStatusToSolveStatus(static_cast<int>(info.status_val)),
+  const SolveStatus status{
+      osqpStatusToSolveStatus(static_cast<int>(info.status_val))};
+  SolveInfo result{status,
                    static_cast<int>(info.iter),
-                   info.obj_val,
+                   detail::hasSolution(status)
+                       ? info.obj_val
+                       : std::numeric_limits<double>::quiet_NaN(),
                    info.solve_time + info.polish_time,
                    0.0,
                    0.0};
@@ -224,7 +229,10 @@ bool OSQPSolver::Impl::getDualSolution(Eigen::Ref<Eigen::VectorXd> y) const
   assert(y.size() == m_);
   if (!initialized_)
     return false;
-  y = Eigen::Map<const VectorXF>{solver_->solution->y, m_, 1};
+  if (detail::hasSolution(osqpStatusToSolveStatus(solver_->info->status_val)))
+    y = Eigen::Map<const VectorXF>{solver_->solution->y, m_, 1};
+  else
+    y.setConstant(std::numeric_limits<double>::quiet_NaN());
   return true;
 }
 
@@ -243,7 +251,13 @@ SolveStatus OSQPSolver::Impl::solve()
   if (!initialized_)
     return SolveStatus::NotInitialized;
   osqp_solve(solver_.get());
-  return osqpStatusToSolveStatus(solver_->info->status_val);
+  const SolveStatus status{osqpStatusToSolveStatus(solver_->info->status_val)};
+  // Without a solution OSQP fills it with OSQP_NAN, which OSQP 1.0 defines as
+  // the finite 2143289344.0, not a NaN. Its solution buffer is output only.
+  if (!detail::hasSolution(status))
+    Eigen::Map<VectorXF>{solver_->solution->x, n_}.setConstant(
+        std::numeric_limits<OSQPFloat>::quiet_NaN());
+  return status;
 }
 
 void OSQPSolver::Impl::coldStart() noexcept

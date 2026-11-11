@@ -99,7 +99,7 @@ std::vector<DAQPCase> daqpCases()
        {.input_bounds = IB::ControlPoints}},
       {"inputBoundsRefined",
        bspline,
-       {.input_bounds = IB::Refined, .refined_bound_interval = 4}},
+       {.input_bounds = IB::Refined, .min_refined_intervals = 8}},
       {"inputBoundsTrajectory", bspline, {.input_bounds = IB::Trajectory}},
       {"inputCostControlPoints", bspline, {.input_cost = IC::ControlPoints}},
       {"inputCostTrajectory", bspline, {.input_cost = IC::Trajectory}},
@@ -334,7 +334,18 @@ TEST(DAQPSolverTester,
   ASSERT_TRUE(mpc.initializeSolver(std::make_unique<ampc::DAQPSolver>()));
   EXPECT_EQ(mpc.solve(Vector2d{0.0, 2.0}), ampc::SolveStatus::PrimalInfeasible);
   EXPECT_EQ(mpc.getSolveInfo().status, ampc::SolveStatus::PrimalInfeasible);
+  EXPECT_TRUE(std::isnan(mpc.getSolveInfo().objective));
+  VectorXd u_traj(10), y(mpc.getNumQPConstraints());
+  mpc.getInputTrajectory(u_traj);
+  ASSERT_TRUE(mpc.getDualSolution(y));
+  EXPECT_TRUE(u_traj.array().isNaN().all());
+  EXPECT_TRUE(y.array().isNaN().all());
+
   EXPECT_EQ(mpc.solve(Vector2d::Zero()), ampc::SolveStatus::Success);
+  mpc.getInputTrajectory(u_traj);
+  ASSERT_TRUE(mpc.getDualSolution(y));
+  EXPECT_TRUE(u_traj.allFinite());
+  EXPECT_TRUE(y.allFinite());
 }
 
 TEST(DAQPSolverTester, givenIterationLimit_ReportsMaxIterReached)

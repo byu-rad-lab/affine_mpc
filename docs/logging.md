@@ -141,7 +141,7 @@ The logger records configuration metadata such as:
 - parameterization type (`bspline` or `custom`)
 - B-spline degree and knot vector
 - the sampled basis for every parameterization, flattened row by row (reshape `meta_basis` to `(horizon_steps, num_control_points)`); the input at step $k$ is `basis[k] @ control_points`, so logged control points can be evaluated without affine_mpc
-- the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `trajectory`, or `refined`, with `opt_refined_bound_interval`), `opt_state_bounds` (`off`, `hard`, or `soft`), and `opt_slew_bounds` (`off`, `control_points`, or `trajectory`)
+- the `Options` fields (`opt_*`), with the input cost mode as `opt_input_cost` (`off`, `control_points`, or `trajectory`) and the bound modes as `opt_input_bounds` (`control_points`, `trajectory`, or `refined`, with `opt_min_refined_intervals`), `opt_state_bounds` (`off`, `hard`, or `soft`), and `opt_slew_bounds` (`off`, `control_points`, or `trajectory`)
 - limits
 - slew rates (`u0_slew`, and `slew_rate` per sample step)
 - weights

@@ -349,7 +349,7 @@ $$
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
-The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same input curve on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
 For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Trajectory` ($p = 1$) rows, and for $p \ge 2$ it uses the `Trajectory` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).
@@ -741,7 +741,7 @@ $$
 \underbrace{\mathbf{1}_{\eta_{\mathrm{r}}} \otimes \bm{u}_{\mathrm{max}}}_{\bm{\upsilon}_{\mathrm{usat}}}
 $$
 
-The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same spline on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
+The $\eta_{\mathrm{r}} \times \eta$ matrix $\Omega$ maps the control points of each input channel to the control points of the same input curve on a refined knot vector (knot insertion), keeping only the $\eta_{\mathrm{r}}$ refined control points that some sample depends on.
 It is banded (each row has at most $p+1$ nonzeros) and depends only on the knots, so it is computed once at construction.
 For $p \le 1$, `Refined` uses the `ControlPoints` ($p = 0$) or `Trajectory` ($p = 1$) rows, and for $p \ge 2$ it uses the `Trajectory` rows when $\eta_{\mathrm{r}} \ge T$.
 See [Input Bounds](input-parameterization.md#input-bounds).

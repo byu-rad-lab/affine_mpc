@@ -161,11 +161,11 @@ public:
    *   knots. Since the B-spline convex hull property does not hold, an MPC
    *   with a custom basis bounds every sampled input (whatever
    *   Options::input_bounds is) and rejects SlewBoundMode::ControlPoints
-   *   (SlewBoundMode::Trajectory bounds the sampled changes). It omits the bounds
-   *   of samples whose basis row has a norm of at most 1e-9 times the largest
-   *   row norm (e.g. where a Laguerre basis has decayed): such a
-   *   sample can only leave the limits if the coefficients exceed them by
-   *   about 1e9, and its tiny row would hurt the solver's scaling.
+   *   (SlewBoundMode::Trajectory bounds the sampled changes). It omits the
+   *   bounds of samples whose basis row has a norm of at most 1e-9 times the
+   *   largest row norm (e.g. where a Laguerre basis has decayed): such a sample
+   *   can only leave the limits if the coefficients exceed them by about 1e9,
+   *   and its tiny row would hurt the solver's scaling.
    *   InputCostMode::ControlPoints weights the coefficients (and rejects
    *   setReferenceInput()); InputCostMode::Trajectory weights the sampled
    *   inputs.
@@ -323,14 +323,15 @@ private:
   std::vector<int> inputSaturationSamples() const;
 
   // Knot refinement for InputBoundMode::Refined (B-splines only). Splits
-  // every active knot interval into max(2, ceil(length / max_interval)) equal
-  // parts and returns the refined knot vector, the banded map R from the
-  // control points to the refined control points of the same spline (refined
-  // control point j is the sum over i of R_weights(i, j) times control point
-  // R_start(j) + i), and the refined control points whose refined basis
-  // function is nonzero at some sample (sorted). Not public until the
-  // interface for input bound rows is settled.
-  void refineKnots(int max_interval,
+  // every active knot interval into
+  // max(2, ceil(min_intervals * length / range)) equal parts, where range is
+  // the length of the active knots, and returns the refined knot vector, the
+  // banded map R from the control points to the refined control points that
+  // represent the same input (refined control point j is the sum over i of
+  // R_weights(i, j) times control point R_start(j) + i), and the refined
+  // control points whose refined basis function is nonzero at some sample
+  // (sorted). Not public until the interface for input bound rows is settled.
+  void refineKnots(int min_intervals,
                    Eigen::VectorXd& refined_knots,
                    Eigen::VectorXi& R_start,
                    Eigen::MatrixXd& R_weights,

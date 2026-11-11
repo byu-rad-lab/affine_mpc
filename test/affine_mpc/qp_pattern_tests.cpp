@@ -138,7 +138,7 @@ Case drawCase(Draw& draw)
                                            ampc::InputBoundMode::Trajectory,
                                            ampc::InputBoundMode::Refined};
   o.input_bounds = input_modes[draw.integer(0, 2)];
-  o.refined_bound_interval = draw.integer(1, 4);
+  o.min_refined_intervals = draw.integer(0, 24);
   o.slew_initial_input = draw.coin();
   // ControlPoints needs a B-spline; Trajectory works for any basis
   if (draw.coin() && c.param.num_control_points > 1)
@@ -225,7 +225,7 @@ std::string describe(const Case& c)
     s += b ? '1' : '0';
   s += " slew_bounds " + std::to_string(static_cast<int>(o.slew_bounds));
   s += " input_bounds " + std::to_string(static_cast<int>(o.input_bounds))
-       + " interval " + std::to_string(o.refined_bound_interval);
+       + " intervals " + std::to_string(o.min_refined_intervals);
   s += " state_bounds " + std::to_string(static_cast<int>(o.state_bounds));
   s += " bounded " + std::to_string(o.bounded_states.size()) + " p"
        + std::to_string(o.num_general_constraints) + " pf"
@@ -666,7 +666,10 @@ template <ampc::Formulation F> void checkAssemble(unsigned seed)
   VectorXd ctrl_a{c.m * c.param.num_control_points}, ctrl_b{ctrl_a.size()};
   a.getInputControlPoints(ctrl_a);
   b.getInputControlPoints(ctrl_b);
-  EXPECT_TRUE(expectEigenNear(ctrl_a, ctrl_b, 0.0));
+  if (ampc::detail::hasSolution(status_a))
+    EXPECT_TRUE(expectEigenNear(ctrl_a, ctrl_b, 0.0));
+  else // NaN
+    EXPECT_TRUE(ctrl_a.array().isNaN().all() && ctrl_b.array().isNaN().all());
   // a failed update stops solve() before it writes x0, so each QP keeps the x0
   // parts last written (a's from assembleQP(), b's from initializeSolver())
   if (status_a != ampc::SolveStatus::UpdateFailed) {

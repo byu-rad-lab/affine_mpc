@@ -174,13 +174,13 @@ void InputRateCost::updateVector(const MPCData& d, FormulationImpl& f, QP&)
 // ---- InputBounds ------------------------------------------------------------
 
 // Bounding B-spline control points bounds the sampled inputs (convex hull
-// property), and so does bounding the control points of the same spline after
-// knot insertion. A custom basis has no such property, so its sampled inputs
-// are always bounded.
+// property), and so does bounding the control points of a refined
+// representation of the same input curve (after knot insertion). A custom
+// basis has no such property, so its sampled inputs are always bounded.
 InputBounds::BoundRows
 InputBounds::boundRows(const VectorParameterization& input_param,
                        const InputBoundMode mode,
-                       const int refined_bound_interval)
+                       const int min_refined_intervals)
 {
   const Parameterization& param{input_param.parameterization()};
   const bool bspline{param.type == Parameterization::Type::BSpline};
@@ -195,7 +195,7 @@ InputBounds::boundRows(const VectorParameterization& input_param,
   // samples for degree 1).
   const VectorParameterization::KnotRefinement r{
       bspline && mode == InputBoundMode::Refined && param.degree >= 2
-          ? input_param.refineKnots(refined_bound_interval)
+          ? input_param.refineKnots(min_refined_intervals)
           : VectorParameterization::KnotRefinement{}};
   if (!r.sampled.empty()
       && r.sampled.size() < std::size_t(param.horizon_steps)) {
@@ -227,9 +227,9 @@ InputBounds::boundRows(const VectorParameterization& input_param,
 
 InputBounds::InputBounds(const VectorParameterization& input_param,
                          const InputBoundMode mode,
-                         const int refined_bound_interval) :
+                         const int min_refined_intervals) :
     input_param_{input_param},
-    M_{boundRows(input_param, mode, refined_bound_interval)},
+    M_{boundRows(input_param, mode, min_refined_intervals)},
     num_bounded_{M_.start.empty()
                      ? input_param.parameterization().num_control_points
                      : static_cast<int>(M_.start.size())}

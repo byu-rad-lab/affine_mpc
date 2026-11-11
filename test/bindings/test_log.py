@@ -143,7 +143,7 @@ def test_load_log_matches_npz_in_every_mode(tmp_path, mode):
     assert log.state_dim == 2 and type(log.state_dim) is int
     assert log.ts == 0.1 and type(log.ts) is float
     assert log.logging_mode == mode
-    assert log.log_format_version == 1
+    assert log.log_format_version == 2
     np.testing.assert_array_equal(log.u_max, [1.0])
     np.testing.assert_array_equal(log.R_diag, [1e-3])
     assert log.x_min is None and log.Hx is None
@@ -178,7 +178,7 @@ def test_load_log_with_every_option(tmp_path):
         input_cost=ampc.InputCostMode.Trajectory,
         use_input_rate_cost=True,
         input_bounds=ampc.InputBoundMode.Refined,
-        refined_bound_interval=3,
+        min_refined_intervals=3,
         slew_initial_input=True,
         slew_bounds=ampc.SlewBoundMode.ControlPoints,
         state_bounds=ampc.StateBoundMode.Soft,
@@ -267,9 +267,9 @@ def test_load_log_rejects_other_format_versions(tmp_path):
     _write_log(tmp_path / "log")
     with np.load(tmp_path / "log" / "log.npz", allow_pickle=False) as data:
         arrays = {key: data[key] for key in data.files}
-    arrays["meta_log_format_version"] = np.array(2, dtype=np.int32)
+    arrays["meta_log_format_version"] = np.array(3, dtype=np.int32)
     np.savez(tmp_path / "newer.npz", **arrays)
-    with pytest.raises(ValueError, match="log_format_version 2"):
+    with pytest.raises(ValueError, match="log_format_version 3"):
         ampc.load_log(tmp_path / "newer.npz")
     del arrays["meta_log_format_version"]
     np.savez(tmp_path / "unversioned.npz", **arrays)

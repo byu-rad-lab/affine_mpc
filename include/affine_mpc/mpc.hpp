@@ -241,6 +241,12 @@ public:
    *   getters still return the previous solution. The update is retried at the
    *   next solve, which usually recovers once the values are valid again
    *   (infinite weights can leave OSQP unable to recover).
+   *   After `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver
+   *   has no solution, and the solution getters (getNextInput(),
+   *   getInputControlPoints(), getInputTrajectory(),
+   *   getPredictedStateTrajectory(), and getDualSolution()) return NaN.
+   *   After `MaxIterReached` or `TimeLimitReached` they return the solver's
+   *   last iterate, which may violate the constraints.
    *   Verify your problem setup and consult the solver's documentation for any
    *   other value.
    */
@@ -613,12 +619,13 @@ public:
    *   This function can only be called if `num_general_constraints` is
    *   positive. Must be called prior to `initializeSolver()`, but can also be
    *   called after if the constraints change between solves. x_0 is the
-   *   measured state passed to solve(), so the k = 0 rows constrain u_0 given
-   *   x_0; a row without an input part (a zero row of Hu) only checks x_0 at
-   *   k = 0, and the problem is infeasible if x_0 violates it. The predicted
-   *   states x_1, ..., x_{T-1} are paired with the inputs u_1, ..., u_{T-1};
-   *   constrain the final state x_T with setTerminalConstraints(). Pass `-inf`
-   *   or `inf` for a side without a bound.
+   *   measured state passed to solve(), so the k = 0 constraints act on u_0
+   *   given x_0; a constraint without an input part (a zero row of Hu) only
+   *   checks x_0 at k = 0, and the problem is infeasible if x_0 violates it.
+   *   The predicted states x_1, ..., x_{T-1} are paired with the inputs
+   *   u_1, ..., u_{T-1}; constrain the final state x_T with
+   *   setTerminalConstraints(). Pass `-inf` or `inf` for a side without a
+   *   bound.
    *
    *   Changing Hx or Hu rebuilds QP matrices and makes the solver refactor
    * (like a model change), while changing only the bounds updates QP vectors:
@@ -916,8 +923,9 @@ public:
    *   cost, which is half the MPC cost. With a solver whose solutions are
    *   approximate (OSQP), they are approximate too; the
    *   SolveInfo::dual_residual of getSolveInfo() says how closely they
-   *   satisfy the equation above. After a failed solve they are the solver's
-   *   last iterate, like the primal solution. With DAQP, call this before
+   *   satisfy the equation above. After a failed solve they are NaN or the
+   *   solver's last iterate, like the primal solution (see solve()). With
+   *   DAQP, call this before
    *   prepare() applies new data.
    *
    *   Precondition: initializeSolver() succeeded (not checked in Release).
@@ -954,8 +962,11 @@ public:
    *   from the previous solution (an OSQP cold start; DAQP starts from an
    *   empty working set).
    *
-   *   Useful after a failed solve, whose iterates may have diverged and would
-   *   slow down or prevent convergence of the next solve. Does not change the
+   *   Useful after a solve that stopped early (`MaxIterReached` or
+   *   `TimeLimitReached`), whose iterate may be far from the solution and
+   *   would slow down the next solve. After a solve without a solution
+   *   (`PrimalInfeasible`, `DualInfeasible`), OSQP already starts the next
+   *   solve from zero. Does not change the
    *   problem data, the previous input, or the
    *   results returned by the solution getters. No-op before
    *   initializeSolver().

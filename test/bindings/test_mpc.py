@@ -67,7 +67,7 @@ def test_mpc_interface():
 
     assert (
         repr(mpc)
-        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, refined_bound_interval=16, slew_initial_input=True, slew_bounds=ControlPoints, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], slew_rate=[1])"
+        == "MPC(formulation=Condensed, state_dim=2, input_dim=1, parameterization=Parameterization(horizon_steps=10, degree=1, num_control_points=5, knots=[0, 0, 2.25, 4.5, 6.75, 9, 9]), options=Options(input_cost=ControlPoints, use_input_rate_cost=False, input_bounds=ControlPoints, min_refined_intervals=16, slew_initial_input=True, slew_bounds=ControlPoints, state_bounds=Hard, bounded_states=[], num_general_constraints=0, num_terminal_constraints=0), solver_initialized=False, Q=[1, 1], Qf=[1, 1], R=[1], u_min=[-1], u_max=[1], x_min=[-1, -1], x_max=[1, 1], u0_slew=[1], slew_rate=[1])"
     )
     assert str(mpc).startswith(
         "MPC:\n  formulation = Condensed\n  state_dim = 2\n  input_dim = 1\n"
@@ -386,8 +386,11 @@ def test_partial_and_soft_state_bounds(formulation):
     np.testing.assert_array_equal(soft.getStateBoundL2Penalties(), [100.0])
 
     # starting past the limit: infeasible when hard, solvable when soft
-    _, status = build(opts, np.array([0.9, 0.0]))
+    infeasible, status = build(opts, np.array([0.9, 0.0]))
     assert status == ampc.SolveStatus.PrimalInfeasible
+    assert np.isnan(infeasible.getNextInput()).all()
+    assert np.isnan(infeasible.getPredictedStateTrajectory()).all()
+    assert np.isnan(infeasible.getSolveInfo().objective)
     _, status = build(soft_opts, np.array([0.9, 0.0]))
     assert status == ampc.SolveStatus.Success
 
@@ -621,7 +624,7 @@ def test_refined_input_bounds(formulation):
     param = ampc.Parameterization.bspline(T, deg, nc)
     rows = {}
     for mode in ampc.InputBoundMode:
-        opts = ampc.Options(input_bounds=mode, refined_bound_interval=5)
+        opts = ampc.Options(input_bounds=mode, min_refined_intervals=12)
         mpc = ampc.MPC(n, m, param, opts, formulation=formulation)
         Ac = np.array([[0.0, 1.0], [-0.6, -0.1]])
         mpc.setModelContinuous2Discrete(Ac, np.array([0.0, 0.2]), np.zeros(n), 0.1)
@@ -641,12 +644,12 @@ def test_refined_input_bounds(formulation):
     assert rows[ampc.InputBoundMode.Trajectory] == T
 
 
-def test_refined_bound_interval_must_be_positive():
+def test_min_refined_intervals_must_not_be_negative():
     param = ampc.Parameterization.bspline(20, 2, 5)
     opts = ampc.Options(
-        input_bounds=ampc.InputBoundMode.Refined, refined_bound_interval=0
+        input_bounds=ampc.InputBoundMode.Refined, min_refined_intervals=-1
     )
-    with pytest.raises(ValueError, match="refined_bound_interval must be positive"):
+    with pytest.raises(ValueError, match="min_refined_intervals must not be negative"):
         ampc.MPC(2, 1, param, opts)
 
 

@@ -27,7 +27,7 @@ __all__ = ["MPCLog", "load_log"]
 
 _ROW_BYTES = np.dtype("<f8").itemsize
 # the log_format_version this reader understands
-_FORMAT_VERSION = 1
+_FORMAT_VERSION = 2
 
 ArrayF = NDArray[np.float64]
 
@@ -345,7 +345,7 @@ _OPTIONS: dict[str, tuple[str, Callable[[np.ndarray], Any]]] = {
         "input_bounds",
         lambda v: InputBoundMode.__members__[_pascal(str(v))],
     ),
-    "opt_refined_bound_interval": ("refined_bound_interval", int),
+    "opt_min_refined_intervals": ("min_refined_intervals", int),
     "opt_slew_initial_input": ("slew_initial_input", bool),
     "opt_slew_bounds": (
         "slew_bounds",

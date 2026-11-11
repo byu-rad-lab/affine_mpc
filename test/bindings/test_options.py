@@ -12,7 +12,7 @@ def test_options_interface():
     opts = ampc.Options(slew_initial_input=False)
     opts = ampc.Options(slew_bounds=ampc.SlewBoundMode.Off)
     opts = ampc.Options(input_bounds=ampc.InputBoundMode.ControlPoints)
-    opts = ampc.Options(refined_bound_interval=16)
+    opts = ampc.Options(min_refined_intervals=16)
     opts = ampc.Options(state_bounds=ampc.StateBoundMode.Off)
     opts = ampc.Options(bounded_states=[])
     opts = ampc.Options(num_general_constraints=0)
@@ -65,14 +65,14 @@ def test_options_slew_bounds():
 
 def test_options_refined_bounds():
     opts = ampc.Options(input_bounds=ampc.InputBoundMode.Refined)
-    assert opts.refined_bound_interval == 16
+    assert opts.min_refined_intervals == 16
     assert repr(opts) == "Options(input_bounds=InputBoundMode.Refined)"
-    opts.refined_bound_interval = 3
-    assert opts.refined_bound_interval == 3
+    opts.min_refined_intervals = 3
+    assert opts.min_refined_intervals == 3
     assert repr(opts) == (
-        "Options(input_bounds=InputBoundMode.Refined, refined_bound_interval=3)"
+        "Options(input_bounds=InputBoundMode.Refined, min_refined_intervals=3)"
     )
-    assert "input_bounds=Refined, refined_bound_interval=3," in str(opts)
+    assert "input_bounds=Refined, min_refined_intervals=3," in str(opts)
 
 
 def test_options_input_cost():

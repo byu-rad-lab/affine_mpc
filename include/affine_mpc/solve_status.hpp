@@ -18,6 +18,11 @@ namespace affine_mpc {
  *
  * Each QP solver maps its own status codes to this simplified set of
  * categories for MPC usage.
+ *
+ * After `PrimalInfeasible`, `DualInfeasible`, or `OtherFailure` the solver
+ * has no solution, and the solution getters of MPC return NaN. After
+ * `MaxIterReached` or `TimeLimitReached` they return the solver's last
+ * iterate, which is finite but may violate the constraints.
  */
 enum class SolveStatus
 {
@@ -38,6 +43,20 @@ enum class SolveStatus
   UpdateFailed      ///< The solver rejected a data update; QP not solved
 };
 
+namespace detail {
+
+/// Whether a solve with this result leaves a solution or an iterate to return
+/// (false for the statuses after which the solution getters return NaN). Not
+/// meaningful for NotInitialized and UpdateFailed, which do not run the solver.
+constexpr bool hasSolution(const SolveStatus status) noexcept
+{
+  return status != SolveStatus::PrimalInfeasible
+         && status != SolveStatus::DualInfeasible
+         && status != SolveStatus::OtherFailure;
+}
+
+} // namespace detail
+
 /**
  * @struct SolveInfo
  * @brief Solver diagnostics from the most recent solve.
@@ -57,7 +76,8 @@ struct SolveInfo
 
   /// QP objective value 1/2 z^T P z + q^T z at the solution. This omits
   /// constant terms of the MPC cost (they depend on x0 and the references), so
-  /// it is not the full MPC cost.
+  /// it is not the full MPC cost. NaN when the solve has no solution (see
+  /// SolveStatus).
   double objective{0.0};
 
   /// Time the QP solver spent solving (seconds). For OSQP, the solve

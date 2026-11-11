@@ -54,10 +54,10 @@ std::vector<int> VectorParameterization::inputSaturationSamples() const
 }
 
 VectorParameterization::KnotRefinement
-VectorParameterization::refineKnots(const int max_interval) const
+VectorParameterization::refineKnots(const int min_intervals) const
 {
   KnotRefinement r;
-  param_.refineKnots(max_interval, r.knots, r.start, r.weights, r.sampled);
+  param_.refineKnots(min_intervals, r.knots, r.start, r.weights, r.sampled);
   return r;
 }
 
