@@ -282,10 +282,12 @@ If the refined constraints are not fewer than the $T$ constraints of `Trajectory
 For example, a quadratic spline with $T = 500$ and $\eta = 6$ uniform control points has 4 knot intervals, so $K = 16$ splits each into 4 and bounds 18 refined control points per input, against 6 constraints for `ControlPoints` and 500 for `Trajectory`.
 $\Omega$ is computed once at construction, so the refined constraints add no work to updates or solves beyond their number.
 
-The gap between the refined control points and the input curve shrinks about four times each time the refined intervals are halved, so a larger $K$ bounds the sampled inputs more tightly with more constraints.
+The gap between the refined control points and the input curve shrinks about four times each time the refined intervals are halved, so a larger $K$ generally bounds the sampled inputs more tightly with more constraints.
+It is guaranteed never to be looser when the refinements are nested, i.e. when each interval's part count for the smaller $K$ divides the one for the larger $K$ (e.g. $K = 8, 16, 32$ for uniform knots whose intervals split into 2, 4, and 8 parts).
+Otherwise, e.g. 2 parts against 3, which share no inserted knot, the larger $K$ can be slightly looser in places.
 The gap matters most when the inputs stay at their limits much of the time; a larger $K$, such as 32, then recovers more of the range, while for inputs that reach their limits only briefly, splitting every interval once ($K = 0$) is usually as good.
 Very large values approach the constraint count of `Trajectory` (and fall back to its constraints), and many nearly parallel constraints can make OSQP need many more iterations, as with `Trajectory`.
-Because every interval is split at least once, `Refined` is tighter than `ControlPoints` for every $K$.
+Inserting knots never loosens the bound, so `Refined` is never looser than `ControlPoints`, for every $K$.
 The bound holds for the continuous input, not only at the samples, so it stays slightly conservative compared with `Trajectory`, most on short horizons with few samples per knot interval.
 
 Degrees 0 and 1 already have exact bounds with few constraints, so `Refined` uses them: for $p = 0$ it is the same as `ControlPoints` (the control points are the sampled inputs), and for $p = 1$ the same as `Trajectory` (the samples next to each knot).
