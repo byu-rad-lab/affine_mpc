@@ -255,6 +255,13 @@ Before opening a PR:
 
 See `CONTRIBUTING.md` for the broader contribution process.
 
+## Log Format Version
+
+Logs record `log_format_version` (`kLogFormatVersion` in `src/mpc_logger.cpp`), and `load_log()` reads only the version in `_FORMAT_VERSION` (`python/affine_mpc/log.py`).
+Bump both together, and add a line to the version list above `kLogFormatVersion`, at most once per release: with the first change to the log format (a new, renamed, or removed key, or a changed array layout) since the last release.
+Later format changes before the next release keep that version and extend its line in the list, so every released version names one format.
+Until 1.0, the loader reads only the current version, without paths for older formats, and the release notes list the change under **Logging and printing**.
+
 ## Making a Release
 
 Changes go into `main`, and a release is a tag on `main`: a release PR bumps the versions, and publishing the GitHub release uploads the wheels and sdist to PyPI.
@@ -278,6 +285,7 @@ The Python wheels contain the library, so ABI changes do not affect Python users
    The Python package's version comes from the git tag (setuptools_scm), so nothing in Python changes.
 1. If a bundled dependency's version changed (`cmake/extern_*.cmake`), update its row in `licenses/README.md` and replace its license file if the text changed.
 1. If the binding surface changed, make sure the stubs are regenerated (see [Stub Generation](#stub-generation)).
+1. If the log format changed since the last release, make sure the log format version was bumped once (see [Log Format Version](#log-format-version)).
 1. Open a PR into `main` titled exactly `Release X.Y.Z`, with the release notes as its body (see below).
    The title matters: CI checks it against the versions in `CMakeLists.txt`, `CITATION.cff`, and the docs `GIT_TAG`, and editing the title later does not rerun that check (push a commit to rerun it).
 1. Wait for CI: the build and test jobs, the stub check, and the wheel build (`Build and publish to PyPI`, which builds and tests every wheel and the sdist on PRs without uploading them).
