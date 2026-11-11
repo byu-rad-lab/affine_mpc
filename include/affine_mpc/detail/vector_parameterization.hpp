@@ -97,8 +97,8 @@ public:
   };
 
   /**
-   * @brief Refine a B-spline by knot insertion (Oslo algorithm): split every
-   *   active knot interval of length l into
+   * @brief Refine a B-spline by inserting knots (Boehm's algorithm): split
+   *   every active knot interval of length l into
    *   max(2, ceil(min_intervals l / range)) equal parts, where range is the
    *   length of the active knots.
    * @param min_intervals Minimum number of refined knot intervals in the

@@ -173,11 +173,37 @@ TEST(KnotRefinementTest, givenSplines_RIsBandedConvexCombination)
         if (j > 0) {
           EXPECT_GE(r.start(j), r.start(j - 1));
         }
-        EXPECT_GE(r.weights.col(j).minCoeff(), -1e-14);
+        EXPECT_GE(r.weights.col(j).minCoeff(), 0.0);
         EXPECT_NEAR(r.weights.col(j).sum(), 1.0, 1e-12);
       }
+      // a weight that is zero in exact arithmetic is exactly zero, not
+      // round-off (an extrapolating recursion left about 1e-17 for the cubic,
+      // geometric, and degree-4 splines)
+      const ArrayXXd w{r.weights.array()};
+      EXPECT_EQ(((w > 0.0) && (w < 1e-12)).count(), 0);
     }
   }
+}
+
+TEST(KnotRefinementTest, givenZeroExactWeights_WeightsAreExactlyZero)
+{
+  // Uniform cubic knots 99/7 apart, with a midpoint in every interval: a
+  // refined control point at an original knot has an exact weight of zero on
+  // the control point whose basis function starts there, which the previous
+  // recursion computed as a few ulps. Every weight is either zero or not
+  // round-off.
+  const auto param{ampc::Parameterization::bspline(100, 3, 10)};
+  const Refinement r{refine(param, 0)};
+  const ArrayXXd w{r.weights.array().abs()};
+  EXPECT_EQ(((w > 0.0) && (w < 1e-12)).count(), 0);
+  // the bound rows (the sampled refined control points) have 38 nonzero
+  // weights in exact arithmetic (by knot insertion in SciPy); the round-off
+  // added 4 more
+  ASSERT_EQ(r.sampled.size(), 17u);
+  int nonzeros{0};
+  for (const int j : r.sampled)
+    nonzeros += static_cast<int>((w.col(j) > 0.0).count());
+  EXPECT_EQ(nonzeros, 38);
 }
 
 TEST(KnotRefinementTest, givenMinIntervals_SplitsEveryIntervalIntoEqualParts)

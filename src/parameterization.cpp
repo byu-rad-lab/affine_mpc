@@ -656,13 +656,16 @@ void Parameterization::refineKnots(const int min_intervals,
                               ? (t(n) - t(p)) / min_intervals * (1.0 + 1e-9)
                               : std::numeric_limits<double>::infinity()};
   std::vector<double> tau(t.data(), t.data() + p + 1);
+  std::vector<double> inserted;
   for (int i{p}; i < n; ++i) {
     const double length{t(i + 1) - t(i)};
     if (length > 0.0) {
       const int parts{
           std::max(2, static_cast<int>(std::ceil(length / max_length)))};
-      for (int q{1}; q < parts; ++q)
+      for (int q{1}; q < parts; ++q) {
         tau.push_back(t(i) + length * q / parts);
+        inserted.push_back(tau.back());
+      }
     }
     tau.push_back(t(i + 1));
   }
@@ -671,39 +674,49 @@ void Parameterization::refineKnots(const int min_intervals,
       Map<const VectorXd>{tau.data(), static_cast<Index>(tau.size())};
   const int n_ref{static_cast<int>(tau.size()) - p - 1};
 
-  // Refined control point j is the blossom of the spline at
-  // (tau_{j+1}, ..., tau_{j+p}), evaluated on the polynomial piece of any
-  // nonempty refined interval [tau_l, tau_{l+1}) in its support inside the
-  // active range (j <= l <= j+p, p <= l <= n_ref-1). That piece lies in the
-  // original interval [t_mu, t_{mu+1}), so the blossom is de Boor's algorithm
-  // on control points mu-p, ..., mu with the argument tau_{j+r} at level r
-  // (the Oslo algorithm). Each refined control point is a combination of at
-  // most p+1 consecutive control points, so R is banded.
+  // Insert the knots one at a time (Boehm's knot insertion). Control point i
+  // on the current knots is row order[i] of R, a combination of the original
+  // control points. Inserting x in [s_k, s_{k+1}) replaces control points
+  // k-p+1, ..., k by (1 - a_i) c_{i-1} + a_i c_i with
+  // a_i = (x - s_i) / (s_{i+p} - s_i) in [0, 1] and shifts the later ones, so
+  // every weight is a sum of nonnegative terms: a weight is exactly zero where
+  // it is zero in exact arithmetic, without the round-off of an extrapolating
+  // recursion. Shifting the row indices instead of the rows keeps each
+  // insertion O(p n + n_ref).
+  std::vector<double> s(t.data(), t.data() + t.size());
+  MatrixXd R{MatrixXd::Zero(n_ref, n)};
+  R.topRows(n).setIdentity();
+  std::vector<int> order(n);
+  std::iota(order.begin(), order.end(), 0);
+  for (const double x : inserted) {
+    const int k{
+        static_cast<int>(std::upper_bound(s.begin(), s.end(), x) - s.begin())
+        - 1};
+    assert(k >= p && k < static_cast<int>(order.size()));
+    const int added{static_cast<int>(order.size())};
+    R.row(added) = R.row(order[k]);
+    order.insert(order.begin() + k + 1, added);
+    for (int i{k}; i > k - p; --i) {
+      const double a{(x - s[i]) / (s[i + p] - s[i])};
+      R.row(order[i]) = (1.0 - a) * R.row(order[i - 1]) + a * R.row(order[i]);
+    }
+    s.insert(s.begin() + k + 1, x);
+  }
+  assert(static_cast<int>(order.size()) == n_ref && s == tau);
+
+  // Each refined control point combines at most p+1 consecutive control
+  // points, so R is stored as bands that start at its first nonzero weight
   R_start.resize(n_ref);
   R_weights.resize(p + 1, n_ref);
-  MatrixXd D{p + 1, p + 1}; // column c: d_{mu-p+c} on control points mu-p..mu
   for (int j{0}; j < n_ref; ++j) {
-    int l{std::max(j, p)};
-    const int l_max{std::min(j + p, n_ref - 1)};
-    while (l < l_max && !(tau[l] < tau[l + 1]))
-      ++l;
-    assert(tau[l] < tau[l + 1]);
-    const int mu{
-        static_cast<int>(std::upper_bound(t.data(), t.data() + n, tau[l])
-                         - t.data())
-        - 1};
-    assert(mu >= p && mu < n);
-    D.setIdentity();
-    for (int r{1}; r <= p; ++r) {
-      const double x{tau[j + r]};
-      for (int c{p}; c >= r; --c) {
-        const int i{mu - p + c};
-        const double alpha{(x - t(i)) / (t(i + p + 1 - r) - t(i))};
-        D.col(c) = (1.0 - alpha) * D.col(c - 1) + alpha * D.col(c);
-      }
-    }
-    R_start(j) = mu - p;
-    R_weights.col(j) = D.col(p);
+    const auto row{R.row(order[j])};
+    Index first{0};
+    while (row(first) == 0.0)
+      ++first;
+    const Index start{std::min<Index>(first, n - p - 1)};
+    assert((row.tail(n - start - p - 1).array() == 0.0).all());
+    R_start(j) = static_cast<int>(start);
+    R_weights.col(j) = row.segment(start, p + 1).transpose();
   }
 
   // The refined control points that some sample depends on (each sampled
